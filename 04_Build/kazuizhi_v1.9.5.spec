@@ -5,8 +5,8 @@
 
 from pathlib import Path
 
-# Use repository root independent of GitHub Actions working directory
-repo_root = Path(SPECPATH).resolve().parent.parent
+# GitHub Actions checkout directory is repository root
+repo_root = Path.cwd().resolve()
 project_root = repo_root / '03_V1.9.5_Source'
 
 block_cipher = None
