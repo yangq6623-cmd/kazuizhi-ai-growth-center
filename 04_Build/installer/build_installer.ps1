@@ -4,6 +4,8 @@ $root = Resolve-Path "$PSScriptRoot\..\.."
 $output = Join-Path $root "installer_output"
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
+Set-Location $PSScriptRoot
+
 $iss = Join-Path $PSScriptRoot "Kazuizhi_AI_V1.9.5_Setup.iss"
 
 if (Get-Command iscc -ErrorAction SilentlyContinue) {
