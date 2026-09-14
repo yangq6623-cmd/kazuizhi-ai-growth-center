@@ -40,11 +40,8 @@ jobs:
         run: |
           echo "Workspace"
           echo $env:GITHUB_WORKSPACE
-          echo "Repository root"
           dir
-          echo "V1.9.5 source tree"
           dir 03_V1.9.5_Source
-          echo "Build tree"
           dir 04_Build
 
       - name: Install dependencies
@@ -57,8 +54,24 @@ jobs:
         run: |
           pyinstaller 04_Build/kazuizhi_v1.9.5.spec
 
-      - name: Upload Alpha Artifact
+      - name: Prepare Installer Package
+        shell: powershell
+        run: |
+          if (Test-Path "04_Build/installer/build_installer.ps1") {
+            powershell -ExecutionPolicy Bypass -File "04_Build/installer/build_installer.ps1"
+          } else {
+            echo "Installer script not found, skip installer stage"
+          }
+
+      - name: Upload Alpha EXE Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kazuizhi_AI_V1.9.5_Alpha
           path: dist/
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_V1.9.5_Setup
+          path: installer_output/
+          if-no-files-found: warn
