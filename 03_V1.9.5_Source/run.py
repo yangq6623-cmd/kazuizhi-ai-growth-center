@@ -3,6 +3,9 @@ Kazuizhi AI Growth Center V1.9.5
 Main runtime entry
 """
 
+import traceback
+from pathlib import Path
+
 from core.version import VERSION
 from config.config_loader import ConfigLoader
 from logger.logger import Logger
@@ -23,4 +26,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        error_file = Path("kazuizhi_error.log")
+        error_file.write_text(traceback.format_exc(), encoding="utf-8")
+        raise
