@@ -3,12 +3,13 @@ AppName=Kazuizhi AI
 AppVersion=1.9.5
 DefaultDirName={autopf}\Kazuizhi AI
 DefaultGroupName=Kazuizhi AI
+OutputDir=..\..\installer_output
 OutputBaseFilename=Kazuizhi_AI_V1.9.5_Setup
 Compression=lzma
 SolidCompression=yes
 
 [Files]
-Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Alpha.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Alpha\Kazuizhi_AI_V1.9.5_Alpha.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Kazuizhi AI"; Filename: "{app}\Kazuizhi_AI_V1.9.5_Alpha.exe"
