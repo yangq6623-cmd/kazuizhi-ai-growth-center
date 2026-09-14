@@ -29,21 +29,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Check environment
-        run: |
-          python --version
-          pip --version
-          cd
-          dir
-
-      - name: Verify source tree
-        run: |
-          echo "Workspace"
-          echo $env:GITHUB_WORKSPACE
-          dir
-          dir 03_V1.9.5_Source
-          dir 04_Build
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -54,14 +39,15 @@ jobs:
         run: |
           pyinstaller 04_Build/kazuizhi_v1.9.5.spec
 
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          choco install innosetup -y
+
       - name: Prepare Installer Package
         shell: powershell
         run: |
-          if (Test-Path "04_Build/installer/build_installer.ps1") {
-            powershell -ExecutionPolicy Bypass -File "04_Build/installer/build_installer.ps1"
-          } else {
-            echo "Installer script not found, skip installer stage"
-          }
+          powershell -ExecutionPolicy Bypass -File "04_Build/installer/build_installer.ps1"
 
       - name: Upload Alpha EXE Artifact
         uses: actions/upload-artifact@v4
@@ -74,4 +60,4 @@ jobs:
         with:
           name: Kazuizhi_AI_V1.9.5_Setup
           path: installer_output/
-          if-no-files-found: warn
+          if-no-files-found: error
