@@ -4,6 +4,7 @@ Main runtime entry
 """
 
 import traceback
+import time
 from pathlib import Path
 
 from core.version import VERSION
@@ -23,6 +24,10 @@ def main():
     ai.start()
 
     logger.info("System startup completed")
+
+    # Keep runtime process alive after successful startup
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":
