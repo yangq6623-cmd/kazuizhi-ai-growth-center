@@ -1,0 +1,30 @@
+name: Kazuizhi AI V1.9.5 Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Build Dependencies
+        run: |
+          pip install -r 04_Build/requirements.txt
+
+      - name: Build Alpha EXE
+        run: |
+          pyinstaller 04_Build/kazuizhi_v1.9.5.spec
+
+      - name: Save Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_V1.9.5_Alpha
+          path: dist/
