@@ -1,0 +1,2 @@
+# Kazuizhi AI V1.9.5 runtime dependencies
+# Dependencies will be locked during build stage
