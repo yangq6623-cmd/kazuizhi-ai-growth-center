@@ -15,7 +15,9 @@ if (Get-Command iscc -ErrorAction SilentlyContinue) {
     throw "Missing Inno Setup compiler"
 }
 
-$setup = Get-ChildItem -Path $PSScriptRoot -Filter "Kazuizhi_AI_V1.9.5_Setup.exe" -Recurse | Select-Object -First 1
+# Inno Setup writes the output into the Output directory defined by the iss file.
+# Search from repository root instead of only the script folder.
+$setup = Get-ChildItem -Path $root -Filter "Kazuizhi_AI_V1.9.5_Setup.exe" -Recurse | Select-Object -First 1
 
 if ($null -eq $setup) {
     throw "Installer exe was not generated"
