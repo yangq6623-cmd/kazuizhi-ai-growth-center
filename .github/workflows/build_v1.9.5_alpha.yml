@@ -16,6 +16,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -29,12 +33,13 @@ jobs:
         run: |
           python --version
           pip --version
+          cd
           dir
 
       - name: Verify source tree
         run: |
-          echo "Current directory"
-          cd
+          echo "Workspace"
+          echo $env:GITHUB_WORKSPACE
           echo "Repository root"
           dir
           echo "V1.9.5 source tree"
