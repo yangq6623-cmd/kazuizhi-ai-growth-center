@@ -1,13 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-# Kazuizhi AI V1.9.5 Alpha PyInstaller configuration
-# Target: Windows executable build
+# Kazuizhi AI V1.9.5 Enterprise PyInstaller configuration
+# Include frontend dashboard resources
 
 from pathlib import Path
 
-# GitHub Actions checkout directory is repository root
 repo_root = Path.cwd().resolve()
 project_root = repo_root / '03_V1.9.5_Source'
+web_root = project_root / 'web'
 
 block_cipher = None
 
@@ -18,6 +18,7 @@ analysis = Analysis(
     datas=[
         (str(project_root / 'config'), 'config'),
         (str(project_root / 'data'), 'data'),
+        (str(web_root), 'web'),
     ],
     hiddenimports=[
         'core',
@@ -41,7 +42,7 @@ exe = EXE(
     analysis.scripts,
     [],
     exclude_binaries=True,
-    name='Kazuizhi_AI_V1.9.5_Alpha',
+    name='Kazuizhi_AI_V1.9.5_Enterprise',
     debug=False,
     strip=False,
     upx=True,
@@ -55,5 +56,5 @@ coll = COLLECT(
     analysis.datas,
     strip=False,
     upx=True,
-    name='Kazuizhi_AI_V1.9.5_Alpha',
+    name='Kazuizhi_AI_V1.9.5_Enterprise',
 )
