@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI V1.9.5 Enterprise R2
+name: Build Kazuizhi AI V1.9.5 Enterprise R3
 
 on:
   workflow_dispatch:
@@ -24,18 +24,24 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Validate Enterprise R2 dashboard source
+      - name: Validate isolated Enterprise dashboard source
         shell: powershell
         run: |
           $index = "03_V1.9.5_Source/web_release_v2/index.html"
           $version = "03_V1.9.5_Source/web_release_v2/WEB_VERSION.txt"
-          if (!(Test-Path $index)) { throw "Missing R2 dashboard index: $index" }
-          if (!(Test-Path $version)) { throw "Missing R2 dashboard version file: $version" }
+          $runtime = "03_V1.9.5_Source/run.py"
+          $installer = "04_Build/installer/Kazuizhi_AI_V1.9.5_Setup.iss"
+          if (!(Test-Path $index)) { throw "Missing isolated dashboard index: $index" }
+          if (!(Test-Path $version)) { throw "Missing isolated dashboard version file: $version" }
           $indexContent = Get-Content $index -Raw
           $versionContent = Get-Content $version -Raw
-          if ($indexContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "R2 index marker mismatch" }
-          if ($versionContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "R2 version marker mismatch" }
-          Write-Host "R2 source validation passed: KZ-ENTERPRISE-R2-20260915"
+          $runtimeContent = Get-Content $runtime -Raw
+          $installerContent = Get-Content $installer -Raw
+          if ($indexContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Dashboard source marker mismatch" }
+          if ($versionContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Dashboard version marker mismatch" }
+          if ($runtimeContent -notmatch "8876") { throw "Enterprise R3 isolated port 8876 is missing" }
+          if ($installerContent -notmatch "Kazuizhi AI Enterprise R3") { throw "Enterprise R3 isolated install path is missing" }
+          Write-Host "Enterprise R3 source validation passed"
 
       - name: Clean previous build files
         shell: powershell
@@ -59,18 +65,18 @@ jobs:
         run: |
           pyinstaller 04_Build/kazuizhi_v1.9.5.spec
 
-      - name: Validate packaged Enterprise R2 dashboard
+      - name: Validate packaged Enterprise dashboard
         shell: powershell
         run: |
           $packedIndex = "dist/Kazuizhi_AI_V1.9.5_Enterprise/_internal/web/index.html"
           $packedVersion = "dist/Kazuizhi_AI_V1.9.5_Enterprise/_internal/web/WEB_VERSION.txt"
-          if (!(Test-Path $packedIndex)) { throw "Packaged R2 index not found: $packedIndex" }
-          if (!(Test-Path $packedVersion)) { throw "Packaged R2 version file not found: $packedVersion" }
+          if (!(Test-Path $packedIndex)) { throw "Packaged dashboard index not found: $packedIndex" }
+          if (!(Test-Path $packedVersion)) { throw "Packaged dashboard version file not found: $packedVersion" }
           $packedIndexContent = Get-Content $packedIndex -Raw
           $packedVersionContent = Get-Content $packedVersion -Raw
-          if ($packedIndexContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Packaged dashboard is not Enterprise R2" }
-          if ($packedVersionContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Packaged version marker is not Enterprise R2" }
-          Write-Host "Packaged dashboard validated: KZ-ENTERPRISE-R2-20260915"
+          if ($packedIndexContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Packaged dashboard is not the isolated Enterprise dashboard" }
+          if ($packedVersionContent -notmatch "KZ-ENTERPRISE-R2-20260915") { throw "Packaged version marker mismatch" }
+          Write-Host "Packaged dashboard validated"
 
       - name: Install Inno Setup
         shell: powershell
@@ -85,12 +91,12 @@ jobs:
       - name: Upload Enterprise EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_V1.9.5_Enterprise_R2
+          name: Kazuizhi_AI_V1.9.5_Enterprise_R3
           path: dist/
 
       - name: Upload Enterprise Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_V1.9.5_Enterprise_R2_Setup
+          name: Kazuizhi_AI_V1.9.5_Enterprise_R3_Setup
           path: installer_output/
           if-no-files-found: error
