@@ -1,0 +1,63 @@
+name: Build Kazuizhi AI Enterprise V2.0.0 Beta
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Validate V2.0.0 source baseline
+        shell: powershell
+        run: |
+          $required = @(
+            "docs/V2.0.0_MASTER_PLAN.md",
+            "docs/V2.0.0_RECOVERY_PLAN.md"
+          )
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) { throw "Missing V2.0.0 document: $file" }
+          }
+          Write-Host "V2.0.0 baseline validation passed"
+
+      - name: Clean previous build files
+        shell: powershell
+        run: |
+          if (Test-Path build) { Remove-Item build -Recurse -Force }
+          if (Test-Path dist) { Remove-Item dist -Recurse -Force }
+          if (Test-Path installer_output) { Remove-Item installer_output -Recurse -Force }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path "03_V1.9.5_Source/requirements.txt") { pip install -r 03_V1.9.5_Source/requirements.txt }
+          pip install pyinstaller
+
+      - name: Build Enterprise EXE
+        shell: powershell
+        run: |
+          if (Test-Path "04_Build/kazuizhi_v1.9.5.spec") {
+            pyinstaller 04_Build/kazuizhi_v1.9.5.spec
+          } else {
+            throw "Build spec not found"
+          }
+
+      - name: Upload V2.0.0 Beta build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_Build
+          path: dist/
