@@ -12,13 +12,22 @@ class AIEngine:
     def __init__(self):
         self.version = VERSION
         self.status = "initialized"
+        self.url = None
 
     def start(self):
         self.status = "running"
+
+        try:
+            from ai_center.web_server import start_web
+            self.url = start_web()
+        except Exception:
+            self.url = None
+
         return self.status
 
     def health_check(self):
         return {
             "version": self.version,
-            "status": self.status
+            "status": self.status,
+            "url": self.url
         }
