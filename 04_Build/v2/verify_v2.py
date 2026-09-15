@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R1"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R2"
 
 def check(condition, message):
     if not condition:
@@ -32,6 +32,10 @@ def inspect_source():
     workflow = (ROOT / ".github/workflows/build_v2_enterprise_beta.yml").read_text(encoding="utf-8")
     check("03_V1.9.5_Source" not in workflow and "kazuizhi_v1.9.5.spec" not in workflow, "Legacy build dependency")
     check("installer_output_v2/" in workflow, "Setup upload missing")
+    installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
+    check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
+    check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R2" in installer, "R2 shortcut identity missing")
 
 def exercise(command):
     with socket.socket() as s:
@@ -123,6 +127,8 @@ def exercise(command):
                 # A second process must fail, not open a browser to the occupied port.
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, capture_output=True, timeout=15)
                 check(duplicate.returncode != 0, "Port conflict accepted")
+                duplicate_output = (duplicate.stdout + duplicate.stderr).decode("utf-8", errors="replace")
+                check(str(port) in duplicate_output and "Traceback" not in duplicate_output, "Port conflict message is unclear")
             finally:
                 p.terminate()
                 p.wait(timeout=15)

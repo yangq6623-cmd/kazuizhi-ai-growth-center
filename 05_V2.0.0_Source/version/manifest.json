@@ -1,9 +1,9 @@
 {
   "version": "2.0.0",
   "stage": "Beta",
-  "release": "R1",
-  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R1",
-  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R1",
+  "release": "R2",
+  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R2",
+  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R2",
   "source": "05_V2.0.0_Source/web",
   "base_commit": "ec921b14714a963ee7b012c3d7cc2265cfa66705",
   "scope": "Daily review, operation summary, problem analysis, growth opportunities, tomorrow plan, history and AI Memory recovery"

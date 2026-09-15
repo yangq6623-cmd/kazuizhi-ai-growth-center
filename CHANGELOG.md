@@ -1,3 +1,11 @@
+# V2.0.0 Beta R2 — 2026-09-16
+
+- Added a clear Chinese message when port 8876 is occupied, without a Python traceback.
+- Stop the exact legacy R2/R3 runtime process during V2 installation so the new runtime can start.
+- Replace stale V2 desktop shortcuts with a clearly named V2 Beta R2 shortcut.
+- Updated application, frontend, installer and Windows file metadata to `KZ-ENTERPRISE-V2-BETA-20260916-R2`.
+- Preserved the V1.9.5 Enterprise R3 baseline, installed files and handoff documents.
+
 # V2.0.0 Beta Daily Review R1 — 2026-09-16
 
 - Added the AI Daily Review Center, daily operation summary, problem analysis and growth opportunities.
