@@ -6,231 +6,44 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="layout">
+<aside class="sidebar">
+<h2>卡嘴智 AI</h2>
+<div>运营驾驶舱</div>
+<div>AI任务中心</div>
+<div>数据中心</div>
+<div>SEO/GEO增长</div>
+<div>自动化中心</div>
+<div>系统监控</div>
+</aside>
+<main class="main">
 <header class="header">
 <h1>卡嘴智 AI 自动化运营中心</h1>
 <p>V1.9.5 Fusion Dashboard</p>
 </header>
 <section class="overview">
-<div class="card"><h3>系统状态</h3><strong class="online">● 在线运行</strong><p>Web 服务正常</p></div>
-<div class="card"><h3>AI 引擎</h3><strong>Running</strong><p>自动化核心已加载</p></div>
-<div class="card"><h3>今日任务</h3><strong>0</strong><p>等待数据接口接入</p></div>
-<div class="card"><h3>业务数据</h3><strong>准备接入</strong><p>卡嘴子数据中心</p></div>
+<div class="card"><h3>系统状态</h3><strong id="system-status">在线运行</strong><p id="system-info">Web服务正常</p></div>
+<div class="card"><h3>AI引擎</h3><strong id="ai-status">Running</strong><p>自动化核心</p></div>
+<div class="card"><h3>今日任务</h3><strong id="task-count">0</strong><p>任务执行中心</p></div>
+<div class="card"><h3>业务数据</h3><strong id="business-data">准备接入</strong><p>卡嘴子数据中心</p></div>
 </section>
 <section class="panel">
 <h2>AI运营驾驶舱</h2>
 <div class="grid">
-<div class="card"><h3>AI任务中心</h3><p>任务执行、历史记录、异常监控</p></div>
-<div class="card"><h3>数据中心</h3><p>用户、订单、师傅、团长数据</p></div>
+<div class="card"><h3>AI任务中心</h3><p id="tasks">任务执行、历史记录、异常监控</p></div>
+<div class="card"><h3>数据中心</h3><p id="statistics">用户、订单、师傅、团长数据</p></div>
 <div class="card"><h3>SEO/GEO增长中心</h3><p>关键词、内容、搜索优化分析</p></div>
 <div class="card"><h3>自动化中心</h3><p>自动任务调度与执行</p></div>
-<div class="card"><h3>日志中心</h3><p>系统日志、运行记录</p></div>
-<div class="card"><h3>系统监控</h3><p>服务健康、版本、运行状态</p></div>
+<div class="card"><h3>日志中心</h3><p id="logs">系统日志</p></div>
+<div class="card"><h3>系统监控</h3><p id="monitor">服务健康、版本、运行状态</p></div>
 </div>
 </section>
+</main>
+</div>
+<script>
+async function api(url){try{let r=await fetch(url);return await r.json()}catch(e){return {}}}
+async function loadDashboard(){let s=await api('/api/status');system-status.innerText=s.status||'在线运行';ai-status.innerText=s.ai||'Running';let t=await api('/api/tasks');task-count.innerText=t.count||0;tasks.innerText=JSON.stringify(t);statistics.innerText=JSON.stringify(await api('/api/statistics'));logs.innerText=JSON.stringify(await api('/api/logs'));business-data.innerText=JSON.stringify(await api('/api/kazuizhi'));}
+loadDashboard();setInterval(loadDashboard,30000);
+</script>
 </body>
 </html>
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>卡嘴智 AI 自动化运营中心 V1.9.5</title>
-<link rel="stylesheet" href="style.css">
-</head>
-
-<body>
-
-<header class="header">
-<h1>卡嘴智 AI 自动化运营中心</h1>
-<p>V1.9.5 Fusion Dashboard</p>
-</header>
-
-
-<section class="overview">
-
-<div class="card">
-<h3>系统状态</h3>
-<strong id="system-status" class="online">加载中...</strong>
-<p id="system-info">正在连接服务</p>
-</div>
-
-
-<div class="card">
-<h3>AI 引擎</h3>
-<strong id="ai-status">加载中...</strong>
-<p>自动化核心</p>
-</div>
-
-
-<div class="card">
-<h3>今日任务</h3>
-<strong id="task-count">0</strong>
-<p>AI任务中心</p>
-</div>
-
-
-<div class="card">
-<h3>业务数据</h3>
-<strong id="business-data">准备接入</strong>
-<p>卡嘴子数据中心</p>
-</div>
-
-
-</section>
-
-
-<section class="panel">
-
-<h2>AI运营驾驶舱</h2>
-
-
-<div class="grid">
-
-
-<div class="card">
-<h3>AI任务中心</h3>
-<p id="tasks">
-等待数据
-</p>
-</div>
-
-
-<div class="card">
-<h3>数据中心</h3>
-<p id="statistics">
-等待数据
-</p>
-</div>
-
-
-<div class="card">
-<h3>SEO/GEO增长中心</h3>
-<p>
-关键词、内容、搜索优化分析
-</p>
-</div>
-
-
-<div class="card">
-<h3>自动化中心</h3>
-<p>
-自动任务调度与执行
-</p>
-</div>
-
-
-<div class="card">
-<h3>日志中心</h3>
-<p id="logs">
-等待日志
-</p>
-</div>
-
-
-<div class="card">
-<h3>系统监控</h3>
-<p id="monitor">
-服务健康、版本、运行状态
-</p>
-</div>
-
-
-</div>
-
-</section>
-
-
-
-<script>
-
-async function api(url){
-
-try{
-
-let res = await fetch(url);
-
-return await res.json();
-
-}catch(e){
-
-return {};
-
-}
-
-}
-
-
-
-async function loadDashboard(){
-
-
-let status = await api("/api/status");
-
-
-document.getElementById("system-status").innerText =
-status.status || "在线运行";
-
-
-document.getElementById("system-info").innerText =
-status.version || "V1.9.5";
-
-
-document.getElementById("ai-status").innerText =
-status.ai || "Running";
-
-
-
-let tasks = await api("/api/tasks");
-
-
-document.getElementById("task-count").innerText =
-tasks.count || 0;
-
-
-document.getElementById("tasks").innerText =
-JSON.stringify(tasks);
-
-
-
-let statistics = await api("/api/statistics");
-
-
-document.getElementById("statistics").innerText =
-JSON.stringify(statistics);
-
-
-
-let logs = await api("/api/logs");
-
-
-document.getElementById("logs").innerText =
-JSON.stringify(logs);
-
-
-
-let kz = await api("/api/kazuizhi");
-
-
-document.getElementById("business-data").innerText =
-JSON.stringify(kz);
-
-
-
-document.getElementById("monitor").innerText =
-"系统正常运行";
-
-
-}
-
-
-
-loadDashboard();
-
-
-setInterval(loadDashboard,30000);
-
-
-</script>
-
-
-</body>
-</html> 
