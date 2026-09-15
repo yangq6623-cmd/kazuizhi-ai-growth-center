@@ -10,6 +10,10 @@ OutputBaseFilename=Kazuizhi_AI_V1.9.5_Enterprise_Setup
 Compression=lzma
 SolidCompression=yes
 
+[InstallDelete]
+; Remove previous dashboard frontend resources before copying new build
+Type: filesandordirs; Name: "{app}\_internal\web"
+
 [Files]
 ; Enterprise build output only
 Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Enterprise\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
