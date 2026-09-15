@@ -1,64 +1,76 @@
 name: Build Kazuizhi AI Enterprise V2.0.0 Beta
-
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-
+    branches: [main, 'codex/v2-beta-migration']
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/v2/**'
+      - '04_Build/kazuizhi_v2.0.0.spec'
+      - '04_Build/build_v2_windows.ps1'
+      - '04_Build/installer/*v2*'
+      - '04_Build/installer/*V2*'
+      - '.github/workflows/build_v2_enterprise_beta.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/**'
+      - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: read
-
 jobs:
   build-windows:
     runs-on: windows-latest
-
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Validate V2.0.0 source baseline
-        shell: powershell
-        run: |
-          $required = @(
-            "docs/V2.0.0_MASTER_PLAN.md",
-            "docs/V2.0.0_RECOVERY_PLAN.md"
-          )
-          foreach ($file in $required) {
-            if (!(Test-Path $file)) { throw "Missing V2.0.0 document: $file" }
-          }
-          Write-Host "V2.0.0 baseline validation passed"
-
-      - name: Clean previous build files
-        shell: powershell
-        run: |
-          if (Test-Path build) { Remove-Item build -Recurse -Force }
-          if (Test-Path dist) { Remove-Item dist -Recurse -Force }
-          if (Test-Path installer_output) { Remove-Item installer_output -Recurse -Force }
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          python -m pip install --upgrade pip
-          if (Test-Path "03_V1.9.5_Source/requirements.txt") { pip install -r 03_V1.9.5_Source/requirements.txt }
-          pip install pyinstaller
-
-      - name: Build Enterprise EXE
-        shell: powershell
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: Ensure Inno Setup 6
         run: |
-          if (Test-Path "04_Build/kazuizhi_v1.9.5.spec") {
-            pyinstaller 04_Build/kazuizhi_v1.9.5.spec
-          } else {
-            throw "Build spec not found"
+          if (!(Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
           }
-
-      - name: Upload V2.0.0 Beta build artifact
+      - name: Build and verify V2 source and packaged runtime
+        run: ./04_Build/build_v2_windows.ps1
+      - name: Test silent install, launch, reinstall and uninstall
+        run: ./04_Build/v2/test_installer.ps1
+      - name: Record verified artifact provenance
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_Setup.exe'
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_Beta_Setup.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          @{
+            version = '2.0.0 Beta'
+            build = 'KZ-ENTERPRISE-V2-BETA-20260915'
+            commit = '${{ github.sha }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha256 = $hash
+            checks = @('source identity', 'R3/history preservation', 'packaged HTTP runtime', 'port conflict', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
+            acceptance = 'Automated checks passed; user visual acceptance pending; AI feature recovery pending'
+          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
+          Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/TEST_GUIDE.md
+      - name: Upload V2.0.0 Beta installer
         uses: actions/upload-artifact@v4
         with:
           name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_Setup
-          path: dist/
+          path: installer_output_v2/
           if-no-files-found: error
+          retention-days: 90
+      - name: Upload V2.0.0 Beta portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_Portable
+          path: dist_v2/
+          if-no-files-found: error
+          retention-days: 90

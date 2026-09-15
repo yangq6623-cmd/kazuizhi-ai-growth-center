@@ -1,7 +1,4 @@
-Kazuizhi AI Growth Center
-
+Kazuizhi AI Enterprise
 Version: 2.0.0 Beta
-Base: V1.9.5.3 Enterprise R3
-Status: V2.0.0 initialization
-Build baseline: R3 Stable
-Date: 2026-09-15
+Status: Source/build/installer migration; awaiting CI and user acceptance
+Stable baseline: baseline/v1.9.5-enterprise-r3-20260915

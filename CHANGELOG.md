@@ -1,3 +1,7 @@
+# V2.0.0 Beta — 2026-09-15
+
+Independent V2 source/spec/installer workflow; unified runtime and frontend identity; actual Setup artifact; automated install/reinstall/uninstall and R3 preservation checks. Historical AI feature recovery remains pending.
+
 # CHANGELOG
 
 ## V1.9.5 Enterprise R3 — 2026-09-15

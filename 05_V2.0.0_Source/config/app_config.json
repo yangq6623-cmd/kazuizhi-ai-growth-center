@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "project": "Kazuizhi AI Growth Center",
+  "mode": "rebuild",
+  "base_version": "1.8.5",
+  "data_path": "./data"
+}
