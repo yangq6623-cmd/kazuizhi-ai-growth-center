@@ -47,7 +47,7 @@ def _external_keywords():
             if isinstance(item, str):
                 phrase, score, seen = item, None, None
             elif isinstance(item, dict):
-                phrase = item.get("keyword") or item.get("phrase") or item.get("name")
+                phrase = item.get("keyword") or item.get("text") or item.get("phrase") or item.get("name")
                 score, seen = item.get("score"), item.get("last_seen")
             else:
                 continue
@@ -57,7 +57,7 @@ def _external_keywords():
                               "research_priority": score, "last_seen": seen,
                               "note": "公开搜索研究信号，不代表真实搜索量、排名、订单或收入。"})
         if items:
-            return items
+            return items[:100]
     return []
 
 

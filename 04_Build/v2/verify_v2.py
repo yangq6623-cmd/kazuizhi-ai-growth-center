@@ -45,7 +45,7 @@ def exercise(command):
         port = s.getsockname()[1]
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "public-keywords.json"
-        report.write_text(json.dumps({"keywords": [{"keyword": "涟水水电工师傅上门服务电话", "score": 73, "last_seen": "2026-09-16"}]}, ensure_ascii=False), encoding="utf-8")
+        report.write_text(json.dumps({"keywords": [{"text": "涟水水电工师傅上门服务电话", "score": 73, "last_seen": "2026-09-16"}]}, ensure_ascii=False), encoding="utf-8")
         runtime_env = dict(os.environ, LOCALAPPDATA=tmp, KAZUIZHI_AI_REPORT_PATH=str(report))
         with open(Path(tmp) / "runtime.log", "w+", encoding="utf-8") as log:
             p = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, stdout=log, stderr=subprocess.STDOUT)
