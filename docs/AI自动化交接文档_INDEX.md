@@ -7,18 +7,23 @@
    - 统一记录：V1.8.5 功能回归补齐、项目核心理念、最终产品方向、主控 AI / 本地 Agent 分工、双增长、长期记忆、真实数据、安全边界、R3 技术基线、后续恢复顺序和正式发布验收标准。
    - 后续优化前必须先读这一份，避免只修界面、丢掉前期已经接入的能力或偏离最终方向。
 
-2. `V1.9.5_ENTERPRISE_R3_FULL_WINDOW_HANDOFF_20260915.md`
+2. `GITHUB_SOURCE_OF_TRUTH_AND_RELEASE_SOP_20260915.md`
+   - GitHub 单一事实源与发布交付 SOP。
+   - 规定以后源码、构建脚本、版本状态、交接文档、功能回归、稳定基线、Artifact 的统一保存与交付方式。
+   - 默认由 AI 侧完成查源码、修改、构建、查 Run/Artifact、下载最终包并直接交付老板；老板不需要每次自己进入 GitHub 找包。
+
+3. `V1.9.5_ENTERPRISE_R3_FULL_WINDOW_HANDOFF_20260915.md`
    - 本窗口 R3 构建/安装问题的完整过程归档。
    - 按时间、问题点、根因、修复、关键路径、构建链、剩余待办、回滚规则整理。
 
-3. `V1.9.5_ENTERPRISE_R3_HANDOFF_20260915.md`
+4. `V1.9.5_ENTERPRISE_R3_HANDOFF_20260915.md`
    - R3 核心安装、构建、Dashboard、端口、回滚和升级规则的技术交接版。
 
-4. `V1.9.5_FUNCTION_REGRESSION_VS_V1.8.5_20260915.md`
+5. `V1.9.5_FUNCTION_REGRESSION_VS_V1.8.5_20260915.md`
    - 记录 V1.9.5 相对 V1.8.5 的功能回归问题。
    - 明确要求建立 V1.8.5 → R3 功能差异矩阵并逐项恢复。
 
-5. 根目录状态文件
+6. 根目录状态文件
    - `VERSION`
    - `CHANGELOG.md`
    - `V1.9.5_BUILD_STATUS.md`
@@ -32,6 +37,21 @@
 - 成功 GitHub Actions：`Run #65 / ID 34965930117`
 - R3 运行端口：`8876`
 - 基线保护分支：`baseline/v1.9.5-enterprise-r3-20260915`
+
+## 当前归档状态与历史缺口
+
+### 已完整进入 GitHub 的当前 R3 资产
+- V1.9.5 R3 当前源码；
+- PyInstaller / PowerShell / Inno Setup 构建脚本；
+- GitHub Actions workflow；
+- VERSION / CHANGELOG / BUILD_STATUS；
+- R3 总交接、技术交接、功能回归、产品方向与发布 SOP；
+- 稳定基线分支与成功 Run / Artifact 定位信息。
+
+### 仍需继续补齐的历史资产
+当前 `01_Legacy_V1.0-V1.8.5/` 还没有完整保存 V1.8.5 的全部历史源码 / Windows 发布包。
+
+V1.8.x 历史交接资料目前仍可从历史交接文档、File Library、已确认截图、本地备份/Google Drive 对接中心恢复功能定义，但后续应继续把能找回的发布包、升级器、源码/核心文件和 SHA256 补进 GitHub 历史归档。
 
 ## 历史交接资料
 
@@ -56,4 +76,5 @@
 5. 为稳定版本保留可回退分支或 tag；
 6. 建立上一稳定版本 → 当前版本的功能回归清单；
 7. 已接入能力不得在重构后无说明变为“待接入”；
-8. 不允许关键理念、功能、失败经验只保存在聊天记录中。
+8. 不允许关键理念、功能、失败经验只保存在聊天记录中；
+9. 正式版本必须同时保留：源码（怎么做出来）+ Artifact（做出来的包）+ 交接文档（为什么这样做）。
