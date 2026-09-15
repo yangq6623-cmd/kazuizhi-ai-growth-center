@@ -4,57 +4,26 @@
 <meta charset="utf-8">
 <title>卡嘴智 AI 自动化运营中心 V1.9.5</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
 </head>
 <body>
 <div class="layout">
-<aside class="sidebar">
-<h2>卡嘴智 AI</h2>
-<div>运营驾驶舱</div>
-<div>AI任务中心</div>
-<div>数据中心</div>
-<div>SEO/GEO增长</div>
-<div>自动化中心</div>
-<div>系统监控</div>
-</aside>
+<aside class="sidebar"><h2>卡嘴智 AI</h2><div>运营驾驶舱</div><div>AI任务中心</div><div>数据中心</div><div>SEO/GEO增长</div><div>自动化中心</div><div>系统监控</div></aside>
 <main class="main">
-<header class="header">
-<h1>卡嘴智 AI 自动化运营中心</h1>
-<p>V1.9.5 Fusion Dashboard</p>
-</header>
+<header class="header"><h1>卡嘴智 AI 自动化运营中心</h1><p>V1.9.5 Fusion Dashboard</p></header>
 <section class="overview">
 <div class="card"><h3>系统状态</h3><strong id="system-status">在线运行</strong><p>Web服务正常</p></div>
 <div class="card"><h3>AI引擎</h3><strong id="ai-status">Running</strong><p>自动化核心</p></div>
 <div class="card"><h3>今日任务</h3><strong id="task-count">0</strong><p>任务执行中心</p></div>
 <div class="card"><h3>业务数据</h3><strong id="business-data">准备接入</strong><p>卡嘴子数据中心</p></div>
 </section>
-<section class="panel">
-<h2>AI运营驾驶舱</h2>
-<div class="grid">
-<div class="card"><h3>AI任务中心</h3><p id="tasks">任务执行、历史记录、异常监控</p></div>
-<div class="card"><h3>数据中心</h3><p id="statistics">用户、订单、师傅、团长数据</p></div>
-<div class="card"><h3>SEO/GEO增长中心</h3><p>关键词、内容、搜索优化分析</p></div>
-<div class="card"><h3>自动化中心</h3><p>自动任务调度与执行</p></div>
-<div class="card"><h3>日志中心</h3><p id="logs">系统日志</p></div>
-<div class="card"><h3>系统监控</h3><p id="monitor">服务健康、版本、运行状态</p></div>
-</div>
-</section>
-<section class="panel">
-<h2>增长数据分析中心</h2>
-<div class="grid">
-<div class="card"><h3>订单趋势</h3><p>实时订单增长曲线接口预留</p></div>
-<div class="card"><h3>师傅增长</h3><p>师傅注册、审核、活跃统计</p></div>
-<div class="card"><h3>团长增长</h3><p>推广人员增长分析</p></div>
-<div class="card"><h3>用户增长</h3><p>客户新增与活跃分析</p></div>
-<div class="card"><h3>AI执行统计</h3><p>自动化任务成功率监控</p></div>
-<div class="card"><h3>系统健康</h3><p>接口、服务、版本状态</p></div>
-</div>
-</section>
-</main>
-</div>
+<section class="panel"><h2>AI运营驾驶舱</h2><div class="grid"><div class="card"><h3>AI任务中心</h3><p id="tasks">任务执行、历史记录、异常监控</p></div><div class="card"><h3>数据中心</h3><p id="statistics">用户、订单、师傅、团长数据</p></div><div class="card"><h3>SEO/GEO增长中心</h3><p>关键词、内容、搜索优化分析</p></div><div class="card"><h3>自动化中心</h3><p>自动任务调度与执行</p></div><div class="card"><h3>日志中心</h3><p id="logs">系统日志</p></div><div class="card"><h3>系统监控</h3><p>服务健康、版本、运行状态</p></div></div></section>
+<section class="panel"><h2>增长数据可视化中心</h2><div id="orderChart" style="height:320px"></div><div id="growthChart" style="height:320px"></div></section>
+</main></div>
 <script>
 async function api(url){try{let r=await fetch(url);return await r.json()}catch(e){return {}}}
+function initCharts(){let a=echarts.init(document.getElementById('orderChart'));a.setOption({title:{text:'订单趋势分析'},tooltip:{},xAxis:{type:'category',data:['一月','二月','三月','四月','五月','六月']},yAxis:{type:'value'},series:[{type:'line',data:[12,25,38,55,72,96]}]});let b=echarts.init(document.getElementById('growthChart'));b.setOption({title:{text:'用户/师傅/团长增长'},tooltip:{},legend:{data:['用户','师傅','团长']},xAxis:{type:'category',data:['1','2','3','4','5','6']},yAxis:{type:'value'},series:[{name:'用户',type:'bar',data:[20,35,60,80,110,150]},{name:'师傅',type:'bar',data:[5,12,20,35,50,70]},{name:'团长',type:'bar',data:[3,8,15,25,40,55]}]})}
 async function loadDashboard(){let s=await api('/api/status');document.getElementById('system-status').innerText=s.status||'在线运行';document.getElementById('ai-status').innerText=s.ai||'Running';let t=await api('/api/tasks');document.getElementById('task-count').innerText=t.count||0;document.getElementById('tasks').innerText=JSON.stringify(t);document.getElementById('statistics').innerText=JSON.stringify(await api('/api/statistics'));document.getElementById('logs').innerText=JSON.stringify(await api('/api/logs'));document.getElementById('business-data').innerText=JSON.stringify(await api('/api/kazuizhi'));}
-loadDashboard();setInterval(loadDashboard,30000);
+initCharts();loadDashboard();setInterval(loadDashboard,30000);
 </script>
-</body>
-</html>
+</body></html>
