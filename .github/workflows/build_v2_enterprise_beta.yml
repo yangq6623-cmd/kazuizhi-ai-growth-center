@@ -56,14 +56,15 @@ jobs:
           "$hash  Kazuizhi_AI_Enterprise_V2.0.0_Beta_Setup.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
             version = '2.0.0 Beta'
-            build = 'KZ-ENTERPRISE-V2-BETA-20260915'
+            build = 'KZ-ENTERPRISE-V2-BETA-20260916-R1'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('source identity', 'R3/history preservation', 'packaged HTTP runtime', 'port conflict', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
-            acceptance = 'Automated checks passed; user visual acceptance pending; AI feature recovery pending'
+            checks = @('source identity', 'R3/history preservation', 'daily review APIs', 'history persistence', 'AI Memory storage', 'safety policy', 'packaged HTTP runtime', 'port conflict', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
+            acceptance = 'Automated checks passed; user visual acceptance pending'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
-          Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/TEST_GUIDE.md
+          Copy-Item docs/V2.0.0_BETA_DAILY_REVIEW_RECOVERY_20260916.md installer_output_v2/TEST_GUIDE.md
+          Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/BASELINE_MIGRATION_GUIDE.md
       - name: Upload V2.0.0 Beta installer
         uses: actions/upload-artifact@v4
         with:

@@ -1,7 +1,7 @@
 """Canonical V2 Beta runtime identity."""
 VERSION = "2.0.0"
 BUILD_STAGE = "Beta"
-BUILD_ID = "KZ-ENTERPRISE-V2-BETA-20260915"
+BUILD_ID = "KZ-ENTERPRISE-V2-BETA-20260916-R1"
 PRODUCT_NAME = "Kazuizhi AI Enterprise V2.0.0 Beta"
 
 def get_version():

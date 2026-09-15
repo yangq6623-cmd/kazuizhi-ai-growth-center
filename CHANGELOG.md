@@ -1,3 +1,11 @@
+# V2.0.0 Beta Daily Review R1 — 2026-09-16
+
+- Added the AI Daily Review Center, daily operation summary, problem analysis and growth opportunities.
+- Added reviewable tomorrow plans, persistent review history and writable AI Memory.
+- Added durable local data storage outside the installation directory.
+- Added truthfulness, financial-action and persistence regression tests.
+- Updated frontend build to `KZ-ENTERPRISE-V2-BETA-20260916-R1`.
+
 # V2.0.0 Beta — 2026-09-15
 
 Independent V2 source/spec/installer workflow; unified runtime and frontend identity; actual Setup artifact; automated install/reinstall/uninstall and R3 preservation checks. Historical AI feature recovery remains pending.
