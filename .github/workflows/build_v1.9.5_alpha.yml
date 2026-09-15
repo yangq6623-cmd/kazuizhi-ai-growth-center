@@ -24,6 +24,28 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Validate Dashboard frontend resource
+        shell: powershell
+        run: |
+          $files = @(
+            "03_V1.9.5_Source/web/index.html",
+            "03_V1.9.5_Source/index.html"
+          )
+          $found = $false
+          foreach ($file in $files) {
+            if (Test-Path $file) {
+              $content = Get-Content $file -Raw
+              Write-Host "Checking frontend resource: $file"
+              if ($content -match "卡嘴子|增长|Dashboard|AI") {
+                $found = $true
+                break
+              }
+            }
+          }
+          if (-not $found) {
+            throw "Dashboard frontend resource validation failed. New frontend index.html was not found."
+          }
+
       - name: Clean previous build files
         shell: powershell
         run: |
