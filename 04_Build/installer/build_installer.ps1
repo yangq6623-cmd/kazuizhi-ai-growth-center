@@ -6,10 +6,17 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 
 Set-Location $PSScriptRoot
 
-$iss = Join-Path $PSScriptRoot "Kazuizhi_AI_V1.9.5_Enterprise_Setup.iss"
+# Locate Inno Setup script dynamically to avoid filename mismatch
+$iss = Get-ChildItem -Path $PSScriptRoot -Filter "*.iss" | Select-Object -First 1
+
+if ($null -eq $iss) {
+    throw "No Inno Setup script found"
+}
+
+Write-Host "Using installer script: $($iss.FullName)"
 
 if (Get-Command iscc -ErrorAction SilentlyContinue) {
-    iscc $iss
+    iscc $iss.FullName
 } else {
     Write-Host "Inno Setup compiler not found"
     throw "Missing Inno Setup compiler"
