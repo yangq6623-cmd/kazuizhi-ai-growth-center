@@ -16,10 +16,12 @@ from ai_center.ai_engine import AIEngine
 from dashboard_server import start_dashboard_server
 
 
-DASHBOARD_URL = "http://127.0.0.1:8765"
+DASHBOARD_HOST = "127.0.0.1"
+DASHBOARD_PORT = 8876
+DASHBOARD_URL = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}/?build=KZ-ENTERPRISE-R3-20260915"
 
 
-def wait_dashboard_ready(host="127.0.0.1", port=8765, timeout=30):
+def wait_dashboard_ready(host=DASHBOARD_HOST, port=DASHBOARD_PORT, timeout=30):
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -42,13 +44,19 @@ def main():
     logger = Logger()
     logger.info(f"Kazuizhi AI V{VERSION} starting")
     logger.info(f"Dashboard URL: {DASHBOARD_URL}")
+    print("Enterprise R3 isolated runtime")
+    print(f"Dashboard URL: {DASHBOARD_URL}")
 
     ConfigLoader().load()
 
     ai = AIEngine()
     ai.start()
 
-    threading.Thread(target=start_dashboard_server, daemon=True).start()
+    threading.Thread(
+        target=start_dashboard_server,
+        kwargs={"host": DASHBOARD_HOST, "port": DASHBOARD_PORT},
+        daemon=True,
+    ).start()
     threading.Thread(target=open_dashboard, daemon=True).start()
 
     logger.info("Dashboard server thread started")
