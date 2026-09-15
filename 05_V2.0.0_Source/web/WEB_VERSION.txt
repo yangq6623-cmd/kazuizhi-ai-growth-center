@@ -6,5 +6,5 @@ RELEASE=R1
 PORT=8876
 SOURCE=05_V2.0.0_Source/web
 RECOVERY_BATCH=1-5
-FEATURES=AI每日复盘中心,今日运营总结,明日计划,历史复盘记录,AI Memory基础模块
+FEATURES=daily_review,today_summary,tomorrow_plan,review_history,ai_memory_basic
 DATA_POLICY=No fabricated business metrics; local R1 records use browser LocalStorage
