@@ -41,6 +41,7 @@ def open_dashboard():
 def main():
     logger = Logger()
     logger.info(f"Kazuizhi AI V{VERSION} starting")
+    logger.info(f"Dashboard URL: {DASHBOARD_URL}")
 
     ConfigLoader().load()
 
@@ -50,6 +51,7 @@ def main():
     threading.Thread(target=start_dashboard_server, daemon=True).start()
     threading.Thread(target=open_dashboard, daemon=True).start()
 
+    logger.info("Dashboard server thread started")
     logger.info("System startup completed")
 
     while True:
