@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI V1.9.5 Alpha
+name: Build Kazuizhi AI V1.9.5 Enterprise
 
 on:
   workflow_dispatch:
@@ -49,15 +49,15 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File "04_Build/installer/build_installer.ps1"
 
-      - name: Upload Alpha EXE Artifact
+      - name: Upload Enterprise EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_V1.9.5_Alpha
+          name: Kazuizhi_AI_V1.9.5_Enterprise
           path: dist/
 
-      - name: Upload Installer Artifact
+      - name: Upload Enterprise Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_V1.9.5_Setup
+          name: Kazuizhi_AI_V1.9.5_Enterprise_Setup
           path: installer_output/
           if-no-files-found: error
