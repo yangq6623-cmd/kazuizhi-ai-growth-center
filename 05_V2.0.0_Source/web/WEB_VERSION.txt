@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
-Version: V2.0.0 Beta R2
-Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R2
+Version: V2.0.0 Beta R3
+Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R3
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
 Modules:
@@ -17,3 +17,8 @@ Modules:
 - Tomorrow Plan
 - Historical Review Records
 - AI Memory
+- User Growth Analysis
+- Order Conversion Analysis
+- Technician Supply Analysis
+- Leader Promotion Analysis
+- Channel Effect Analysis

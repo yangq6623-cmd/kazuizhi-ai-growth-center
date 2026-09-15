@@ -7,6 +7,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlsplit
 from ai_center.daily_review import generate_review, latest_plan, latest_review
+from analytics.business_metrics import build_analytics, import_snapshot, import_template
 from analytics.operation_summary import build_summary, save_summary
 from core.storage import now_iso
 from core.version import BUILD_ID, get_version
@@ -46,6 +47,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "tomorrow_plan",
                         "review_history",
                         "ai_memory",
+                        "user_growth_analysis",
+                        "order_conversion_analysis",
+                        "technician_supply_analysis",
+                        "leader_promotion_analysis",
+                        "channel_effect_analysis",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -58,6 +64,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/history": list_reviews(),
                 "/api/memory": get_memory(),
                 "/api/experiments": get_experiments(),
+                "/api/business-analytics": build_analytics(),
+                "/api/business-metrics/template": import_template(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -73,7 +81,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ("/api/daily-review/generate", "/api/memory", "/api/operation-summary", "/api/tomorrow-plan"):
+        if path not in ("/api/daily-review/generate", "/api/memory", "/api/operation-summary", "/api/tomorrow-plan", "/api/business-metrics/import"):
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -82,7 +90,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
-            if path == "/api/daily-review/generate":
+            if path == "/api/business-metrics/import":
+                result = import_snapshot(payload)
+            elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
                     raise ValueError("snapshot must be an object")

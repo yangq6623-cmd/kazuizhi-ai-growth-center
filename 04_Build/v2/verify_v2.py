@@ -8,12 +8,13 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R2"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R3"
 
 def check(condition, message):
     if not condition:
@@ -35,7 +36,8 @@ def inspect_source():
     installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
     check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
     check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
-    check("卡嘴子 AI 增长运营中心 V2 Beta R2" in installer, "R2 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R3" in installer, "R3 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R2.lnk" in installer, "R2 shortcut cleanup missing")
 
 def exercise(command):
     with socket.socket() as s:
@@ -58,15 +60,15 @@ def exercise(command):
                 else:
                     raise AssertionError("Runtime startup timeout")
                 check(status["version"] == "2.0.0" and status["stage"] == "Beta" and status["build"] == BUILD, "Wrong API version")
-                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory"}
-                check(expected_capabilities.issubset(status["capabilities"]), "Review capabilities missing")
+                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis"}
+                check(expected_capabilities.issubset(status["capabilities"]), "V2 capabilities missing")
                 for path in ("/", "/?build=" + BUILD, "/WEB_VERSION.txt"):
                     with urllib.request.urlopen(base + path) as response:
                         text = response.read().decode("utf-8")
                         check(BUILD in text and "1.9.5" not in text, "Wrong HTTP asset identity")
                         check(response.headers["Cache-Control"] == "no-store", "Cache guard missing")
                         if path == "/":
-                            for label in ("AI 每日复盘中心", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
+                            for label in ("AI 每日复盘中心", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
                                 check(label in text, f"Dashboard module missing: {label}")
                 for route in ("tasks", "statistics", "kazuizhi"):
                     with urllib.request.urlopen(base + "/api/" + route) as response:
@@ -88,6 +90,39 @@ def exercise(command):
                 check(review["tomorrow_plan"]["tasks"], "Tomorrow plan missing")
                 check(all(item["execution"] == "proposal_only" for item in review["tomorrow_plan"]["tasks"]), "Plan bypassed review")
                 check("退款" in review["tomorrow_plan"]["blocked_financial_actions"], "Financial safety boundary missing")
+                with urllib.request.urlopen(base + "/api/business-analytics") as response:
+                    analytics = json.load(response)
+                check(analytics["status"] == "not_connected", "Disconnected business data was reported as verified")
+                unsafe_request = urllib.request.Request(
+                    base + "/api/business-metrics/import",
+                    data=json.dumps({"source": "test", "as_of": "2026-09-16", "phone": "13800000000"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                try:
+                    urllib.request.urlopen(unsafe_request)
+                    raise AssertionError("Sensitive business field accepted")
+                except urllib.error.HTTPError as error:
+                    check(error.code == 400, "Sensitive field rejection returned wrong status")
+                verified_snapshot = {
+                    "source": "automated-readonly-test", "as_of": "2026-09-16 08:00:00", "window": "today",
+                    "mini_program_visits": 100, "repair_requests": 20, "new_users": 30, "leads": 10,
+                    "new_orders": 8, "completed_orders": 6, "cancelled_orders": 1,
+                    "new_technicians": 4, "approved_technicians": 3, "active_technicians": 12, "technician_inquiries": 5,
+                    "new_leaders": 2, "active_leaders": 7, "leader_referrals": 5, "leader_orders": 2,
+                    "published_content": 4, "channel_visits": {"SEO": 40, "品牌小程序码": 60},
+                    "channel_orders": {"SEO": 5, "品牌小程序码": 3}, "by_region": {"涟水": 8}, "by_skill": {"水电维修": 5},
+                }
+                import_request = urllib.request.Request(
+                    base + "/api/business-metrics/import", data=json.dumps(verified_snapshot).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(import_request) as response:
+                    analytics = json.load(response)
+                check(response.status == 201 and analytics["status"] == "verified", "Verified business snapshot import failed")
+                check(analytics["modules"]["order_conversion"]["rates"]["request_to_order_pct"] == 40.0, "Order conversion is wrong")
+                check(len(analytics["modules"]["channel_effect"]["breakdown"]["channels"]) == 2, "Channel analysis missing")
+                check(analytics["modules"]["leader_promotion"]["status"] == "verified", "Leader analysis missing")
+                with urllib.request.urlopen(base + "/api/operation-summary/today") as response:
+                    connected_summary = json.load(response)
+                check(connected_summary["verified_metrics"]["orders"] == 8 and connected_summary["verified_metrics"]["users"] == 30, "Business metrics did not feed operation summary")
                 summary_request = urllib.request.Request(
                     base + "/api/operation-summary",
                     data=json.dumps({"completed_items": ["verified completed item"]}).encode("utf-8"),
@@ -124,6 +159,7 @@ def exercise(command):
                 check((data_dir / "plans/latest_plan.json").exists(), "Latest plan file missing")
                 check((data_dir / "summaries/today.json").exists(), "Daily summary file missing")
                 check((data_dir / "memory/learning_memory.json").exists(), "AI Memory file missing")
+                check((data_dir / "business/verified_snapshot.json").exists(), "Verified business snapshot missing")
                 # A second process must fail, not open a browser to the occupied port.
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, capture_output=True, timeout=15)
                 check(duplicate.returncode != 0, "Port conflict accepted")
@@ -154,4 +190,4 @@ if __name__ == "__main__":
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: V2 identity, review modules, persistence, HTTP routes, resources, port conflict, R3/history preservation")
+    print("PASS: V2 identity, five business analyses, truth policy, review modules, persistence, HTTP routes, resources, port conflict, R3/history preservation")

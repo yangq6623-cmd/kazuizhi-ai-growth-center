@@ -1,3 +1,13 @@
+# V2.0.0 Beta R3 — 2026-09-16
+
+- Restored user growth, order conversion, technician supply, leader promotion and channel effect analysis.
+- Added verified aggregate snapshot import with strict source/time validation.
+- Added automatic read-only discovery for the established local business metrics bridge.
+- Reject sensitive identity, address, secret and financial-detail fields from the analytics store.
+- Feed verified business metrics into the daily operation summary while preserving explicit not-connected states.
+- Updated application, frontend, installer and Windows file metadata to `KZ-ENTERPRISE-V2-BETA-20260916-R3`.
+- Preserved the V1.9.5 Enterprise R3 baseline and all existing V2 review/history/AI Memory data.
+
 # V2.0.0 Beta R2 — 2026-09-16
 
 - Added a clear Chinese message when port 8876 is occupied, without a Python traceback.

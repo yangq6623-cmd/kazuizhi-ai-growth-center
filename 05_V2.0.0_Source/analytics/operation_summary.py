@@ -1,6 +1,7 @@
 """Create a daily summary without inventing unavailable business metrics."""
 
 from datetime import date
+from analytics.business_metrics import summary_snapshot
 from core.storage import now_iso, read_json, write_json
 
 
@@ -8,7 +9,7 @@ METRICS = ("orders", "users", "revenue", "masters", "leaders", "promotion")
 
 
 def build_summary(snapshot=None):
-    snapshot = snapshot or {}
+    snapshot = summary_snapshot() if snapshot is None else snapshot
     verified = {key: snapshot[key] for key in METRICS if snapshot.get(key) is not None}
     missing = [key for key in METRICS if key not in verified]
     if verified:

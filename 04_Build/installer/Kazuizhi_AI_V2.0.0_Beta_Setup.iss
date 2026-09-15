@@ -1,15 +1,15 @@
 [Setup]
 AppId={{C8148D45-198A-43BF-BC84-922000000001}
-AppName=Kazuizhi AI Enterprise V2.0.0 Beta R2
-AppVersion=2.0.0 Beta R2
-VersionInfoVersion=2.0.0.2
+AppName=Kazuizhi AI Enterprise V2.0.0 Beta R3
+AppVersion=2.0.0 Beta R3
+VersionInfoVersion=2.0.0.3
 DefaultDirName={localappdata}\Programs\Kazuizhi_AI_Enterprise_V2.0.0_Beta
-DefaultGroupName=Kazuizhi AI Enterprise V2.0.0 Beta R2
+DefaultGroupName=Kazuizhi AI Enterprise V2.0.0 Beta R3
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\installer_output_v2
-OutputBaseFilename=Kazuizhi_AI_Enterprise_V2.0.0_Beta_R2_Setup
+OutputBaseFilename=Kazuizhi_AI_Enterprise_V2.0.0_Beta_R3_Setup
 Compression=lzma2
 SolidCompression=yes
 CloseApplications=yes
@@ -20,13 +20,14 @@ Source: "..\..\dist_v2\Kazuizhi_AI_Enterprise_V2.0.0_Beta\*"; DestDir: "{app}"; 
 [InstallDelete]
 Type: files; Name: "{userdesktop}\Kazuizhi AI Enterprise V2.0.0 Beta.lnk"
 Type: files; Name: "{userdesktop}\Kazuizhi AI Enterprise V2.0.0 Beta R1.lnk"
+Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R2.lnk"
 
 [Icons]
-Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R2"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
-Name: "{group}\卡嘴子 AI 增长运营中心 V2 Beta R2"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
+Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R3"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
+Name: "{group}\卡嘴子 AI 增长运营中心 V2 Beta R3"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
 
 [Run]
-Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"; Description: "启动卡嘴子 AI 增长运营中心 V2 Beta R2"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"; Description: "启动卡嘴子 AI 增长运营中心 V2 Beta R3"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure StopLegacyRuntime(const ImageName: String);
