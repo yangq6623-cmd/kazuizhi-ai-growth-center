@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.0.0 Beta
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-beta-migration']
+    branches: [main, 'codex/v2-*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/v2/**'
