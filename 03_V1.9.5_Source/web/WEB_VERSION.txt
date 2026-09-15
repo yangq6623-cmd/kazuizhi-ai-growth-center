@@ -1,0 +1,8 @@
+Kazuizhi AI Growth Center
+Version: V1.9.5 Enterprise Dashboard
+Frontend Build: Latest
+Modules:
+- KPI Dashboard
+- ECharts Visualization
+- AI Operation Center
+- Growth Analysis
