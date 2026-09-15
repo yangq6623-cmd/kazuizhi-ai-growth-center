@@ -1,10 +1,19 @@
-KAZUIZHI_BUILD=KZ-ENTERPRISE-V2-BETA-20260915
-PRODUCT=Kazuizhi AI Enterprise V2.0.0 Beta R1
-VERSION=2.0.0
-STAGE=Beta
-RELEASE=R1
-PORT=8876
-SOURCE=05_V2.0.0_Source/web
-RECOVERY_BATCH=1-5
-FEATURES=daily_review,today_summary,tomorrow_plan,review_history,ai_memory_basic
-DATA_POLICY=No fabricated business metrics; local R1 records use browser LocalStorage
+Kazuizhi AI Growth Center
+Version: V2.0.0 Beta R1
+Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R1
+Dashboard: FULL_ENTERPRISE_DASHBOARD
+Source: 05_V2.0.0_Source/web
+Modules:
+- KPI Dashboard
+- Growth Analysis
+- SEO/GEO Center
+- AI Task Center
+- Automation Center
+- System Health
+- AI Daily Review Center
+- Daily Operation Summary
+- Problem Analysis
+- Growth Opportunities
+- Tomorrow Plan
+- Historical Review Records
+- AI Memory

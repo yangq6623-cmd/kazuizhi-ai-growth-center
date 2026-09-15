@@ -1,0 +1,5 @@
+.memory-form { margin-top: 16px; }
+.memory-form > div { display: flex; gap: 10px; margin: 10px 0; }
+.memory-form input { flex: 1; border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; font: inherit; }
+.memory-form button { border: 0; background: var(--blue); color: #fff; border-radius: 9px; padding: 0 15px; font-weight: 700; cursor: pointer; }
+.memory-form small { color: var(--muted); }

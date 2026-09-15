@@ -1,5 +1,5 @@
 Kazuizhi AI Enterprise
 Version: 2.0.0 Beta
-Status: Automated migration/build/installer checks passed; user acceptance pending
-Build commit: d1e797eda9bfa68634ab3bf961eba851074fecc7
+Status: Daily review recovery R1 ready for CI; user acceptance pending
+Build: KZ-ENTERPRISE-V2-BETA-20260916-R1
 Stable baseline: baseline/v1.9.5-enterprise-r3-20260915
