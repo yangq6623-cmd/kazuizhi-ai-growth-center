@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_Setup.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R1_Setup.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP 'KazuizhiV2InstallerTest'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
 function Install-Beta {
@@ -24,4 +24,4 @@ $proc = Start-Process -FilePath (Join-Path $testRoot 'unins000.exe') -ArgumentLi
 if ($proc.ExitCode -ne 0) { throw 'Uninstall failed' }
 if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted user data' }
-Write-Host 'PASS: install, Windows version, launch, reinstall, user-data preservation, uninstall'
+Write-Host 'PASS: R1 install, Windows version, launch, reinstall, user-data preservation, uninstall'

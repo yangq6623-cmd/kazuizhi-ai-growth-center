@@ -1,12 +1,10 @@
-Kazuizhi AI Growth Center
-Version: V2.0.0 Beta
-Frontend Build: KZ-ENTERPRISE-V2-BETA-20260915
-Dashboard: FULL_ENTERPRISE_DASHBOARD
-Source: 05_V2.0.0_Source/web
-Modules:
-- KPI Dashboard
-- Growth Analysis
-- SEO/GEO Center
-- AI Task Center
-- Automation Center
-- System Health
+KAZUIZHI_BUILD=KZ-ENTERPRISE-V2-BETA-20260915
+PRODUCT=Kazuizhi AI Enterprise V2.0.0 Beta R1
+VERSION=2.0.0
+STAGE=Beta
+RELEASE=R1
+PORT=8876
+SOURCE=05_V2.0.0_Source/web
+RECOVERY_BATCH=1-5
+FEATURES=AI每日复盘中心,今日运营总结,明日计划,历史复盘记录,AI Memory基础模块
+DATA_POLICY=No fabricated business metrics; local R1 records use browser LocalStorage
