@@ -8,19 +8,18 @@ import time
 import threading
 import webbrowser
 import socket
-from pathlib import Path
 
 from core.version import VERSION
 from config.config_loader import ConfigLoader
 from logger.logger import Logger
 from ai_center.ai_engine import AIEngine
+from dashboard_server import start_dashboard_server
 
 
 DASHBOARD_URL = "http://127.0.0.1:8765"
 
 
 def wait_dashboard_ready(host="127.0.0.1", port=8765, timeout=30):
-    """Wait until dashboard service is available."""
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -32,7 +31,6 @@ def wait_dashboard_ready(host="127.0.0.1", port=8765, timeout=30):
 
 
 def open_dashboard():
-    """Open dashboard only after service is ready."""
     try:
         if wait_dashboard_ready():
             webbrowser.open(DASHBOARD_URL)
@@ -44,15 +42,15 @@ def main():
     logger = Logger()
     logger.info(f"Kazuizhi AI V{VERSION} starting")
 
-    config = ConfigLoader()
-    config.load()
+    ConfigLoader().load()
 
     ai = AIEngine()
     ai.start()
 
-    logger.info("System startup completed")
-
+    threading.Thread(target=start_dashboard_server, daemon=True).start()
     threading.Thread(target=open_dashboard, daemon=True).start()
+
+    logger.info("System startup completed")
 
     while True:
         time.sleep(1)
@@ -62,6 +60,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        error_file = Path("kazuizhi_error.log")
-        error_file.write_text(traceback.format_exc(), encoding="utf-8")
+        with open("kazuizhi_error.log", "w", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
         raise
