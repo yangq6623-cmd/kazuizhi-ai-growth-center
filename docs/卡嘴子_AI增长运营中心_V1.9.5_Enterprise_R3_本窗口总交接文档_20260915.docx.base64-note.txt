@@ -1,0 +1,1 @@
+Binary DOCX source is delivered with this project handoff and is referenced by docs/V1.9.5_ENTERPRISE_R3_FULL_WINDOW_HANDOFF_20260915.md. This note exists only as a path placeholder if a future connector cannot commit binary files directly. Do not treat this TXT file as the handoff document itself.
