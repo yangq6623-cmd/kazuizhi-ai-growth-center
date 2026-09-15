@@ -5,12 +5,23 @@ Main runtime entry
 
 import traceback
 import time
+import threading
+import webbrowser
 from pathlib import Path
 
 from core.version import VERSION
 from config.config_loader import ConfigLoader
 from logger.logger import Logger
 from ai_center.ai_engine import AIEngine
+
+
+def open_dashboard():
+    """Open local dashboard after startup."""
+    try:
+        time.sleep(2)
+        webbrowser.open("http://127.0.0.1:8765")
+    except Exception:
+        pass
 
 
 def main():
@@ -25,7 +36,8 @@ def main():
 
     logger.info("System startup completed")
 
-    # Keep runtime process alive after successful startup
+    threading.Thread(target=open_dashboard, daemon=True).start()
+
     while True:
         time.sleep(1)
 
