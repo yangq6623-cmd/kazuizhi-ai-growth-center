@@ -1,0 +1,12 @@
+Kazuizhi AI Growth Center
+Version: V1.9.5 Enterprise R2
+Frontend Build: KZ-ENTERPRISE-R2-20260915
+Dashboard: FULL_ENTERPRISE_DASHBOARD
+Source: 03_V1.9.5_Source/web_release_v2
+Modules:
+- KPI Dashboard
+- Growth Analysis
+- SEO/GEO Center
+- AI Task Center
+- Automation Center
+- System Health

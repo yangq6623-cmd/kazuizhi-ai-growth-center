@@ -1,13 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-# Kazuizhi AI V1.9.5 Enterprise PyInstaller configuration
-# Include frontend dashboard resources
+# Kazuizhi AI V1.9.5 Enterprise R2 PyInstaller configuration
+# IMPORTANT: Enterprise release frontend is sourced ONLY from web_release_v2.
 
 from pathlib import Path
 
 repo_root = Path.cwd().resolve()
 project_root = repo_root / '03_V1.9.5_Source'
-web_root = project_root / 'web'
+web_root = project_root / 'web_release_v2'
+
+if not web_root.exists():
+    raise FileNotFoundError(f'Enterprise R2 web source not found: {web_root}')
+
+marker_file = web_root / 'WEB_VERSION.txt'
+index_file = web_root / 'index.html'
+if not marker_file.exists() or not index_file.exists():
+    raise FileNotFoundError('Enterprise R2 dashboard resources are incomplete')
 
 block_cipher = None
 
