@@ -23,9 +23,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def start_dashboard_server(host="127.0.0.1", port=8765):
+def start_dashboard_server(host="127.0.0.1", port=8876):
     web_path = get_web_path()
     print(f"Dashboard resource path: {web_path}")
+    print(f"Dashboard listen: http://{host}:{port}")
 
     version_file = web_path / "WEB_VERSION.txt"
     if version_file.exists():
