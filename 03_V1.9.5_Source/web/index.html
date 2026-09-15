@@ -22,7 +22,7 @@
 <p>V1.9.5 Fusion Dashboard</p>
 </header>
 <section class="overview">
-<div class="card"><h3>系统状态</h3><strong id="system-status">在线运行</strong><p id="system-info">Web服务正常</p></div>
+<div class="card"><h3>系统状态</h3><strong id="system-status">在线运行</strong><p>Web服务正常</p></div>
 <div class="card"><h3>AI引擎</h3><strong id="ai-status">Running</strong><p>自动化核心</p></div>
 <div class="card"><h3>今日任务</h3><strong id="task-count">0</strong><p>任务执行中心</p></div>
 <div class="card"><h3>业务数据</h3><strong id="business-data">准备接入</strong><p>卡嘴子数据中心</p></div>
@@ -38,11 +38,22 @@
 <div class="card"><h3>系统监控</h3><p id="monitor">服务健康、版本、运行状态</p></div>
 </div>
 </section>
+<section class="panel">
+<h2>增长数据分析中心</h2>
+<div class="grid">
+<div class="card"><h3>订单趋势</h3><p>实时订单增长曲线接口预留</p></div>
+<div class="card"><h3>师傅增长</h3><p>师傅注册、审核、活跃统计</p></div>
+<div class="card"><h3>团长增长</h3><p>推广人员增长分析</p></div>
+<div class="card"><h3>用户增长</h3><p>客户新增与活跃分析</p></div>
+<div class="card"><h3>AI执行统计</h3><p>自动化任务成功率监控</p></div>
+<div class="card"><h3>系统健康</h3><p>接口、服务、版本状态</p></div>
+</div>
+</section>
 </main>
 </div>
 <script>
 async function api(url){try{let r=await fetch(url);return await r.json()}catch(e){return {}}}
-async function loadDashboard(){let s=await api('/api/status');system-status.innerText=s.status||'在线运行';ai-status.innerText=s.ai||'Running';let t=await api('/api/tasks');task-count.innerText=t.count||0;tasks.innerText=JSON.stringify(t);statistics.innerText=JSON.stringify(await api('/api/statistics'));logs.innerText=JSON.stringify(await api('/api/logs'));business-data.innerText=JSON.stringify(await api('/api/kazuizhi'));}
+async function loadDashboard(){let s=await api('/api/status');document.getElementById('system-status').innerText=s.status||'在线运行';document.getElementById('ai-status').innerText=s.ai||'Running';let t=await api('/api/tasks');document.getElementById('task-count').innerText=t.count||0;document.getElementById('tasks').innerText=JSON.stringify(t);document.getElementById('statistics').innerText=JSON.stringify(await api('/api/statistics'));document.getElementById('logs').innerText=JSON.stringify(await api('/api/logs'));document.getElementById('business-data').innerText=JSON.stringify(await api('/api/kazuizhi'));}
 loadDashboard();setInterval(loadDashboard,30000);
 </script>
 </body>
