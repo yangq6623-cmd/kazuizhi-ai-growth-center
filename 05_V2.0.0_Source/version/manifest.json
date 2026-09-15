@@ -1,10 +1,11 @@
 {
   "version": "2.0.0",
   "stage": "Beta",
-  "release": "R3",
-  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R3",
-  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R3",
+  "release": "R4",
+  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R4",
+  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R4",
   "source": "05_V2.0.0_Source/web",
   "base_commit": "ec921b14714a963ee7b012c3d7cc2265cfa66705",
-  "scope": "Verified user growth, order conversion, technician supply, leader promotion and channel effect analytics"
+  "scope": "Reviewable local keyword, SEO, GEO, ad-copy and short-video draft workspace"
 }
+

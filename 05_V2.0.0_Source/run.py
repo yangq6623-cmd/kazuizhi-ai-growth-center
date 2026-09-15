@@ -20,15 +20,15 @@ def main():
     except OSError:
         console_message = (
             f"Port {args.port} is occupied by another Kazuizhi runtime. "
-            "Close the old Enterprise R2/R3 window and start V2.0.0 Beta R3 again."
+            "Close the old Enterprise R2/R3 window and start V2.0.0 Beta R4 again."
         )
         message = (
             f"\u7aef\u53e3 {args.port} \u6b63\u88ab\u65e7\u7248\u5361\u5634\u5b50\u7a0b\u5e8f\u5360\u7528\u3002\n\n"
-            "\u8bf7\u5173\u95ed Enterprise R2/R3 \u9ed1\u8272\u8fd0\u884c\u7a97\u53e3\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R3\u3002"
+            "\u8bf7\u5173\u95ed Enterprise R2/R3 \u9ed1\u8272\u8fd0\u884c\u7a97\u53e3\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R4\u3002"
         )
         print(console_message, flush=True)
         if not args.no_browser and os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R3", 0x30)
+            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R4", 0x30)
         raise SystemExit(2)
     with server:
         AIEngine().start()
@@ -51,3 +51,4 @@ if __name__ == "__main__":
         logs.mkdir(parents=True, exist_ok=True)
         (logs / "startup-error.log").write_text(error, encoding="utf-8")
         raise
+

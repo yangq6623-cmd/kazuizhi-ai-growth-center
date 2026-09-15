@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R3"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R4"
 
 def check(condition, message):
     if not condition:
@@ -36,7 +36,7 @@ def inspect_source():
     installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
     check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
     check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
-    check("卡嘴子 AI 增长运营中心 V2 Beta R3" in installer, "R3 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R4" in installer, "R4 shortcut identity missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R2.lnk" in installer, "R2 shortcut cleanup missing")
 
 def exercise(command):
@@ -44,7 +44,9 @@ def exercise(command):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     with tempfile.TemporaryDirectory() as tmp:
-        runtime_env = dict(os.environ, LOCALAPPDATA=tmp)
+        report = Path(tmp) / "public-keywords.json"
+        report.write_text(json.dumps({"keywords": [{"keyword": "涟水水电工师傅上门服务电话", "score": 73, "last_seen": "2026-09-16"}]}, ensure_ascii=False), encoding="utf-8")
+        runtime_env = dict(os.environ, LOCALAPPDATA=tmp, KAZUIZHI_AI_REPORT_PATH=str(report))
         with open(Path(tmp) / "runtime.log", "w+", encoding="utf-8") as log:
             p = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, stdout=log, stderr=subprocess.STDOUT)
             try:
@@ -60,7 +62,7 @@ def exercise(command):
                 else:
                     raise AssertionError("Runtime startup timeout")
                 check(status["version"] == "2.0.0" and status["stage"] == "Beta" and status["build"] == BUILD, "Wrong API version")
-                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis"}
+                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis", "local_keyword_library", "seo_content_generation", "geo_local_optimization", "ad_copy_generation", "short_video_script"}
                 check(expected_capabilities.issubset(status["capabilities"]), "V2 capabilities missing")
                 for path in ("/", "/?build=" + BUILD, "/WEB_VERSION.txt"):
                     with urllib.request.urlopen(base + path) as response:
@@ -68,8 +70,41 @@ def exercise(command):
                         check(BUILD in text and "1.9.5" not in text, "Wrong HTTP asset identity")
                         check(response.headers["Cache-Control"] == "no-store", "Cache guard missing")
                         if path == "/":
-                            for label in ("AI 每日复盘中心", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
+                            for label in ("AI 每日复盘中心", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "本地推广 AI 工作台", "本地关键词库", "生成 SEO 内容", "生成 GEO 方案", "生成广告文案", "生成短视频脚本", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
                                 check(label in text, f"Dashboard module missing: {label}")
+                with urllib.request.urlopen(base + "/api/promotion/keywords") as response:
+                    keywords = json.load(response)
+                check(any(x["keyword"] == "涟水水电工师傅上门服务电话" for x in keywords["items"]), "Historical public keyword signal missing")
+                check("不代表搜索量" in keywords["truth_rule"], "Keyword truth boundary missing")
+                keyword_request = urllib.request.Request(
+                    base + "/api/promotion/keywords",
+                    data=json.dumps({"keyword": "涟水空调清洗服务", "region": "涟水", "category": "家电清洗"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(keyword_request) as response:
+                    check(json.load(response)["source"] == "owner_input", "Owner keyword was not labelled")
+                promotion_payload = {"region": "涟水", "service": "水电维修", "keyword": "涟水水电维修", "audience": "本地家庭用户", "evidence": ""}
+                for route, kind in (("seo-content", "SEO内容草稿"), ("geo-plan", "GEO本地优化建议"), ("ad-copy", "广告文案草稿"), ("video-script", "短视频脚本草稿")):
+                    promotion_request = urllib.request.Request(
+                        base + "/api/promotion/" + route,
+                        data=json.dumps(promotion_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(promotion_request) as response:
+                        draft = json.load(response)
+                    check(draft["kind"] == kind and draft["execution"] == "proposal_only", "Promotion draft bypassed review")
+                    rendered = json.dumps(draft, ensure_ascii=False)
+                    check(not any(claim in rendered for claim in ("人人都能接单", "无需审核即可接单", "所有任务都能发布")), "Forbidden promotion claim generated")
+                unsafe_promotion = urllib.request.Request(
+                    base + "/api/promotion/ad-copy",
+                    data=json.dumps(dict(promotion_payload, service="人人都能接单")).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                try:
+                    urllib.request.urlopen(unsafe_promotion)
+                    raise AssertionError("Forbidden promotion claim accepted")
+                except urllib.error.HTTPError as error:
+                    check(error.code == 400, "Forbidden promotion claim returned wrong status")
+                with urllib.request.urlopen(base + "/api/promotion/history") as response:
+                    promotion_history = json.load(response)
+                check(len(promotion_history["items"]) == 4 and promotion_history["execution"] == "proposal_only", "Promotion history was not persisted")
                 for route in ("tasks", "statistics", "kazuizhi"):
                     with urllib.request.urlopen(base + "/api/" + route) as response:
                         check(json.load(response)["status"] == "not_connected", "Placeholder data misreported")
@@ -160,6 +195,8 @@ def exercise(command):
                 check((data_dir / "summaries/today.json").exists(), "Daily summary file missing")
                 check((data_dir / "memory/learning_memory.json").exists(), "AI Memory file missing")
                 check((data_dir / "business/verified_snapshot.json").exists(), "Verified business snapshot missing")
+                check((data_dir / "promotion/keywords.json").exists(), "Keyword library missing")
+                check((data_dir / "promotion/history.json").exists(), "Promotion history missing")
                 # A second process must fail, not open a browser to the occupied port.
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, capture_output=True, timeout=15)
                 check(duplicate.returncode != 0, "Port conflict accepted")
@@ -190,4 +227,5 @@ if __name__ == "__main__":
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: V2 identity, five business analyses, truth policy, review modules, persistence, HTTP routes, resources, port conflict, R3/history preservation")
+    print("PASS: V2 identity, five business analyses, five promotion modules, truth policy, review modules, persistence, HTTP routes, resources, port conflict, R3/history preservation")
+

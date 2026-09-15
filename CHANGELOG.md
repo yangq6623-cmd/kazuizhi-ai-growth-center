@@ -1,3 +1,12 @@
+# V2.0.0 Beta R4 — 2026-09-16
+
+- Restored the local keyword library, SEO content drafts, GEO local optimization, ad copy and short-video scripts.
+- Added durable local storage for owner keywords and generated-draft history.
+- Added read-only import of historical public keyword signals with explicit research-only labels.
+- Added proposal-only enforcement, forbidden-claim rejection and no-auto-publish safeguards.
+- Updated application, frontend, installer and Windows file metadata to `KZ-ENTERPRISE-V2-BETA-20260916-R4`.
+- Preserved the V1.9.5 Enterprise R3 baseline and all existing V2 data and handoff documents.
+
 # V2.0.0 Beta R3 — 2026-09-16
 
 - Restored user growth, order conversion, technician supply, leader promotion and channel effect analysis.

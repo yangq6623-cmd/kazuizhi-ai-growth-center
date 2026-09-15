@@ -1,0 +1,1 @@
+"""Local promotion content workspace."""

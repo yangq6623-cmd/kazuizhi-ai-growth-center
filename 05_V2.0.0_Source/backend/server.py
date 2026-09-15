@@ -13,6 +13,10 @@ from core.storage import now_iso
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from planning.tomorrow_plan import save_manual_plan
+from promotion.content_center import (
+    add_keyword, generate_ad, generate_geo, generate_seo, generate_video,
+    history as promotion_history, list_keywords,
+)
 from records.history_store import append_event, list_reviews
 
 def get_web_path():
@@ -52,6 +56,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "technician_supply_analysis",
                         "leader_promotion_analysis",
                         "channel_effect_analysis",
+                        "local_keyword_library",
+                        "seo_content_generation",
+                        "geo_local_optimization",
+                        "ad_copy_generation",
+                        "short_video_script",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -66,6 +75,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/experiments": get_experiments(),
                 "/api/business-analytics": build_analytics(),
                 "/api/business-metrics/template": import_template(),
+                "/api/promotion/keywords": list_keywords(),
+                "/api/promotion/history": promotion_history(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -81,7 +92,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ("/api/daily-review/generate", "/api/memory", "/api/operation-summary", "/api/tomorrow-plan", "/api/business-metrics/import"):
+        if path not in (
+            "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
+            "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
+            "/api/promotion/seo-content", "/api/promotion/geo-plan",
+            "/api/promotion/ad-copy", "/api/promotion/video-script",
+        ):
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -92,6 +108,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
             if path == "/api/business-metrics/import":
                 result = import_snapshot(payload)
+            elif path == "/api/promotion/keywords":
+                result = add_keyword(payload)
+            elif path == "/api/promotion/seo-content":
+                result = generate_seo(payload)
+            elif path == "/api/promotion/geo-plan":
+                result = generate_geo(payload)
+            elif path == "/api/promotion/ad-copy":
+                result = generate_ad(payload)
+            elif path == "/api/promotion/video-script":
+                result = generate_video(payload)
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
