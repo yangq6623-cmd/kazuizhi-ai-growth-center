@@ -11,10 +11,8 @@ Compression=lzma
 SolidCompression=yes
 
 [Files]
-; Enterprise build output
-Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Enterprise\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
-; Alpha build fallback output
-Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Alpha\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; Enterprise build output only
+Source: "..\..\dist\Kazuizhi_AI_V1.9.5_Enterprise\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autodesktop}\Kazuizhi AI"; Filename: "{app}\Kazuizhi_AI_V1.9.5_Enterprise.exe"
