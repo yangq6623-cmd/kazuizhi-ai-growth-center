@@ -258,7 +258,7 @@ def control_center():
     bridge = integrations["bridge"]
     return {
         "generated_at": now_iso(), "mode": bridge["operating_mode"],
-        "headline": "双向运营桥已连接，本地自主运行也保持可用" if bridge["status"] == "connected" else "本地自主运行正常；可配置双向运营桥接收云端计划",
+        "headline": "双向运营桥已连接；外部模型与经营数据需分别验证" if bridge["status"] == "connected" else "本地任务与复盘可用；双向桥和外部模型需分别接入验证",
         "roles": [
             {"name": "数据分析 AI", "purpose": "检查数据和发现问题", "status": "ready"},
             {"name": "战略规划 AI", "purpose": "把问题转换为优先级和计划", "status": "ready"},

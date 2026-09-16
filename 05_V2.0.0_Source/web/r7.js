@@ -53,7 +53,8 @@ async function loadR7(){
     $('r7-audit-integrity').textContent=audit.integrity==='verified'?'审计链已验证':'审计链异常，请停止执行并检查';
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
     bindR7OverviewActions();
-  }catch(error){toast(error.message,'error')}
+    return true;
+  }catch(error){toast(error.message,'error');return false}
 }
 window.loadR7=loadR7;
 
@@ -64,5 +65,5 @@ $('r7-create').addEventListener('click',async()=>{
     $('r7-title').value='';await loadR7();toast('任务已创建，等待人工审批');
   }catch(error){toast(error.message,'error')}finally{button.disabled=false;button.textContent='创建待审批任务'}
 });
-$('r7-refresh').addEventListener('click',async()=>{const button=$('r7-refresh');button.disabled=true;const original=button.textContent;button.textContent='刷新中…';try{await loadR7();toast('R7 状态已刷新')}finally{button.disabled=false;button.textContent=original}});
+$('r7-refresh').addEventListener('click',async()=>{const button=$('r7-refresh');button.disabled=true;const original=button.textContent;button.textContent='刷新中…';try{if(await loadR7())toast('任务、员工和审计状态已刷新')}finally{button.disabled=false;button.textContent=original}});
 setInterval(()=>{if($('workflow').classList.contains('active'))loadR7()},15000);

@@ -2,7 +2,7 @@
 from pathlib import Path
 repo = Path(SPECPATH).resolve().parent
 source = repo / "05_V2.0.0_Source"
-marker = "KZ-ENTERPRISE-V2-BETA-20260916-R7"
+marker = "KZ-ENTERPRISE-V2-BETA-20260916-R7-UX1"
 for filename in ("index.html", "WEB_VERSION.txt"):
     text = (source / "web" / filename).read_text(encoding="utf-8")
     if marker not in text or "1.9.5" in text:

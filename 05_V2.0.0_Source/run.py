@@ -46,15 +46,15 @@ def main():
     except OSError:
         console_message = (
             f"Port {args.port} is occupied by another Kazuizhi runtime. "
-            "Close the old Enterprise R2/R3/R4/R5/R6 runtime and start V2.0.0 Beta R7 again."
+            "Close the old Enterprise R2/R3/R4/R5/R6 runtime and start V2.0.0 Beta R7.1 again."
         )
         message = (
             f"\u7aef\u53e3 {args.port} \u6b63\u88ab\u65e7\u7248\u5361\u5634\u5b50\u7a0b\u5e8f\u5360\u7528\u3002\n\n"
-            "\u8bf7\u5173\u95ed\u65e7\u7248 Enterprise R2/R3/R4/R5/R6 \u7a0b\u5e8f\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R7\u3002"
+            "\u8bf7\u5173\u95ed\u65e7\u7248 Enterprise R2/R3/R4/R5/R6 \u7a0b\u5e8f\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R7.1\u3002"
         )
         print(console_message, flush=True)
         if not args.no_browser and os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R7", 0x30)
+            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R7.1", 0x30)
         raise SystemExit(2)
     with server:
         migrate_r6()

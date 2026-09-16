@@ -2,7 +2,7 @@ $('save-memory').addEventListener('click', async () => {
   const input = $('memory-statement');
   const statement = input.value.trim();
   if (!statement) {
-    toast('请先填写一条已确认事实');
+    toast('请先填写一条已确认事实','error');
     return;
   }
   try {
@@ -15,6 +15,6 @@ $('save-memory').addEventListener('click', async () => {
     await loadMemory();
     toast('已保存到 AI Memory');
   } catch (error) {
-    toast(error.message);
+    toast(error.message,'error');
   }
 });
