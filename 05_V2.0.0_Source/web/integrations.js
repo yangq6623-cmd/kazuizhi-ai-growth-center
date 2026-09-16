@@ -20,13 +20,31 @@ async function loadControlCenter(){
 
 function integrationCard(item){
   const icons={local_engine:'本',external_ai:'AI',business_data:'数',cloud_drive:'云',publishing:'发',finance:'禁'};
-  return `<article class="integration-card ${esc(item.status)}"><div class="integration-icon">${icons[item.id]||'连'}</div><div><strong>${esc(item.name)}</strong><p>${esc(item.message)}</p></div>${renderStatusPill(item)}</article>`;
+  return `<article class="integration-card integration-card-action ${esc(item.status)}" role="button" tabindex="0" data-integration="${esc(item.id)}" title="点击查看或处理 ${esc(item.name)}"><div class="integration-icon">${icons[item.id]||'连'}</div><div><strong>${esc(item.name)}</strong><p>${esc(item.message)}</p></div>${renderStatusPill(item)}</article>`;
+}
+
+function bindIntegrationCards(){
+  document.querySelectorAll('.integration-card-action').forEach(card=>{
+    const activate=async()=>{
+      const id=card.dataset.integration;
+      if(id==='local_engine'){toast('正在执行本地系统体检');await runDiagnostics();return}
+      if(id==='external_ai'){$('ai-base-url')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到外部大模型配置');return}
+      if(id==='business_data'){openPage('analytics');setTimeout(()=>{$('business-json')?.scrollIntoView({behavior:'smooth',block:'center'});toast('真实经营数据尚未实时接入；当前支持导入已验证聚合快照')},0);return}
+      if(id==='cloud_drive'){toast('云盘与文件源连接器尚未接入 R7；当前只能显示真实未接入状态','error');return}
+      if(id==='publishing'){openPage('promotion');toast('内容发布目前仍是人工审核模式；R7 不会自动对外发布');return}
+      if(id==='finance'){toast('资金操作按安全策略永久禁止自动执行','error');return}
+      toast('该连接当前没有可执行操作','error');
+    };
+    card.addEventListener('click',activate);
+    card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate()}});
+  });
 }
 
 async function refreshIntegrations(){
   try{
     const data=await api('/api/integrations');
     $('integration-grid').innerHTML=data.items.map(integrationCard).join('');
+    bindIntegrationCards();
     const ai=data.external_ai;
     $('ai-base-url').value=ai.base_url||'https://api.openai.com/v1';
     $('ai-model').value=ai.model||'';
