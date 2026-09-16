@@ -73,7 +73,12 @@ def audit_history():
 
 
 def migrate_r6():
-    """Take one immutable copy of R6 user data before R7 starts writing."""
+    """Take one immutable copy of all pre-R7 user data before R7 writes.
+
+    Older builds gained more persistent modules over time. A fixed allow-list can
+    miss a newer R6 file, so R7 snapshots every existing user-data file except
+    the R7 namespace itself. The marker makes the snapshot immutable/idempotent.
+    """
     with LOCK:
         marker = read_json(MIGRATION, {})
         if marker.get("from") == "R6" and marker.get("to") == "R7":
@@ -81,19 +86,21 @@ def migrate_r6():
         root = data_root()
         backup = root / "r7" / "backup_r6"
         copied = []
-        for relative in ("operations/tasks.json", "operations/promotion_calendar.json",
-                         "memory/learning_memory.json", "memory/experiments.json",
-                         "integrations/config.json", "integrations/ai_key.bin"):
-            source = root / relative
-            if source.is_file():
-                target = backup / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, target)
-                copied.append(relative)
+        sources = [path for path in root.rglob("*") if path.is_file()]
+        for source in sorted(sources, key=lambda item: item.as_posix()):
+            relative = source.relative_to(root)
+            if not relative.parts or relative.parts[0] == "r7":
+                continue
+            if source.name.endswith(".tmp"):
+                continue
+            target = backup / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            copied.append(relative.as_posix())
         marker = {"from": "R6", "to": "R7", "at": now_iso(), "copied": copied,
-                  "mode": "copy_before_write", "result": "complete"}
+                  "mode": "full_copy_before_write", "result": "complete"}
         write_json(MIGRATION, marker)
-        _audit("migration", "", "system", {"copied": copied})
+        _audit("migration", "", "system", {"copied": copied, "count": len(copied)})
         return marker
 
 
