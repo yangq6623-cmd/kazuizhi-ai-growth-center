@@ -1,4 +1,5 @@
 const STATUS_STYLE={ready:'ready',connected:'ready',configured:'waiting',manual:'waiting',not_connected:'waiting',not_configured:'waiting',blocked:'blocked'};
+const CONTROL_ROLE_TARGETS=['analytics','review','promotion','summary'];
 
 function renderStatusPill(item){return `<span class="status-pill ${STATUS_STYLE[item.status]||'waiting'}">${esc(item.status_label)}</span>`}
 
@@ -8,7 +9,12 @@ async function loadControlCenter(){
   const connected=data.external_ai.status==='connected';
   $('external-ai-badge').textContent=connected?'外部 AI 已连接':'外部 AI 未连接';
   $('external-ai-badge').className=`status-pill ${connected?'ready':'waiting'}`;
-  $('ai-role-grid').innerHTML=data.roles.map((role,index)=>`<div class="ai-role"><span>${['数','策','内','营'][index]}</span><div><strong>${esc(role.name)}</strong><small>${esc(role.purpose)}</small></div><i class="${role.status}">${role.status==='ready'?'可用':'待数据'}</i></div>`).join('');
+  $('ai-role-grid').innerHTML=data.roles.map((role,index)=>`<div class="ai-role ai-role-action" role="button" tabindex="0" data-target="${CONTROL_ROLE_TARGETS[index]||'workflow'}"><span>${['数','策','内','营'][index]}</span><div><strong>${esc(role.name)}</strong><small>${esc(role.purpose)}</small></div><i class="${role.status}">${role.status==='ready'?'可用':'待数据'}</i></div>`).join('');
+  document.querySelectorAll('.ai-role-action').forEach(card=>{
+    const activate=()=>{openPage(card.dataset.target);toast(`已打开${card.querySelector('strong')?.textContent||'AI'}对应模块`)};
+    card.addEventListener('click',activate);
+    card.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();activate()}});
+  });
   $('operation-loop').innerHTML=data.loop.map((step,index)=>`<div><b>${index+1}</b><span>${esc(step)}</span>${index<data.loop.length-1?'<em>→</em>':''}</div>`).join('');
 }
 
