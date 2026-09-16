@@ -41,5 +41,7 @@ Modules:
 - Truthful Task Progress
 - Agent Role Registry
 - Scheduler and Audit Trail
-
-
+- Bidirectional Operations Bridge
+- Offline Autonomous Mode
+- AI Command Deduplication
+- ACK and Execution Receipts
