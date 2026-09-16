@@ -1,4 +1,4 @@
-const BUILD='KZ-ENTERPRISE-V2-BETA-20260916-R7-UX1';
+const BUILD='KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL';
 const $=id=>document.getElementById(id);
 const ERROR_TEXT={"region is required":"请填写地区","service is required":"请填写服务项目","keyword is required":"请选择或填写主关键词","title is required":"请填写任务内容","至少填写一条可核验的同行或市场观察":"请至少填写一条可核验的市场观察"};
 async function api(path,options){const r=await fetch(path,options);let data={};try{data=await r.json()}catch{}if(!r.ok){const raw=data.error||`本地服务返回 ${r.status}`;throw new Error(ERROR_TEXT[raw]||raw)}return data}

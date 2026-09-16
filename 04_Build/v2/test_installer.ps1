@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_UX1_Setup.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP 'KazuizhiV2InstallerTest'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
 function Install-Beta {
@@ -19,7 +19,7 @@ function Assert-PersistentFiles([hashtable]$Expected) {
 Install-Beta
 $exe = Join-Path $testRoot $name
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-if ($version.FileVersion -ne '2.0.0.8' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7.1') { throw 'Windows EXE version mismatch' }
+if ($version.FileVersion -ne '2.0.0.9' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7 Final') { throw 'Windows EXE version mismatch' }
 & $Python (Join-Path $PSScriptRoot 'verify_v2.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Installed runtime failed verification' }
 
