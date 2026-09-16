@@ -12,7 +12,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from core.storage import data_root, now_iso, read_json, write_json
+from core.storage import now_iso, read_json, write_json
 
 
 CONFIG_PATH = "integrations/bridge.json"
@@ -206,6 +206,17 @@ def _receipt(root, command_id, value):
     return payload
 
 
+def _archive(root, path):
+    try:
+        archived = root / "archive" / path.name
+        if not archived.exists():
+            path.replace(archived)
+        else:
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _refresh_receipts(root, records):
     from core.r7_engine import list_jobs
     jobs = {item["id"]: item for item in list_jobs().get("items", [])}
@@ -235,12 +246,14 @@ def sync_once():
     imported = 0
     rejected = 0
     for path in sorted((root / "inbox").glob("*.json")):
+        command_id = ""
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             command_id = str(payload.get("id") or "").strip()
             if not COMMAND_ID.fullmatch(command_id):
                 raise ValueError("AI 指令缺少有效 command_id")
             if command_id in records:
+                _archive(root, path)
                 continue
             kind = str(payload.get("kind") or "manual_task")
             if kind not in ALLOWED_KINDS:
@@ -260,20 +273,14 @@ def sync_once():
             })
             imported += 1
         except (OSError, ValueError, TypeError) as exc:
-            command_id = "invalid-" + path.stem[:50]
+            if not COMMAND_ID.fullmatch(command_id):
+                command_id = "invalid-" + path.stem[:50]
             if command_id not in records:
                 records[command_id] = {"job_id": None, "accepted_at": now_iso(),
                                        "source_file": path.name, "error": str(exc)[:300]}
                 _receipt(root, command_id, {"state": "rejected", "error": str(exc)[:300]})
                 rejected += 1
-        try:
-            archived = root / "archive" / path.name
-            if not archived.exists():
-                path.replace(archived)
-            else:
-                path.unlink()
-        except OSError:
-            pass
+        _archive(root, path)
     write_json(COMMANDS_PATH, store)
     _refresh_receipts(root, records)
     state = read_json(STATE_PATH, {})
