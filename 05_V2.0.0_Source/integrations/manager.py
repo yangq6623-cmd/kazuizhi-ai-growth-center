@@ -7,11 +7,11 @@ import os
 import urllib.error
 import urllib.request
 from ctypes import wintypes
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from analytics.business_metrics import build_analytics
 from core.storage import data_root, now_iso, read_json, write_json
+from integrations.bridge import bridge_status
 
 
 CONFIG_PATH = "integrations/config.json"
@@ -147,14 +147,15 @@ def _ai_status():
 def integration_status():
     analytics = build_analytics()
     ai = _ai_status()
+    bridge = bridge_status()
     business_ready = analytics.get("status") == "verified"
     return {
-        "generated_at": now_iso(), "external_ai": ai,
+        "generated_at": now_iso(), "external_ai": ai, "bridge": bridge,
         "items": [
             {"id": "local_engine", "name": "本地智能引擎", "status": "ready", "status_label": "可用", "message": "复盘、分析、任务和内容模板可在离线状态运行。"},
             ai,
             {"id": "business_data", "name": "经营数据", "status": "ready" if business_ready else "not_connected", "status_label": "已验证" if business_ready else "未接入", "message": analytics.get("message", "真实经营数据尚未接入。")},
-            {"id": "cloud_drive", "name": "云盘与文件源", "status": "not_connected", "status_label": "未接入", "message": "尚未授权 Google Drive 或其他云盘。"},
+            bridge,
             {"id": "publishing", "name": "内容发布", "status": "manual", "status_label": "人工审核", "message": "系统只生成草稿，不会自动对外发布。"},
             {"id": "finance", "name": "资金操作", "status": "blocked", "status_label": "永久禁止", "message": "付款、退款、提现、改价和结算必须由人工处理。"},
         ],
@@ -172,7 +173,7 @@ def model_routes():
                        "purpose": "经用户主动提交的 AI 建议"})
     return {"default": "local_rules", "routes": routes,
             "external_status": ai["status"],
-            "note": "ChatGPT 网页会话不是本机连接；外部模型只有鉴权测试通过后才可选。"}
+            "note": "ChatGPT 网页会话不是本机连接；双向运营桥用于交换结构化运营状态和待审批计划。"}
 
 
 def _request_json(url, *, method="GET", payload=None, key="", timeout=12):
@@ -237,9 +238,11 @@ def system_diagnostics():
     except OSError:
         checks.append({"id": "storage", "name": "本机数据保存", "status": "fail", "message": "无法写入数据目录"})
     ai = _ai_status()
+    bridge = bridge_status()
     checks.extend([
         {"id": "web", "name": "管理界面", "status": "pass", "message": "前后端构建标识一致"},
         {"id": "local_ai", "name": "本地智能引擎", "status": "pass", "message": "离线复盘、内容和任务能力可用"},
+        {"id": "bridge", "name": "双向运营桥", "status": "pass" if bridge["status"] == "connected" else "attention", "message": bridge["status_label"] + " · " + bridge["operating_mode_label"]},
         {"id": "external_ai", "name": "外部大模型", "status": "pass" if ai["status"] == "connected" else "attention", "message": ai["status_label"]},
         {"id": "business", "name": "经营数据", "status": "pass" if build_analytics().get("status") == "verified" else "attention", "message": "已验证" if build_analytics().get("status") == "verified" else "待接入真实数据"},
         {"id": "safety", "name": "发布与资金安全", "status": "pass", "message": "发布需审核，资金操作已禁止"},
@@ -252,16 +255,17 @@ def system_diagnostics():
 def control_center():
     integrations = integration_status()
     external = integrations["external_ai"]
+    bridge = integrations["bridge"]
     return {
-        "generated_at": now_iso(), "mode": "local_plus_optional_model",
-        "headline": "运营闭环就绪，外部大模型需单独配置" if not external["configured"] else "AI 指挥中心已就绪",
+        "generated_at": now_iso(), "mode": bridge["operating_mode"],
+        "headline": "双向运营桥已连接，本地自主运行也保持可用" if bridge["status"] == "connected" else "本地自主运行正常；可配置双向运营桥接收云端计划",
         "roles": [
             {"name": "数据分析 AI", "purpose": "检查数据和发现问题", "status": "ready"},
             {"name": "战略规划 AI", "purpose": "把问题转换为优先级和计划", "status": "ready"},
             {"name": "内容增长 AI", "purpose": "生成可审核的内容草稿", "status": "ready"},
             {"name": "经营优化 AI", "purpose": "根据真实结果复盘优化", "status": "waiting_data" if build_analytics().get("status") != "verified" else "ready"},
         ],
-        "loop": ["发现问题", "分析原因", "制定策略", "生成任务", "人工执行", "获取结果", "AI 复盘优化"],
-        "external_ai": external,
-        "truth": "外部 AI 、经营数据和云盘只有在真实验证后才显示已连接。",
+        "loop": ["本机扫描", "自动上报", "AI分析", "计划回传", "本机审批/执行", "结果回执", "复盘优化"],
+        "bridge": bridge, "external_ai": external,
+        "truth": "双向桥、外部 AI 和经营数据只有在真实验证后才显示已连接；云端指令不能绕过本机审批和资金安全边界。",
     }
