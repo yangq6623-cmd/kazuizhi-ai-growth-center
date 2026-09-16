@@ -11,16 +11,26 @@ from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
+from integrations.bridge import sync_once as bridge_sync_once
 
 
 def start_scheduler():
     stop = threading.Event()
     def loop():
+        tick = 0
         while not stop.is_set():
             try:
                 run_due_jobs()
             except (OSError, ValueError) as error:
                 print(f"R7 scheduler check failed: {error}", flush=True)
+            if tick % 4 == 0:
+                try:
+                    bridge_sync_once()
+                except (OSError, ValueError) as error:
+                    # Bridge failures never stop approved local work. They are surfaced
+                    # through bridge status/diagnostics and retried on the next cycle.
+                    print(f"R7 bridge sync deferred: {error}", flush=True)
+            tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
     thread.start()
@@ -73,5 +83,3 @@ if __name__ == "__main__":
         logs.mkdir(parents=True, exist_ok=True)
         (logs / "startup-error.log").write_text(error, encoding="utf-8")
         raise
-
-
