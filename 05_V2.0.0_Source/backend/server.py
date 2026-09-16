@@ -16,6 +16,10 @@ from core.r7_engine import (
 )
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
+from integrations.bridge import (
+    bridge_status, configure_bridge, disable_bridge, export_report,
+    list_bridge_commands, sync_once as bridge_sync_once,
+)
 from integrations.manager import (
     ask_ai, control_center, integration_status, model_routes, save_ai_config,
     system_diagnostics, test_ai_connection,
@@ -86,6 +90,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "truthful_progress",
                         "agent_role_registry",
                         "scheduler_and_audit",
+                        "bidirectional_operations_bridge",
+                        "offline_autonomous_mode",
+                        "bridge_command_receipts",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -110,6 +117,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/control-center": control_center(),
                 "/api/integrations": integration_status(),
                 "/api/system/diagnostics": system_diagnostics(),
+                "/api/bridge/status": bridge_status(),
+                "/api/bridge/commands": list_bridge_commands(),
                 "/api/r7/jobs": list_jobs(),
                 "/api/r7/agents": agent_registry(),
                 "/api/r7/engine": engine_status(),
@@ -143,6 +152,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/operations/calendar/generate", "/api/insights/competition",
             "/api/integrations/ai/configure", "/api/integrations/ai/test",
             "/api/ai/command", "/api/system/diagnostics",
+            "/api/bridge/configure", "/api/bridge/disable", "/api/bridge/sync", "/api/bridge/report",
             "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
         ):
             self.send_error(404)
@@ -181,6 +191,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = ask_ai(payload)
             elif path == "/api/system/diagnostics":
                 result = system_diagnostics()
+            elif path == "/api/bridge/configure":
+                result = configure_bridge(payload)
+            elif path == "/api/bridge/disable":
+                result = disable_bridge()
+            elif path == "/api/bridge/sync":
+                result = bridge_sync_once()
+            elif path == "/api/bridge/report":
+                result = export_report()
             elif path == "/api/r7/jobs":
                 result = create_job(payload)
             elif path == "/api/r7/jobs/command":

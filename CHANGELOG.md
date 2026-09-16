@@ -1,3 +1,10 @@
+# V2.0.0 Beta R7.1 — 2026-09-16
+
+- Diagnosed the reported R6 screen as an older extracted executable still serving port 8876; the shown GitHub artifact was the separate V1.9.5 R3 build.
+- Added persistent visible success/error feedback, missing-field focus and clearer content-generation guidance.
+- Replaced internal action and metric keys in review and summary with user-facing Chinese labels.
+- Verified navigation and the main actions across every page in an isolated browser session; preserved the R7 job engine and R3 baseline.
+
 # V2.0.0 Beta R7 Core — 2026-09-16
 
 - Added approval-gated persistent jobs for manual work, local daily review and system diagnostics.

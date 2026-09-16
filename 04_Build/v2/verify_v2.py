@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R7"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL"
 
 class MockAIHandler(BaseHTTPRequestHandler):
     def _send(self, payload):
@@ -61,7 +61,7 @@ def inspect_source():
     installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
     check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
     check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
-    check("卡嘴子 AI 增长运营中心 V2 Beta R7" in installer, "R7 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R7 Final" in installer, "R7 shortcut identity missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R2.lnk" in installer, "R2 shortcut cleanup missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R4.lnk" in installer, "R4 shortcut cleanup missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R5.lnk" in installer, "R5 shortcut cleanup missing")

@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI Enterprise V2.0.0 Beta R7
+name: Build Kazuizhi AI Enterprise V2.0.0 Beta R7 Final
 on:
   workflow_dispatch:
   push:
@@ -39,46 +39,53 @@ jobs:
         run: |
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
-      - name: Ensure Inno Setup 6
-        run: |
-          if (!(Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
-            choco install innosetup -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
-          }
       - name: Verify R6 migration and audit corruption protection
         run: python 04_Build/v2/test_r7_engine.py
+      - name: Verify R7 Block A stability and durable persistence
+        run: python 04_Build/v2/test_r7_block_a.py
+      - name: Verify R7 Block B command center and bidirectional bridge
+        run: python 04_Build/v2/test_r7_block_b.py
+      - name: Verify every visible R7 control has an interaction path
+        run: python 04_Build/v2/test_ui_interactions.py
+      - name: Check frontend script syntax
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
       - name: Build and verify V2 source and packaged runtime
         run: ./04_Build/build_v2_windows.ps1
       - name: Test silent install, launch, reinstall and uninstall
         run: ./04_Build/v2/test_installer.ps1
       - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.0.0 Beta R7'
-            build = 'KZ-ENTERPRISE-V2-BETA-20260916-R7'
+            version = '2.0.0 Beta R7 Final'
+            build = 'KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
+            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 Block A atomic persistent storage', 'R7 Block A real task/keyword/draft/summary/plan/Memory persistence', 'R7 Block A full pre-R7 user-data backup', 'R7 Block A interrupted-job recovery', 'R7 Block A frontend/backend build identity', 'R7 Block B bidirectional operations bridge', 'R7 Block B offline autonomous fallback', 'R7 Block B command idempotency and dedupe', 'R7 Block B cloud command local approval boundary', 'R7 Block B ACK and execution receipts', 'R7 Block B unsafe remote command rejection', 'R7 Block B bridge diagnostics and command center status', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'visible button interaction binding', 'visible action feedback', 'front-end to back-end action route coverage', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'real R7 user-data preservation', 'uninstall')
             acceptance = 'Automated checks passed; user visual acceptance pending'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/TEST_GUIDE.md
+          Copy-Item docs/V2.0.0_BETA_R7_1_BUTTON_AND_LAUNCH_HANDOFF_20260916.md installer_output_v2/BUTTON_AND_LAUNCH_GUIDE.md
           Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/BASELINE_MIGRATION_GUIDE.md
-      - name: Upload V2.0.0 Beta R7 installer
+          Copy-Item docs/R7_FINAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
+          Copy-Item docs/R7_FINAL_UPGRADE_NOTES.md installer_output_v2/UPGRADE_NOTES.md
+          Copy-Item docs/R7_FINAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
+          Copy-Item docs/R7_FINAL_KNOWN_ISSUES.md installer_output_v2/KNOWN_ISSUES.md
+      - name: Upload V2.0.0 Beta R7 Final installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup
+          name: Kazuizhi_AI_Enterprise_V2.0.0_R7_Final
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload V2.0.0 Beta R7 portable application
+      - name: Upload V2.0.0 Beta R7 Final portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Portable
+          name: Kazuizhi_AI_Enterprise_V2.0.0_R7_Final_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
-

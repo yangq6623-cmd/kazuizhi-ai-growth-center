@@ -1,5 +1,5 @@
 Kazuizhi AI Enterprise
 Version: 2.0.0 Beta
-Status: R7 Core 可信运营底座已实现；等待 Windows 构建与安装验收
-Build: KZ-ENTERPRISE-V2-BETA-20260916-R7
+Status: R7.1 按钮反馈与旧进程识别优化；等待 Windows 构建与安装验收
+Build: KZ-ENTERPRISE-V2-BETA-20260916-R7-UX1
 Stable baseline: baseline/v1.9.5-enterprise-r3-20260915

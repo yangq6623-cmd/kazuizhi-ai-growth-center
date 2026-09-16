@@ -56,7 +56,7 @@ $('import-business').addEventListener('click', async () => {
   try {
     payload = JSON.parse($('business-json').value);
   } catch (_error) {
-    return toast('JSON 格式不正确');
+    return toast('请粘贴带来源和统计时间的经营汇总 JSON；当前内容格式不正确','error');
   }
   try {
     await api('/api/business-metrics/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
@@ -64,7 +64,7 @@ $('import-business').addEventListener('click', async () => {
     await Promise.all([loadAnalytics(), loadSummary()]);
     toast('已导入并验证经营汇总');
   } catch (error) {
-    toast(error.message);
+    toast(error.message,'error');
   }
 });
 

@@ -11,16 +11,26 @@ from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
+from integrations.bridge import sync_once as bridge_sync_once
 
 
 def start_scheduler():
     stop = threading.Event()
     def loop():
+        tick = 0
         while not stop.is_set():
             try:
                 run_due_jobs()
             except (OSError, ValueError) as error:
                 print(f"R7 scheduler check failed: {error}", flush=True)
+            if tick % 4 == 0:
+                try:
+                    bridge_sync_once()
+                except (OSError, ValueError) as error:
+                    # Bridge failures never stop approved local work. They are surfaced
+                    # through bridge status/diagnostics and retried on the next cycle.
+                    print(f"R7 bridge sync deferred: {error}", flush=True)
+            tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
     thread.start()
@@ -36,15 +46,15 @@ def main():
     except OSError:
         console_message = (
             f"Port {args.port} is occupied by another Kazuizhi runtime. "
-            "Close the old Enterprise R2/R3/R4/R5/R6 runtime and start V2.0.0 Beta R7 again."
+            "Close the old Enterprise R2/R3/R4/R5/R6 runtime and start V2.0.0 Beta R7 Final again."
         )
         message = (
             f"\u7aef\u53e3 {args.port} \u6b63\u88ab\u65e7\u7248\u5361\u5634\u5b50\u7a0b\u5e8f\u5360\u7528\u3002\n\n"
-            "\u8bf7\u5173\u95ed\u65e7\u7248 Enterprise R2/R3/R4/R5/R6 \u7a0b\u5e8f\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R7\u3002"
+            "\u8bf7\u5173\u95ed\u65e7\u7248 Enterprise R2/R3/R4/R5/R6 \u7a0b\u5e8f\uff0c\u518d\u91cd\u65b0\u542f\u52a8 V2.0.0 Beta R7 Final\u3002"
         )
         print(console_message, flush=True)
         if not args.no_browser and os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R7", 0x30)
+            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2 Beta R7 Final", 0x30)
         raise SystemExit(2)
     with server:
         migrate_r6()
@@ -73,5 +83,3 @@ if __name__ == "__main__":
         logs.mkdir(parents=True, exist_ok=True)
         (logs / "startup-error.log").write_text(error, encoding="utf-8")
         raise
-
-

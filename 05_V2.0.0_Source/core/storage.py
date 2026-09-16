@@ -25,14 +25,37 @@ def read_json(relative_path, default):
 
 
 def write_json(relative_path, value):
+    """Atomically persist JSON in the user-data directory.
+
+    The temporary file is created beside the destination, flushed and fsynced,
+    then replaced atomically. This keeps an interrupted write from leaving a
+    half-written JSON document that would look like lost user data on restart.
+    """
     path = data_root() / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and temporary.exists():
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
     return value
 
 
 def now_iso():
     return datetime.now().astimezone().isoformat(timespec="seconds")
-

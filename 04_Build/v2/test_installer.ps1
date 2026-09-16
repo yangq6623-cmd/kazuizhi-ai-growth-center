@@ -1,32 +1,59 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP 'KazuizhiV2InstallerTest'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
 function Install-Beta {
     $proc = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $testRoot + '"')) -Wait -PassThru -WindowStyle Hidden
     if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
 }
+function Assert-PersistentFiles([hashtable]$Expected) {
+    foreach ($relative in $Expected.Keys) {
+        $path = Join-Path $dataRoot $relative
+        if (-not (Test-Path -LiteralPath $path)) { throw "Persistent user file missing after installer operation: $relative" }
+        $actual = (Get-Content -LiteralPath $path -Raw).Trim()
+        if ($actual -ne $Expected[$relative]) { throw "Persistent user file changed after installer operation: $relative" }
+    }
+}
 Install-Beta
 $exe = Join-Path $testRoot $name
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-if ($version.FileVersion -ne '2.0.0.7' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7') { throw 'Windows EXE version mismatch' }
+if ($version.FileVersion -ne '2.0.0.9' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7 Final') { throw 'Windows EXE version mismatch' }
 & $Python (Join-Path $PSScriptRoot 'verify_v2.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Installed runtime failed verification' }
+
 $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
 New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
 $sentinel = Join-Path $dataRoot 'user-data-preservation-test.txt'
 Set-Content -LiteralPath $sentinel -Value 'preserve-v2-user-data'
+
+# Seed the real R7 user-data namespaces. Reinstall/uninstall must never delete or rewrite them.
+$persistentFiles = @{
+    'r7\jobs.json' = '{"schema":1,"items":[{"title":"installer-persistence-job"}]}'
+    'operations\tasks.json' = '{"items":[{"title":"installer-persistence-task"}]}'
+    'promotion\keywords.json' = '{"items":[{"keyword":"installer-persistence-keyword"}]}'
+    'promotion\history.json' = '{"items":[{"kind":"installer-persistence-draft"}]}'
+    'summaries\today.json' = '{"completed_items":["installer-persistence-summary"]}'
+    'plans\latest_plan.json' = '{"tasks":[{"title":"installer-persistence-plan"}]}'
+    'memory\learning_memory.json' = '{"entries":[{"statement":"installer-persistence-memory"}]}'
+}
+foreach ($relative in $persistentFiles.Keys) {
+    $path = Join-Path $dataRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+    Set-Content -LiteralPath $path -Value $persistentFiles[$relative] -NoNewline
+}
+
 Install-Beta
-if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Reinstall modified user data' }
+if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Reinstall modified user data sentinel' }
+Assert-PersistentFiles $persistentFiles
 & $Python (Join-Path $PSScriptRoot 'verify_v2.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Reinstalled runtime failed verification' }
+
 $proc = Start-Process -FilePath (Join-Path $testRoot 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru -WindowStyle Hidden
 if ($proc.ExitCode -ne 0) { throw 'Uninstall failed' }
 if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
-if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent review data' }
+if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data sentinel' }
+Assert-PersistentFiles $persistentFiles
 Remove-Item -LiteralPath $sentinel -Force
-Write-Host 'PASS: install, Windows version, review modules, launch, reinstall, persistent-data preservation, uninstall'
-
-
+Write-Host 'PASS: install, Windows version, runtime verification, reinstall, real R7 user-data preservation, uninstall preservation'
