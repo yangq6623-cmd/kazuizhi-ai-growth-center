@@ -71,6 +71,8 @@ def main():
         ".integration-card-action": "integration status cards",
         "bindInteractiveCard": "dashboard/review/analytics summary cards",
         "bindR7OverviewActions": "R7 workflow/exception/migration overview cards",
+        "ensureBridgePanel": "bidirectional operations bridge panel",
+        "renderDashboardBridge": "dashboard bridge state cards",
     }
     for token, label in dynamic_contracts.items():
         if token not in scripts:
@@ -84,7 +86,8 @@ def main():
         "系统体检已完成",
         "已打开待办任务与 AI 员工",
         "真实经营数据尚未实时接入",
-        "云盘与文件源连接器尚未接入 R7",
+        "双向运营桥已连接",
+        "当前未连接云端桥，已保持本地自主运行",
         "资金操作按安全策略永久禁止自动执行",
         "已定位到任务工作流",
     )
@@ -108,6 +111,12 @@ def main():
         "/api/integrations/ai/test",
         "/api/ai/command",
         "/api/system/diagnostics",
+        "/api/bridge/status",
+        "/api/bridge/commands",
+        "/api/bridge/configure",
+        "/api/bridge/disable",
+        "/api/bridge/sync",
+        "/api/bridge/report",
         "/api/r7/jobs",
         "/api/r7/jobs/command",
         "/api/memory",
