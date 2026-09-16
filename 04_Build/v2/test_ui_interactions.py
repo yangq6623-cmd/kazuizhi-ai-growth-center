@@ -1,8 +1,8 @@
 """R7 UI interaction contract audit.
 
 This test prevents visible buttons from shipping without an event path and verifies
-that the main click actions have matching backend routes. It is intentionally
-standard-library only so it can run in every Windows build.
+that card-like controls and the main click actions have matching feedback/routes.
+It is intentionally standard-library only so it can run in every Windows build.
 """
 from html.parser import HTMLParser
 from pathlib import Path
@@ -68,6 +68,9 @@ def main():
         "[data-task-index]": "task status selectors",
         ".ai-role-action": "AI collaboration cards",
         ".r7-agent-action": "AI employee cards",
+        ".integration-card-action": "integration status cards",
+        "bindInteractiveCard": "dashboard/review/analytics summary cards",
+        "bindR7OverviewActions": "R7 workflow/exception/migration overview cards",
     }
     for token, label in dynamic_contracts.items():
         if token not in scripts:
@@ -79,6 +82,11 @@ def main():
         "任务状态已更新",
         "任务已创建，等待人工审批",
         "系统体检已完成",
+        "已打开待办任务与 AI 员工",
+        "真实经营数据尚未实时接入",
+        "云盘与文件源连接器尚未接入 R7",
+        "资金操作按安全策略永久禁止自动执行",
+        "已定位到任务工作流",
     )
     for text in visible_feedback:
         if text not in scripts:
