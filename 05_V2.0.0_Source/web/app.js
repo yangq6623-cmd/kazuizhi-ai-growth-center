@@ -2,7 +2,7 @@ const BUILD='KZ-ENTERPRISE-V2-BETA-20260916-R7';
 const $=id=>document.getElementById(id);
 const ERROR_TEXT={"region is required":"请填写地区","service is required":"请填写服务项目","keyword is required":"请选择或填写主关键词","title is required":"请填写任务内容","至少填写一条可核验的同行或市场观察":"请至少填写一条可核验的市场观察"};
 async function api(path,options){const r=await fetch(path,options);let data={};try{data=await r.json()}catch{}if(!r.ok){const raw=data.error||`本地服务返回 ${r.status}`;throw new Error(ERROR_TEXT[raw]||raw)}return data}
-function esc(value){return String(value??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]))}
+function esc(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function list(id,items,empty){$(id).innerHTML=(items?.length?items:[empty]).map(x=>`<li>${esc(x)}</li>`).join('')}
 function tasks(id,data){const items=data?.tasks||[];$(id).className=items.length?'':'friendly-empty';$(id).innerHTML=items.length?items.map(t=>`<div class="task"><strong>${esc(t.title)}</strong><span class="tag">${esc(t.risk==='low'?'低风险建议':t.risk)}</span><p>${esc(t.reason)} · ${esc(t.action)}</p></div>`).join(''):'尚未生成明日计划'}
 function showReview(r){if(r.status!=='generated')return;$('review-headline').textContent=r.summary.headline;$('review-policy').textContent=r.summary.data_policy;list('problems',r.problems,'今日未发现已验证问题');list('opportunities',r.opportunities,'今日没有足够数据识别机会');tasks('review-plan',r.tomorrow_plan)}
