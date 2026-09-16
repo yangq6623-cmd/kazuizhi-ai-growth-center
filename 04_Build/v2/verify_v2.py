@@ -7,14 +7,39 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R5"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R6"
+
+class MockAIHandler(BaseHTTPRequestHandler):
+    def _send(self, payload):
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        check(self.headers.get("Authorization") == "Bearer test-secret-123", "AI test leaked or lost credential")
+        self._send({"data": [{"id": "test-model"}]})
+
+    def do_POST(self):
+        check(self.headers.get("Authorization") == "Bearer test-secret-123", "AI command lost credential")
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = json.loads(self.rfile.read(length))
+        check(payload.get("model") == "test-model", "AI command used wrong model")
+        self._send({"choices": [{"message": {"content": "基于已验证信息的待审核建议"}}]})
+
+    def log_message(self, *args):
+        pass
 
 def check(condition, message):
     if not condition:
@@ -36,9 +61,10 @@ def inspect_source():
     installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
     check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
     check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
-    check("卡嘴子 AI 增长运营中心 V2 Beta R5" in installer, "R5 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R6" in installer, "R6 shortcut identity missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R2.lnk" in installer, "R2 shortcut cleanup missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R4.lnk" in installer, "R4 shortcut cleanup missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R5.lnk" in installer, "R5 shortcut cleanup missing")
     spec = (ROOT / "04_Build/kazuizhi_v2.0.0.spec").read_text(encoding="utf-8")
     check("console=False" in spec, "Windowed runtime is not enabled")
 
@@ -65,7 +91,7 @@ def exercise(command):
                 else:
                     raise AssertionError("Runtime startup timeout")
                 check(status["version"] == "2.0.0" and status["stage"] == "Beta" and status["build"] == BUILD, "Wrong API version")
-                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis", "local_keyword_library", "seo_content_generation", "geo_local_optimization", "ad_copy_generation", "short_video_script", "ai_task_management", "promotion_calendar", "competition_analysis", "customer_demand_analysis", "operations_command_center"}
+                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis", "local_keyword_library", "seo_content_generation", "geo_local_optimization", "ad_copy_generation", "short_video_script", "ai_task_management", "promotion_calendar", "competition_analysis", "customer_demand_analysis", "operations_command_center", "integration_status_center", "external_ai_connection_test", "ai_operations_assistant", "system_self_diagnostics"}
                 check(expected_capabilities.issubset(status["capabilities"]), "V2 capabilities missing")
                 for path in ("/", "/?build=" + BUILD, "/WEB_VERSION.txt"):
                     with urllib.request.urlopen(base + path) as response:
@@ -73,8 +99,44 @@ def exercise(command):
                         check(BUILD in text and "1.9.5" not in text, "Wrong HTTP asset identity")
                         check(response.headers["Cache-Control"] == "no-store", "Cache guard missing")
                         if path == "/":
-                            for label in ("运营驾驶舱", "今日复盘", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "本地推广 AI 工作台", "选择本地关键词", "生成 SEO 内容", "生成 GEO 方案", "生成广告文案", "生成短视频脚本", "AI 任务管理", "AI 推广日历", "AI 竞争分析", "AI 客户需求分析", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
+                            for label in ("AI 指挥中心", "连接与体检", "AI 统一对接中心", "四类 AI 协作状态", "外部大模型", "系统体检", "今日复盘", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "本地推广 AI 工作台", "选择本地关键词", "生成 SEO 内容", "生成 GEO 方案", "生成广告文案", "生成短视频脚本", "AI 任务管理", "AI 推广日历", "AI 竞争分析", "AI 客户需求分析", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
                                 check(label in text, f"Dashboard module missing: {label}")
+                with urllib.request.urlopen(base + "/api/integrations") as response:
+                    integrations = json.load(response)
+                check(not integrations["external_ai"]["configured"], "External AI falsely reported configured")
+                check(any(x["id"] == "local_engine" and x["status"] == "ready" for x in integrations["items"]), "Local engine status missing")
+                check(any(x["id"] == "finance" and x["status"] == "blocked" for x in integrations["items"]), "Financial safety status missing")
+                with urllib.request.urlopen(base + "/api/control-center") as response:
+                    control = json.load(response)
+                check(len(control["roles"]) == 4 and len(control["loop"]) == 7, "AI command-center model incomplete")
+                diagnostic_request = urllib.request.Request(base + "/api/system/diagnostics", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(diagnostic_request) as response:
+                    diagnostics = json.load(response)
+                check(diagnostics["status"] == "healthy" and diagnostics["summary"]["failed"] == 0, "System diagnostics failed")
+                mock_ai = HTTPServer(("127.0.0.1", 0), MockAIHandler)
+                mock_thread = threading.Thread(target=mock_ai.serve_forever, daemon=True)
+                mock_thread.start()
+                try:
+                    config_request = urllib.request.Request(
+                        base + "/api/integrations/ai/configure",
+                        data=json.dumps({"base_url": f"http://127.0.0.1:{mock_ai.server_port}/v1", "model": "test-model", "api_key": "test-secret-123"}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(config_request) as response:
+                        configured = json.load(response)
+                    check(configured["external_ai"]["configured"] and "api_key" not in json.dumps(configured), "AI credential configuration failed or leaked")
+                    test_request = urllib.request.Request(base + "/api/integrations/ai/test", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(test_request) as response:
+                        tested = json.load(response)
+                    check(tested["external_ai"]["status"] == "connected", "AI connection test failed")
+                    command_request = urllib.request.Request(
+                        base + "/api/ai/command", data=json.dumps({"prompt": "给出今日待审核建议"}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(command_request) as response:
+                        ai_result = json.load(response)
+                    check(ai_result["execution"] == "proposal_only" and "待审核" in ai_result["content"], "AI command boundary failed")
+                finally:
+                    mock_ai.shutdown()
+                    mock_ai.server_close()
                 with urllib.request.urlopen(base + "/api/promotion/keywords") as response:
                     keywords = json.load(response)
                 check(any(x["keyword"] == "涟水水电工师傅上门服务电话" for x in keywords["items"]), "Historical public keyword signal missing")
@@ -237,6 +299,8 @@ def exercise(command):
                 check((data_dir / "operations/tasks.json").exists(), "Operations task store missing")
                 check((data_dir / "operations/promotion_calendar.json").exists(), "Promotion calendar store missing")
                 check((data_dir / "operations/competition_history.json").exists(), "Competition history missing")
+                check((data_dir / "integrations/config.json").exists(), "Integration configuration missing")
+                check((data_dir / "integrations/ai_key.bin").exists(), "Encrypted AI credential missing")
                 # A second process must fail, not open a browser to the occupied port.
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, capture_output=True, timeout=15)
                 check(duplicate.returncode != 0, "Port conflict accepted")
@@ -268,6 +332,6 @@ if __name__ == "__main__":
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: V2 identity, all 20 recovery capabilities, R5 UX, windowed runtime, truth policy, persistence, HTTP routes, resources, port conflict and R3/history preservation")
+    print("PASS: V2 identity, all 20 recovery capabilities, R6 UX and integration truth, windowed runtime, truth policy, persistence, HTTP routes, resources, port conflict and R3/history preservation")
 
 

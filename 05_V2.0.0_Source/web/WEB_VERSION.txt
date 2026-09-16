@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
-Version: V2.0.0 Beta R5
-Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R5
+Version: V2.0.0 Beta R6
+Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R6
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
 Modules:
@@ -33,5 +33,9 @@ Modules:
 - Customer Demand Analysis
 - Operations Command Center
 - Product Experience Redesign
+- Integration Status Center
+- External AI Connection Test
+- AI Operations Assistant
+- System Self Diagnostics
 
 

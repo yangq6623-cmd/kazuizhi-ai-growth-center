@@ -97,3 +97,9 @@ Independent V2 source/spec/installer workflow; unified runtime and frontend iden
 - 版本管理体系
 
 基于：V1.8.5
+# V2.0.0 Beta R6
+
+- Added an AI operations command center with four transparent AI roles and a seven-step review loop.
+- Added honest integration status for local intelligence, external AI, business data, cloud sources, publishing and financial actions.
+- Added an OpenAI-compatible connection test, Windows user-encrypted API credentials and a proposal-only AI operations assistant.
+- Added one-click system diagnostics and clearer human-facing status, error and responsive-layout behavior.

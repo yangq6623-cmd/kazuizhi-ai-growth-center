@@ -12,6 +12,10 @@ from analytics.operation_summary import build_summary, save_summary
 from core.storage import now_iso
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
+from integrations.manager import (
+    ask_ai, control_center, integration_status, save_ai_config,
+    system_diagnostics, test_ai_connection,
+)
 from planning.tomorrow_plan import save_manual_plan
 from operations.workspace import (
     add_task, command_center, competition_history, competition_report,
@@ -70,6 +74,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "competition_analysis",
                         "customer_demand_analysis",
                         "operations_command_center",
+                        "integration_status_center",
+                        "external_ai_connection_test",
+                        "ai_operations_assistant",
+                        "system_self_diagnostics",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -91,6 +99,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/insights/competition": competition_history(),
                 "/api/insights/demand": demand_insights(),
                 "/api/command-center": command_center(),
+                "/api/control-center": control_center(),
+                "/api/integrations": integration_status(),
+                "/api/system/diagnostics": system_diagnostics(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -113,6 +124,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/promotion/ad-copy", "/api/promotion/video-script",
             "/api/operations/tasks", "/api/operations/tasks/update",
             "/api/operations/calendar/generate", "/api/insights/competition",
+            "/api/integrations/ai/configure", "/api/integrations/ai/test",
+            "/api/ai/command", "/api/system/diagnostics",
         ):
             self.send_error(404)
             return
@@ -142,6 +155,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = generate_calendar(payload)
             elif path == "/api/insights/competition":
                 result = competition_report(payload)
+            elif path == "/api/integrations/ai/configure":
+                result = save_ai_config(payload)
+            elif path == "/api/integrations/ai/test":
+                result = test_ai_connection()
+            elif path == "/api/ai/command":
+                result = ask_ai(payload)
+            elif path == "/api/system/diagnostics":
+                result = system_diagnostics()
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
@@ -175,7 +196,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "summary": {"headline": f"已保存 {len(result['tasks'])} 项明日计划。"},
                     "problems": [], "opportunities": [], "tomorrow_plan": result,
                 })
-        except (ValueError, json.JSONDecodeError) as error:
+        except (ValueError, json.JSONDecodeError, OSError) as error:
             data = json.dumps({"error": str(error)}, ensure_ascii=False).encode("utf-8")
             self.send_response(400)
             self.send_header("Content-Type", "application/json; charset=utf-8")
