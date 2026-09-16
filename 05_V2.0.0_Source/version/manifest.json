@@ -1,11 +1,12 @@
 {
   "version": "2.0.0",
   "stage": "Beta",
-  "release": "R4",
-  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R4",
-  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R4",
+  "release": "R5",
+  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R5",
+  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R5",
   "source": "05_V2.0.0_Source/web",
   "base_commit": "ec921b14714a963ee7b012c3d7cc2265cfa66705",
-  "scope": "Reviewable local keyword, SEO, GEO, ad-copy and short-video draft workspace"
+  "scope": "All 20 recovery capabilities with operations dashboard, automation, market insights and product experience redesign"
 }
+
 

@@ -1,3 +1,12 @@
+# V2.0.0 Beta R5 — 2026-09-16
+
+- Restored AI task management, 7-day promotion calendar, competition analysis, customer demand analysis and the operations command center.
+- Completed all 20 items in the original recovery plan.
+- Redesigned navigation, dashboard, cards, forms, empty states, responsive layout and content results.
+- Added keyword search, source filters, click-to-use, Chinese source labels, result copying and clearer validation messages.
+- Changed the Windows runtime to windowed mode so normal startup no longer leaves a black console window open.
+- Preserved review requirements, truth boundaries, persistent user data and the V1.9.5 Enterprise R3 baseline.
+
 # V2.0.0 Beta R4 — 2026-09-16
 
 - Restored the local keyword library, SEO content drafts, GEO local optimization, ad copy and short-video scripts.

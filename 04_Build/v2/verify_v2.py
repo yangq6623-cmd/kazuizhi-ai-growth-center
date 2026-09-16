@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R4"
+BUILD = "KZ-ENTERPRISE-V2-BETA-20260916-R5"
 
 def check(condition, message):
     if not condition:
@@ -36,8 +36,11 @@ def inspect_source():
     installer = (ROOT / "04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
     check("Kazuizhi_AI_V1.9.5_Enterprise.exe" in installer, "Legacy runtime shutdown missing")
     check("Kazuizhi AI Enterprise V2.0.0 Beta.lnk" in installer, "Stale V2 shortcut cleanup missing")
-    check("卡嘴子 AI 增长运营中心 V2 Beta R4" in installer, "R4 shortcut identity missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R5" in installer, "R5 shortcut identity missing")
     check("卡嘴子 AI 增长运营中心 V2 Beta R2.lnk" in installer, "R2 shortcut cleanup missing")
+    check("卡嘴子 AI 增长运营中心 V2 Beta R4.lnk" in installer, "R4 shortcut cleanup missing")
+    spec = (ROOT / "04_Build/kazuizhi_v2.0.0.spec").read_text(encoding="utf-8")
+    check("console=False" in spec, "Windowed runtime is not enabled")
 
 def exercise(command):
     with socket.socket() as s:
@@ -62,7 +65,7 @@ def exercise(command):
                 else:
                     raise AssertionError("Runtime startup timeout")
                 check(status["version"] == "2.0.0" and status["stage"] == "Beta" and status["build"] == BUILD, "Wrong API version")
-                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis", "local_keyword_library", "seo_content_generation", "geo_local_optimization", "ad_copy_generation", "short_video_script"}
+                expected_capabilities = {"daily_review", "operation_summary", "problem_analysis", "growth_opportunities", "tomorrow_plan", "review_history", "ai_memory", "user_growth_analysis", "order_conversion_analysis", "technician_supply_analysis", "leader_promotion_analysis", "channel_effect_analysis", "local_keyword_library", "seo_content_generation", "geo_local_optimization", "ad_copy_generation", "short_video_script", "ai_task_management", "promotion_calendar", "competition_analysis", "customer_demand_analysis", "operations_command_center"}
                 check(expected_capabilities.issubset(status["capabilities"]), "V2 capabilities missing")
                 for path in ("/", "/?build=" + BUILD, "/WEB_VERSION.txt"):
                     with urllib.request.urlopen(base + path) as response:
@@ -70,7 +73,7 @@ def exercise(command):
                         check(BUILD in text and "1.9.5" not in text, "Wrong HTTP asset identity")
                         check(response.headers["Cache-Control"] == "no-store", "Cache guard missing")
                         if path == "/":
-                            for label in ("AI 每日复盘中心", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "本地推广 AI 工作台", "本地关键词库", "生成 SEO 内容", "生成 GEO 方案", "生成广告文案", "生成短视频脚本", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
+                            for label in ("运营驾驶舱", "今日复盘", "用户增长分析", "订单转化分析", "师傅资源分析", "团长推广分析", "渠道效果分析", "本地推广 AI 工作台", "选择本地关键词", "生成 SEO 内容", "生成 GEO 方案", "生成广告文案", "生成短视频脚本", "AI 任务管理", "AI 推广日历", "AI 竞争分析", "AI 客户需求分析", "今日运营总结", "明日计划", "历史复盘记录", "AI Memory"):
                                 check(label in text, f"Dashboard module missing: {label}")
                 with urllib.request.urlopen(base + "/api/promotion/keywords") as response:
                     keywords = json.load(response)
@@ -105,6 +108,40 @@ def exercise(command):
                 with urllib.request.urlopen(base + "/api/promotion/history") as response:
                     promotion_history = json.load(response)
                 check(len(promotion_history["items"]) == 4 and promotion_history["execution"] == "proposal_only", "Promotion history was not persisted")
+                task_request = urllib.request.Request(
+                    base + "/api/operations/tasks",
+                    data=json.dumps({"title": "审核本地推广草稿", "priority": "high", "due_date": "2026-09-17"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(task_request) as response:
+                    task = json.load(response)
+                check(task["status"] == "pending" and task["execution"] == "manual", "AI task creation failed")
+                update_task_request = urllib.request.Request(
+                    base + "/api/operations/tasks/update",
+                    data=json.dumps({"id": task["id"], "status": "completed"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(update_task_request) as response:
+                    task = json.load(response)
+                check(task["status"] == "completed", "AI task status update failed")
+                calendar_request = urllib.request.Request(
+                    base + "/api/operations/calendar/generate",
+                    data=json.dumps({"region": "涟水", "service": "本地维修"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(calendar_request) as response:
+                    calendar = json.load(response)
+                check(len(calendar["items"]) == 7 and all(x["execution"] == "proposal_only" for x in calendar["items"]), "Promotion calendar failed")
+                competition_request = urllib.request.Request(
+                    base + "/api/insights/competition",
+                    data=json.dumps({"region": "涟水", "category": "本地维修", "observations": ["同行页面写明服务区域", "常见问题内容较完整"]}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(competition_request) as response:
+                    competition = json.load(response)
+                check(competition["evidence_count"] == 2 and competition["execution"] == "proposal_only", "Competition analysis failed")
+                with urllib.request.urlopen(base + "/api/insights/demand") as response:
+                    demand = json.load(response)
+                check(demand["public_signal_count"] == 1 and "不等于" in demand["truth_rule"], "Customer demand truth boundary failed")
+                with urllib.request.urlopen(base + "/api/command-center") as response:
+                    command_center = json.load(response)
+                check(command_center["task_counts"]["completed"] == 1 and command_center["calendar_days"] == 7, "Command center aggregation failed")
                 for route in ("tasks", "statistics", "kazuizhi"):
                     with urllib.request.urlopen(base + "/api/" + route) as response:
                         check(json.load(response)["status"] == "not_connected", "Placeholder data misreported")
@@ -197,11 +234,15 @@ def exercise(command):
                 check((data_dir / "business/verified_snapshot.json").exists(), "Verified business snapshot missing")
                 check((data_dir / "promotion/keywords.json").exists(), "Keyword library missing")
                 check((data_dir / "promotion/history.json").exists(), "Promotion history missing")
+                check((data_dir / "operations/tasks.json").exists(), "Operations task store missing")
+                check((data_dir / "operations/promotion_calendar.json").exists(), "Promotion calendar store missing")
+                check((data_dir / "operations/competition_history.json").exists(), "Competition history missing")
                 # A second process must fail, not open a browser to the occupied port.
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=runtime_env, capture_output=True, timeout=15)
                 check(duplicate.returncode != 0, "Port conflict accepted")
                 duplicate_output = (duplicate.stdout + duplicate.stderr).decode("utf-8", errors="replace")
-                check(str(port) in duplicate_output and "Traceback" not in duplicate_output, "Port conflict message is unclear")
+                if not str(command[0]).lower().endswith(".exe"):
+                    check(str(port) in duplicate_output and "Traceback" not in duplicate_output, "Port conflict message is unclear")
             finally:
                 p.terminate()
                 p.wait(timeout=15)
@@ -227,5 +268,6 @@ if __name__ == "__main__":
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: V2 identity, five business analyses, five promotion modules, truth policy, review modules, persistence, HTTP routes, resources, port conflict, R3/history preservation")
+    print("PASS: V2 identity, all 20 recovery capabilities, R5 UX, windowed runtime, truth policy, persistence, HTTP routes, resources, port conflict and R3/history preservation")
+
 

@@ -13,6 +13,10 @@ from core.storage import now_iso
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from planning.tomorrow_plan import save_manual_plan
+from operations.workspace import (
+    add_task, command_center, competition_history, competition_report,
+    demand_insights, generate_calendar, get_calendar, list_tasks, update_task,
+)
 from promotion.content_center import (
     add_keyword, generate_ad, generate_geo, generate_seo, generate_video,
     history as promotion_history, list_keywords,
@@ -61,6 +65,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "geo_local_optimization",
                         "ad_copy_generation",
                         "short_video_script",
+                        "ai_task_management",
+                        "promotion_calendar",
+                        "competition_analysis",
+                        "customer_demand_analysis",
+                        "operations_command_center",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -77,6 +86,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/business-metrics/template": import_template(),
                 "/api/promotion/keywords": list_keywords(),
                 "/api/promotion/history": promotion_history(),
+                "/api/operations/tasks": list_tasks(),
+                "/api/operations/calendar": get_calendar(),
+                "/api/insights/competition": competition_history(),
+                "/api/insights/demand": demand_insights(),
+                "/api/command-center": command_center(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -97,6 +111,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
             "/api/promotion/seo-content", "/api/promotion/geo-plan",
             "/api/promotion/ad-copy", "/api/promotion/video-script",
+            "/api/operations/tasks", "/api/operations/tasks/update",
+            "/api/operations/calendar/generate", "/api/insights/competition",
         ):
             self.send_error(404)
             return
@@ -118,6 +134,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = generate_ad(payload)
             elif path == "/api/promotion/video-script":
                 result = generate_video(payload)
+            elif path == "/api/operations/tasks":
+                result = add_task(payload)
+            elif path == "/api/operations/tasks/update":
+                result = update_task(payload)
+            elif path == "/api/operations/calendar/generate":
+                result = generate_calendar(payload)
+            elif path == "/api/insights/competition":
+                result = competition_report(payload)
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
