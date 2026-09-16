@@ -19,3 +19,25 @@ button:disabled{opacity:.55;cursor:not-allowed}.nav:focus-visible,button:focus-v
 html,body,main{max-width:100%;overflow-x:hidden}.command-panel,.ai-role,.integration-card{min-width:0}.operation-loop{max-width:100%}@media(max-width:900px){aside,nav{max-width:100vw}}
 
 @media(max-width:900px){nav{scrollbar-width:none;-ms-overflow-style:none}nav::-webkit-scrollbar{display:none}}
+/* R7 approved workflow, truthful progress and audit */
+.r7-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:18px 0}
+.r7-overview article{background:#fff;border:1px solid #dce6f5;border-radius:16px;padding:20px;box-shadow:0 8px 22px #213d6410}
+.r7-overview h3{font-size:17px;margin:8px 0;line-height:1.45}
+.r7-overview p{color:#6c7c94;font-size:13px;margin:0}
+.r7-create-form{display:grid;grid-template-columns:1fr 1.4fr 1fr auto;gap:8px;margin:14px 0}
+.r7-create-form input,.r7-create-form select,.r7-job-actions input{min-width:0;border:1px solid #d8e3f4;border-radius:10px;padding:10px;background:#fff;color:#182640}
+.r7-job-list{display:grid;gap:12px;margin-top:18px;max-height:680px;overflow:auto}
+.r7-job{border:1px solid #dce6f5;border-radius:14px;padding:15px;background:#fbfdff}
+.r7-job-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.r7-job-top strong,.r7-job-top small{display:block}.r7-job-top small{color:#667891;margin-top:5px}
+.r7-progress{height:7px;border-radius:10px;background:#e9eff9;margin-top:14px;overflow:hidden}
+.r7-progress i{display:block;height:100%;background:#17a570;border-radius:10px}
+.r7-job p{font-size:12px;color:#61718b;margin:9px 0 0}.r7-job .r7-error{color:#c84c48}
+.r7-job-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}.r7-job-actions input{flex:1;min-width:180px}
+.r7-job-actions button{padding:8px 12px;font-size:12px}
+.r7-agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.r7-agent{border:1px solid #e0e8f4;border-radius:12px;padding:13px;background:#f9fbff}
+.r7-agent b,.r7-agent span,.r7-agent small{display:block}.r7-agent span{font-size:12px;margin:5px 0;color:#53657f}.r7-agent small{font-size:11px;color:#177e65}
+.r7-audit-list{max-height:360px;overflow:auto;margin-top:14px}.r7-audit-row{display:flex;gap:14px;align-items:center;padding:11px 2px;border-bottom:1px solid #edf1f8}.r7-audit-row span{margin-left:auto;color:#61718b;font-size:12px}.r7-audit-row small{color:#8190a5}
+@media(max-width:1100px){.r7-create-form{grid-template-columns:1fr 1fr}.r7-overview{grid-template-columns:1fr}}
+@media(max-width:650px){.r7-create-form,.r7-agent-grid{grid-template-columns:1fr}.r7-job-top{flex-direction:column}.r7-audit-row{flex-wrap:wrap}.r7-audit-row span{margin-left:0}}

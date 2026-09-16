@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
-Version: V2.0.0 Beta R6
-Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R6
+Version: V2.0.0 Beta R7
+Frontend Build: KZ-ENTERPRISE-V2-BETA-20260916-R7
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
 Modules:
@@ -37,5 +37,9 @@ Modules:
 - External AI Connection Test
 - AI Operations Assistant
 - System Self Diagnostics
+- Approved Job Engine
+- Truthful Task Progress
+- Agent Role Registry
+- Scheduler and Audit Trail
 
 

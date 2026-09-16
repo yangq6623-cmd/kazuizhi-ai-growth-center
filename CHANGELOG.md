@@ -1,3 +1,12 @@
+# V2.0.0 Beta R7 Core — 2026-09-16
+
+- Added approval-gated persistent jobs for manual work, local daily review and system diagnostics.
+- Added a local scheduler, interruption recovery, actual-step progress and a hash-linked audit trail.
+- Registered eight AI employee roles as responsibilities; no background agent execution is implied.
+- Added model-route visibility and an idempotent R6 user-data backup before R7 writes.
+- Added a unified workflow page with approvals, progress, exceptions, roles and audit history.
+- Preserved the R3 baseline and kept external publishing and financial actions outside the executor.
+
 # V2.0.0 Beta R5 — 2026-09-16
 
 - Restored AI task management, 7-day promotion calendar, competition analysis, customer demand analysis and the operations command center.

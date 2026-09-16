@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI Enterprise V2.0.0 Beta R6
+name: Build Kazuizhi AI Enterprise V2.0.0 Beta R7
 on:
   workflow_dispatch:
   push:
@@ -45,39 +45,40 @@ jobs:
             choco install innosetup -y --no-progress
             if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
           }
+      - name: Verify R6 migration and audit corruption protection
+        run: python 04_Build/v2/test_r7_engine.py
       - name: Build and verify V2 source and packaged runtime
         run: ./04_Build/build_v2_windows.ps1
       - name: Test silent install, launch, reinstall and uninstall
         run: ./04_Build/v2/test_installer.ps1
       - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R6_Setup.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_Beta_R6_Setup.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.0.0 Beta R6'
-            build = 'KZ-ENTERPRISE-V2-BETA-20260916-R6'
+            version = '2.0.0 Beta R7'
+            build = 'KZ-ENTERPRISE-V2-BETA-20260916-R7'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'R6 command center and integration labels', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
+            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
             acceptance = 'Automated checks passed; user visual acceptance pending'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
-          Copy-Item docs/V2.0.0_BETA_R6_AI_COMMAND_UX_HANDOFF_20260916.md installer_output_v2/TEST_GUIDE.md
+          Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/TEST_GUIDE.md
           Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/BASELINE_MIGRATION_GUIDE.md
-      - name: Upload V2.0.0 Beta R6 installer
+      - name: Upload V2.0.0 Beta R7 installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R6_Setup
+          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Setup
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload V2.0.0 Beta R6 portable application
+      - name: Upload V2.0.0 Beta R7 portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R6_Portable
+          name: Kazuizhi_AI_Enterprise_V2.0.0_Beta_R7_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
-
 

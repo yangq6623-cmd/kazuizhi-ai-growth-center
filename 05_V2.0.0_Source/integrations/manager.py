@@ -161,6 +161,20 @@ def integration_status():
     }
 
 
+def model_routes():
+    """Expose only usable model routes; never imply ChatGPT web access."""
+    ai = _ai_status()
+    routes = [{"id": "local_rules", "label": "本地规则引擎", "status": "ready",
+               "uses_external_data": False, "purpose": "离线复盘、任务和内容草稿"}]
+    if ai["status"] == "connected":
+        routes.append({"id": "external_compatible", "label": ai["model"],
+                       "status": "ready", "uses_external_data": True,
+                       "purpose": "经用户主动提交的 AI 建议"})
+    return {"default": "local_rules", "routes": routes,
+            "external_status": ai["status"],
+            "note": "ChatGPT 网页会话不是本机连接；外部模型只有鉴权测试通过后才可选。"}
+
+
 def _request_json(url, *, method="GET", payload=None, key="", timeout=12):
     headers = {"Accept": "application/json", "User-Agent": "Kazuizhi-AI-Growth-Center/2.0"}
     data = None

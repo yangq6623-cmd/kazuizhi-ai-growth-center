@@ -10,10 +10,14 @@ from ai_center.daily_review import generate_review, latest_plan, latest_review
 from analytics.business_metrics import build_analytics, import_snapshot, import_template
 from analytics.operation_summary import build_summary, save_summary
 from core.storage import now_iso
+from core.r7_engine import (
+    agent_registry, audit_history, command as job_command, create_job,
+    engine_status, list_jobs, run_due_jobs,
+)
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from integrations.manager import (
-    ask_ai, control_center, integration_status, save_ai_config,
+    ask_ai, control_center, integration_status, model_routes, save_ai_config,
     system_diagnostics, test_ai_connection,
 )
 from planning.tomorrow_plan import save_manual_plan
@@ -78,6 +82,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "external_ai_connection_test",
                         "ai_operations_assistant",
                         "system_self_diagnostics",
+                        "approved_job_engine",
+                        "truthful_progress",
+                        "agent_role_registry",
+                        "scheduler_and_audit",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -102,6 +110,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/control-center": control_center(),
                 "/api/integrations": integration_status(),
                 "/api/system/diagnostics": system_diagnostics(),
+                "/api/r7/jobs": list_jobs(),
+                "/api/r7/agents": agent_registry(),
+                "/api/r7/engine": engine_status(),
+                "/api/r7/audit": audit_history(),
+                "/api/r7/model-routes": model_routes(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -117,6 +130,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        origin = self.headers.get("Origin")
+        if origin and origin not in {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}:
+            self.send_error(403, "Cross-origin changes are not allowed")
+            return
         if path not in (
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
@@ -126,6 +143,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/operations/calendar/generate", "/api/insights/competition",
             "/api/integrations/ai/configure", "/api/integrations/ai/test",
             "/api/ai/command", "/api/system/diagnostics",
+            "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
         ):
             self.send_error(404)
             return
@@ -163,6 +181,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = ask_ai(payload)
             elif path == "/api/system/diagnostics":
                 result = system_diagnostics()
+            elif path == "/api/r7/jobs":
+                result = create_job(payload)
+            elif path == "/api/r7/jobs/command":
+                result = job_command(payload)
+            elif path == "/api/r7/scheduler/tick":
+                result = run_due_jobs()
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):

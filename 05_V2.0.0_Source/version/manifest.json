@@ -1,12 +1,12 @@
 {
   "version": "2.0.0",
   "stage": "Beta",
-  "release": "R6",
-  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R6",
-  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R6",
+  "release": "R7",
+  "build": "KZ-ENTERPRISE-V2-BETA-20260916-R7",
+  "product": "Kazuizhi AI Enterprise V2.0.0 Beta R7",
   "source": "05_V2.0.0_Source/web",
   "base_commit": "ec921b14714a963ee7b012c3d7cc2265cfa66705",
-  "scope": "All 20 recovery capabilities plus AI command center, honest integration status, encrypted credentials, diagnostics and product experience refinement"
+  "scope": "R7 Core: all R6 recovery capabilities plus approved local jobs, truthful progress, scheduling, agent role registry, audit chain, model routing and R6 data backup"
 }
 
 
