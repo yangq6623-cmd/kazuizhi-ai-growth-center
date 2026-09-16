@@ -79,8 +79,8 @@ def main():
             failures.append(f"Missing dynamic interaction binding: {label} ({token})")
 
     visible_feedback = (
-        "R7 状态已刷新",
-        "客户需求信号已刷新",
+        "任务、员工和审计状态已刷新",
+        "公开需求信号已刷新；真实客户数据仍以接入状态为准",
         "任务状态已更新",
         "任务已创建，等待人工审批",
         "系统体检已完成",
