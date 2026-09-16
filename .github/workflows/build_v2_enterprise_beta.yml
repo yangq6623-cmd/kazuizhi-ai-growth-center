@@ -39,14 +39,10 @@ jobs:
         run: |
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
-      - name: Ensure Inno Setup 6
-        run: |
-          if (!(Test-Path "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
-            choco install innosetup -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
-          }
       - name: Verify R6 migration and audit corruption protection
         run: python 04_Build/v2/test_r7_engine.py
+      - name: Verify every visible R7 control has an interaction path
+        run: python 04_Build/v2/test_ui_interactions.py
       - name: Build and verify V2 source and packaged runtime
         run: ./04_Build/build_v2_windows.ps1
       - name: Test silent install, launch, reinstall and uninstall
@@ -62,7 +58,7 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
+            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'visible button interaction binding', 'visible action feedback', 'front-end to back-end action route coverage', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'user-data preservation', 'uninstall')
             acceptance = 'Automated checks passed; user visual acceptance pending'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/TEST_GUIDE.md
@@ -81,4 +77,3 @@ jobs:
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
-
