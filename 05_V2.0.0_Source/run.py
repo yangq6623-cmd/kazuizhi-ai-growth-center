@@ -6,12 +6,31 @@ import tempfile
 import threading
 import traceback
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
+from ai_center.daily_review import generate_review, latest_review
 from backend.server import create_server
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from integrations.bridge import sync_once as bridge_sync_once
+
+
+def _maybe_run_daily_review():
+    """Run one audited daily review after the configured local hour."""
+    try:
+        hour = int(os.environ.get("KAZUIZHI_DAILY_REVIEW_HOUR", "21"))
+    except ValueError:
+        hour = 21
+    now = datetime.now().astimezone()
+    if now.hour < max(0, min(hour, 23)):
+        return False
+    latest = latest_review()
+    generated_at = str(latest.get("generated_at") or "")
+    if generated_at.startswith(now.date().isoformat()):
+        return False
+    generate_review(None)
+    return True
 
 
 def start_scheduler():
@@ -27,9 +46,13 @@ def start_scheduler():
                 try:
                     bridge_sync_once()
                 except (OSError, ValueError) as error:
-                    # Bridge failures never stop approved local work. They are surfaced
+                    # Bridge failures never stop autonomous local work. They are surfaced
                     # through bridge status/diagnostics and retried on the next cycle.
                     print(f"R7 bridge sync deferred: {error}", flush=True)
+                try:
+                    _maybe_run_daily_review()
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    print(f"R7 daily learning review deferred: {error}", flush=True)
             tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
