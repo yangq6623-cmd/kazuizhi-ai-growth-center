@@ -10,6 +10,7 @@ from pathlib import Path
 from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
 from backend.server import create_server
+from core.autonomy import dispatch_due_plan, ensure_daily_review
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from integrations.bridge import sync_once as bridge_sync_once
 
@@ -20,6 +21,8 @@ def start_scheduler():
         tick = 0
         while not stop.is_set():
             try:
+                dispatch_due_plan()
+                ensure_daily_review()
                 run_due_jobs()
             except (OSError, ValueError) as error:
                 print(f"R7 scheduler check failed: {error}", flush=True)
@@ -27,7 +30,7 @@ def start_scheduler():
                 try:
                     bridge_sync_once()
                 except (OSError, ValueError) as error:
-                    # Bridge failures never stop approved local work. They are surfaced
+                    # Bridge failures never stop autonomous local work. They are surfaced
                     # through bridge status/diagnostics and retried on the next cycle.
                     print(f"R7 bridge sync deferred: {error}", flush=True)
             tick += 1
