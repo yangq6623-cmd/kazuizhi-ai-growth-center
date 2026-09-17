@@ -77,17 +77,20 @@ def main():
 
     analytics_js = (SOURCE / "web" / "analytics.js").read_text(encoding="utf-8")
     assert "核心经营分析" in analytics_js
-    assert "核心经营数据完整度" in analytics_js
+    assert "7 个核心经营指标" in analytics_js
+    assert "7/7 · 核心数据齐全" in analytics_js
     assert "小程序访问UV（最近完整日）" in analytics_js
     assert "今日维修需求" in analytics_js
     assert "今日有效线索" in analytics_js
     assert "累计已完成订单" in analytics_js
     assert "累计取消订单" in analytics_js
+    assert "0 表示真实统计结果为 0" in analytics_js
     assert "不跨窗口计算虚假转化率" in analytics_js
+    assert "importPanel.style.display = connected ? 'none' : ''" in analytics_js
     for hidden_id in ("technician-supply", "leader-promotion", "channel-effect"):
         assert hidden_id in analytics_js
 
-    print("PASS: live business source ingests verified core funnel metrics and keeps focused truthful analytics")
+    print("PASS: live business source keeps seven verified core metrics focused, truthful and compact")
 
 
 if __name__ == "__main__":
