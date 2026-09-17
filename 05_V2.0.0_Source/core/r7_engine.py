@@ -224,10 +224,17 @@ def _run(job_id):
         if kind == "daily_review":
             from ai_center.daily_review import generate_review
             raw = generate_review(None)
-            result = {"headline": raw.get("summary", {}).get("headline", "复盘已完成")}
+            result = {"summary": raw.get("summary", {}).get("headline", "复盘已完成"),
+                      "next_actions": [x.get("title", "") if isinstance(x, dict) else str(x)
+                                       for x in raw.get("tomorrow_plan", {}).get("tasks", [])[:3]],
+                      "source_note": "仅使用本机已验证数据和已记录执行结果生成。"}
         elif kind == "diagnostics":
             from integrations.manager import system_diagnostics
-            result = {"summary": system_diagnostics()["summary"]}
+            diagnostic = system_diagnostics()
+            result = {"summary": "系统体检已完成",
+                      "key_findings": [f"通过 {diagnostic['summary'].get('passed', 0)} 项",
+                                       f"失败 {diagnostic['summary'].get('failed', 0)} 项"],
+                      "source_note": "结果来自本机系统体检接口。"}
         else:
             result = execute_autonomous(job)
         state, error = "completed", None
@@ -273,15 +280,34 @@ def run_due_jobs():
 
 
 def recover_interrupted():
+    """Recover interrupted work and migrate legacy approval-era jobs into the current policy."""
     with LOCK:
         data = _store()
         changed = False
         for job in data["items"]:
-            if job["state"] == "running" and job["mode"] == "local":
+            if job.get("state") == "running" and job.get("mode") == "local":
                 job.update(state="queued", error="程序中断，已自动重新排队", updated_at=now_iso(),
                            approved_by="autonomy_policy")
                 _audit("job_requeued_after_interrupt", job["id"], "system", {})
                 changed = True
+                continue
+            if job.get("state") != "awaiting_approval":
+                continue
+            policy = classify(job.get("title", ""))
+            if policy["risk"] == "financial":
+                job.update(state="human_required", mode="manual", approved_by=None,
+                           risk="financial", execution="platform_manual",
+                           agent=policy["agent"], task_type=policy["task_type"],
+                           error=None, updated_at=now_iso())
+                record_human_intervention(job)
+                _audit("job_migrated_to_platform_manual", job["id"], "autonomy_policy", {"reason": "financial"})
+            else:
+                job.update(state="queued", mode="local", approved_by="autonomy_policy",
+                           risk="non_financial", execution="autonomous",
+                           agent=policy["agent"], task_type=policy["task_type"],
+                           error=None, updated_at=now_iso())
+                _audit("job_migrated_to_autonomy", job["id"], "autonomy_policy", {"task_type": policy["task_type"]})
+            changed = True
         if changed:
             write_json(JOBS, data)
 
@@ -294,10 +320,10 @@ def agent_registry():
 
 def engine_status():
     jobs = list_jobs()["items"]
-    states = ("human_required", "queued", "running", "completed", "failed", "cancelled")
+    states = ("awaiting_approval", "human_required", "queued", "running", "completed", "failed", "cancelled")
     return {
-        "jobs": {state: sum(x["state"] == state for x in jobs) for state in states},
-        "next_local_job": next((x["title"] for x in jobs if x["state"] == "queued" and x["mode"] == "local"), None),
+        "jobs": {state: sum(x.get("state") == state for x in jobs) for state in states},
+        "next_local_job": next((x["title"] for x in jobs if x.get("state") == "queued" and x.get("mode") == "local"), None),
         "migration": read_json(MIGRATION, {"result": "pending"}),
         "audit_integrity": audit_history()["integrity"],
         "autonomy_policy": "非资金任务自动执行；资金事项仅记录并交平台人工处理",
