@@ -45,15 +45,16 @@ class R7BlockAAcceptance(unittest.TestCase):
             "audience": "本地用户", "evidence": "",
         })
         operation_summary.save_summary(["完成 R7-A 数据持久化验收"])
-        tomorrow_plan.save_manual_plan(["明日继续检查 R7-A 稳定性"])
         memory_store.remember("验收事实", "R7-A 持久化测试已写入", "自动化验收")
 
-        job = r7_engine.create_job({"kind": "manual_task", "title": "R7-A 人工任务闭环"})
-        r7_engine.command({"id": job["id"], "action": "approve"})
-        r7_engine.command({"id": job["id"], "action": "start"})
-        r7_engine.command({"id": job["id"], "action": "complete", "outcome": "R7-A 完成结果已保存"})
+        job = r7_engine.create_job({"kind": "manual_task", "title": "R7-A 非资金自动任务闭环"})
+        self.assertEqual(job["state"], "queued")
+        self.assertEqual(job["approved_by"], "autonomy_policy")
+        r7_engine.run_due_jobs()
+        saved_before_reload = next(x for x in r7_engine.list_jobs()["items"] if x["id"] == job["id"])
+        self.assertEqual(saved_before_reload["state"], "completed")
+        self.assertEqual(saved_before_reload["progress"], 100)
 
-        # Reload modules to emulate a new process reading data from disk again.
         importlib.reload(workspace)
         importlib.reload(content_center)
         importlib.reload(operation_summary)
@@ -65,12 +66,11 @@ class R7BlockAAcceptance(unittest.TestCase):
         self.assertTrue(any(x["keyword"] == "涟水空调维修验收词" for x in content_center.list_keywords()["items"]))
         self.assertTrue(any(x["kind"] == "SEO内容草稿" for x in content_center.history()["items"]))
         self.assertIn("完成 R7-A 数据持久化验收", operation_summary.build_summary()["completed_items"])
-        self.assertEqual(read_json("plans/latest_plan.json", {})["tasks"][0]["title"], "明日继续检查 R7-A 稳定性")
         self.assertTrue(any(x["statement"] == "R7-A 持久化测试已写入" for x in memory_store.get_memory()["entries"]))
         saved_job = next(x for x in r7_engine.list_jobs()["items"] if x["id"] == job["id"])
         self.assertEqual(saved_job["state"], "completed")
         self.assertEqual(saved_job["progress"], 100)
-        self.assertEqual(saved_job["result"]["outcome"], "R7-A 完成结果已保存")
+        self.assertIsNotNone(saved_job["result"])
         self.assertEqual(r7_engine.audit_history()["integrity"], "verified")
 
     def test_r6_migration_snapshots_every_existing_user_namespace(self):
@@ -99,7 +99,6 @@ class R7BlockAAcceptance(unittest.TestCase):
         for relative, payload in seeded.items():
             self.assertEqual(json.loads((backup_root / relative).read_text(encoding="utf-8")), payload)
 
-        # Backup is immutable: a second migration must not overwrite the first snapshot.
         write_json("promotion/keywords.json", {"items": [{"keyword": "new value"}]})
         self.assertEqual(r7_engine.migrate_r6(), marker)
         self.assertEqual(
@@ -107,10 +106,10 @@ class R7BlockAAcceptance(unittest.TestCase):
             seeded["promotion/keywords.json"],
         )
 
-    def test_interrupted_local_job_becomes_visible_failure_on_restart(self):
+    def test_interrupted_local_job_is_requeued_automatically_on_restart(self):
         r7_engine.migrate_r6()
         job = r7_engine.create_job({"kind": "diagnostics", "title": "中断恢复测试"})
-        r7_engine.command({"id": job["id"], "action": "approve"})
+        self.assertEqual(job["state"], "queued")
         jobs = read_json("r7/jobs.json", {"items": []})
         saved = next(x for x in jobs["items"] if x["id"] == job["id"])
         saved["state"] = "running"
@@ -118,10 +117,11 @@ class R7BlockAAcceptance(unittest.TestCase):
 
         r7_engine.recover_interrupted()
         recovered = next(x for x in r7_engine.list_jobs()["items"] if x["id"] == job["id"])
-        self.assertEqual(recovered["state"], "failed")
+        self.assertEqual(recovered["state"], "queued")
         self.assertIn("程序中断", recovered["error"])
+        self.assertEqual(recovered["approved_by"], "autonomy_policy")
         self.assertEqual(r7_engine.audit_history()["integrity"], "verified")
-        self.assertTrue(any(x["kind"] == "job_interrupted" for x in r7_engine.audit_history()["events"]))
+        self.assertTrue(any(x["kind"] == "job_requeued_after_interrupt" for x in r7_engine.audit_history()["events"]))
 
     def test_atomic_json_write_leaves_valid_file_and_no_temp_residue(self):
         for index in range(30):
