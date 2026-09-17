@@ -139,6 +139,23 @@ def _module(name, values, rates=None, breakdown=None):
     }
 
 
+def _completeness(snapshot):
+    fields = SCALAR_FIELDS + MAP_FIELDS + NESTED_MAP_FIELDS
+    present = []
+    missing = []
+    for field in fields:
+        value = snapshot.get(field)
+        available = value is not None and (not isinstance(value, dict) or bool(value))
+        (present if available else missing).append(field)
+    total = len(fields)
+    return {
+        "present": len(present),
+        "total": total,
+        "ratio_pct": round(len(present) * 100 / total, 1) if total else 100.0,
+        "missing_fields": missing,
+    }
+
+
 def build_analytics(snapshot=None):
     snapshot = snapshot or current_snapshot()
     if not snapshot:
@@ -156,6 +173,9 @@ def build_analytics(snapshot=None):
             "message": "真实经营数据尚未接入，当前不展示占位 0 或推测数字。",
             "source": None,
             "as_of": None,
+            "window": None,
+            "loaded_from": None,
+            "completeness": {"present": 0, "total": len(SCALAR_FIELDS + MAP_FIELDS + NESTED_MAP_FIELDS), "ratio_pct": 0, "missing_fields": list(SCALAR_FIELDS + MAP_FIELDS + NESTED_MAP_FIELDS)},
             "truth_rule": "公开市场信号只用于需求研究，不计为访问、用户、订单或成交。",
             "modules": empty,
         }
@@ -188,12 +208,15 @@ def build_analytics(snapshot=None):
         }),
         "channel_effect": _module("渠道效果分析", {"channel_count": len(channels) if channels else None}, breakdown={"channels": channels}),
     }
+    completeness = _completeness(snapshot)
     return {
         "status": "verified",
         "message": "已读取带来源和时间的聚合经营快照。",
         "source": snapshot.get("source"),
         "as_of": snapshot.get("as_of"),
         "window": snapshot.get("window", "today"),
+        "loaded_from": snapshot.get("loaded_from"),
+        "completeness": completeness,
         "truth_rule": "只显示已验证聚合数据；不接收手机号、地址、身份、密钥或资金明细。",
         "modules": modules,
     }
