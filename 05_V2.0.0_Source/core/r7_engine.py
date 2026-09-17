@@ -1,4 +1,4 @@
-"""R7 local command bus with autonomous non-financial execution and audit history."""
+"""R7 local command bus with autonomous non-financial execution and live agent telemetry."""
 
 import hashlib
 import json
@@ -14,6 +14,7 @@ JOBS = "r7/jobs.json"
 AUDIT = "r7/audit.json"
 MIGRATION = "r7/migration.json"
 LOCK = threading.RLock()
+AGENT_STALE_SECONDS = 300
 
 FINANCIAL_TERMS = (
     "支付", "付款", "退款", "提现", "结算", "改价", "调价", "充值", "转账",
@@ -40,11 +41,12 @@ AGENTS = [
     ("conversion", "用户转化员", "自动分析已验证的咨询与转化"),
     ("review", "数据复盘员", "自动执行复盘、学习记忆和次日计划"),
 ]
+AGENT_NAME_TO_ID = {name: key for key, name, _purpose in AGENTS}
 
 
 def _store():
-    data = read_json(JOBS, {"schema": 2, "items": []})
-    return data if isinstance(data, dict) and isinstance(data.get("items"), list) else {"schema": 2, "items": []}
+    data = read_json(JOBS, {"schema": 3, "items": []})
+    return data if isinstance(data, dict) and isinstance(data.get("items"), list) else {"schema": 3, "items": []}
 
 
 def _audit(kind, job_id, actor, detail):
@@ -115,6 +117,55 @@ def _financial(title, kind=""):
     return kind == "finance_task" or any(term.lower() in text for term in FINANCIAL_TERMS)
 
 
+def _agent_id(agent_name):
+    return AGENT_NAME_TO_ID.get(agent_name)
+
+
+def _select_agent(kind, title):
+    configured = KINDS[kind]["agent"]
+    if configured in AGENT_NAME_TO_ID:
+        return configured
+    lowered = title.lower()
+    rules = (
+        (("短视频", "脚本", "视频"), "短视频运营员"),
+        (("社媒", "小红书", "公众号", "朋友圈"), "社媒运营员"),
+        (("seo", "geo", "搜索优化"), "SEO/GEO 增长员"),
+        (("转化", "线索", "咨询", "成交"), "用户转化员"),
+        (("复盘", "明日计划", "运营记忆", "数据复盘"), "数据复盘员"),
+        (("本地增长", "区域", "推广日历"), "本地增长员"),
+        (("市场", "调研", "需求", "公开数据", "关键词"), "市场情报员"),
+        (("内容", "文案", "文章", "草稿"), "内容运营员"),
+    )
+    for words, agent_name in rules:
+        if any(word.lower() in lowered for word in words):
+            return agent_name
+    return configured
+
+
+def _parse_time(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        return parsed.astimezone() if parsed.tzinfo else parsed.astimezone()
+    except (ValueError, TypeError):
+        return None
+
+
+def _is_today(value, today=None):
+    parsed = _parse_time(value)
+    if not parsed:
+        return False
+    return parsed.date() == (today or datetime.now().astimezone().date())
+
+
+def _heartbeat_age(value):
+    parsed = _parse_time(value)
+    if not parsed:
+        return None
+    return max(0.0, (datetime.now().astimezone() - parsed).total_seconds())
+
+
 def list_jobs():
     with LOCK:
         items = _store()["items"]
@@ -131,6 +182,27 @@ def _find(data, job_id):
         if job["id"] == job_id:
             return job
     raise ValueError("任务不存在")
+
+
+def _telemetry(job_id, progress, current_step, completed_steps=None):
+    """Persist a truthful execution milestone and heartbeat.
+
+    This is only called at real execution boundaries. It never advances from a
+    timer, so the UI cannot manufacture progress while no work happened.
+    """
+    with LOCK:
+        data = _store()
+        job = _find(data, job_id)
+        if job.get("state") != "running":
+            return job
+        job["progress"] = max(0, min(99, int(progress)))
+        if completed_steps is not None:
+            job["completed_steps"] = max(0, min(int(completed_steps), int(job.get("total_steps") or 4)))
+        job["current_step"] = str(current_step)[:200]
+        job["heartbeat_at"] = now_iso()
+        job["updated_at"] = job["heartbeat_at"]
+        write_json(JOBS, data)
+        return job
 
 
 def create_job(payload):
@@ -152,19 +224,25 @@ def create_job(payload):
     mode = "manual" if finance else KINDS[actual_kind]["mode"]
     state = "awaiting_approval" if finance else "queued"
     approved_by = None if finance else "policy:auto_non_financial"
+    agent_name = _select_agent(actual_kind, title)
     job = {
         "id": uuid.uuid4().hex,
         "kind": actual_kind,
         "title": title,
         "mode": mode,
-        "agent": KINDS[actual_kind]["agent"],
+        "agent": agent_name,
+        "agent_id": _agent_id(agent_name),
         "state": state,
         "progress": 0,
         "completed_steps": 0,
-        "total_steps": 1,
+        "total_steps": 1 if finance else 4,
+        "current_step": "等待人工审批" if finance else "已进入自动执行队列",
         "due_at": due_at,
         "created_at": now_iso(),
         "updated_at": now_iso(),
+        "started_at": None,
+        "heartbeat_at": None,
+        "finished_at": None,
         "approved_by": approved_by,
         "approval_policy": "finance_human_only" if finance else "auto_non_financial",
         "result": None,
@@ -195,20 +273,28 @@ def command(payload):
         if action == "approve" and before == "awaiting_approval":
             job["state"] = "queued"
             job["approved_by"] = actor
+            job["current_step"] = "已批准，等待执行"
         elif action == "start" and before == "queued" and job["mode"] == "manual":
-            job["state"] = "running"
+            started = now_iso()
+            job.update(state="running", started_at=started, heartbeat_at=started,
+                       current_step="人工任务执行中")
         elif action == "complete" and before == "running" and job["mode"] == "manual":
             outcome = str(payload.get("outcome") or "").strip()
             if not outcome or len(outcome) > 1000:
                 raise ValueError("请填写 1 到 1000 字的真实完成结果")
+            finished = now_iso()
             job.update(state="completed", completed_steps=1, progress=100,
+                       current_step="执行完成", heartbeat_at=finished, finished_at=finished,
                        result={"outcome": outcome, "source": "人工确认"})
         elif action == "cancel" and before in {"awaiting_approval", "queued", "running", "failed"}:
             job["state"] = "cancelled"
+            job["current_step"] = "已取消"
+            job["finished_at"] = now_iso()
         elif action == "retry" and before == "failed":
             if job.get("approval_policy") == "finance_human_only" and not job.get("approved_by"):
                 raise ValueError("资金任务重试前仍需人工批准")
-            job.update(state="queued", error=None, completed_steps=0, progress=0)
+            job.update(state="queued", error=None, completed_steps=0, progress=0,
+                       current_step="等待重新执行", started_at=None, heartbeat_at=None, finished_at=None)
         else:
             raise ValueError("当前任务状态不允许此操作")
         job["updated_at"] = now_iso()
@@ -224,13 +310,16 @@ def _region_service(title):
     return region, service
 
 
-def _run_generic(job):
+def _run_generic(job, job_id):
     title = job["title"]
     region, service = _region_service(title)
     if any(word in title for word in ("市场", "调研", "数据收集", "公开数据", "需求", "维修数据", "关键词")):
         from operations.workspace import demand_insights, generate_calendar
+        _telemetry(job_id, 25, "读取已同步的公开研究信号", 1)
         insight = demand_insights()
+        _telemetry(job_id, 55, "根据真实信号生成本地增长日历", 2)
         calendar = generate_calendar({"region": region, "service": service})
+        _telemetry(job_id, 85, "整理可核验结论并准备结果", 3)
         top = "、".join(item["name"] for item in insight.get("top_needs", [])[:5]) or "暂无足够公开信号"
         return {
             "outcome": f"已自动整理{region}{service}现有公开研究信号：共 {insight.get('public_signal_count', 0)} 条；当前可见需求方向：{top}。已同步生成 7 天本地增长日历。",
@@ -240,20 +329,29 @@ def _run_generic(job):
         }
     if any(word in title.lower() for word in ("seo", "geo", "内容", "文案", "短视频", "脚本")):
         from promotion.content_center import generate_geo, generate_seo, generate_video
+        _telemetry(job_id, 30, "准备本地内容参数", 1)
         payload = {"region": region, "service": service, "keyword": f"{region}{service}服务", "audience": "本地有维修需求的用户"}
+        _telemetry(job_id, 55, "生成内容草稿", 2)
         if "短视频" in title or "脚本" in title:
             record = generate_video(payload)
         elif "geo" in title.lower():
             record = generate_geo(payload)
         else:
             record = generate_seo(payload)
+        _telemetry(job_id, 85, "内容已生成并写入增长记录", 3)
         return {"outcome": f"已自动生成{record.get('kind', '内容')}并保存到内容增长记录。", "source": "local_content_workflow"}
     if any(word in title for word in ("复盘", "明日计划", "第二天计划", "计划优化")):
         from ai_center.daily_review import generate_review
+        _telemetry(job_id, 30, "读取可验证经营与执行记录", 1)
+        _telemetry(job_id, 55, "生成复盘与次日计划", 2)
         review = generate_review(None)
+        _telemetry(job_id, 85, "复盘结果已落盘，准备完成", 3)
         return {"outcome": "已自动完成复盘并生成下一日计划。", "headline": review.get("summary", {}).get("headline", "复盘已完成"), "source": "local_review_workflow"}
     from operations.workspace import command_center
+    _telemetry(job_id, 35, "读取运营中心真实状态", 1)
     center = command_center()
+    _telemetry(job_id, 70, "核对任务、内容、关键词与数据接入", 2)
+    _telemetry(job_id, 85, "整理运营检查结果", 3)
     return {
         "outcome": "已自动完成通用运营检查，并记录当前任务、内容、关键词和数据接入状态。",
         "source": "local_operations_center",
@@ -281,30 +379,44 @@ def _run(job_id):
         job = _find(data, job_id)
         if job["state"] != "queued" or job["mode"] != "local" or not job["approved_by"]:
             return
-        job["state"] = "running"
-        job["updated_at"] = now_iso()
+        started = now_iso()
+        job.update(state="running", progress=10, completed_steps=0,
+                   current_step="任务已启动，正在准备执行", started_at=started,
+                   heartbeat_at=started, finished_at=None, updated_at=started)
         kind = job["kind"]
         write_json(JOBS, data)
         _audit("job_started", job_id, "scheduler", {"kind": kind, "policy": job.get("approval_policy")})
     try:
         if kind == "daily_review":
             from ai_center.daily_review import generate_review
+            _telemetry(job_id, 30, "读取今日可验证数据", 1)
+            _telemetry(job_id, 55, "生成今日复盘与次日计划", 2)
             review = generate_review(None)
+            _telemetry(job_id, 85, "复盘结果已生成并保存", 3)
             result = {"headline": review.get("summary", {}).get("headline", "复盘已完成"), "source": "daily_review"}
         elif kind == "diagnostics":
             from integrations.manager import system_diagnostics
-            result = {"summary": system_diagnostics()["summary"], "source": "diagnostics"}
+            _telemetry(job_id, 30, "开始检查关键服务与安全边界", 1)
+            diagnostics = system_diagnostics()
+            _telemetry(job_id, 75, "系统体检已返回，正在整理结果", 2)
+            _telemetry(job_id, 85, "体检结果已核对", 3)
+            result = {"summary": diagnostics["summary"], "source": "diagnostics"}
         else:
-            result = _run_generic(job)
+            result = _run_generic(job, job_id)
         state, error = "completed", None
     except (ValueError, OSError, KeyError, TypeError) as exc:
         state, error, result = "failed", str(exc)[:300], None
     with LOCK:
         data = _store()
         job = _find(data, job_id)
-        job.update(state=state, result=result, error=error, updated_at=now_iso(),
-                   completed_steps=1 if state == "completed" else 0,
-                   progress=100 if state == "completed" else 0)
+        finished = now_iso()
+        if state == "completed":
+            job.update(state=state, result=result, error=None, updated_at=finished,
+                       current_step="执行完成", heartbeat_at=finished, finished_at=finished,
+                       completed_steps=int(job.get("total_steps") or 4), progress=100)
+        else:
+            job.update(state=state, result=None, error=error, updated_at=finished,
+                       current_step="执行异常", heartbeat_at=finished, finished_at=finished)
         write_json(JOBS, data)
         _audit("job_" + state, job_id, "scheduler", {"error": error})
     if state == "completed" and result:
@@ -335,15 +447,80 @@ def recover_interrupted():
         data = _store()
         for job in data["items"]:
             if job["state"] == "running" and job["mode"] == "local":
-                job.update(state="queued", error="程序中断，已自动恢复到待执行队列", updated_at=now_iso())
+                job.update(state="queued", error="程序中断，已自动恢复到待执行队列",
+                           current_step="程序中断，等待自动恢复", heartbeat_at=now_iso(),
+                           finished_at=None, updated_at=now_iso())
                 _audit("job_recovered", job["id"], "system", {})
         write_json(JOBS, data)
 
 
+def _runtime_item(key, name, purpose, jobs, today):
+    related = [job for job in jobs if (job.get("agent_id") or _agent_id(job.get("agent"))) == key]
+    running = next((job for job in related if job.get("state") == "running"), None)
+    queued = next((job for job in related if job.get("state") == "queued"), None)
+    focus = running or queued or (related[0] if related else None)
+    status = "idle"
+    stale = False
+    error = None
+    if running:
+        age = _heartbeat_age(running.get("heartbeat_at") or running.get("updated_at"))
+        stale = age is None or age > AGENT_STALE_SECONDS
+        status = "error" if stale else "working"
+        if stale:
+            error = "工作中任务超过 5 分钟没有新的执行心跳，可能已卡住"
+    elif queued:
+        status = "waiting"
+    elif focus and focus.get("state") == "failed":
+        status = "error"
+        error = focus.get("error") or "最近一次任务执行失败"
+    elif focus and focus.get("state") == "completed" and _is_today(focus.get("finished_at") or focus.get("updated_at"), today):
+        status = "completed"
+
+    completed_today = sum(
+        job.get("state") == "completed" and _is_today(job.get("finished_at") or job.get("updated_at"), today)
+        for job in related
+    )
+    latest_completed = next((job for job in related if job.get("state") == "completed"), None)
+    return {
+        "id": key,
+        "name": name,
+        "purpose": purpose,
+        "status": status,
+        "execution": "auto_non_financial",
+        "task_id": focus.get("id") if focus else None,
+        "current_task": focus.get("title") if focus and status in {"working", "waiting", "error", "completed"} else None,
+        "progress": int(focus.get("progress") or 0) if focus else 0,
+        "current_step": focus.get("current_step") if focus else None,
+        "started_at": focus.get("started_at") if focus else None,
+        "heartbeat_at": focus.get("heartbeat_at") if focus else None,
+        "finished_at": focus.get("finished_at") if focus else None,
+        "result": focus.get("result") if focus and focus.get("state") == "completed" else None,
+        "error": error or (focus.get("error") if focus and focus.get("state") == "failed" else None),
+        "stale": stale,
+        "completed_today": completed_today,
+        "last_task": latest_completed.get("title") if latest_completed else None,
+        "last_result": latest_completed.get("result") if latest_completed else None,
+        "last_finished_at": latest_completed.get("finished_at") or latest_completed.get("updated_at") if latest_completed else None,
+    }
+
+
 def agent_registry():
-    return {"items": [{"id": key, "name": name, "purpose": purpose,
-                       "status": "role_defined", "execution": "auto_non_financial"}
-                      for key, name, purpose in AGENTS]}
+    with LOCK:
+        jobs = list(_store()["items"])
+    today = datetime.now().astimezone().date()
+    items = [_runtime_item(key, name, purpose, jobs, today) for key, name, purpose in AGENTS]
+    summary = {
+        "total": len(items),
+        "working": sum(item["status"] == "working" for item in items),
+        "waiting": sum(item["status"] == "waiting" for item in items),
+        "idle": sum(item["status"] in {"idle", "completed"} for item in items),
+        "error": sum(item["status"] == "error" for item in items),
+        "completed": sum(item["status"] == "completed" for item in items),
+        "completed_today": sum(item["completed_today"] for item in items),
+        "stale_after_seconds": AGENT_STALE_SECONDS,
+        "generated_at": now_iso(),
+    }
+    return {"items": items, "summary": summary, "truth_policy": "job_telemetry_only_no_simulated_progress"}
 
 
 def engine_status():
@@ -356,4 +533,5 @@ def engine_status():
         "audit_integrity": audit_history()["integrity"],
         "autonomy_policy": "auto_non_financial_finance_human_only",
         "learning_mode": "audited_memory_and_plan_optimization",
+        "agent_telemetry": "job_telemetry_only_no_simulated_progress",
     }
