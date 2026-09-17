@@ -68,6 +68,8 @@ def main():
         "[data-task-index]": "task status selectors",
         ".ai-role-action": "AI collaboration cards",
         ".r7-agent-action": "AI employee cards",
+        "renderR7AgentSummary": "AI employee live status summary",
+        "r7-agent-progress": "AI employee truthful progress display",
         ".integration-card-action": "integration status cards",
         "bindInteractiveCard": "dashboard/review/analytics summary cards",
         "bindR7OverviewActions": "R7 workflow/exception/migration overview cards",
@@ -79,10 +81,11 @@ def main():
             failures.append(f"Missing dynamic interaction binding: {label} ({token})")
 
     visible_feedback = (
-        "任务、员工和审计状态已刷新",
+        "任务、AI 员工和审计状态已刷新",
         "公开需求信号已刷新；真实客户数据仍以接入状态为准",
         "任务状态已更新",
-        "任务已创建，等待人工审批",
+        "非资金任务已自动进入执行队列",
+        "资金类任务已记录，等待人工审批",
         "系统体检已完成",
         "已打开待办任务与 AI 员工",
         "真实经营数据尚未实时接入",
@@ -119,6 +122,7 @@ def main():
         "/api/bridge/report",
         "/api/r7/jobs",
         "/api/r7/jobs/command",
+        "/api/r7/agents",
         "/api/memory",
         "/api/operation-summary",
         "/api/tomorrow-plan",
