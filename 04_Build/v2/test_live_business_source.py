@@ -58,7 +58,16 @@ def main():
     else:
         raise AssertionError("write-enabled business source was not rejected")
 
-    print("PASS: live business source is fixed HTTPS, aggregate-only and SELECT-only")
+    analytics_js = (SOURCE / "web" / "analytics.js").read_text(encoding="utf-8")
+    assert "核心经营分析" in analytics_js
+    assert "核心经营数据完整度" in analytics_js
+    assert "累计已完成订单" in analytics_js
+    assert "累计取消订单" in analytics_js
+    assert "不跨窗口计算虚假转化率" in analytics_js
+    for hidden_id in ("technician-supply", "leader-promotion", "channel-effect"):
+        assert hidden_id in analytics_js
+
+    print("PASS: live business source is fixed HTTPS, aggregate-only, SELECT-only and core analytics is focused")
 
 
 if __name__ == "__main__":
