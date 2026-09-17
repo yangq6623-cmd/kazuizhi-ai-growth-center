@@ -1,0 +1,2 @@
+Manual rebuild requested after successful #132 installer regression fix.
+Purpose: regenerate a fresh GitHub Actions installer artifact from the current codex/v2-r7-autonomous-ops branch without changing runtime behavior.
