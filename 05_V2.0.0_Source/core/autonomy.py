@@ -89,25 +89,46 @@ def execute_autonomous(job):
 
     if task_type == "diagnostics":
         from integrations.manager import system_diagnostics
-        return {"task_type": task_type, "summary": system_diagnostics()["summary"]}
+        diagnostic = system_diagnostics()
+        return {
+            "task_type": task_type,
+            "summary": "系统体检已完成",
+            "key_findings": [f"通过 {diagnostic['summary'].get('passed', 0)} 项", f"失败 {diagnostic['summary'].get('failed', 0)} 项"],
+            "source_note": "结果来自本机系统体检接口。",
+        }
 
     if task_type == "review":
         from ai_center.daily_review import generate_review
         review = generate_review(None)
-        return {"task_type": task_type, "headline": review.get("summary", {}).get("headline", "复盘已完成")}
+        return {
+            "task_type": task_type,
+            "summary": review.get("summary", {}).get("headline", "复盘已完成"),
+            "key_findings": list(review.get("problems", []))[:3],
+            "next_actions": [x.get("title", "") if isinstance(x, dict) else str(x) for x in review.get("tomorrow_plan", {}).get("tasks", [])[:3]],
+            "source_note": "仅使用本机已验证数据和已记录执行结果生成。",
+        }
 
     if task_type == "market":
         from operations.workspace import demand_insights, generate_calendar
         insight = demand_insights()
         calendar = generate_calendar({"region": "涟水", "service": "本地维修与生活任务"})
+        public_count = insight.get("public_signal_count", 0)
+        top_needs = insight.get("top_needs", [])
+        top_regions = insight.get("top_regions", [])
+        calendar_days = len(calendar.get("items", []))
         return {
             "task_type": task_type,
+            "summary": f"已整理 {public_count} 条本机可核验公开需求信号，并生成 {calendar_days} 天本地运营日历。",
             "scope": "涟水县及淮安市本地维修公开信号",
-            "public_signal_count": insight.get("public_signal_count", 0),
-            "top_needs": insight.get("top_needs", []),
-            "top_regions": insight.get("top_regions", []),
-            "calendar_days": len(calendar.get("items", [])),
-            "limitation": "仅基于本机已接入/历史公开信号整理；未接入实时外部数据源时不虚构实时市场量。",
+            "public_signal_count": public_count,
+            "top_needs": top_needs,
+            "top_regions": top_regions,
+            "calendar_days": calendar_days,
+            "next_actions": [
+                "将已识别需求词用于下一轮 SEO/GEO 和本地内容草稿",
+                "明日继续扫描公开信号，并在真实经营数据接入后交叉验证优先级",
+            ],
+            "source_note": "仅基于本机已接入/历史公开信号整理；未接入实时外部数据源时不虚构实时市场量。",
         }
 
     if task_type in {"seo", "geo", "content", "video"}:
@@ -127,22 +148,37 @@ def execute_autonomous(job):
             record = generate_video(payload)
         else:
             record = generate_ad(payload)
-        return {"task_type": task_type, "draft_id": record.get("id"), "kind": record.get("kind"), "status": "草稿已自动生成"}
+        return {
+            "task_type": task_type,
+            "summary": f"{record.get('kind', '内容草稿')}已自动生成并保存。",
+            "draft_id": record.get("id"),
+            "kind": record.get("kind"),
+            "next_actions": ["进入对应内容工作台查看草稿", "按后续运营计划继续生成和复盘"],
+            "source_note": "仅生成运营草稿，不执行资金操作。",
+        }
 
     if task_type in {"local", "conversion", "general"}:
         from operations.workspace import command_center, demand_insights
         center = command_center()
         insight = demand_insights()
+        recs = center.get("recommendations", [])[:5]
         return {
             "task_type": task_type,
+            "summary": "已完成本机可验证范围内的自动分析。",
             "headline": title,
             "business_status": center.get("business_status"),
-            "recommendations": center.get("recommendations", [])[:5],
+            "recommendations": recs,
             "public_signal_count": insight.get("public_signal_count", 0),
-            "note": "已完成本机可验证范围内的自动分析；需要实时经营数据的结论将在只读数据接入后增强。",
+            "next_actions": recs[:3],
+            "source_note": "需要实时经营数据的结论将在只读数据接入后增强。",
         }
 
-    return {"task_type": task_type, "headline": title, "status": "自动任务已处理"}
+    return {
+        "task_type": task_type,
+        "summary": "自动任务已完成并写入执行记录。",
+        "headline": title,
+        "source_note": "本任务在当前本机可验证能力范围内执行。",
+    }
 
 
 def learn_from_job(job):
