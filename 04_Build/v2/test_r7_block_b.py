@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "05_V2.0.0_Source"))
 from core import r7_engine  # noqa: E402
 from core.storage import data_root  # noqa: E402
 from integrations.bridge import (  # noqa: E402
-    bridge_status, configure_bridge, list_bridge_commands, sync_once,
+    bridge_status, configure_bridge, list_bridge_commands, self_test, sync_once,
 )
 from integrations.manager import control_center, integration_status, system_diagnostics  # noqa: E402
 
@@ -94,8 +94,17 @@ def main():
             bad_receipt = json.loads((bridge_root / "outbox" / "receipts" / "chatgpt-plan-bad.json").read_text(encoding="utf-8"))
             check(bad_receipt["state"] == "rejected", "Unsafe command receipt missing rejection")
 
+            # One-click self-test must exercise the same bridge path and keep local approval intact.
+            one_click = self_test()
+            check(one_click["passed"], "One-click bridge self-test did not pass")
+            check(one_click["job_id"], "One-click bridge self-test did not create a job")
+            check(all(item["passed"] for item in one_click["checks"]), "One-click bridge self-test has failed checks")
+            self_receipt = one_click["receipt"]
+            check(self_receipt["state"] == "awaiting_approval", "Self-test bypassed local approval")
+            check(self_receipt["job_id"] == one_click["job_id"], "Self-test receipt job mismatch")
+
             commands = list_bridge_commands()
-            check(commands["count"] == 2, "Bridge command ledger count incorrect")
+            check(commands["count"] == 3, "Bridge command ledger count incorrect")
             integrations = integration_status()
             check(integrations["bridge"]["status"] == "connected", "Integration center did not expose bridge")
             center = control_center()
@@ -105,7 +114,7 @@ def main():
             check(any(x["id"] == "bridge" and x["status"] == "pass" for x in diagnostics["checks"]), "Diagnostics did not verify bridge")
             check(r7_engine.audit_history()["integrity"] == "verified", "Audit chain failed after bridge operations")
 
-            print("PASS: R7 Block B bidirectional bridge, dedupe, approval and receipts")
+            print("PASS: R7 Block B bidirectional bridge, dedupe, approval, receipts and self-test")
         finally:
             if old is None:
                 os.environ.pop("LOCALAPPDATA", None)
