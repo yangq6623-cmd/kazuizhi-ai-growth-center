@@ -178,6 +178,8 @@ def validate_remote_summary(payload):
     technicians = _safe_object(payload.get("technicians"), "technicians")
     partners = _safe_object(payload.get("partners"), "partners")
     promotion = _safe_object(payload.get("promotion"), "promotion")
+    funnel = _safe_object(payload.get("funnel"), "funnel")
+    mini_program = _safe_object(payload.get("mini_program"), "mini_program")
     clean = {
         "ok": True,
         "source": source[:160],
@@ -190,6 +192,15 @@ def validate_remote_summary(payload):
         "regions": payload.get("regions") if isinstance(payload.get("regions"), list) else [],
         "services": payload.get("services") if isinstance(payload.get("services"), list) else [],
         "promotion": {key: _safe_number(promotion.get(key), "promotion." + key) for key in ("event_records", "partner_attributed_orders")},
+        "funnel": {key: _safe_number(funnel.get(key), "funnel." + key) for key in ("mini_program_visits", "repair_requests", "leads")},
+        "mini_program": {
+            "status": str(mini_program.get("status") or "")[:40],
+            "ref_date": str(mini_program.get("ref_date") or "")[:20],
+            "visit_uv": _safe_number(mini_program.get("visit_uv"), "mini_program.visit_uv"),
+            "visit_pv": _safe_number(mini_program.get("visit_pv"), "mini_program.visit_pv"),
+            "session_cnt": _safe_number(mini_program.get("session_cnt"), "mini_program.session_cnt"),
+            "visit_uv_new": _safe_number(mini_program.get("visit_uv_new"), "mini_program.visit_uv_new"),
+        },
         "data_quality": {
             "verified": bool(quality.get("verified")),
             "read_only": True,
@@ -208,7 +219,10 @@ def snapshot_from_remote(summary):
     return {
         "source": summary["source"],
         "as_of": summary["as_of"],
-        "window": "服务器实时汇总：今日新增 + 当前累计",
+        "window": "服务器汇总：今日业务 + 累计状态；小程序访问为微信最近完整日UV",
+        "mini_program_visits": (summary.get("funnel") or {}).get("mini_program_visits"),
+        "repair_requests": (summary.get("funnel") or {}).get("repair_requests"),
+        "leads": (summary.get("funnel") or {}).get("leads"),
         "new_users": summary["users"].get("new_today"),
         "new_orders": summary["orders"].get("today"),
         "approved_technicians": summary["technicians"].get("approved"),
@@ -321,6 +335,8 @@ def business_source_status(analytics=None):
             "technicians": remote.get("technicians") or {},
             "partners": remote.get("partners") or {},
             "promotion": remote.get("promotion") or {},
+            "funnel": remote.get("funnel") or {},
+            "mini_program": remote.get("mini_program") or {},
         },
         "message": "生产经营数据只读接口已验证；R7 每 5 分钟自动刷新。" if connected else
                    status.get("last_error") or ("密钥已保存，等待连接验证。" if key_present else "服务器接口已部署；粘贴一次只读密钥即可接入。"),
