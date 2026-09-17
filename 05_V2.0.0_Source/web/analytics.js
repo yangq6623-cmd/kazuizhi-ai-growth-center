@@ -39,11 +39,16 @@ function renderChannels(module) {
 async function loadAnalytics() {
   const data = await api('/api/business-analytics');
   const connected = data.status === 'verified';
-  $('analytics-status').textContent = connected ? '已连接已验证经营快照' : '真实经营数据尚未接入';
-  $('analytics-source').textContent = connected ? `来源：${data.source} · 截止：${data.as_of}` : data.message;
-  $('analytics-badge').textContent = connected ? '已验证' : '待接入';
+  const completeness = data.completeness || {present:0,total:0,ratio_pct:0,missing_fields:[]};
+  $('analytics-status').textContent = connected ? `已连接已验证经营快照 · 完整度 ${completeness.present}/${completeness.total}` : '真实经营数据尚未接入';
+  $('analytics-source').textContent = connected
+    ? `来源：${data.source} · 截止：${data.as_of} · 统计窗口：${data.window || '未说明'} · 完整度：${completeness.ratio_pct}%`
+    : `${data.message} 需要来源 source、统计时间 as_of 和聚合指标；不接收手机号、地址、身份、密钥或资金明细。`;
+  $('analytics-badge').textContent = connected ? (completeness.ratio_pct >= 80 ? '已验证' : '已验证·部分数据') : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
-  $('analytics-truth').textContent = data.truth_rule;
+  $('analytics-truth').textContent = connected && completeness.missing_fields?.length
+    ? `${data.truth_rule} 当前仍缺 ${completeness.missing_fields.length} 类聚合指标，缺失项不会用 0 或推测值代替。`
+    : data.truth_rule;
   renderModule('user-growth', data.modules.user_growth);
   renderModule('order-conversion', data.modules.order_conversion);
   renderModule('technician-supply', data.modules.technician_supply);
@@ -59,10 +64,11 @@ $('import-business').addEventListener('click', async () => {
     return toast('请粘贴带来源和统计时间的经营汇总 JSON；当前内容格式不正确','error');
   }
   try {
-    await api('/api/business-metrics/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    const imported = await api('/api/business-metrics/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
     $('business-json').value = '';
     await Promise.all([loadAnalytics(), loadSummary()]);
-    toast('已导入并验证经营汇总');
+    const completeness = imported.completeness || {};
+    toast(`已导入并验证经营汇总${completeness.total ? ` · 完整度 ${completeness.present}/${completeness.total}` : ''}`);
   } catch (error) {
     toast(error.message,'error');
   }
