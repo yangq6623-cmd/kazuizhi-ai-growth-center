@@ -1,8 +1,8 @@
 """Run the full V2 verifier with the R7 autonomous-nonfinancial contract.
 
 The historical verifier still contains the pre-autonomy approval assertions. This
-wrapper replaces only that R7 lifecycle block at verification time, while keeping
-all of the original source, packaging, installer, data-safety and regression checks.
+wrapper replaces only stale R7/autonomy assertions at verification time, while
+keeping all original source, packaging, installer, data-safety and regression checks.
 """
 from pathlib import Path
 
@@ -62,5 +62,13 @@ replacement = '''                with urllib.request.urlopen(base + "/api/r7/age
 '''
 
 patched = text[:start] + replacement + text[end:]
+patched = patched.replace(
+    'check(all(item["execution"] == "proposal_only" for item in review["tomorrow_plan"]["tasks"]), "Plan bypassed review")',
+    'check(all(item["execution"] == "auto_non_financial" for item in review["tomorrow_plan"]["tasks"]), "Autonomous plan execution policy missing")',
+)
+patched = patched.replace(
+    'check(saved_plan["tasks"][0]["execution"] == "proposal_only", "Manual plan bypassed review")',
+    'check(saved_plan["tasks"][0]["execution"] == "auto_non_financial", "Manual non-financial plan was not marked for autonomous execution")',
+)
 namespace = {"__name__": "__main__", "__file__": str(TARGET)}
 exec(compile(patched, str(TARGET), "exec"), namespace)
