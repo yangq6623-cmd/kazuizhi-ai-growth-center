@@ -85,7 +85,7 @@ def main():
         "任务已进入自动执行队列",
         "已记录为平台人工待处理",
         "系统体检已完成",
-        "已打开待办任务与 AI 员工",
+        "已打开自动任务与 AI 员工",
         "真实经营数据尚未实时接入",
         "双向运营桥已连接",
         "当前未连接云端桥，已保持本地自主运行",
@@ -95,6 +95,10 @@ def main():
     for text in visible_feedback:
         if text not in scripts:
             failures.append(f"Missing visible feedback message: {text}")
+
+    for text in ("非资金全自动", "平台人工待处理", "执行成果：", "自动待执行", "自动执行中"):
+        if text not in scripts:
+            failures.append(f"Autonomous UI copy missing: {text}")
 
     required_routes = (
         "/api/daily-review/generate",
