@@ -7,6 +7,11 @@ const metricLabels = {
   order_to_complete_pct: '订单完成率', order_cancel_pct: '订单取消率', inquiry_to_approval_pct: '咨询到审核通过', referral_to_order_pct: '引导到订单',
 };
 
+const CORE_BUSINESS_FIELDS = [
+  'mini_program_visits', 'repair_requests', 'new_users', 'leads',
+  'new_orders', 'completed_orders', 'cancelled_orders',
+];
+
 function showValue(value, suffix = '') {
   return value === null || value === undefined ? '<b class="missing-value">未接入</b>' : `<b>${esc(value)}${suffix}</b>`;
 }
@@ -34,6 +39,64 @@ function renderChannels(module) {
   $('channel-effect').className = 'channel-table';
   $('channel-effect').innerHTML = '<div class="channel-row channel-header"><span>渠道</span><span>访问</span><span>订单</span><span>转化率</span></div>'
     + channels.map(row => `<div class="channel-row"><strong>${esc(row.channel)}</strong><span>${row.visits ?? '未接入'}</span><span>${row.orders ?? '未接入'}</span><span>${row.conversion_pct === null ? '数据不足' : `${esc(row.conversion_pct)}%`}</span></div>`).join('');
+}
+
+function applyCoreAnalyticsLayout() {
+  const page = $('analytics');
+  if (!page) return;
+  const title = page.querySelector('.page-title h2');
+  const intro = page.querySelector('.page-title p');
+  if (title) title.textContent = '核心经营分析';
+  if (intro) intro.textContent = '重点看用户增长和订单转化；师傅、团长、渠道等真实汇总保留在上方辅助数据中，不占核心分析区。';
+  ['technician-supply', 'leader-promotion', 'channel-effect'].forEach(id => {
+    const article = $(id)?.closest('article');
+    if (article) article.style.display = 'none';
+  });
+}
+
+function coreBusinessSnapshot(source) {
+  const s = source?.summary || {};
+  const users = s.users || {};
+  const orders = s.orders || {};
+  return {
+    mini_program_visits: null,
+    repair_requests: null,
+    new_users: users.new_today ?? null,
+    leads: null,
+    new_orders: orders.today ?? null,
+    completed_orders: orders.completed ?? null,
+    cancelled_orders: orders.cancelled ?? null,
+  };
+}
+
+function coreCompleteness(source) {
+  const snapshot = coreBusinessSnapshot(source);
+  const present = CORE_BUSINESS_FIELDS.filter(key => snapshot[key] !== null && snapshot[key] !== undefined);
+  return {
+    present: present.length,
+    total: CORE_BUSINESS_FIELDS.length,
+    ratio_pct: Math.round(present.length * 1000 / CORE_BUSINESS_FIELDS.length) / 10,
+    missing_fields: CORE_BUSINESS_FIELDS.filter(key => !present.includes(key)),
+  };
+}
+
+function renderCoreBusinessMetrics(source) {
+  const snapshot = coreBusinessSnapshot(source);
+  $('user-growth').className = 'analysis-body';
+  $('user-growth').innerHTML = `<div class="analysis-values">
+    <div>${showValue(snapshot.mini_program_visits)}<small>小程序访问</small></div>
+    <div>${showValue(snapshot.repair_requests)}<small>维修需求</small></div>
+    <div>${showValue(snapshot.new_users)}<small>今日新增用户</small></div>
+    <div>${showValue(snapshot.leads)}<small>有效线索</small></div>
+  </div><div class="rate-list"><span>只显示真实来源；缺失数据不以 0 或估算值补齐</span></div>`;
+
+  $('order-conversion').className = 'analysis-body';
+  $('order-conversion').innerHTML = `<div class="analysis-values">
+    <div>${showValue(snapshot.repair_requests)}<small>维修需求</small></div>
+    <div>${showValue(snapshot.new_orders)}<small>今日新增订单</small></div>
+    <div>${showValue(snapshot.completed_orders)}<small>累计已完成订单</small></div>
+    <div>${showValue(snapshot.cancelled_orders)}<small>累计取消订单</small></div>
+  </div><div class="rate-list"><span>今日新增与累计状态属于不同统计窗口，不跨窗口计算虚假转化率</span></div>`;
 }
 
 function ensureLiveBusinessPanel() {
@@ -126,23 +189,28 @@ async function refreshBusinessSource() {
 }
 
 async function loadAnalytics() {
-  const data = await api('/api/business-analytics');
-  const connected = data.status === 'verified';
-  const completeness = data.completeness || {present:0,total:0,ratio_pct:0,missing_fields:[]};
-  $('analytics-status').textContent = connected ? `已连接已验证经营快照 · 完整度 ${completeness.present}/${completeness.total}` : '真实经营数据尚未接入';
+  applyCoreAnalyticsLayout();
+  const [data, source] = await Promise.all([api('/api/business-analytics'), api('/api/business-source/status')]);
+  const connected = source?.status === 'connected' || data.status === 'verified';
+  const core = source?.status === 'connected' ? coreCompleteness(source) : {present:0,total:CORE_BUSINESS_FIELDS.length,ratio_pct:0,missing_fields:[...CORE_BUSINESS_FIELDS]};
+  $('analytics-status').textContent = connected
+    ? `真实经营数据已验证接入 · 核心经营数据完整度 ${core.present}/${core.total}`
+    : '真实经营数据尚未接入';
   $('analytics-source').textContent = connected
-    ? `来源：${data.source} · 截止：${data.as_of} · 统计窗口：${data.window || '未说明'} · 完整度：${completeness.ratio_pct}%`
-    : `${data.message} 需要来源 source、统计时间 as_of 和聚合指标；不接收手机号、地址、身份、密钥或资金明细。`;
-  $('analytics-badge').textContent = connected ? (completeness.ratio_pct >= 80 ? '已验证' : '已验证·部分数据') : '待接入';
+    ? `来源：${source?.source || data.source} · 截止：${source?.remote_as_of || data.as_of} · 核心完整度：${core.ratio_pct}%`
+    : `${data.message} 核心分析只关注用户增长和订单转化；缺失项保持“未接入”。`;
+  $('analytics-badge').textContent = connected ? (core.present === core.total ? '已验证·核心齐全' : '已验证·部分核心数据') : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
-  $('analytics-truth').textContent = connected && completeness.missing_fields?.length
-    ? `${data.truth_rule} 当前仍缺 ${completeness.missing_fields.length} 类聚合指标，缺失项不会用 0 或推测值代替。`
-    : data.truth_rule;
-  renderModule('user-growth', data.modules.user_growth);
-  renderModule('order-conversion', data.modules.order_conversion);
-  renderModule('technician-supply', data.modules.technician_supply);
-  renderModule('leader-promotion', data.modules.leader_promotion);
-  renderChannels(data.modules.channel_effect);
+  $('analytics-truth').textContent = connected && core.missing_fields.length
+    ? `只显示已验证真实数据；核心分析仍缺 ${core.missing_fields.length} 项，不会用 0、估算值或公开市场信号代替。`
+    : '只显示已验证真实数据；不接收手机号、地址、身份、密钥或资金明细。';
+
+  if (source?.status === 'connected') {
+    renderCoreBusinessMetrics(source);
+  } else {
+    renderModule('user-growth', data.modules.user_growth);
+    renderModule('order-conversion', data.modules.order_conversion);
+  }
 }
 
 $('import-business').addEventListener('click', async () => {
@@ -171,5 +239,6 @@ document.addEventListener('click', event => {
   setTimeout(() => { $('live-business-panel')?.scrollIntoView({behavior:'smooth',block:'center'}); toast('已打开真实经营数据只读连接'); }, 0);
 }, true);
 
+applyCoreAnalyticsLayout();
 ensureLiveBusinessPanel();
 Promise.all([loadBusinessSource(), loadAnalytics()]).catch(error => toast(error.message));
