@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卡嘴智 R7 双向桥闭环测试</title>
+<style>
+body{margin:0;background:#f4f7fb;color:#172033;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}.wrap{max-width:900px;margin:48px auto;padding:0 20px}.card{background:#fff;border:1px solid #e4eaf3;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(23,32,51,.06)}h1{margin:0 0 8px;font-size:28px}.sub{color:#667085;margin-bottom:24px}.actions{display:flex;gap:12px;flex-wrap:wrap}button{border:0;border-radius:10px;padding:12px 22px;font-size:16px;cursor:pointer}.primary{background:#2f66e8;color:#fff}.secondary{background:#eef3ff;color:#234da8}button:disabled{opacity:.55;cursor:not-allowed}.summary{margin-top:24px;padding:16px;border-radius:12px;background:#f7f9fc}.summary.pass{background:#ecfdf3;color:#176c3a}.summary.fail{background:#fff1f0;color:#b42318}.checks{margin-top:18px;display:grid;gap:10px}.row{display:grid;grid-template-columns:140px 90px 1fr;gap:14px;align-items:center;padding:12px 14px;border:1px solid #e7ecf3;border-radius:10px;background:#fff}.ok{color:#16803c;font-weight:700}.bad{color:#b42318;font-weight:700}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all}.note{margin-top:20px;color:#667085;font-size:14px;line-height:1.7}.back{margin-top:20px;display:inline-block;color:#2f66e8;text-decoration:none}</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>双向桥一键闭环测试</h1>
+    <div class="sub">验证根目录、inbox 写入、指令解析、任务创建、archive 和 receipt。测试任务仍遵守本机审批策略，不会绕过人工审批。</div>
+    <div class="actions">
+      <button id="run" class="primary">开始一键闭环测试</button>
+      <button id="refresh" class="secondary">刷新桥状态</button>
+    </div>
+    <div id="summary" class="summary">尚未运行测试。</div>
+    <div id="checks" class="checks"></div>
+    <div id="meta" class="note"></div>
+    <a class="back" href="/">返回 R7 主界面</a>
+  </div>
+</div>
+<script>
+const summary=document.getElementById('summary');
+const checks=document.getElementById('checks');
+const meta=document.getElementById('meta');
+const run=document.getElementById('run');
+const refresh=document.getElementById('refresh');
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function api(path,options){const r=await fetch(path,options);const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data}
+function render(data){summary.className='summary '+(data.passed?'pass':'fail');summary.textContent=data.message|| (data.passed?'PASS':'FAIL');checks.innerHTML=(data.checks||[]).map(x=>`<div class="row"><strong>${esc(x.name)}</strong><span class="${x.passed?'ok':'bad'}">${x.passed?'PASS':'FAIL'}</span><span>${esc(x.message)}</span></div>`).join('');meta.innerHTML=`command_id：<span class="mono">${esc(data.command_id||'—')}</span><br>job_id：<span class="mono">${esc(data.job_id||'—')}</span>`}
+run.addEventListener('click',async()=>{run.disabled=true;run.textContent='测试中…';summary.className='summary';summary.textContent='正在执行真实桥接闭环测试…';checks.innerHTML='';meta.innerHTML='';try{const data=await api('/api/bridge/self-test',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});render(data)}catch(e){summary.className='summary fail';summary.textContent='FAIL：'+e.message}finally{run.disabled=false;run.textContent='开始一键闭环测试'}});
+refresh.addEventListener('click',async()=>{refresh.disabled=true;try{const s=await api('/api/bridge/status');summary.className='summary '+(s.status==='connected'?'pass':'fail');summary.textContent=`双向桥：${s.status_label}；待接收指令 ${s.pending_commands||0} 条`;checks.innerHTML='';meta.innerHTML=`根目录：<span class="mono">${esc(s.bridge_root||s.root||'未配置')}</span>`}catch(e){summary.className='summary fail';summary.textContent='读取状态失败：'+e.message}finally{refresh.disabled=false}});
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@ from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from integrations.bridge import (
     bridge_status, configure_bridge, disable_bridge, export_report,
-    list_bridge_commands, sync_once as bridge_sync_once,
+    list_bridge_commands, self_test as bridge_self_test, sync_once as bridge_sync_once,
 )
 from integrations.manager import (
     ask_ai, control_center, integration_status, model_routes, save_ai_config,
@@ -93,6 +93,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "bidirectional_operations_bridge",
                         "offline_autonomous_mode",
                         "bridge_command_receipts",
+                        "bridge_closed_loop_self_test",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -153,6 +154,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/integrations/ai/configure", "/api/integrations/ai/test",
             "/api/ai/command", "/api/system/diagnostics",
             "/api/bridge/configure", "/api/bridge/disable", "/api/bridge/sync", "/api/bridge/report",
+            "/api/bridge/self-test",
             "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
         ):
             self.send_error(404)
@@ -199,6 +201,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = bridge_sync_once()
             elif path == "/api/bridge/report":
                 result = export_report()
+            elif path == "/api/bridge/self-test":
+                result = bridge_self_test()
             elif path == "/api/r7/jobs":
                 result = create_job(payload)
             elif path == "/api/r7/jobs/command":

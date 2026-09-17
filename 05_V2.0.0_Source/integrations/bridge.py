@@ -45,6 +45,38 @@ def _layout(root):
         (root / relative).mkdir(parents=True, exist_ok=True)
 
 
+def _probe_root(root):
+    """Verify bridge read/write access without fixed-name probe races.
+
+    Several UI endpoints can call bridge_status concurrently. A shared probe
+    filename let one request delete another request's probe, briefly reporting
+    Google Drive as unavailable. Use a unique tempfile and make cleanup
+    best-effort so cloud sync latency cannot flip a healthy bridge to degraded.
+    """
+    probe = None
+    try:
+        _layout(root)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=root,
+            prefix=".bridge-probe.", suffix=".tmp", delete=False,
+        ) as handle:
+            probe = Path(handle.name)
+            handle.write("ok")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if probe.read_text(encoding="utf-8") != "ok":
+            raise OSError("bridge probe mismatch")
+        return True, None
+    except OSError as exc:
+        return False, str(exc)[:240]
+    finally:
+        if probe is not None and probe.exists():
+            try:
+                probe.unlink()
+            except OSError:
+                pass
+
+
 def _write_external(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -74,15 +106,9 @@ def configure_bridge(payload):
     if not base.is_absolute():
         raise ValueError("双向桥目录必须使用绝对路径")
     root = base if base.name == BRIDGE_DIR else base / BRIDGE_DIR
-    try:
-        _layout(root)
-        probe = root / ".bridge-write-test"
-        probe.write_text("ok", encoding="utf-8")
-        if probe.read_text(encoding="utf-8") != "ok":
-            raise OSError("bridge probe mismatch")
-        probe.unlink()
-    except OSError as exc:
-        raise ValueError("双向桥目录不可写，请检查云盘同步目录或权限") from exc
+    connected, error = _probe_root(root)
+    if not connected:
+        raise ValueError("双向桥目录不可写，请检查云盘同步目录或权限")
     config = {"provider": "filesystem_sync", "root": str(base), "enabled": True,
               "configured_at": now_iso(), "source": "owner_config"}
     write_json(CONFIG_PATH, config)
@@ -125,16 +151,7 @@ def bridge_status():
             "last_error": state.get("last_error"), "pending_commands": 0,
             "offline_policy": "ChatGPT/云端不可用时继续执行最后已批准的本地低风险任务，并积累结果等待下次同步。",
         }
-    try:
-        _layout(root)
-        probe = root / ".bridge-status-test"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink()
-        connected = True
-        error = None
-    except OSError as exc:
-        connected = False
-        error = str(exc)[:240]
+    connected, error = _probe_root(root)
     return {
         "id": "operations_bridge", "name": "双向运营桥",
         "status": "connected" if connected else "degraded",
@@ -290,6 +307,81 @@ def sync_once():
     latest = export_report()
     return {"synced": True, "imported": imported, "rejected": rejected,
             "status": bridge_status(), "report": latest.get("report") or exported.get("report")}
+
+
+def self_test():
+    """Exercise the real bridge path without bypassing local approval policy."""
+    status = bridge_status()
+    checks = []
+
+    def mark(name, passed, message):
+        checks.append({"name": name, "passed": bool(passed), "message": str(message)})
+        return bool(passed)
+
+    if status.get("status") != "connected" or not status.get("bridge_root"):
+        mark("根目录", False, status.get("message") or "双向桥未连接")
+        return {"passed": False, "command_id": None, "job_id": None, "checks": checks,
+                "message": "双向桥闭环测试失败：请先连接可写的同步根目录。"}
+
+    root = Path(status["bridge_root"])
+    root_ok, root_error = _probe_root(root)
+    mark("根目录", root_ok, str(root) if root_ok else (root_error or "根目录不可写"))
+    if not root_ok:
+        return {"passed": False, "command_id": None, "job_id": None, "checks": checks,
+                "message": "双向桥闭环测试失败：根目录不可写。"}
+
+    stamp = datetime.now().astimezone().strftime("%Y%m%d%H%M%S%f")
+    command_id = f"selftest-{stamp}"
+    filename = f"{command_id}.json"
+    inbox_path = root / "inbox" / filename
+    archive_path = root / "archive" / filename
+    receipt_path = root / "outbox" / "receipts" / f"{command_id}.json"
+    payload = {
+        "id": command_id,
+        "kind": "manual_task",
+        "title": "双向桥一键闭环自检：验证指令接收、任务创建、归档和回执",
+        "due_at": "",
+    }
+
+    try:
+        _write_external(inbox_path, payload)
+        parsed = json.loads(inbox_path.read_text(encoding="utf-8"))
+        mark("inbox 写入", parsed.get("id") == command_id, str(inbox_path))
+        mark("指令解析", parsed.get("kind") in ALLOWED_KINDS and bool(parsed.get("title")),
+             "JSON 格式与安全白名单校验通过")
+    except (OSError, ValueError, TypeError) as exc:
+        mark("inbox 写入", False, str(exc)[:240])
+        return {"passed": False, "command_id": command_id, "job_id": None, "checks": checks,
+                "message": "双向桥闭环测试失败：无法写入或解析测试指令。"}
+
+    sync_result = sync_once()
+    records = read_json(COMMANDS_PATH, {"items": {}}).get("items", {})
+    record = records.get(command_id) or {}
+    job_id = record.get("job_id")
+    mark("任务创建", bool(job_id) and sync_result.get("imported", 0) >= 1,
+         f"job_id={job_id or '未创建'}")
+    mark("archive", archive_path.exists(), str(archive_path))
+
+    receipt = {}
+    try:
+        if receipt_path.exists():
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt_ok = receipt.get("command_id") == command_id and receipt.get("job_id") == job_id
+        mark("receipt", receipt_ok,
+             f"state={receipt.get('state') or '缺失'}; path={receipt_path}")
+    except (OSError, ValueError, TypeError) as exc:
+        mark("receipt", False, str(exc)[:240])
+
+    passed = all(item["passed"] for item in checks)
+    return {
+        "passed": passed,
+        "command_id": command_id,
+        "job_id": job_id,
+        "checks": checks,
+        "receipt": receipt,
+        "message": "双向桥闭环测试通过；测试任务仍遵守本机审批策略。" if passed else
+                   "双向桥闭环测试未完全通过，请按失败项检查。",
+    }
 
 
 def list_bridge_commands():
