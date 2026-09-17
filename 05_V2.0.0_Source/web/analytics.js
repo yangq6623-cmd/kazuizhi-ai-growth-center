@@ -1,5 +1,5 @@
 const metricLabels = {
-  mini_program_visits: '小程序访问', repair_requests: '维修需求', new_users: '新增用户', leads: '有效线索',
+  mini_program_visits: '小程序访问UV（最近完整日）', repair_requests: '维修需求', new_users: '新增用户', leads: '有效线索',
   new_orders: '新增订单', completed_orders: '完成订单', cancelled_orders: '取消订单',
   new_technicians: '新增师傅', approved_technicians: '审核通过师傅', active_technicians: '活跃师傅', technician_inquiries: '师傅咨询',
   new_leaders: '新增团长', active_leaders: '活跃团长', leader_referrals: '团长引导需求', leader_orders: '团长贡献订单',
@@ -58,11 +58,12 @@ function coreBusinessSnapshot(source) {
   const s = source?.summary || {};
   const users = s.users || {};
   const orders = s.orders || {};
+  const funnel = s.funnel || {};
   return {
-    mini_program_visits: null,
-    repair_requests: null,
+    mini_program_visits: funnel.mini_program_visits ?? null,
+    repair_requests: funnel.repair_requests ?? null,
     new_users: users.new_today ?? null,
-    leads: null,
+    leads: funnel.leads ?? null,
     new_orders: orders.today ?? null,
     completed_orders: orders.completed ?? null,
     cancelled_orders: orders.cancelled ?? null,
@@ -82,17 +83,22 @@ function coreCompleteness(source) {
 
 function renderCoreBusinessMetrics(source) {
   const snapshot = coreBusinessSnapshot(source);
+  const mini = source?.summary?.mini_program || {};
+  const visitLabel = mini.ref_date ? `小程序访问UV（${esc(mini.ref_date)}）` : '小程序访问UV（最近完整日）';
+  const visitNote = mini.status === 'ok'
+    ? `小程序访问来自微信官方日趋势，日期 ${esc(mini.ref_date || '最近完整日')}；维修需求和有效线索按今日生产订单聚合。`
+    : '小程序访问仅接受微信官方统计；若微信数据暂不可用则保持“未接入”，不会估算。';
   $('user-growth').className = 'analysis-body';
   $('user-growth').innerHTML = `<div class="analysis-values">
-    <div>${showValue(snapshot.mini_program_visits)}<small>小程序访问</small></div>
-    <div>${showValue(snapshot.repair_requests)}<small>维修需求</small></div>
+    <div>${showValue(snapshot.mini_program_visits)}<small>${visitLabel}</small></div>
+    <div>${showValue(snapshot.repair_requests)}<small>今日维修需求</small></div>
     <div>${showValue(snapshot.new_users)}<small>今日新增用户</small></div>
-    <div>${showValue(snapshot.leads)}<small>有效线索</small></div>
-  </div><div class="rate-list"><span>只显示真实来源；缺失数据不以 0 或估算值补齐</span></div>`;
+    <div>${showValue(snapshot.leads)}<small>今日有效线索</small></div>
+  </div><div class="rate-list"><span>${visitNote}</span></div>`;
 
   $('order-conversion').className = 'analysis-body';
   $('order-conversion').innerHTML = `<div class="analysis-values">
-    <div>${showValue(snapshot.repair_requests)}<small>维修需求</small></div>
+    <div>${showValue(snapshot.repair_requests)}<small>今日维修需求</small></div>
     <div>${showValue(snapshot.new_orders)}<small>今日新增订单</small></div>
     <div>${showValue(snapshot.completed_orders)}<small>累计已完成订单</small></div>
     <div>${showValue(snapshot.cancelled_orders)}<small>累计取消订单</small></div>
@@ -137,7 +143,7 @@ function renderBusinessSource(data) {
   $('business-source-key').placeholder = data.has_key ? '只读密钥已加密保存；无需重复填写' : '粘贴服务器 SHOW_READONLY_KEY.bat 显示的密钥';
   $('business-source-message').textContent = `${data.message || ''}${data.remote_as_of ? ` · 数据截止：${data.remote_as_of}` : ''}`;
   const s = data.summary || {};
-  const u = s.users || {}, o = s.orders || {}, t = s.technicians || {}, p = s.partners || {}, promotion = s.promotion || {};
+  const u = s.users || {}, o = s.orders || {}, t = s.technicians || {}, p = s.partners || {}, promotion = s.promotion || {}, funnel = s.funnel || {}, mini = s.mini_program || {};
   const q = data.data_quality || {};
   $('business-source-summary').innerHTML = connected ? `
     <div class="analysis-values">
@@ -146,6 +152,7 @@ function renderBusinessSource(data) {
       ${businessStat('师傅总数', t.total)}${businessStat('活跃师傅', t.active)}
       ${businessStat('团长总数', p.total)}${businessStat('活跃团长', p.active)}
       ${businessStat('推广记录', promotion.event_records)}${businessStat('团长归因订单', promotion.partner_attributed_orders)}
+      ${businessStat(mini.ref_date ? `小程序UV ${mini.ref_date}` : '小程序UV', funnel.mini_program_visits)}${businessStat('今日维修需求', funnel.repair_requests)}${businessStat('今日有效线索', funnel.leads)}
     </div>
     <div class="rate-list"><span>只读：${q.read_only === true ? '已验证' : '待验证'}</span><span>写操作：${esc(q.write_operations ?? '—')}</span><span>数据完整：${esc(q.required_documents_present ?? '—')}/${esc(q.required_documents_total ?? '—')}</span></div>`
     : '<div class="empty">连接验证通过后，这里显示生产服务器的真实经营汇总。</div>';
@@ -203,7 +210,7 @@ async function loadAnalytics() {
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
   $('analytics-truth').textContent = connected && core.missing_fields.length
     ? `只显示已验证真实数据；核心分析仍缺 ${core.missing_fields.length} 项，不会用 0、估算值或公开市场信号代替。`
-    : '只显示已验证真实数据；不接收手机号、地址、身份、密钥或资金明细。';
+    : '只显示已验证真实数据；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合。';
 
   if (source?.status === 'connected') {
     renderCoreBusinessMetrics(source);
