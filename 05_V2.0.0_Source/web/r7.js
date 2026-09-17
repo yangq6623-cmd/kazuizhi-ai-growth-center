@@ -2,6 +2,24 @@ const R7_STATE={awaiting_approval:'待审批',human_required:'平台人工待处
 const R7_AGENT_TARGETS={market:'insights',seo:'promotion',content:'promotion',social:'promotion',video:'promotion',local:'insights',conversion:'analytics',review:'review'};
 let r7Jobs=[];
 
+function applyAutonomyCopy(){
+  const workflow=$('workflow');
+  if(!workflow)return;
+  const pageCopy=workflow.querySelector('.page-title p');
+  if(pageCopy)pageCopy.textContent='非资金运营任务默认自动执行并全程留痕；资金、退款、结算等事项只记录为平台人工待处理。AI 员工不自行突破资金安全边界。';
+  const overview=workflow.querySelectorAll('.r7-overview article p');
+  if(overview[0])overview[0].textContent='本地调度自动检查到期任务，无需人工批准非资金运营任务。';
+  if(overview[1])overview[1].textContent='失败任务自动记录并按策略重试；资金事项单独进入平台人工待处理。';
+  const createTitle=workflow.querySelector('.grid.two article .article-head h3');
+  if(createTitle)createTitle.textContent='创建自动运营任务';
+  const createButton=$('r7-create');if(createButton)createButton.textContent='创建自动任务';
+  const kind=$('r7-kind');if(kind&&kind.options[0])kind.options[0].textContent='自动运营任务';
+  const help=workflow.querySelector('.r7-create-form + .form-help');
+  if(help)help.textContent='非资金任务创建后自动排队执行；退款、结算、改价、提现等资金事项只记录并交平台人工处理。';
+  const chip=workflow.querySelector('#r7-agent-grid')?.closest('article')?.querySelector('.chip');
+  if(chip)chip.textContent='非资金全自动';
+}
+
 function r7Action(job,action,label){return `<button class="outline-button r7-action" data-job="${esc(job.id)}" data-action="${action}">${label}</button>`}
 function r7ResultText(result){
   if(!result)return '';
@@ -54,6 +72,7 @@ function bindR7OverviewActions(){
 
 async function loadR7(){
   try{
+    applyAutonomyCopy();
     const [jobs,agents,engine,audit,routes]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/agents'),api('/api/r7/engine'),api('/api/r7/audit'),api('/api/r7/model-routes')]);
     renderR7Jobs(jobs.items);
     const human=engine.jobs.human_required||0, queued=engine.jobs.queued||0, running=engine.jobs.running||0, failed=engine.jobs.failed||0;
@@ -69,6 +88,7 @@ async function loadR7(){
   }catch(error){toast(error.message,'error');return false}
 }
 window.loadR7=loadR7;
+applyAutonomyCopy();
 
 $('r7-create').addEventListener('click',async()=>{
   const button=$('r7-create');button.disabled=true;button.textContent='创建中…';
