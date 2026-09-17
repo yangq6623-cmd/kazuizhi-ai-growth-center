@@ -29,6 +29,8 @@ AGENT_RULES = (
 
 def is_financial(text):
     lowered = str(text or "").lower()
+    for phrase in ("非资金", "不涉及资金", "无需资金", "无资金操作", "不含资金"):
+        lowered = lowered.replace(phrase.lower(), "")
     return any(term.lower() in lowered for term in FINANCIAL_TERMS)
 
 
