@@ -67,6 +67,37 @@ function renderR7Jobs(items){
   }));
 }
 
+function ensureHumanInterventionPanel(){
+  let panel=$('r7-human-panel');
+  if(panel)return panel;
+  const audit=$('r7-audit-list')?.closest('article');
+  if(!audit)return null;
+  panel=document.createElement('article');
+  panel.id='r7-human-panel';
+  panel.className='wide';
+  panel.innerHTML='<div class="article-head"><div><label>平台人工待处理</label><h3 id="r7-human-title">0 项需要平台人工介入</h3></div><span class="chip">只记录 · 不自动执行</span></div><div id="r7-human-list" class="friendly-empty">当前没有资金类人工事项。</div>';
+  audit.parentNode.insertBefore(panel,audit);
+  return panel;
+}
+function interventionType(title){
+  const text=String(title||'');
+  if(text.includes('退款')||text.includes('退费')||text.includes('返款'))return '退款';
+  if(text.includes('提现'))return '提现';
+  if(text.includes('结算'))return '结算';
+  if(text.includes('改价')||text.includes('调价'))return '改价';
+  if(text.includes('付款')||text.includes('支付')||text.includes('打款')||text.includes('转账'))return '付款/划转';
+  return '资金事项';
+}
+function renderHumanInterventions(items){
+  ensureHumanInterventionPanel();
+  const list=$('r7-human-list'), title=$('r7-human-title');
+  if(!list||!title)return;
+  const rows=(items||[]).slice(0,20);
+  title.textContent=`${rows.length} 项需要平台人工介入`;
+  list.className=rows.length?'r7-job-list':'friendly-empty';
+  list.innerHTML=rows.length?rows.map(item=>`<div class="r7-job"><div class="r7-job-top"><div><strong>${esc(interventionType(item.title))} · ${esc(item.title||'未命名事项')}</strong><small>发现时间：${formatTime(item.created_at)} · 来源：${esc(item.source||'R7 自动识别')}</small></div><span class="status-pill blocked">${esc(item.status||'待平台人工处理')}</span></div><p>${esc(item.reason||'涉及资金事项，R7 仅记录，不执行。')}</p><div class="r7-job-actions"><span class="subtle">处理入口：小程序/平台后台。R7 不提供资金执行按钮。</span></div></div>`).join(''):'当前没有资金类人工事项。';
+}
+
 function renderR7Agents(items){
   $('r7-agent-grid').innerHTML=items.map(agent=>`<div class="r7-agent r7-agent-action" role="button" tabindex="0" data-agent="${esc(agent.id)}" data-target="${esc(R7_AGENT_TARGETS[agent.id]||'workflow')}"><b>${esc(agent.name)}</b><span>${esc(agent.purpose)}</span><small>非资金任务默认自动执行 · 点击打开对应工作台</small></div>`).join('');
   document.querySelectorAll('.r7-agent-action').forEach(card=>{
@@ -95,6 +126,7 @@ async function loadR7(){
     $('r7-migration').textContent=engine.migration.result==='complete'?engine.migration.copied.length?`R6 数据备份已完成 · ${engine.migration.copied.length} 个文件`:`未发现旧版数据 · 可直接开始`:'正在检查旧数据';
     $('r7-model-route').textContent=`自动化策略：${engine.autonomy_policy||'非资金自动执行'}。当前可用模型路线：${routes.routes.map(x=>x.label).join('、')}。`;
     renderR7Agents(agents.items);
+    renderHumanInterventions(engine.human_interventions||[]);
     $('r7-audit-integrity').textContent=audit.integrity==='verified'?'审计链已验证 · 自动执行过程可追溯':'审计链异常，请停止执行并检查';
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
     bindR7OverviewActions();
