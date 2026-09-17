@@ -20,6 +20,10 @@ from integrations.bridge import (
     bridge_status, configure_bridge, disable_bridge, export_report,
     list_bridge_commands, self_test as bridge_self_test, sync_once as bridge_sync_once,
 )
+from integrations.business_data import (
+    business_source_status, configure_business_source, refresh_business_source,
+    refresh_if_due as refresh_business_if_due, test_business_source,
+)
 from integrations.manager import (
     ask_ai, control_center, integration_status, model_routes, save_ai_config,
     system_diagnostics, test_ai_connection,
@@ -55,6 +59,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path.startswith("/api/"):
+            try:
+                refresh_business_if_due()
+            except Exception:
+                # Live business data must never prevent the local R7 control plane from loading.
+                pass
             routes = {
                 "/api/status": dict(
                     get_version(),
@@ -94,6 +103,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "offline_autonomous_mode",
                         "bridge_command_receipts",
                         "bridge_closed_loop_self_test",
+                        "verified_readonly_business_source",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -108,6 +118,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/experiments": get_experiments(),
                 "/api/business-analytics": build_analytics(),
                 "/api/business-metrics/template": import_template(),
+                "/api/business-source/status": business_source_status(build_analytics()),
                 "/api/promotion/keywords": list_keywords(),
                 "/api/promotion/history": promotion_history(),
                 "/api/operations/tasks": list_tasks(),
@@ -147,6 +158,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path not in (
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
+            "/api/business-source/configure", "/api/business-source/test", "/api/business-source/refresh",
             "/api/promotion/seo-content", "/api/promotion/geo-plan",
             "/api/promotion/ad-copy", "/api/promotion/video-script",
             "/api/operations/tasks", "/api/operations/tasks/update",
@@ -167,6 +179,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
             if path == "/api/business-metrics/import":
                 result = import_snapshot(payload)
+            elif path == "/api/business-source/configure":
+                result = configure_business_source(payload)
+            elif path == "/api/business-source/test":
+                result = test_business_source()
+            elif path == "/api/business-source/refresh":
+                result = refresh_business_source(force=True)
             elif path == "/api/promotion/keywords":
                 result = add_keyword(payload)
             elif path == "/api/promotion/seo-content":
