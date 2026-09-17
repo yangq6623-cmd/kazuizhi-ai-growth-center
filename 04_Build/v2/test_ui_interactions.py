@@ -79,7 +79,7 @@ def main():
             failures.append(f"Missing dynamic interaction binding: {label} ({token})")
 
     visible_feedback = (
-        "自动任务、员工和审计状态已刷新",
+        "今日任务、AI 员工和完成进度已刷新",
         "公开需求信号已刷新；真实客户数据仍以接入状态为准",
         "任务状态已更新",
         "任务已进入自动执行队列",
@@ -90,13 +90,13 @@ def main():
         "双向运营桥已连接",
         "当前未连接云端桥，已保持本地自主运行",
         "资金操作按安全策略永久禁止自动执行",
-        "已定位到自动任务记录",
+        "正在查看",
     )
     for text in visible_feedback:
         if text not in scripts:
             failures.append(f"Missing visible feedback message: {text}")
 
-    for text in ("非资金全自动", "平台人工待处理", "执行成果：", "自动待执行", "自动执行中"):
+    for text in ("全自动", "平台人工待处理", "执行成果：", "自动待执行", "自动执行中"):
         if text not in scripts:
             failures.append(f"Autonomous UI copy missing: {text}")
 
