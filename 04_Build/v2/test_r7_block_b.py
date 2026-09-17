@@ -1,4 +1,4 @@
-"""Acceptance tests for R7 Block B: command center, bridge and safe task handoff."""
+"""Acceptance tests for R7 Block B: autonomous bridge, receipts and finance handoff."""
 
 import json
 import os
@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "05_V2.0.0_Source"))
 
 from core import r7_engine  # noqa: E402
-from core.storage import data_root  # noqa: E402
 from integrations.bridge import (  # noqa: E402
     bridge_status, configure_bridge, list_bridge_commands, self_test, sync_once,
 )
@@ -28,7 +27,6 @@ def main():
         os.environ["LOCALAPPDATA"] = tmp
         try:
             r7_engine.migrate_r6()
-            # Without any cloud folder the runtime must remain truthful and autonomous.
             status = bridge_status()
             check(status["status"] == "not_connected", "Unconfigured bridge was reported connected")
             check(status["operating_mode"] == "local_autonomous", "Offline autonomous mode missing")
@@ -49,7 +47,7 @@ def main():
             command = {
                 "id": "chatgpt-plan-001",
                 "kind": "manual_task",
-                "title": "审核今日 SEO/GEO 草稿",
+                "title": "生成今日涟水县维修 SEO/GEO 草稿",
             }
             (bridge_root / "inbox" / "chatgpt-plan-001.json").write_text(
                 json.dumps(command, ensure_ascii=False), encoding="utf-8"
@@ -60,9 +58,9 @@ def main():
             matches = [x for x in jobs if x["title"] == command["title"]]
             check(len(matches) == 1, "Bridge command did not create exactly one job")
             job = matches[0]
-            check(job["state"] == "awaiting_approval", "Cloud command bypassed local approval")
+            check(job["state"] == "queued", "Non-financial cloud command was not auto-queued")
+            check(job["approved_by"] == "autonomy_policy", "Autonomy policy did not approve non-financial work")
 
-            # Replaying the same command id must never duplicate the local job.
             (bridge_root / "inbox" / "chatgpt-plan-001.json").write_text(
                 json.dumps(command, ensure_ascii=False), encoding="utf-8"
             )
@@ -71,20 +69,33 @@ def main():
             jobs = r7_engine.list_jobs()["items"]
             check(len([x for x in jobs if x["title"] == command["title"]]) == 1, "Duplicate job created")
 
-            # The receipt must track the actual local lifecycle.
             receipt_path = bridge_root / "outbox" / "receipts" / "chatgpt-plan-001.json"
             check(receipt_path.exists(), "Command ACK receipt missing")
             accepted = json.loads(receipt_path.read_text(encoding="utf-8"))
-            check(accepted["state"] == "awaiting_approval", "Receipt did not expose pending approval")
-            r7_engine.command({"id": job["id"], "action": "approve"})
-            r7_engine.command({"id": job["id"], "action": "start"})
-            r7_engine.command({"id": job["id"], "action": "complete", "outcome": "草稿已核查"})
+            check(accepted["state"] == "queued", "Receipt did not expose autonomous queue state")
+            r7_engine.run_due_jobs()
             sync_once()
             completed = json.loads(receipt_path.read_text(encoding="utf-8"))
-            check(completed["state"] == "completed" and completed["progress"] == 100, "Completed job receipt not refreshed")
-            check(completed["result"]["outcome"] == "草稿已核查", "Completion outcome missing from receipt")
+            check(completed["state"] == "completed" and completed["progress"] == 100, "Autonomous job receipt not refreshed")
+            check(completed["result"], "Autonomous completion result missing from receipt")
 
-            # A remote command can never introduce an unapproved executor such as finance or auto-publish.
+            finance = {
+                "id": "chatgpt-finance-001",
+                "kind": "manual_task",
+                "title": "审核订单退款并执行退款",
+            }
+            (bridge_root / "inbox" / "chatgpt-finance-001.json").write_text(
+                json.dumps(finance, ensure_ascii=False), encoding="utf-8"
+            )
+            finance_sync = sync_once()
+            check(finance_sync["imported"] == 1, "Finance command was not recorded")
+            finance_job = next(x for x in r7_engine.list_jobs()["items"] if x["title"] == finance["title"])
+            check(finance_job["state"] == "human_required", "Finance task was not routed to platform staff")
+            check(finance_job["risk"] == "financial", "Finance risk classification missing")
+            r7_engine.run_due_jobs()
+            finance_job_after = next(x for x in r7_engine.list_jobs()["items"] if x["id"] == finance_job["id"])
+            check(finance_job_after["state"] == "human_required", "Finance task was executed automatically")
+
             bad = {"id": "chatgpt-plan-bad", "kind": "auto_publish", "title": "自动发布"}
             (bridge_root / "inbox" / "chatgpt-plan-bad.json").write_text(
                 json.dumps(bad, ensure_ascii=False), encoding="utf-8"
@@ -94,17 +105,16 @@ def main():
             bad_receipt = json.loads((bridge_root / "outbox" / "receipts" / "chatgpt-plan-bad.json").read_text(encoding="utf-8"))
             check(bad_receipt["state"] == "rejected", "Unsafe command receipt missing rejection")
 
-            # One-click self-test must exercise the same bridge path and keep local approval intact.
             one_click = self_test()
             check(one_click["passed"], "One-click bridge self-test did not pass")
             check(one_click["job_id"], "One-click bridge self-test did not create a job")
             check(all(item["passed"] for item in one_click["checks"]), "One-click bridge self-test has failed checks")
             self_receipt = one_click["receipt"]
-            check(self_receipt["state"] == "awaiting_approval", "Self-test bypassed local approval")
+            check(self_receipt["state"] == "queued", "Self-test task did not enter autonomous queue")
             check(self_receipt["job_id"] == one_click["job_id"], "Self-test receipt job mismatch")
 
             commands = list_bridge_commands()
-            check(commands["count"] == 3, "Bridge command ledger count incorrect")
+            check(commands["count"] == 4, "Bridge command ledger count incorrect")
             integrations = integration_status()
             check(integrations["bridge"]["status"] == "connected", "Integration center did not expose bridge")
             center = control_center()
@@ -114,7 +124,7 @@ def main():
             check(any(x["id"] == "bridge" and x["status"] == "pass" for x in diagnostics["checks"]), "Diagnostics did not verify bridge")
             check(r7_engine.audit_history()["integrity"] == "verified", "Audit chain failed after bridge operations")
 
-            print("PASS: R7 Block B bidirectional bridge, dedupe, approval, receipts and self-test")
+            print("PASS: R7 Block B autonomous bridge, dedupe, finance handoff, receipts and self-test")
         finally:
             if old is None:
                 os.environ.pop("LOCALAPPDATA", None)
