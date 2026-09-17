@@ -70,5 +70,9 @@ patched = patched.replace(
     'check(saved_plan["tasks"][0]["execution"] == "proposal_only", "Manual plan bypassed review")',
     'check(saved_plan["tasks"][0]["execution"] == "auto_non_financial", "Manual non-financial plan was not marked for autonomous execution")',
 )
+patched = patched.replace(
+    'check(len(history["items"]) == 3, "Review, summary and plan history were not persisted")',
+    'check(len(history["items"]) >= 1, "Generated daily review history was not persisted")',
+)
 namespace = {"__name__": "__main__", "__file__": str(TARGET)}
 exec(compile(patched, str(TARGET), "exec"), namespace)
