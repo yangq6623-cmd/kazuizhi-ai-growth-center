@@ -34,3 +34,26 @@ $('save-plan').addEventListener('click', async () => {
     toast('明日计划已保存为待审核建议');
   } catch (error) { toast(error.message,'error'); }
 });
+
+// Compact feedback policy: ordinary success messages use only the small corner toast.
+// Keep the wide status bar only for errors that genuinely need attention.
+toast = function(message, type='ok') {
+  const feedback = $('action-feedback');
+  if (feedback) {
+    if (type === 'error') {
+      feedback.textContent = '需要处理：' + message;
+      feedback.className = 'action-feedback error';
+      feedback.hidden = false;
+    } else {
+      feedback.hidden = true;
+      feedback.textContent = '';
+      feedback.className = 'action-feedback';
+    }
+  }
+  const popup = $('toast');
+  if (!popup) return;
+  popup.textContent = message;
+  popup.className = `show ${type}`;
+  const duration = type === 'error' ? 5200 : 2600;
+  setTimeout(() => popup.className = '', duration);
+};
