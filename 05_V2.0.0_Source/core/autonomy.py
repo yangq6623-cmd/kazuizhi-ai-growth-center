@@ -4,7 +4,7 @@ Non-financial operating tasks run automatically. Financial or settlement related
 items are recorded for platform staff and never executed by R7.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from analytics.business_metrics import build_analytics
 from core.storage import now_iso, read_json, write_json
@@ -206,3 +206,46 @@ def refresh_tomorrow_plan(learning=None):
     }
     write_json("plans/latest_plan.json", plan)
     return plan
+
+
+def dispatch_due_plan():
+    """Turn an auto-ready learned plan into real R7 jobs once its date arrives."""
+    plan = read_json("plans/latest_plan.json", {})
+    plan_date = str(plan.get("date") or "")
+    if plan.get("status") != "auto_ready" or not plan_date or plan_date > str(date.today()):
+        return {"dispatched": 0, "date": plan_date or None}
+    state = read_json("r7/plan_dispatch.json", {"dates": []})
+    if plan_date in state.get("dates", []):
+        return {"dispatched": 0, "date": plan_date, "already_dispatched": True}
+
+    from core.r7_engine import create_job
+    created = []
+    for task in plan.get("tasks", [])[:20]:
+        title = str(task.get("title") or "").strip()
+        if not title or task.get("risk") == "financial" or is_financial(title):
+            continue
+        job = create_job({"kind": "manual_task", "title": title, "due_at": ""})
+        created.append(job["id"])
+
+    dates = list(state.get("dates", []))
+    dates.append(plan_date)
+    state.update(dates=dates[-90:], last_dispatched_at=now_iso(), last_job_ids=created)
+    write_json("r7/plan_dispatch.json", state)
+    return {"dispatched": len(created), "date": plan_date, "job_ids": created}
+
+
+def ensure_daily_review(review_hour=18):
+    """Create one automatic daily review job after the configured local hour."""
+    now = datetime.now().astimezone()
+    today = str(now.date())
+    if now.hour < review_hour:
+        return {"created": False, "reason": "not_due", "date": today}
+    state = read_json("r7/daily_cycle.json", {})
+    if state.get("last_review_date") == today:
+        return {"created": False, "reason": "already_created", "date": today}
+
+    from core.r7_engine import create_job
+    job = create_job({"kind": "daily_review", "title": "每日自动复盘、学习并生成明日计划", "due_at": ""})
+    state.update(last_review_date=today, last_review_job_id=job["id"], updated_at=now_iso())
+    write_json("r7/daily_cycle.json", state)
+    return {"created": True, "date": today, "job_id": job["id"]}
