@@ -1,38 +1,50 @@
-"""Produce a reviewable plan; execution remains separate and allow-listed."""
+"""Build tomorrow's plan for autonomous non-financial execution."""
 
 from datetime import date, timedelta
 from core.storage import now_iso, write_json
 
 
-ALLOWLIST = ("run_scan", "add_priority_seed", "add_owner_command")
-FINANCIAL_ACTIONS = ("支付", "退款", "改价", "提现", "结算", "充值", "补贴", "赔付", "佣金打款")
+ALLOWLIST = ("run_scan", "add_priority_seed", "add_owner_command", "generate_content", "local_growth")
+FINANCIAL_ACTIONS = ("支付", "付款", "退款", "改价", "提现", "结算", "充值", "转账", "赔付", "补贴", "佣金打款")
+
+
+def _task(title, reason, action="run_scan", risk="low"):
+    return {
+        "title": title,
+        "reason": reason,
+        "action": action,
+        "risk": risk,
+        "execution": "auto_non_financial",
+    }
 
 
 def build_plan(summary, problems, opportunities):
     tasks = []
     if summary.get("status") == "not_connected":
-        tasks.append({
-            "title": "确认只读经营数据连接状态",
-            "reason": "当前没有可验证的订单、用户或收入数据。",
-            "action": "add_owner_command",
-            "risk": "low",
-            "execution": "proposal_only",
-        })
+        tasks.append(_task(
+            "复核只读经营数据连接状态",
+            "当前没有可验证的订单、用户或收入数据；自动记录缺口但不编造经营数字。",
+            "add_owner_command",
+        ))
     if opportunities:
-        tasks.append({
-            "title": "扫描高优先级本地需求信号",
-            "reason": opportunities[0],
-            "action": "run_scan",
-            "risk": "low",
-            "execution": "proposal_only",
-        })
+        tasks.append(_task(
+            "扫描涟水高优先级本地需求信号",
+            opportunities[0],
+            "run_scan",
+        ))
+    tasks.append(_task(
+        "根据今日结果生成下一轮本地维修增长动作",
+        "持续用已验证结果和公开信号调整次日任务优先级。",
+        "local_growth",
+    ))
     return {
         "date": str(date.today() + timedelta(days=1)),
-        "status": "ready_for_review",
+        "status": "auto_ready",
         "tasks": tasks,
         "allowlist": list(ALLOWLIST),
         "blocked_financial_actions": list(FINANCIAL_ACTIONS),
-        "execution_policy": "计划与执行分离；本页面只生成建议，不直接执行。",
+        "execution_policy": "非资金类运营任务默认自动执行；资金类动作始终要求人工确认。",
+        "learning_policy": "只根据可追溯结果更新运营记忆、优先级和工作流参数，不静默修改程序源代码或安全边界。",
         "problem_count": len(problems),
     }
 
@@ -44,10 +56,10 @@ def save_manual_plan(items):
     plan = {
         "date": str(date.today() + timedelta(days=1)),
         "saved_at": now_iso(),
-        "status": "ready_for_review",
-        "tasks": [{"title": item, "reason": "老板手动录入", "action": "add_owner_command", "risk": "low", "execution": "proposal_only"} for item in clean],
+        "status": "auto_ready",
+        "tasks": [_task(item, "老板手动录入，若不涉及资金则自动执行", "add_owner_command") for item in clean],
         "allowlist": list(ALLOWLIST),
         "blocked_financial_actions": list(FINANCIAL_ACTIONS),
-        "execution_policy": "计划与执行分离；本页面只保存建议，不直接执行。",
+        "execution_policy": "非资金类运营任务默认自动执行；资金类动作始终要求人工确认。",
     }
     return write_json("plans/latest_plan.json", plan)
