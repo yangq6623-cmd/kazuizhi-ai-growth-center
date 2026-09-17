@@ -44,7 +44,32 @@ foreach ($relative in $persistentFiles.Keys) {
     Set-Content -LiteralPath $path -Value $persistentFiles[$relative] -NoNewline
 }
 
+# Real-world upgrade regression: the visible runtime and watchdog-style helper names
+# are running from the installed directory and therefore hold packaged DLLs open.
+# The installer must close all of them itself before replacing files.
+$monitorExe = Join-Path $testRoot 'KazuizhiMonitoring.exe'
+$supervisorExe = Join-Path $testRoot 'KazuizhiSupervisor.exe'
+Copy-Item -LiteralPath $exe -Destination $monitorExe -Force
+Copy-Item -LiteralPath $exe -Destination $supervisorExe -Force
+$activeProcesses = @(
+    (Start-Process -FilePath $exe -ArgumentList @('--no-browser','--port','18876') -PassThru -WindowStyle Hidden),
+    (Start-Process -FilePath $monitorExe -ArgumentList @('--no-browser','--port','18877') -PassThru -WindowStyle Hidden),
+    (Start-Process -FilePath $supervisorExe -ArgumentList @('--no-browser','--port','18878') -PassThru -WindowStyle Hidden)
+)
+Start-Sleep -Seconds 2
+foreach ($runtime in $activeProcesses) {
+    $runtime.Refresh()
+    if ($runtime.HasExited) { throw "Upgrade regression setup failed: runtime $($runtime.Id) exited before reinstall" }
+}
+
 Install-Beta
+foreach ($runtime in $activeProcesses) {
+    try { $runtime.WaitForExit(5000) | Out-Null } catch {}
+    $runtime.Refresh()
+    if (-not $runtime.HasExited) { throw "Installer left active runtime/helper process running: $($runtime.Id)" }
+}
+Remove-Item -LiteralPath $monitorExe,$supervisorExe -Force -ErrorAction SilentlyContinue
+
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Reinstall modified user data sentinel' }
 Assert-PersistentFiles $persistentFiles
 & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $exe
@@ -56,4 +81,4 @@ if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable'
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data sentinel' }
 Assert-PersistentFiles $persistentFiles
 Remove-Item -LiteralPath $sentinel -Force
-Write-Host 'PASS: autonomous install, Windows version, runtime verification, reinstall, real R7 user-data preservation, uninstall preservation'
+Write-Host 'PASS: autonomous install, active-runtime upgrade, watchdog shutdown, Windows version, runtime verification, reinstall, real R7 user-data preservation, uninstall preservation'
