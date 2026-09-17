@@ -20,7 +20,7 @@ Install-Beta
 $exe = Join-Path $testRoot $name
 $version = (Get-Item -LiteralPath $exe).VersionInfo
 if ($version.FileVersion -ne '2.0.0.9' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7 Final') { throw 'Windows EXE version mismatch' }
-& $Python (Join-Path $PSScriptRoot 'verify_v2.py') --exe $exe
+& $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Installed runtime failed verification' }
 
 $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
@@ -47,7 +47,7 @@ foreach ($relative in $persistentFiles.Keys) {
 Install-Beta
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Reinstall modified user data sentinel' }
 Assert-PersistentFiles $persistentFiles
-& $Python (Join-Path $PSScriptRoot 'verify_v2.py') --exe $exe
+& $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Reinstalled runtime failed verification' }
 
 $proc = Start-Process -FilePath (Join-Path $testRoot 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru -WindowStyle Hidden
