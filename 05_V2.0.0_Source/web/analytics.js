@@ -47,7 +47,7 @@ function applyCoreAnalyticsLayout() {
   const title = page.querySelector('.page-title h2');
   const intro = page.querySelector('.page-title p');
   if (title) title.textContent = '核心经营分析';
-  if (intro) intro.textContent = '重点看用户增长和订单转化；师傅、团长、渠道等真实汇总保留在上方辅助数据中，不占核心分析区。';
+  if (intro) intro.textContent = '只看 7 个核心经营指标：访问、需求、新增用户、有效线索、新增订单、完成订单和取消订单。';
   ['technician-supply', 'leader-promotion', 'channel-effect'].forEach(id => {
     const article = $(id)?.closest('article');
     if (article) article.style.display = 'none';
@@ -88,13 +88,15 @@ function renderCoreBusinessMetrics(source) {
   const visitNote = mini.status === 'ok'
     ? `小程序访问来自微信官方日趋势，日期 ${esc(mini.ref_date || '最近完整日')}；维修需求和有效线索按今日生产订单聚合。`
     : '小程序访问仅接受微信官方统计；若微信数据暂不可用则保持“未接入”，不会估算。';
+  const zeroNote = '0 表示真实统计结果为 0；只有“未接入”才代表没有可靠数据源。';
+
   $('user-growth').className = 'analysis-body';
   $('user-growth').innerHTML = `<div class="analysis-values">
     <div>${showValue(snapshot.mini_program_visits)}<small>${visitLabel}</small></div>
     <div>${showValue(snapshot.repair_requests)}<small>今日维修需求</small></div>
     <div>${showValue(snapshot.new_users)}<small>今日新增用户</small></div>
     <div>${showValue(snapshot.leads)}<small>今日有效线索</small></div>
-  </div><div class="rate-list"><span>${visitNote}</span></div>`;
+  </div><div class="rate-list"><span>${visitNote}</span><span>${zeroNote}</span></div>`;
 
   $('order-conversion').className = 'analysis-body';
   $('order-conversion').innerHTML = `<div class="analysis-values">
@@ -102,7 +104,7 @@ function renderCoreBusinessMetrics(source) {
     <div>${showValue(snapshot.new_orders)}<small>今日新增订单</small></div>
     <div>${showValue(snapshot.completed_orders)}<small>累计已完成订单</small></div>
     <div>${showValue(snapshot.cancelled_orders)}<small>累计取消订单</small></div>
-  </div><div class="rate-list"><span>今日新增与累计状态属于不同统计窗口，不跨窗口计算虚假转化率</span></div>`;
+  </div><div class="rate-list"><span>今日新增与累计状态属于不同统计窗口，不跨窗口计算虚假转化率</span><span>${zeroNote}</span></div>`;
 }
 
 function ensureLiveBusinessPanel() {
@@ -115,7 +117,7 @@ function ensureLiveBusinessPanel() {
   panel.id = 'live-business-panel';
   panel.className = 'wide ai-command-card';
   panel.innerHTML = `
-    <div class="article-head"><div><label>真实经营数据 · 生产只读接口</label><h3>卡嘴子服务器实时经营汇总</h3></div><span id="business-source-badge" class="status-pill waiting">检查中</span></div>
+    <div class="article-head"><div><label>真实经营数据 · 生产只读接口</label><h3>卡嘴子核心经营数据</h3></div><span id="business-source-badge" class="status-pill waiting">检查中</span></div>
     <div class="content-form">
       <label>服务器接口<input id="business-source-endpoint" value="https://kazuizhi.com/ai-business-summary.ashx" readonly></label>
       <label>只读密钥<input id="business-source-key" type="password" maxlength="500" autocomplete="new-password" placeholder="粘贴服务器 SHOW_READONLY_KEY.bat 显示的密钥"></label>
@@ -131,31 +133,45 @@ function ensureLiveBusinessPanel() {
 }
 
 function businessStat(label, value) {
-  return `<div><b>${value === null || value === undefined ? '—' : esc(value)}</b><small>${esc(label)}</small></div>`;
+  const suffix = value === 0 ? ' · 真实值' : '';
+  return `<div><b>${value === null || value === undefined ? '—' : esc(value)}</b><small>${esc(label)}${suffix}</small></div>`;
 }
 
 function renderBusinessSource(data) {
   ensureLiveBusinessPanel();
   if (!data) return;
   const connected = data.status === 'connected';
-  $('business-source-badge').textContent = data.status_label || (connected ? '已验证接入' : '未配置');
+  const core = coreCompleteness(data);
+  $('business-source-badge').textContent = connected
+    ? (core.present === core.total ? '7/7 · 已验证' : `${core.present}/${core.total} · 已验证`)
+    : data.status_label || '未配置';
   $('business-source-badge').className = `status-pill ${connected ? 'ready' : 'waiting'}`;
   $('business-source-key').placeholder = data.has_key ? '只读密钥已加密保存；无需重复填写' : '粘贴服务器 SHOW_READONLY_KEY.bat 显示的密钥';
   $('business-source-message').textContent = `${data.message || ''}${data.remote_as_of ? ` · 数据截止：${data.remote_as_of}` : ''}`;
+
   const s = data.summary || {};
-  const u = s.users || {}, o = s.orders || {}, t = s.technicians || {}, p = s.partners || {}, promotion = s.promotion || {}, funnel = s.funnel || {}, mini = s.mini_program || {};
+  const u = s.users || {}, o = s.orders || {}, funnel = s.funnel || {}, mini = s.mini_program || {};
   const q = data.data_quality || {};
   $('business-source-summary').innerHTML = connected ? `
     <div class="analysis-values">
-      ${businessStat('用户总数', u.total)}${businessStat('今日新增用户', u.new_today)}
-      ${businessStat('订单总数', o.total)}${businessStat('今日订单', o.today)}${businessStat('进行中订单', o.open)}${businessStat('已完成订单', o.completed)}
-      ${businessStat('师傅总数', t.total)}${businessStat('活跃师傅', t.active)}
-      ${businessStat('团长总数', p.total)}${businessStat('活跃团长', p.active)}
-      ${businessStat('推广记录', promotion.event_records)}${businessStat('团长归因订单', promotion.partner_attributed_orders)}
-      ${businessStat(mini.ref_date ? `小程序UV ${mini.ref_date}` : '小程序UV', funnel.mini_program_visits)}${businessStat('今日维修需求', funnel.repair_requests)}${businessStat('今日有效线索', funnel.leads)}
+      ${businessStat(mini.ref_date ? `小程序访问UV ${mini.ref_date}` : '小程序访问UV', funnel.mini_program_visits)}
+      ${businessStat('今日维修需求', funnel.repair_requests)}
+      ${businessStat('今日新增用户', u.new_today)}
+      ${businessStat('今日有效线索', funnel.leads)}
+      ${businessStat('今日新增订单', o.today)}
+      ${businessStat('累计已完成订单', o.completed)}
+      ${businessStat('累计取消订单', o.cancelled)}
     </div>
-    <div class="rate-list"><span>只读：${q.read_only === true ? '已验证' : '待验证'}</span><span>写操作：${esc(q.write_operations ?? '—')}</span><span>数据完整：${esc(q.required_documents_present ?? '—')}/${esc(q.required_documents_total ?? '—')}</span></div>`
-    : '<div class="empty">连接验证通过后，这里显示生产服务器的真实经营汇总。</div>';
+    <div class="rate-list">
+      <span>核心完整度：${core.present}/${core.total}</span>
+      <span>只读：${q.read_only === true ? '已验证' : '待验证'}</span>
+      <span>写操作：${esc(q.write_operations ?? '—')}</span>
+      <span>0 是真实统计值，不等于未接入</span>
+    </div>`
+    : '<div class="empty">连接验证通过后，这里只展示 7 个核心经营指标。</div>';
+
+  const importPanel = $('business-json')?.closest('article');
+  if (importPanel) importPanel.style.display = connected ? 'none' : '';
 }
 
 async function loadBusinessSource() {
@@ -201,16 +217,18 @@ async function loadAnalytics() {
   const connected = source?.status === 'connected' || data.status === 'verified';
   const core = source?.status === 'connected' ? coreCompleteness(source) : {present:0,total:CORE_BUSINESS_FIELDS.length,ratio_pct:0,missing_fields:[...CORE_BUSINESS_FIELDS]};
   $('analytics-status').textContent = connected
-    ? `真实经营数据已验证接入 · 核心经营数据完整度 ${core.present}/${core.total}`
+    ? (core.present === core.total
+      ? '真实经营数据已验证接入 · 7/7 核心指标齐全'
+      : `真实经营数据已验证接入 · 核心经营数据完整度 ${core.present}/${core.total}`)
     : '真实经营数据尚未接入';
   $('analytics-source').textContent = connected
     ? `来源：${source?.source || data.source} · 截止：${source?.remote_as_of || data.as_of} · 核心完整度：${core.ratio_pct}%`
     : `${data.message} 核心分析只关注用户增长和订单转化；缺失项保持“未接入”。`;
-  $('analytics-badge').textContent = connected ? (core.present === core.total ? '已验证·核心齐全' : '已验证·部分核心数据') : '待接入';
+  $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
   $('analytics-truth').textContent = connected && core.missing_fields.length
     ? `只显示已验证真实数据；核心分析仍缺 ${core.missing_fields.length} 项，不会用 0、估算值或公开市场信号代替。`
-    : '只显示已验证真实数据；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合。';
+    : '7 个核心指标均有真实来源；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合，0 表示真实统计为 0。';
 
   if (source?.status === 'connected') {
     renderCoreBusinessMetrics(source);
@@ -228,7 +246,7 @@ $('import-business').addEventListener('click', async () => {
     return toast('请粘贴带来源和统计时间的经营汇总 JSON；当前内容格式不正确','error');
   }
   try {
-    const imported = await api('/api/business-metrics/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    const imported = await api('/api/business-metrics/import', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     $('business-json').value = '';
     await Promise.all([loadAnalytics(), loadSummary()]);
     const completeness = imported.completeness || {};
