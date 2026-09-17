@@ -1,4 +1,4 @@
-const R7_STATE={awaiting_approval:'待审批',human_required:'平台人工待处理',queued:'自动排队',running:'自动执行中',completed:'已完成',failed:'失败',cancelled:'已取消'};
+const R7_STATE={awaiting_approval:'历史待处理',human_required:'平台人工待处理',queued:'自动待执行',running:'自动执行中',completed:'已完成',failed:'失败',cancelled:'已取消'};
 const R7_AGENT_TARGETS={market:'insights',seo:'promotion',content:'promotion',social:'promotion',video:'promotion',local:'insights',conversion:'analytics',review:'review'};
 let r7Jobs=[];
 
@@ -6,7 +6,7 @@ function applyAutonomyCopy(){
   const workflow=$('workflow');
   if(!workflow)return;
   const pageCopy=workflow.querySelector('.page-title p');
-  if(pageCopy)pageCopy.textContent='非资金运营任务默认自动执行并全程留痕；资金、退款、结算等事项只记录为平台人工待处理。AI 员工不自行突破资金安全边界。';
+  if(pageCopy)pageCopy.textContent='非资金运营任务默认自动执行并全程留痕；退款、结算、提现、改价等资金事项只记录为平台人工待处理。';
   const overview=workflow.querySelectorAll('.r7-overview article p');
   if(overview[0])overview[0].textContent='本地调度自动检查到期任务，无需人工批准非资金运营任务。';
   if(overview[1])overview[1].textContent='失败任务自动记录并按策略重试；资金事项单独进入平台人工待处理。';
@@ -19,35 +19,49 @@ function applyAutonomyCopy(){
   const chip=workflow.querySelector('#r7-agent-grid')?.closest('article')?.querySelector('.chip');
   if(chip)chip.textContent='非资金全自动';
 }
+window.applyAutonomyCopy=applyAutonomyCopy;
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',applyAutonomyCopy);else applyAutonomyCopy();
 
 function r7Action(job,action,label){return `<button class="outline-button r7-action" data-job="${esc(job.id)}" data-action="${action}">${label}</button>`}
-function r7ResultText(result){
+function r7ListValues(value){
+  if(!Array.isArray(value))return [];
+  return value.slice(0,5).map(item=>typeof item==='string'?item:(item?.keyword||item?.title||item?.name||item?.region||JSON.stringify(item))).filter(Boolean);
+}
+function r7ResultHtml(result){
   if(!result)return '';
-  if(result.outcome)return result.outcome;
-  if(result.headline)return result.headline;
-  if(result.summary)return typeof result.summary==='string'?result.summary:'系统体检已完成';
-  if(result.kind)return `${result.kind}已生成`;
-  if(result.note)return result.note;
-  return '执行结果已记录';
+  const lines=[];
+  const headline=result.outcome||result.summary||result.headline||result.status||result.kind;
+  if(typeof headline==='string'&&headline)lines.push(`<div><b>执行成果：</b>${esc(headline)}</div>`);
+  if(result.scope)lines.push(`<div><b>范围：</b>${esc(result.scope)}</div>`);
+  if(Number.isFinite(result.public_signal_count))lines.push(`<div><b>公开信号：</b>${esc(result.public_signal_count)} 条</div>`);
+  const needs=r7ListValues(result.top_needs||result.key_findings);
+  if(needs.length)lines.push(`<div><b>关键发现：</b>${needs.map(esc).join('；')}</div>`);
+  const regions=r7ListValues(result.top_regions);
+  if(regions.length)lines.push(`<div><b>重点区域：</b>${regions.map(esc).join('；')}</div>`);
+  if(Number.isFinite(result.calendar_days))lines.push(`<div><b>计划产出：</b>${esc(result.calendar_days)} 天运营日历</div>`);
+  const recs=r7ListValues(result.recommendations||result.next_actions);
+  if(recs.length)lines.push(`<div><b>下一步：</b>${recs.map(esc).join('；')}</div>`);
+  if(result.kind&&result.draft_id)lines.push(`<div><b>草稿：</b>${esc(result.kind)} · ${esc(result.draft_id)}</div>`);
+  const note=result.source_note||result.limitation||result.note;
+  if(note)lines.push(`<div><b>说明：</b>${esc(note)}</div>`);
+  if(!lines.length)lines.push('<div><b>执行成果：</b>已完成并写入执行记录</div>');
+  return `<div class="r7-result">${lines.join('')}</div>`;
 }
 function renderR7Jobs(items){
   r7Jobs=items;
   $('r7-jobs').className=items.length?'r7-job-list':'friendly-empty';
   $('r7-jobs').innerHTML=items.length?items.map(job=>{
     let actions='';
-    if(job.state==='awaiting_approval')actions=r7Action(job,'approve','批准执行')+r7Action(job,'cancel','取消');
+    if(job.state==='awaiting_approval')actions='<span class="subtle">这是旧版本遗留记录，新版本启动后会按新自动化策略迁移处理。</span>';
     if(job.state==='human_required')actions='<span class="subtle">请到小程序/平台后台由人工处理资金事项；R7 只记录，不执行。</span>';
-    if(job.state==='queued'&&job.mode==='manual')actions=r7Action(job,'start','开始人工任务')+r7Action(job,'cancel','取消');
     if(job.state==='queued'&&job.mode==='local')actions='<span class="subtle">已进入自动执行队列，无需人工批准</span>';
-    if(job.state==='running'&&job.mode==='manual')actions=`<input data-outcome="${esc(job.id)}" maxlength="1000" placeholder="填写实际完成结果">`+r7Action(job,'complete','确认完成');
     if(job.state==='failed'&&job.risk!=='financial')actions=r7Action(job,'retry','立即重试')+r7Action(job,'cancel','取消');
     const riskLabel=job.risk==='financial'?'资金事项 · 平台人工':'非资金 · 全自动';
-    return `<article class="r7-job"><div class="r7-job-top"><div><strong>${esc(job.title)}</strong><small>${esc(job.agent)} · ${esc(job.task_type||job.kind)} · ${riskLabel} · ${formatTime(job.created_at)}</small></div><span class="status-pill ${job.state==='completed'?'ready':job.state==='failed'||job.state==='human_required'?'blocked':'waiting'}">${R7_STATE[job.state]||esc(job.state)}</span></div><div class="r7-progress"><i style="width:${job.progress}%"></i></div><p>实际完成 ${job.completed_steps}/${job.total_steps} 步 · ${job.progress}%${job.due_at?' · 计划 '+esc(job.due_at):''}</p>${job.error?`<p class="r7-error">${esc(job.error)}</p>`:''}${job.result?`<p>结果：${esc(r7ResultText(job.result))}</p>`:''}<div class="r7-job-actions">${actions}</div></article>`;
+    return `<article class="r7-job"><div class="r7-job-top"><div><strong>${esc(job.title)}</strong><small>${esc(job.agent||'运营协调员')} · ${esc(job.task_type||job.kind)} · ${riskLabel} · ${formatTime(job.created_at)}</small></div><span class="status-pill ${job.state==='completed'?'ready':job.state==='failed'||job.state==='human_required'?'blocked':'waiting'}">${R7_STATE[job.state]||esc(job.state)}</span></div><div class="r7-progress"><i style="width:${job.progress||0}%"></i></div><p>实际完成 ${job.completed_steps||0}/${job.total_steps||1} 步 · ${job.progress||0}%${job.due_at?' · 计划 '+esc(job.due_at):''}</p>${job.error?`<p class="r7-error">${esc(job.error)}</p>`:''}${job.result?r7ResultHtml(job.result):''}<div class="r7-job-actions">${actions}</div></article>`;
   }).join(''):'还没有自动运营任务。非资金任务创建后会自动排队执行；资金事项只记录并交平台人工处理。';
   document.querySelectorAll('.r7-action').forEach(button=>button.addEventListener('click',async()=>{
     button.disabled=true;
     const payload={id:button.dataset.job,action:button.dataset.action,actor:'本机管理员'};
-    if(payload.action==='complete')payload.outcome=document.querySelector(`[data-outcome="${payload.id}"]`)?.value||'';
     try{await api('/api/r7/jobs/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});await loadR7();toast('任务状态已更新')}
     catch(error){toast(error.message,'error');button.disabled=false}
   }));
@@ -75,8 +89,8 @@ async function loadR7(){
     applyAutonomyCopy();
     const [jobs,agents,engine,audit,routes]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/agents'),api('/api/r7/engine'),api('/api/r7/audit'),api('/api/r7/model-routes')]);
     renderR7Jobs(jobs.items);
-    const human=engine.jobs.human_required||0, queued=engine.jobs.queued||0, running=engine.jobs.running||0, failed=engine.jobs.failed||0;
-    $('r7-engine-status').textContent=`自动待执行 ${queued} · 自动执行中 ${running} · 平台人工 ${human} · 失败 ${failed}`;
+    const legacy=engine.jobs.awaiting_approval||0,human=engine.jobs.human_required||0,queued=engine.jobs.queued||0,running=engine.jobs.running||0,failed=engine.jobs.failed||0;
+    $('r7-engine-status').textContent=`自动待执行 ${queued} · 自动执行中 ${running} · 平台人工 ${human} · 失败 ${failed}${legacy?` · 旧记录 ${legacy}`:''}`;
     $('r7-exceptions').textContent=(human||failed)?`${human} 项平台人工 · ${failed} 项失败`:'目前没有需要人工介入或失败的事项';
     $('r7-migration').textContent=engine.migration.result==='complete'?engine.migration.copied.length?`R6 数据备份已完成 · ${engine.migration.copied.length} 个文件`:`未发现旧版数据 · 可直接开始`:'正在检查旧数据';
     $('r7-model-route').textContent=`自动化策略：${engine.autonomy_policy||'非资金自动执行'}。当前可用模型路线：${routes.routes.map(x=>x.label).join('、')}。`;
@@ -88,7 +102,6 @@ async function loadR7(){
   }catch(error){toast(error.message,'error');return false}
 }
 window.loadR7=loadR7;
-applyAutonomyCopy();
 
 $('r7-create').addEventListener('click',async()=>{
   const button=$('r7-create');button.disabled=true;button.textContent='创建中…';
