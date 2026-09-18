@@ -10,28 +10,31 @@ from core import version  # noqa: E402
 
 EXPECTED_DISPLAY = "V2.1.0 Beta R8 Preview"
 EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW"
+EXPECTED_PHASE = "R8-01"
 
 status = version.get_version()
 if status.get("display_version") != EXPECTED_DISPLAY:
     raise AssertionError("R8 display version missing")
 if status.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 runtime build missing")
-if status.get("r8_phase") != "R8-00":
+if status.get("r8_phase") != EXPECTED_PHASE:
     raise AssertionError("R8 phase missing")
 
 manifest = json.loads((SRC / "version" / "manifest.json").read_text(encoding="utf-8"))
 preview = manifest.get("r8_preview") or {}
 if preview.get("display_version") != EXPECTED_DISPLAY or preview.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 manifest identity mismatch")
+if preview.get("phase") != EXPECTED_PHASE:
+    raise AssertionError("R8 manifest phase mismatch")
 
 web_version = (SRC / "web" / "WEB_VERSION.txt").read_text(encoding="utf-8")
 identity = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
 build_info = (SRC / "web" / "build_info.js").read_text(encoding="utf-8")
 forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
-for value in (EXPECTED_DISPLAY, EXPECTED_RUNTIME, "R8-00"):
+for value in (EXPECTED_DISPLAY, EXPECTED_RUNTIME, EXPECTED_PHASE):
     if value not in web_version:
         raise AssertionError(f"WEB_VERSION missing {value}")
-if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity:
+if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity or EXPECTED_PHASE not in identity:
     raise AssertionError("R8 visible identity patch mismatch")
 if "build_info.js" not in forms or "r8_identity.js" not in forms:
     raise AssertionError("R8 visible identity scripts are not loaded")
@@ -52,4 +55,4 @@ if "2.1.0.1" not in windows_version or "R8 Preview" not in windows_version:
 if "Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview" not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: R8 Preview package, visible build identity, R8-00 phase and R7 compatibility layer are distinct and traceable")
+print("PASS: R8 Preview package, visible build identity, R8-01 phase and R7 compatibility layer are distinct and traceable")
