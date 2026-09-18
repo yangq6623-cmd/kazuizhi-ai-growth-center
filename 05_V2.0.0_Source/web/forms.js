@@ -88,6 +88,14 @@ toast = function(message, type='ok') {
   script.async = false;
   script.dataset.r7DecisionCenter = '1';
   script.onload = () => {
+    if (!document.querySelector('script[data-r7-decision-layout]')) {
+      const layout = document.createElement('script');
+      layout.src = 'decision_layout_patch.js';
+      layout.async = false;
+      layout.dataset.r7DecisionLayout = '1';
+      layout.onerror = () => toast('自主决策页面布局增强模块加载失败', 'error');
+      document.body.appendChild(layout);
+    }
     if (document.querySelector('script[data-r7-region-strategy]')) return;
     const region = document.createElement('script');
     region.src = 'region_strategy.js';
