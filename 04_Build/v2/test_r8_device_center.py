@@ -22,10 +22,13 @@ assert android_device._parse_screen_size("Physical size: 1080x2400\n") == {"widt
 assert android_device._parse_awake("mWakefulness=Awake") is True
 assert android_device._parse_awake("mWakefulness=Asleep") is False
 assert android_device._parse_awake("vendor-specific unknown state") is None
+assert android_device._safe_transfer_name("报告 01.pdf") == "报告_01.pdf"
+assert android_device._safe_transfer_name("../unsafe.exe") == "unsafe.exe"
 
 backend = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
 forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
 ui = (SRC / "web" / "r8_device_center.js").read_text(encoding="utf-8")
+file_ui = (SRC / "web" / "r8_device_file_patch.js").read_text(encoding="utf-8")
 control = (SRC / "core" / "r8_control.py").read_text(encoding="utf-8")
 adapter = (SRC / "integrations" / "android_device.py").read_text(encoding="utf-8")
 
@@ -35,22 +38,29 @@ for route in (
     "/api/r8/device/action",
     "/api/r8/device/takeover",
     "/api/r8/device/audit",
+    "/api/r8/device/files",
+    "/api/r8/device/file",
+    "/api/r8/device/file-push",
 ):
     assert route in backend, f"missing backend route: {route}"
 assert "r8_device_center.js" in forms
+assert "r8_device_file_patch.js" in forms
 assert "R8-01 单真机设备中心" in ui
 assert "只接受本机 ADB" in ui
+assert "发送文件到手机" in file_ui and "下载到电脑" in file_ui
+assert "Download/Kazuizhi" in file_ui
 for field in ("当前平台", "当前账号", "当前任务", "风险状态", "屏幕状态"):
     assert field in ui, f"device card missing field: {field}"
 assert "锁屏/熄屏" in ui
 assert "screen_locked_or_off" in adapter
 assert "device_connected" in adapter and "device_disconnected" in adapter
+assert "file_push" in adapter and "file_pull" in adapter
 assert "source != \"adb\"" in control
 assert "registered_not_verified" in control
 
 for forbidden in (
     "spoof_imei", "spoof_android_id", "spoof_gps", "bypass_captcha",
 ):
-    assert forbidden not in ui, f"unsafe device UI action exposed: {forbidden}"
+    assert forbidden not in ui and forbidden not in file_ui, f"unsafe device UI action exposed: {forbidden}"
 
-print("PASS: R8-01 ADB parsing, device state, lock-stop, audit, UI wiring and safety boundaries are present")
+print("PASS: R8-01 ADB parsing, device state, lock-stop, audit, bidirectional file transfer, UI wiring and safety boundaries are present")
