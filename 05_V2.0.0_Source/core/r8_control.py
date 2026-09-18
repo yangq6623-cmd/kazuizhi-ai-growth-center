@@ -1,10 +1,9 @@
-"""R8 platform safety and single-device pilot control plane.
+"""R8 platform safety, device/account binding and social-center control plane.
 
-R8-00 is intentionally conservative: one real Android device first, stable account
-binding, explicit platform rules, owner-gated video publishing and hard stops for
-finance, verification bypass, device spoofing and risk events.  It stores control
-state only; actual Android/ADB execution is added by the device adapter in the next
-R8 block so this module never pretends a phone is connected when it is not.
+The control plane is intentionally conservative: real Android devices only,
+truthful ADB connection state, explicit platform/account bindings, owner-gated
+video publishing and hard stops for finance, verification bypass, device
+spoofing and risk events. Platform passwords are never stored here.
 """
 
 from datetime import date
@@ -20,8 +19,10 @@ PLATFORMS = {
     "xiaohongshu": "小红书",
     "wechat_channels": "视频号",
     "weibo": "微博",
+    "bilibili": "哔哩哔哩",
     "forum": "论坛/社区",
     "blog": "博客/内容站",
+    "other": "其他平台",
 }
 
 LOW_RISK_ACTIONS = {
@@ -42,7 +43,7 @@ HARD_BLOCKED_ACTIONS = {
 def _default_state():
     return {
         "schema": SCHEMA,
-        "phase": "R8-00",
+        "phase": "R8-01",
         "pilot": {
             "enabled": True,
             "device_limit": 1,
@@ -81,15 +82,49 @@ def _default_state():
             "finance_requires_human": True,
             "platform_policy_required": True,
             "truthful_receipts_required": True,
+            "platform_passwords_not_stored": True,
+            "one_platform_window_per_device": True,
         },
         "updated_at": now_iso(),
     }
+
+
+def _migrate_state(state):
+    changed = False
+    if state.get("phase") != "R8-01":
+        state["phase"] = "R8-01"
+        changed = True
+    platforms = state.setdefault("platforms", {})
+    for key, name in PLATFORMS.items():
+        if key not in platforms:
+            platforms[key] = {
+                "id": key,
+                "name": name,
+                "status": "not_connected",
+                "automation_paused": False,
+                "risk_level": "unknown",
+                "last_error": None,
+            }
+            changed = True
+    hard = state.setdefault("hard_rules", {})
+    for key, value in {
+        "platform_passwords_not_stored": True,
+        "one_platform_window_per_device": True,
+    }.items():
+        if hard.get(key) != value:
+            hard[key] = value
+            changed = True
+    state.setdefault("accounts", [])
+    state.setdefault("devices", [])
+    return changed
 
 
 def control_status():
     state = read_json(STATE_PATH, None)
     if not isinstance(state, dict) or state.get("schema") != SCHEMA:
         state = _default_state()
+        write_json(STATE_PATH, state)
+    elif _migrate_state(state):
         write_json(STATE_PATH, state)
     return state
 
@@ -184,39 +219,140 @@ def record_device_probe(device_id, connected, source="adb", detail=""):
 
 
 def register_account(payload):
+    """Create/update one social window = one platform + one phone + one account alias.
+
+    Passwords/tokens are intentionally not accepted or stored. Login verification
+    happens in the real platform app and is marked separately by the owner.
+    """
     payload = payload or {}
     platform = str(payload.get("platform") or "").strip()
     device_id = str(payload.get("device_id") or "").strip()
     alias = str(payload.get("alias") or "").strip()
+    label = str(payload.get("label") or alias).strip()
     if platform not in PLATFORMS:
         raise ValueError("暂不支持该平台")
     if not alias or len(alias) > 100:
         raise ValueError("账号别名不能为空")
+    if not label or len(label) > 80:
+        raise ValueError("窗口名称不能为空")
+    if any(key in payload for key in ("password", "passcode", "secret", "token")):
+        raise ValueError("社媒中心不保存平台密码、验证码或登录令牌")
+
     state = control_status()
     device = next((item for item in state.get("devices", []) if item.get("device_id") == device_id), None)
     if not device:
-        raise ValueError("账号必须绑定已登记真机")
-    account_id = str(payload.get("account_id") or f"{platform}:{device_id}:{alias}")[:180]
+        raise ValueError("账号窗口必须绑定已登记真机")
+
     accounts = state.setdefault("accounts", [])
-    existing = next((item for item in accounts if item.get("account_id") == account_id), None)
-    record = {
-        "account_id": account_id,
-        "platform": platform,
-        "platform_name": PLATFORMS[platform],
-        "device_id": device_id,
-        "alias": alias,
-        "login_status": "not_verified",
-        "health": "unknown",
-        "risk_level": "unknown",
-        "automation_paused": False,
-        "created_at": existing.get("created_at") if existing else now_iso(),
-        "updated_at": now_iso(),
-    }
+    existing_by_binding = next(
+        (item for item in accounts if item.get("platform") == platform and item.get("device_id") == device_id),
+        None,
+    )
+    requested_id = str(payload.get("account_id") or "").strip()
+    if existing_by_binding and requested_id and existing_by_binding.get("account_id") != requested_id:
+        raise ValueError("同一平台的一台手机只能保留一个账号窗口")
+
+    existing = existing_by_binding
+    account_id = existing.get("account_id") if existing else (requested_id or f"{platform}:{device_id}")
+    now = now_iso()
     if existing:
-        existing.update(record)
+        existing.update({
+            "alias": alias,
+            "label": label,
+            "platform_name": PLATFORMS[platform],
+            "updated_at": now,
+        })
     else:
-        accounts.append(record)
+        accounts.append({
+            "account_id": account_id[:180],
+            "platform": platform,
+            "platform_name": PLATFORMS[platform],
+            "device_id": device_id,
+            "alias": alias,
+            "label": label,
+            "login_status": "not_verified",
+            "login_verified_at": None,
+            "health": "unknown",
+            "risk_level": "unknown",
+            "automation_paused": False,
+            "last_error": None,
+            "created_at": now,
+            "updated_at": now,
+        })
     return _save(state)
+
+
+def update_account_status(payload):
+    payload = payload or {}
+    account_id = str(payload.get("account_id") or "").strip()
+    state = control_status()
+    account = next((item for item in state.get("accounts", []) if item.get("account_id") == account_id), None)
+    if not account:
+        raise ValueError("社媒账号窗口不存在")
+
+    if "login_status" in payload:
+        login_status = str(payload.get("login_status") or "").strip()
+        if login_status not in {"not_verified", "authorized", "needs_human", "logged_out"}:
+            raise ValueError("登录状态不支持")
+        account["login_status"] = login_status
+        account["login_verified_at"] = now_iso() if login_status == "authorized" else None
+    if "automation_paused" in payload:
+        account["automation_paused"] = bool(payload.get("automation_paused"))
+    if "risk_level" in payload:
+        risk = str(payload.get("risk_level") or "unknown").strip()
+        if risk not in {"unknown", "normal", "attention", "high"}:
+            raise ValueError("风险状态不支持")
+        account["risk_level"] = risk
+    if "last_error" in payload:
+        account["last_error"] = str(payload.get("last_error") or "")[:240] or None
+    account["updated_at"] = now_iso()
+    return _save(state)
+
+
+def remove_account(payload):
+    payload = payload or {}
+    account_id = str(payload.get("account_id") or "").strip()
+    state = control_status()
+    before = len(state.get("accounts", []))
+    state["accounts"] = [item for item in state.get("accounts", []) if item.get("account_id") != account_id]
+    if len(state["accounts"]) == before:
+        raise ValueError("社媒账号窗口不存在")
+    return _save(state)
+
+
+def social_center_status():
+    state = control_status()
+    devices = list(state.get("devices", []))
+    accounts = list(state.get("accounts", []))
+    platform_rows = []
+    for platform_id, name in PLATFORMS.items():
+        rows = [item for item in accounts if item.get("platform") == platform_id]
+        online_ids = {
+            item.get("device_id") for item in devices
+            if item.get("connection") == "connected" and item.get("probe_source") == "adb"
+        }
+        platform_rows.append({
+            "id": platform_id,
+            "name": name,
+            "windows": len(rows),
+            "online": sum(1 for item in rows if item.get("device_id") in online_ids),
+            "authorized": sum(1 for item in rows if item.get("login_status") == "authorized"),
+            "attention": sum(1 for item in rows if item.get("login_status") in {"needs_human", "logged_out"} or item.get("risk_level") in {"attention", "high"}),
+        })
+    return {
+        "phase": state.get("phase"),
+        "pilot": state.get("pilot"),
+        "platforms": platform_rows,
+        "devices": devices,
+        "accounts": accounts,
+        "rules": {
+            "one_window_one_phone_one_platform_account": True,
+            "passwords_stored": False,
+            "verification_requires_human": True,
+            "finance_requires_human": True,
+        },
+        "updated_at": state.get("updated_at"),
+    }
 
 
 def authorize_action(payload):
@@ -225,6 +361,7 @@ def authorize_action(payload):
     action = str(payload.get("action") or "").strip()
     platform = str(payload.get("platform") or "").strip()
     device_id = str(payload.get("device_id") or "").strip()
+    account_id = str(payload.get("account_id") or "").strip()
     owner_approved = bool(payload.get("owner_approved"))
     verification_required = bool(payload.get("verification_required"))
     state = control_status()
@@ -249,13 +386,23 @@ def authorize_action(payload):
         return deny("没有经过 ADB 验证的真实 Android 设备在线")
     if device.get("risk_level") not in ("unknown", "normal"):
         return deny("设备处于风险状态，已停止自动动作", human=True)
+    if account_id:
+        account = next((item for item in state.get("accounts", []) if item.get("account_id") == account_id), None)
+        if not account or account.get("platform") != platform or account.get("device_id") != device_id:
+            return deny("社媒账号窗口与设备/平台绑定不一致")
+        if account.get("login_status") != "authorized":
+            return deny("平台账号尚未完成人工登录/授权验证", human=True)
+        if account.get("automation_paused"):
+            return deny("该账号窗口已暂停自动化")
+        if account.get("risk_level") in {"attention", "high"}:
+            return deny("账号处于风险状态，已停止自动动作", human=True)
     if action in VIDEO_PUBLICATION_ACTIONS and not owner_approved:
         return deny("视频必须经过老板人工审核并点击确认发布", human=True)
     if action in LOW_RISK_ACTIONS | INTERACTION_ACTIONS | TEXT_PUBLICATION_ACTIONS | VIDEO_PUBLICATION_ACTIONS:
         return {
             "allowed": True,
             "action": action,
-            "reason": "通过 R8-00 安全门；执行器仍需遵守平台规则、频率限制和真实回执要求",
+            "reason": "通过 R8 安全门；执行器仍需遵守平台规则、频率限制和真实回执要求",
             "requires_human": False,
         }
     return deny("动作不在 R8 安全白名单")
