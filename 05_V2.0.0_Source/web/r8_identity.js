@@ -1,7 +1,7 @@
 (() => {
   const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-01B.2 社媒终端驾驶舱';
+  const PHASE = 'R8-01B.3 屏幕休眠与虚拟控制';
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -30,8 +30,21 @@
     script.src = 'r8_terminal_cockpit_patch.js';
     script.async = false;
     script.dataset.r8TerminalCockpit = '1';
+    script.onload = loadDeviceB3Patch;
     script.onerror = () => {
       if (typeof toast === 'function') toast('R8 社媒终端驾驶舱模块加载失败，请重新安装最新版本', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
+  function loadDeviceB3Patch() {
+    if (document.querySelector('script[data-r8-device-b3]')) return;
+    const script = document.createElement('script');
+    script.src = 'r8_device_b3_patch.js';
+    script.async = false;
+    script.dataset.r8DeviceB3 = '1';
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('R8 熄屏恢复与虚拟手机控制模块加载失败，请重新安装最新版本', 'error');
     };
     document.body.appendChild(script);
   }
@@ -47,7 +60,7 @@
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-01B.2 社媒终端驾驶舱';
+    if (badge) badge.textContent = 'R8 Preview · R8-01B.3 屏幕休眠与虚拟控制';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
     if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';
@@ -56,7 +69,7 @@
     if (workflowLabel) workflowLabel.textContent = 'R7 Final 稳定底座 + R8-00 安全层 + R8-01 真机设备层';
 
     const heading = document.querySelector('#dashboard .command-welcome h2');
-    if (heading) heading.textContent = 'R7 稳定运行，R8 正在完成 Gate 2 前的社媒终端驾驶舱收口。';
+    if (heading) heading.textContent = 'R7 稳定运行，R8 正在完成 Gate 2 前的虚拟手机控制收口。';
 
     loadBridgeUsabilityPatch();
     loadTerminalCockpitPatch();
