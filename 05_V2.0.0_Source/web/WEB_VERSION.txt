@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
 Version: V2.1.0 Beta R8 Preview
-R8 Phase: R8-00
+R8 Phase: R8-01
 Runtime Build: KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW
 Frontend Compatibility Build: KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL
 Dashboard: FULL_ENTERPRISE_DASHBOARD
@@ -8,7 +8,13 @@ Source: 05_V2.0.0_Source/web
 Modules:
 - R7 Final Core Preserved
 - R8-00 Platform Safety Control Plane
-- R8-00 Single Real Android Device Pilot
+- R8-01 Single Real Android Device Center
+- R8-01 Truthful Local ADB Discovery and Probe
+- R8-01 Device ID / Model / Android / Battery / Screen State
+- R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
+- R8-01 Human Takeover / Return to R8
+- R8-01 Disconnect and Lock-Screen Stop Boundary
+- R8-01 Device Action Audit
 - R8-00 Owner Focus for Tomorrow Plan
 - R8-00 Owner-Gated Video Publishing
 - R8-00 Finance Manual-Only Boundary
