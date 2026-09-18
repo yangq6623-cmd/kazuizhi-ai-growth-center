@@ -1,8 +1,10 @@
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "05_V2.0.0_Source"
+sys.path.insert(0, str(SRC))
 
 from core import version  # noqa: E402
 
