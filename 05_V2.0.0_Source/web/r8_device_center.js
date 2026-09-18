@@ -9,15 +9,16 @@
   `;
   document.head.appendChild(style);
 
-  const connections = document.querySelector('#connections');
-  if (!connections || document.querySelector('#r8-device-center')) return;
-  const title = connections.querySelector('.page-title');
+  const socialCenter = document.querySelector('#social-center');
+  if (!socialCenter || document.querySelector('#r8-device-center')) return;
+  const body = socialCenter.querySelector('#social-center-body');
   const panel = document.createElement('article');
   panel.id = 'r8-device-center';
   panel.className = 'wide';
+  panel.hidden = true;
   panel.innerHTML = `
-    <div class="r8-device-head"><div><label>R8-01 单真机设备中心</label><h3>真实 Android 手机 / ADB</h3><p class="subtle">只接受本机 ADB 的真实探测结果；未连接、未授权或锁屏时不会伪装成可自动执行。</p></div><div class="button-row"><button id="r8-device-refresh" class="primary-small">扫描手机</button><button id="r8-screen-refresh" class="outline-button">刷新屏幕</button></div></div>
-    <div id="r8-device-message" class="notice">正在读取本机 ADB 与真机状态…</div>
+    <div class="r8-device-head"><div><label>社媒中心 · R8-01 单真机终端详情</label><h3>真实 Android 手机 / ADB 控制</h3><p class="subtle">这里是社媒中心唯一的真机操作入口。只接受本机 ADB 的真实探测结果；未连接、未授权或锁屏时不会伪装成可自动执行。</p></div><div class="button-row"><button id="r8-device-refresh" class="primary-small">扫描手机</button><button id="r8-screen-refresh" class="outline-button">刷新屏幕</button><button id="r8-device-close" class="outline-button">关闭真机控制</button></div></div>
+    <div id="r8-device-message" class="notice">打开终端后读取本机 ADB 与真机状态…</div>
     <div class="r8-device-grid">
       <div><div class="r8-device-meta">
         <div><small>连接状态</small><b id="r8-device-online">检查中</b></div><div><small>控制模式</small><b id="r8-device-mode">--</b></div>
@@ -31,11 +32,11 @@
       <div class="r8-device-controls"><button id="r8-takeover" class="outline-button">人工接管</button><button id="r8-return" class="outline-button">交还 R8</button><button data-r8-action="power" class="outline-button">唤醒/电源</button><button data-r8-action="back" class="outline-button">返回</button><button data-r8-action="home" class="outline-button">Home</button></div>
       <div class="r8-swipe-controls"><button data-r8-swipe="up" class="outline-button">上滑</button><button data-r8-swipe="down" class="outline-button">下滑</button><button data-r8-swipe="left" class="outline-button">左滑</button><button data-r8-swipe="right" class="outline-button">右滑</button></div>
       <div class="r8-text-row"><input id="r8-device-text" maxlength="200" placeholder="ADB 文本输入（当前先支持英文/数字）"><button id="r8-send-text" class="outline-button">输入</button></div>
-      <p class="r8-device-note">屏幕图片可直接点击，系统会把点击位置换算成真机坐标。锁屏、USB 授权失效、掉线时自动停止普通动作；验证码、人脸、短信验证和资金动作不在自动操作范围。</p>
+      <p class="r8-device-note">屏幕图片可直接点击，系统会把点击位置换算成真机坐标。锁屏、USB 授权失效、掉线时自动停止普通动作；验证码、人脸、短信验证和资金动作不在自动操作范围。本版先恢复 #190 已验证能力，自动唤醒策略暂不启用。</p>
       <div><label>最近设备动作</label><div id="r8-device-audit" class="r8-audit friendly-empty">尚无设备动作</div></div></div>
       <div><div class="r8-screen-wrap"><img id="r8-device-screen" alt="Android 真机屏幕"><div id="r8-screen-empty" class="r8-screen-empty">连接手机后点击“刷新屏幕”</div></div></div>
     </div>`;
-  if (title && title.nextSibling) connections.insertBefore(panel, title.nextSibling); else connections.appendChild(panel);
+  if (body) socialCenter.insertBefore(panel, body.nextSibling); else socialCenter.appendChild(panel);
 
   const el = id => document.getElementById(id);
   let current = null;
@@ -118,6 +119,7 @@
 
   el('r8-device-refresh').addEventListener('click', scan);
   el('r8-screen-refresh').addEventListener('click', refreshScreen);
+  el('r8-device-close').addEventListener('click', () => { panel.hidden = true; });
   panel.querySelectorAll('[data-r8-action]').forEach(btn => btn.addEventListener('click', async () => {
     try { await postAction({action:btn.dataset.r8Action}); } catch (error) { if (typeof toast === 'function') toast(error.message, 'error'); }
   }));
@@ -130,7 +132,7 @@
   }));
   el('r8-send-text').addEventListener('click', async () => {
     const text=el('r8-device-text').value;
-    try { await postAction({action:'text',text}); } catch (error) { if (typeof toast === 'function') toast(error.message, 'error'); }
+    try { await postAction({action:'text',text}); } catch (error) { if (typeof toast === 'function') toast(error.message,'error'); }
   });
   async function takeover(mode) {
     const d=device(); if(!d) return;
@@ -150,8 +152,21 @@
     try { await postAction({action:'tap',x,y}); } catch(error){ if(typeof toast==='function') toast(error.message,'error'); }
   });
 
-  scan();
+  // social_media_center.js originally navigated the terminal-control button to
+  // the connection page. Capture it here so phone operations stay exclusively
+  // inside 社媒中心 without changing the stable social-center data model.
+  document.addEventListener('click', event => {
+    const button = event.target.closest && event.target.closest('[data-social-device-control]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (typeof openPage === 'function') openPage('social-center');
+    panel.hidden = false;
+    scan().then(refreshScreen);
+    setTimeout(() => panel.scrollIntoView({behavior:'smooth', block:'start'}), 80);
+  }, true);
+
   setInterval(() => {
-    if (document.visibilityState === 'visible' && connections.classList.contains('active')) scan();
+    if (document.visibilityState === 'visible' && socialCenter.classList.contains('active') && !panel.hidden) scan();
   }, 10000);
 })();
