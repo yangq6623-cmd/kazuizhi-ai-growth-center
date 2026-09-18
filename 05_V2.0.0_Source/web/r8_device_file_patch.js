@@ -81,10 +81,10 @@
     if (note) host.insertBefore(section, note); else host.appendChild(section);
     document.getElementById('r8-transfer-send').addEventListener('click', sendFile);
     document.getElementById('r8-transfer-refresh').addEventListener('click', loadFiles);
-    loadFiles();
     setInterval(() => {
-      const connections = document.getElementById('connections');
-      if (document.visibilityState === 'visible' && (!connections || connections.classList.contains('active'))) loadFiles();
+      const socialCenter = document.getElementById('social-center');
+      const devicePanel = document.getElementById('r8-device-center');
+      if (document.visibilityState === 'visible' && socialCenter?.classList.contains('active') && devicePanel && !devicePanel.hidden) loadFiles();
     }, 12000);
     return true;
   }
