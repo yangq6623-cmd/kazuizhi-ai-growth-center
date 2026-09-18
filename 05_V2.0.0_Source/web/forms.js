@@ -128,3 +128,15 @@ toast = function(message, type='ok') {
   info.onerror = () => toast('R8 Preview 构建信息加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(info);
 })();
+
+// R8-01 truthful Android device center. This layer only reads/control devices
+// through the local backend's ADB adapter; the UI never invents online state.
+(() => {
+  if (document.querySelector('script[data-r8-device-center]')) return;
+  const script = document.createElement('script');
+  script.src = 'r8_device_center.js';
+  script.async = false;
+  script.dataset.r8DeviceCenter = '1';
+  script.onerror = () => toast('R8 单真机设备中心加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
