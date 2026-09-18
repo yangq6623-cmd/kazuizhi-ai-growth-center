@@ -77,7 +77,12 @@ try:
         raise AssertionError("Decision center refresh/control click handlers missing")
 
     server = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
-    if '"/api/r7/decision-center": decision_snapshot()' not in server:
+    # R7 GET routes are intentionally lazy now so a normal R7 page cannot
+    # trigger the R8 ADB adapter. Accept the legacy route-dict form only for
+    # backward source compatibility, but require the decision endpoint itself.
+    legacy_get = '"/api/r7/decision-center": decision_snapshot()' in server
+    lazy_get = 'if path == "/api/r7/decision-center":' in server and 'return decision_snapshot()' in server
+    if not (legacy_get or lazy_get):
         raise AssertionError("Decision center GET API route missing")
     if '"/api/r7/decision-center/refresh"' not in server:
         raise AssertionError("Decision center refresh API route missing")
