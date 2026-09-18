@@ -2,10 +2,11 @@ import json
 import re
 import socket
 import sys
+import tempfile
 from functools import partial
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 from ai_center.daily_review import generate_review, latest_plan, latest_review
 from analytics.business_metrics import build_analytics, import_snapshot, import_template
 from analytics.operation_summary import build_summary, save_summary
@@ -20,6 +21,9 @@ from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from integrations.android_device import (
     device_audit, execute_action as device_execute_action,
+    list_transfer_files as device_list_transfer_files,
+    pull_file_bytes as device_pull_file_bytes,
+    push_file as device_push_file,
     scan_and_sync as device_scan_and_sync, screenshot_bytes as device_screenshot_bytes,
     set_takeover as device_set_takeover,
 )
@@ -74,11 +78,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _json_ok(self, payload, code=200):
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
+        query = parse_qs(parsed.query)
         if path == "/api/r8/device/screenshot":
-            query = parse_qs(parsed.query)
             device_id = str((query.get("device_id") or [""])[0]).strip()
             if not device_id:
                 self._json_error(400, "device_id 不能为空")
@@ -90,6 +102,34 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == "/api/r8/device/files":
+            device_id = str((query.get("device_id") or [""])[0]).strip()
+            if not device_id:
+                self._json_error(400, "device_id 不能为空")
+                return
+            try:
+                self._json_ok(device_list_transfer_files(device_id))
+            except (ValueError, RuntimeError, OSError) as error:
+                self._json_error(400, error)
+            return
+        if path == "/api/r8/device/file":
+            device_id = str((query.get("device_id") or [""])[0]).strip()
+            name = str((query.get("name") or [""])[0]).strip()
+            if not device_id or not name:
+                self._json_error(400, "device_id 和 name 不能为空")
+                return
+            try:
+                safe_name, data = device_pull_file_bytes(device_id, name)
+            except (ValueError, RuntimeError, OSError) as error:
+                self._json_error(400, error)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(safe_name))
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -146,6 +186,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "r8_device_screenshot",
                         "r8_manual_takeover",
                         "r8_device_action_audit",
+                        "r8_device_file_transfer",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -186,12 +227,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if path not in routes:
                 self.send_error(404)
                 return
-            data = json.dumps(routes[path], ensure_ascii=False).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            self._json_ok(routes[path])
             return
         super().do_GET()
 
@@ -200,6 +236,38 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin and origin not in {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}:
             self.send_error(403, "Cross-origin changes are not allowed")
+            return
+        if path == "/api/r8/device/file-push":
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 20 * 1024 * 1024:
+                self._json_error(413 if length > 20 * 1024 * 1024 else 400, "文件必须为 1 字节到 20MB")
+                return
+            device_id = str(self.headers.get("X-Device-ID") or "").strip()
+            filename = str(self.headers.get("X-Filename") or "").strip()
+            if not device_id or not filename:
+                self._json_error(400, "X-Device-ID 和 X-Filename 不能为空")
+                return
+            temp_path = None
+            try:
+                data = self.rfile.read(length)
+                if len(data) != length:
+                    raise ValueError("文件上传数据不完整")
+                handle = tempfile.NamedTemporaryFile(prefix="kazuizhi-r8-upload-", delete=False)
+                temp_path = Path(handle.name)
+                try:
+                    handle.write(data)
+                finally:
+                    handle.close()
+                result = device_push_file(device_id, temp_path, filename)
+                self._json_ok(result, code=201)
+            except (ValueError, RuntimeError, OSError) as error:
+                self._json_error(400, error)
+            finally:
+                if temp_path:
+                    try:
+                        temp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
             return
         if path not in (
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
@@ -315,19 +383,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "problems": [], "opportunities": [], "tomorrow_plan": result,
                 })
         except (ValueError, json.JSONDecodeError, OSError, RuntimeError) as error:
-            data = json.dumps({"error": str(error)}, ensure_ascii=False).encode("utf-8")
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            self._json_error(400, error)
             return
-        data = json.dumps(result, ensure_ascii=False).encode("utf-8")
-        self.send_response(201)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._json_ok(result, code=201)
 
     def list_directory(self, path):
         self.send_error(404)
