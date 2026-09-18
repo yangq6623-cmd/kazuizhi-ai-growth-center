@@ -115,6 +115,15 @@ def _parse_screen_size(text):
     return {"width": int(match.group(1)), "height": int(match.group(2))}
 
 
+def _parse_awake(text):
+    value = str(text or "")
+    if re.search(r"mWakefulness=Awake|Display Power: state=ON", value):
+        return True
+    if re.search(r"mWakefulness=(?:Asleep|Dozing)|Display Power: state=OFF", value):
+        return False
+    return None
+
+
 def _shell(device_id, *args, timeout=8):
     return _run(["-s", device_id, "shell", *args], timeout=timeout)
 
@@ -122,12 +131,14 @@ def _shell(device_id, *args, timeout=8):
 def _device_details(device):
     device_id = device["device_id"]
     if device.get("state") != "device":
-        return dict(device, connected=False)
+        return dict(device, connected=False, screen_awake=None)
+
     def prop(name):
         try:
             return _shell(device_id, "getprop", name).strip()
         except RuntimeError:
             return ""
+
     try:
         battery = _parse_battery_output(_shell(device_id, "dumpsys", "battery"))
     except RuntimeError:
@@ -137,12 +148,12 @@ def _device_details(device):
     except RuntimeError:
         screen = None
     try:
-        power = _shell(device_id, "dumpsys", "power")
-        awake = bool(re.search(r"mWakefulness=Awake|Display Power: state=ON", power))
+        awake = _parse_awake(_shell(device_id, "dumpsys", "power"))
     except RuntimeError:
         awake = None
     model = prop("ro.product.model") or device.get("model_hint") or "Android"
-    return dict(device,
+    return dict(
+        device,
         connected=True,
         model=model,
         manufacturer=prop("ro.product.manufacturer"),
@@ -183,6 +194,19 @@ def device_audit(limit=80):
     data = read_json(AUDIT_PATH, None)
     events = (data or {}).get("events") if isinstance(data, dict) else []
     return {"items": list(events or [])[-max(1, min(int(limit), MAX_AUDIT)):], "total": len(events or [])}
+
+
+def _record_connection_transition(runtime_device, device_id, new_state):
+    old_state = runtime_device.get("connection")
+    if old_state and old_state != new_state:
+        _append_audit({
+            "device_id": device_id,
+            "action": "device_connected" if new_state == "connected" else "device_disconnected",
+            "actor": "system",
+            "result": "ok",
+        })
+    runtime_device["connection"] = new_state
+    runtime_device["updated_at"] = now_iso()
 
 
 def scan_and_sync():
@@ -240,14 +264,30 @@ def scan_and_sync():
 
     runtime = _runtime_state()
     modes = runtime.setdefault("devices", {})
-    for item in devices:
-        modes.setdefault(item["device_id"], {"mode": "r8", "updated_at": now_iso()})
-        item["control_mode"] = modes[item["device_id"]].get("mode", "r8")
+    all_known_ids = {item.get("device_id") for item in devices} | {item.get("device_id") for item in registered}
+    for device_id in [value for value in all_known_ids if value]:
+        entry = modes.setdefault(device_id, {"mode": "r8", "updated_at": now_iso()})
+        _record_connection_transition(entry, device_id, "connected" if device_id in current_connected_ids else "disconnected")
     _save_runtime(runtime)
+
+    control = control_status()
+    control_devices = {item.get("device_id"): item for item in control.get("devices", [])}
+    accounts = list(control.get("accounts") or [])
+    for item in devices:
+        entry = modes.setdefault(item["device_id"], {"mode": "r8", "updated_at": now_iso()})
+        item["control_mode"] = entry.get("mode", "r8")
+        item["current_task"] = entry.get("current_task")
+        registered_device = control_devices.get(item["device_id"]) or {}
+        item["risk_level"] = registered_device.get("risk_level", "unknown")
+        account = next((x for x in accounts if x.get("device_id") == item["device_id"]), None)
+        item["platform"] = account.get("platform_name") if account else None
+        item["account"] = account.get("alias") if account else None
 
     message = "未发现已授权 Android 真机"
     if primary:
         message = "已通过 ADB 识别 1 台真实 Android 手机"
+        if primary.get("screen_awake") is False:
+            message += "；手机当前锁屏/熄屏，自动操作保持停止"
     if blocked:
         message += f"；另有 {len(blocked)} 台设备因单真机试点被阻止"
     return {
@@ -280,13 +320,23 @@ def execute_action(payload):
     payload = payload or {}
     device_id = str(payload.get("device_id") or "").strip()
     action = str(payload.get("action") or "").strip().lower()
+    actor = str(payload.get("actor") or "owner")[:40]
     if not device_id:
         raise ValueError("device_id 不能为空")
     device = _require_connected(device_id)
     runtime = _runtime_state()
     mode = (runtime.get("devices") or {}).get(device_id, {}).get("mode", "r8")
-    if mode == "human" and str(payload.get("actor") or "owner") != "owner":
+    if mode == "human" and actor != "owner":
         raise ValueError("设备处于人工接管状态")
+    if device.get("screen_awake") is False and action != "power":
+        _append_audit({
+            "device_id": device_id,
+            "action": action or "unknown",
+            "actor": actor,
+            "result": "blocked",
+            "detail": {"reason": "screen_locked_or_off"},
+        })
+        raise ValueError("手机处于锁屏/熄屏状态；为避免误操作，除唤醒键外已停止设备动作")
 
     if action == "tap":
         x, y = int(payload.get("x")), int(payload.get("y"))
@@ -321,7 +371,7 @@ def execute_action(payload):
     event = _append_audit({
         "device_id": device_id,
         "action": action,
-        "actor": str(payload.get("actor") or "owner")[:40],
+        "actor": actor,
         "task_id": str(payload.get("task_id") or "")[:120] or None,
         "account_id": str(payload.get("account_id") or "")[:180] or None,
         "result": "ok",
@@ -339,7 +389,8 @@ def set_takeover(payload):
     _require_connected(device_id)
     state = _runtime_state()
     devices = state.setdefault("devices", {})
-    devices[device_id] = {"mode": mode, "updated_at": now_iso()}
+    previous = devices.get(device_id) or {}
+    devices[device_id] = dict(previous, mode=mode, updated_at=now_iso())
     _save_runtime(state)
     event = _append_audit({
         "device_id": device_id,
