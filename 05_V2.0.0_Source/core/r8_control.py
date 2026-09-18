@@ -4,6 +4,10 @@ The control plane is intentionally conservative: real Android devices only,
 truthful ADB connection state, explicit platform/account bindings, owner-gated
 video publishing and hard stops for finance, verification bypass, device
 spoofing and risk events. Platform passwords are never stored here.
+
+Runtime model: one real phone is an operations terminal that may host multiple
+platform accounts. A single phone executes foreground platform work serially;
+multiple phones may work in parallel after the single-device pilot passes.
 """
 
 from datetime import date
@@ -17,6 +21,7 @@ SCHEMA = "kazuizhi-r8-control/v1"
 PLATFORMS = {
     "douyin": "抖音",
     "xiaohongshu": "小红书",
+    "kuaishou": "快手",
     "wechat_channels": "视频号",
     "weibo": "微博",
     "bilibili": "哔哩哔哩",
@@ -47,7 +52,7 @@ def _default_state():
         "pilot": {
             "enabled": True,
             "device_limit": 1,
-            "strategy": "先单真机跑通，再增加第二台设备",
+            "strategy": "先单真机跑通，再增加第二台设备；单手机多平台串行，多手机并行",
         },
         "global": {
             "paused": True,
@@ -83,7 +88,10 @@ def _default_state():
             "platform_policy_required": True,
             "truthful_receipts_required": True,
             "platform_passwords_not_stored": True,
-            "one_platform_window_per_device": True,
+            "one_platform_account_per_device_binding": True,
+            "one_device_many_platform_accounts": True,
+            "single_device_foreground_serial": True,
+            "multi_device_parallel_after_pilot": True,
         },
         "updated_at": now_iso(),
     }
@@ -93,6 +101,11 @@ def _migrate_state(state):
     changed = False
     if state.get("phase") != "R8-01":
         state["phase"] = "R8-01"
+        changed = True
+    pilot = state.setdefault("pilot", {})
+    strategy = "先单真机跑通，再增加第二台设备；单手机多平台串行，多手机并行"
+    if pilot.get("strategy") != strategy:
+        pilot["strategy"] = strategy
         changed = True
     platforms = state.setdefault("platforms", {})
     for key, name in PLATFORMS.items():
@@ -107,13 +120,20 @@ def _migrate_state(state):
             }
             changed = True
     hard = state.setdefault("hard_rules", {})
-    for key, value in {
+    rules = {
         "platform_passwords_not_stored": True,
-        "one_platform_window_per_device": True,
-    }.items():
+        "one_platform_account_per_device_binding": True,
+        "one_device_many_platform_accounts": True,
+        "single_device_foreground_serial": True,
+        "multi_device_parallel_after_pilot": True,
+    }
+    for key, value in rules.items():
         if hard.get(key) != value:
             hard[key] = value
             changed = True
+    if "one_platform_window_per_device" in hard:
+        hard.pop("one_platform_window_per_device", None)
+        changed = True
     state.setdefault("accounts", [])
     state.setdefault("devices", [])
     return changed
@@ -219,10 +239,12 @@ def record_device_probe(device_id, connected, source="adb", detail=""):
 
 
 def register_account(payload):
-    """Create/update one social window = one platform + one phone + one account alias.
+    """Create/update one platform account bound to one real phone.
 
-    Passwords/tokens are intentionally not accepted or stored. Login verification
-    happens in the real platform app and is marked separately by the owner.
+    One phone may host many different platform accounts, while a specific
+    phone/platform binding has one active account record. Passwords/tokens are
+    intentionally not accepted or stored. Login verification happens in the
+    real platform app and is marked separately by the owner.
     """
     payload = payload or {}
     platform = str(payload.get("platform") or "").strip()
@@ -241,7 +263,7 @@ def register_account(payload):
     state = control_status()
     device = next((item for item in state.get("devices", []) if item.get("device_id") == device_id), None)
     if not device:
-        raise ValueError("账号窗口必须绑定已登记真机")
+        raise ValueError("平台账号必须绑定已登记真机")
 
     accounts = state.setdefault("accounts", [])
     existing_by_binding = next(
@@ -250,7 +272,7 @@ def register_account(payload):
     )
     requested_id = str(payload.get("account_id") or "").strip()
     if existing_by_binding and requested_id and existing_by_binding.get("account_id") != requested_id:
-        raise ValueError("同一平台的一台手机只能保留一个账号窗口")
+        raise ValueError("同一台手机的同一平台只能保留一个当前账号绑定")
 
     existing = existing_by_binding
     account_id = existing.get("account_id") if existing else (requested_id or f"{platform}:{device_id}")
@@ -288,7 +310,7 @@ def update_account_status(payload):
     state = control_status()
     account = next((item for item in state.get("accounts", []) if item.get("account_id") == account_id), None)
     if not account:
-        raise ValueError("社媒账号窗口不存在")
+        raise ValueError("社媒平台账号不存在")
 
     if "login_status" in payload:
         login_status = str(payload.get("login_status") or "").strip()
@@ -316,7 +338,7 @@ def remove_account(payload):
     before = len(state.get("accounts", []))
     state["accounts"] = [item for item in state.get("accounts", []) if item.get("account_id") != account_id]
     if len(state["accounts"]) == before:
-        raise ValueError("社媒账号窗口不存在")
+        raise ValueError("社媒平台账号不存在")
     return _save(state)
 
 
@@ -324,29 +346,59 @@ def social_center_status():
     state = control_status()
     devices = list(state.get("devices", []))
     accounts = list(state.get("accounts", []))
+    online_ids = {
+        item.get("device_id") for item in devices
+        if item.get("connection") == "connected" and item.get("probe_source") == "adb"
+    }
     platform_rows = []
     for platform_id, name in PLATFORMS.items():
         rows = [item for item in accounts if item.get("platform") == platform_id]
-        online_ids = {
-            item.get("device_id") for item in devices
-            if item.get("connection") == "connected" and item.get("probe_source") == "adb"
-        }
         platform_rows.append({
             "id": platform_id,
             "name": name,
             "windows": len(rows),
             "online": sum(1 for item in rows if item.get("device_id") in online_ids),
             "authorized": sum(1 for item in rows if item.get("login_status") == "authorized"),
-            "attention": sum(1 for item in rows if item.get("login_status") in {"needs_human", "logged_out"} or item.get("risk_level") in {"attention", "high"}),
+            "attention": sum(
+                1 for item in rows
+                if item.get("login_status") in {"needs_human", "logged_out"}
+                or item.get("risk_level") in {"attention", "high"}
+            ),
         })
+
+    terminal_rows = []
+    for device in devices:
+        device_id = device.get("device_id")
+        bound = [item for item in accounts if item.get("device_id") == device_id]
+        terminal_rows.append({
+            "device_id": device_id,
+            "label": device.get("label") or device_id,
+            "connection": device.get("connection"),
+            "health": device.get("health"),
+            "risk_level": device.get("risk_level", "unknown"),
+            "last_seen_at": device.get("last_seen_at"),
+            "platform_count": len(bound),
+            "authorized_count": sum(1 for item in bound if item.get("login_status") == "authorized"),
+            "attention_count": sum(
+                1 for item in bound
+                if item.get("login_status") in {"needs_human", "logged_out"}
+                or item.get("risk_level") in {"attention", "high"}
+            ),
+            "accounts": bound,
+        })
+
     return {
         "phase": state.get("phase"),
         "pilot": state.get("pilot"),
         "platforms": platform_rows,
+        "terminals": terminal_rows,
         "devices": devices,
         "accounts": accounts,
         "rules": {
-            "one_window_one_phone_one_platform_account": True,
+            "one_device_many_platform_accounts": True,
+            "one_phone_platform_binding_one_current_account": True,
+            "single_device_foreground_serial": True,
+            "multi_device_parallel_after_pilot": True,
             "passwords_stored": False,
             "verification_requires_human": True,
             "finance_requires_human": True,
@@ -389,11 +441,11 @@ def authorize_action(payload):
     if account_id:
         account = next((item for item in state.get("accounts", []) if item.get("account_id") == account_id), None)
         if not account or account.get("platform") != platform or account.get("device_id") != device_id:
-            return deny("社媒账号窗口与设备/平台绑定不一致")
+            return deny("社媒账号与设备/平台绑定不一致")
         if account.get("login_status") != "authorized":
             return deny("平台账号尚未完成人工登录/授权验证", human=True)
         if account.get("automation_paused"):
-            return deny("该账号窗口已暂停自动化")
+            return deny("该平台账号已暂停自动化")
         if account.get("risk_level") in {"attention", "high"}:
             return deny("账号处于风险状态，已停止自动动作", human=True)
     if action in VIDEO_PUBLICATION_ACTIONS and not owner_approved:
