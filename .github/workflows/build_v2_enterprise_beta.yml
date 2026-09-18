@@ -39,8 +39,9 @@ jobs:
         run: |
           $path = '05_V2.0.0_Source/web/build_info.js'
           $text = Get-Content -LiteralPath $path -Raw
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
-          $text = $text.Replace('__GITHUB_SHA__', '${{ github.sha }}')
+          $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
       - name: Install build dependencies
         run: |
