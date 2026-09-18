@@ -57,3 +57,18 @@ toast = function(message, type='ok') {
   const duration = type === 'error' ? 5200 : 2600;
   setTimeout(() => popup.className = '', duration);
 };
+
+// Load the manager-focused R7 enhancements after r7.js without changing the
+// stable dashboard shell. The patch is non-blocking and only affects R7 UX.
+(() => {
+  if (document.querySelector('script[data-r7-manager-patch]')) return;
+  const script = document.createElement('script');
+  script.src = 'r7_manager_patch.js';
+  script.dataset.r7ManagerPatch = '1';
+  script.onload = () => {
+    if ($('workflow')?.classList.contains('active') && typeof loadR7 === 'function') {
+      loadR7();
+    }
+  };
+  document.body.appendChild(script);
+})();
