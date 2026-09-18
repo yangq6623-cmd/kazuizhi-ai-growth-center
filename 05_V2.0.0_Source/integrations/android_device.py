@@ -16,6 +16,7 @@ from core.r8_control import control_status, record_device_probe, register_device
 
 AUDIT_PATH = "r8/device_audit.json"
 RUNTIME_PATH = "r8/device_runtime.json"
+TRANSFER_DIR = "/sdcard/Download/Kazuizhi"
 MAX_AUDIT = 500
 
 
@@ -314,6 +315,73 @@ def screenshot_bytes(device_id):
         raise RuntimeError("ADB 截图未返回有效 PNG")
     _append_audit({"device_id": device_id, "action": "screenshot", "actor": "owner", "result": "ok"})
     return bytes(data)
+
+
+def _safe_transfer_name(name):
+    raw = Path(str(name or "").replace("\\", "/")).name.strip()
+    if not raw or raw in {".", ".."}:
+        raise ValueError("文件名不能为空")
+    safe = re.sub(r"[^0-9A-Za-z._\-\u4e00-\u9fff]+", "_", raw).strip("._")
+    if not safe:
+        raise ValueError("文件名没有可用字符")
+    return safe[:120]
+
+
+def list_transfer_files(device_id):
+    _require_connected(device_id)
+    _shell(device_id, "mkdir", "-p", TRANSFER_DIR)
+    try:
+        output = _shell(device_id, "ls", "-1", TRANSFER_DIR)
+    except RuntimeError:
+        output = ""
+    items = []
+    for raw in str(output or "").splitlines():
+        name = raw.strip()
+        if not name or name in {".", ".."}:
+            continue
+        try:
+            safe = _safe_transfer_name(name)
+        except ValueError:
+            continue
+        if safe == name:
+            items.append(name)
+    return {"device_id": device_id, "directory": TRANSFER_DIR, "items": items[:200]}
+
+
+def push_file(device_id, local_path, remote_name):
+    _require_connected(device_id)
+    source = Path(local_path)
+    if not source.is_file():
+        raise ValueError("待发送文件不存在")
+    name = _safe_transfer_name(remote_name or source.name)
+    _shell(device_id, "mkdir", "-p", TRANSFER_DIR)
+    remote = f"{TRANSFER_DIR}/{name}"
+    _run(["-s", device_id, "push", str(source), remote], timeout=60)
+    event = _append_audit({
+        "device_id": device_id,
+        "action": "file_push",
+        "actor": "owner",
+        "result": "ok",
+        "detail": {"name": name, "bytes": source.stat().st_size, "remote": remote},
+    })
+    return {"ok": True, "device_id": device_id, "name": name, "remote": remote, "event": event}
+
+
+def pull_file_bytes(device_id, remote_name):
+    _require_connected(device_id)
+    name = _safe_transfer_name(remote_name)
+    remote = f"{TRANSFER_DIR}/{name}"
+    data = _run(["-s", device_id, "exec-out", "cat", remote], timeout=60, binary=True)
+    if not isinstance(data, (bytes, bytearray)):
+        raise RuntimeError("ADB 文件读取失败")
+    _append_audit({
+        "device_id": device_id,
+        "action": "file_pull",
+        "actor": "owner",
+        "result": "ok",
+        "detail": {"name": name, "bytes": len(data), "remote": remote},
+    })
+    return name, bytes(data)
 
 
 def execute_action(payload):
