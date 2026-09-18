@@ -59,12 +59,22 @@ try:
         raise AssertionError("Exported handoff does not contain the current manager report")
 
     ui = (SRC / "web" / "decision_center.js").read_text(encoding="utf-8")
-    for token in (
+    required_ui = (
         "AI 自主决策中心 V1", "8 个员工日报", "经理判断",
-        "ChatGPT 战略交接", "/api/r7/decision-center", "每 5 分钟自动汇总",
-    ):
+        "ChatGPT 战略交接", "/api/r7/decision-center", "每 5 分钟",
+        "decisionOpenWorkflow", "decisionActivate", "data-agent-name",
+        "decision-evidence-open", "decision-reports-open", "decision-bridge-open",
+        "团队协作", "decision-shared-context", "data-team-page",
+        "查看这个员工今天的任务", "查看任务依据", "查看全部任务",
+    )
+    for token in required_ui:
         if token not in ui:
             raise AssertionError(f"Decision center UI missing contract token: {token}")
+
+    if "decision-planned':'today'" not in ui or "decision-queued':'queued'" not in ui or "decision-failed':'failed'" not in ui:
+        raise AssertionError("Decision KPI cards are not wired to real workflow filters")
+    if "addEventListener('click'" not in ui or "decision-refresh" not in ui:
+        raise AssertionError("Decision center refresh/control click handlers missing")
 
     server = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
     if '"/api/r7/decision-center": decision_snapshot()' not in server:
@@ -77,6 +87,6 @@ try:
         if token not in run:
             raise AssertionError(f"Manager refresh/bridge loop missing: {token}")
 
-    print("PASS: 8 employee reports, R7 manager decisions, ChatGPT bridge handoff, finance/publishing guardrails and five-minute refresh")
+    print("PASS: autonomous decision center, eight employee reports, manager decisions, interactive drill-down controls, team collaboration view, ChatGPT bridge handoff and guardrails")
 finally:
     shutil.rmtree(sandbox, ignore_errors=True)
