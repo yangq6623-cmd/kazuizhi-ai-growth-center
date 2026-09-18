@@ -62,8 +62,12 @@ forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
 ui = (SRC / "web" / "r8_device_center.js").read_text(encoding="utf-8")
 file_ui = (SRC / "web" / "r8_device_file_patch.js").read_text(encoding="utf-8")
 persistence_ui = (SRC / "web" / "r8_persistence_patch.js").read_text(encoding="utf-8")
+cockpit_ui = (SRC / "web" / "r8_terminal_cockpit_patch.js").read_text(encoding="utf-8")
+b3_ui = (SRC / "web" / "r8_device_b3_patch.js").read_text(encoding="utf-8")
+identity_ui = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
 control = (SRC / "core" / "r8_control.py").read_text(encoding="utf-8")
 adapter = (SRC / "integrations" / "android_device.py").read_text(encoding="utf-8")
+adapter_b3 = (SRC / "integrations" / "android_device_b3.py").read_text(encoding="utf-8")
 bridge_source = (SRC / "integrations" / "bridge.py").read_text(encoding="utf-8")
 
 for route in (
@@ -128,9 +132,26 @@ assert "Download/Kazuizhi" in file_ui
 for field in ("当前平台", "当前账号", "当前任务", "风险状态", "屏幕状态"):
     assert field in ui, f"device console missing field: {field}"
 
+# R8-01B.2/3 cockpit contract: platform icons/context, virtual screen refresh,
+# ordinary screen-off auto resume, non-secure keyguard dismissal and safe app launch.
+assert "kz-platform-dock" in cockpit_ui and "kz-platform-icon" in cockpit_ui
+assert "任务" in cockpit_ui and "平台" in cockpit_ui and "人工处理" in cockpit_ui and "日志" in cockpit_ui
+assert "r8_device_b3_patch.js" in identity_ui
+assert "R8-01B.3" in identity_ui
+assert "keep_awake_on" in b3_ui and "keep_awake_off" in b3_ui
+assert "refreshMirror" in b3_ui and "screen_off" in b3_ui
+assert "data-kz-platform" in b3_ui and "launch_app" in b3_ui
+assert "PLATFORM_PACKAGES" in adapter_b3 and "launch_app" in adapter_b3
+assert "auto_dismiss_keyguard" in adapter_b3 and "device_secure" in adapter_b3
+for package in (
+    "com.ss.android.ugc.aweme", "com.xingin.xhs", "com.smile.gifmaker",
+    "com.tencent.mm", "com.sina.weibo", "tv.danmaku.bili",
+):
+    assert package in adapter_b3, f"missing safe platform package allowlist: {package}"
+
 for forbidden in (
     "spoof_imei", "spoof_android_id", "spoof_gps", "bypass_captcha",
 ):
-    assert forbidden not in ui and forbidden not in file_ui and forbidden not in adapter, f"unsafe device action exposed: {forbidden}"
+    assert forbidden not in ui and forbidden not in file_ui and forbidden not in adapter and forbidden not in adapter_b3 and forbidden not in b3_ui, f"unsafe device action exposed: {forbidden}"
 
-print("PASS: R8-01A durable configuration and R8-01B interactive phone console contracts are wired without breaking R7 route isolation")
+print("PASS: R8-01A durable configuration and R8-01B.3 virtual phone control contracts are wired without breaking R7 route isolation")
