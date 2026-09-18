@@ -129,6 +129,19 @@ toast = function(message, type='ok') {
   document.body.appendChild(info);
 })();
 
+// R8-01A persistent configuration patch: reuse the Windows-encrypted business
+// key, keep bridge/device settings outside the install directory, and avoid
+// forcing the owner to re-enter already verified configuration after upgrades.
+(() => {
+  if (document.querySelector('script[data-r8-persistence-patch]')) return;
+  const script = document.createElement('script');
+  script.src = 'r8_persistence_patch.js';
+  script.async = false;
+  script.dataset.r8PersistencePatch = '1';
+  script.onerror = () => toast('R8 配置持久化模块加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
+
 // R8 Social Media Center is the single business entry for real phones,
 // platform/account bindings and device operation. Connection & health stays
 // infrastructure-only; it no longer owns a second copy of phone controls.
