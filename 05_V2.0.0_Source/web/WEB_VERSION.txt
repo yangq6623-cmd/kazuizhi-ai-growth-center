@@ -9,12 +9,23 @@ Modules:
 - R7 Final Core Preserved
 - R8-00 Platform Safety Control Plane
 - R8-01 Single Real Android Device Center
+- R8-01A Durable Configuration Outside Install Directory
+- R8-01A Windows DPAPI Business Readonly Key Reuse
+- R8-01A Google Drive AI_Command Drive-Letter Auto Recovery
+- R8-01A Persisted ADB Path / Last Device Identity
+- R8-01A Durable Social Device / Platform / Account Bindings
+- R8-01B Interactive Desktop Phone Console in Social Media Center
+- R8-01B Direct Screenshot Tap and Mouse-Drag Swipe Mapping
+- R8-01B Screen-Off Auto Wake with Post-Wake Safety Recheck
+- R8-01B Screen-Off / Keyguard / Secure-Lock State Separation
+- R8-01B R8 Auto / Human Control / Pause Modes
+- R8-01B USB Task Keep-Awake / Restore Normal Sleep Policy
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State
 - R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
 - R8-01 Bidirectional File Transfer via Download/Kazuizhi
 - R8-01 Human Takeover / Return to R8
-- R8-01 Disconnect and Lock-Screen Stop Boundary
+- R8-01 Disconnect and Security-Lock Stop Boundary
 - R8-01 Device Action Audit
 - R8-00 Owner Focus for Tomorrow Plan
 - R8-00 Owner-Gated Video Publishing
