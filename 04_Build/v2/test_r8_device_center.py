@@ -19,11 +19,15 @@ assert items[0]["model_hint"] == "ETO-BD00"
 assert items[1]["state"] == "unauthorized"
 assert android_device._parse_battery_output("AC powered: true\n  level: 87\n") == 87
 assert android_device._parse_screen_size("Physical size: 1080x2400\n") == {"width": 1080, "height": 2400}
+assert android_device._parse_awake("mWakefulness=Awake") is True
+assert android_device._parse_awake("mWakefulness=Asleep") is False
+assert android_device._parse_awake("vendor-specific unknown state") is None
 
 backend = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
 forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
 ui = (SRC / "web" / "r8_device_center.js").read_text(encoding="utf-8")
 control = (SRC / "core" / "r8_control.py").read_text(encoding="utf-8")
+adapter = (SRC / "integrations" / "android_device.py").read_text(encoding="utf-8")
 
 for route in (
     "/api/r8/device/status",
@@ -36,6 +40,11 @@ for route in (
 assert "r8_device_center.js" in forms
 assert "R8-01 单真机设备中心" in ui
 assert "只接受本机 ADB" in ui
+for field in ("当前平台", "当前账号", "当前任务", "风险状态", "屏幕状态"):
+    assert field in ui, f"device card missing field: {field}"
+assert "锁屏/熄屏" in ui
+assert "screen_locked_or_off" in adapter
+assert "device_connected" in adapter and "device_disconnected" in adapter
 assert "source != \"adb\"" in control
 assert "registered_not_verified" in control
 
@@ -44,4 +53,4 @@ for forbidden in (
 ):
     assert forbidden not in ui, f"unsafe device UI action exposed: {forbidden}"
 
-print("PASS: R8-01 ADB parsing, truthful device routes, UI wiring and safety boundaries are present")
+print("PASS: R8-01 ADB parsing, device state, lock-stop, audit, UI wiring and safety boundaries are present")
