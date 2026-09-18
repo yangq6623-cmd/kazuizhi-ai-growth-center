@@ -1,7 +1,7 @@
 (() => {
   const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-00 单真机安全底座';
+  const PHASE = 'R8-01 单真机设备中心';
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -23,20 +23,20 @@
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-00 平台安全与单真机试点';
+    if (badge) badge.textContent = 'R8 Preview · R8-01 单真机设备中心';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
     if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';
 
     const workflowLabel = document.querySelector('#workflow .page-title small');
-    if (workflowLabel) workflowLabel.textContent = 'R7 Final 稳定底座 + R8 Preview 扩展层';
+    if (workflowLabel) workflowLabel.textContent = 'R7 Final 稳定底座 + R8-00 安全层 + R8-01 真机设备层';
 
     const heading = document.querySelector('#dashboard .command-welcome h2');
-    if (heading) heading.textContent = 'R7 稳定运行，R8 开始接入真实平台与设备。';
+    if (heading) heading.textContent = 'R7 稳定运行，R8 已进入真实 Android 单真机接入阶段。';
 
     try {
       const status = await fetch('/api/status', {cache: 'no-store'}).then(r => r.json());
-      if (status.runtime_build !== RUNTIME_BUILD || status.r8_phase !== 'R8-00') {
+      if (status.runtime_build !== RUNTIME_BUILD || status.r8_phase !== 'R8-01') {
         if (typeof toast === 'function') toast('R8 安装包身份不一致，请重新安装最新 R8 Preview', 'error');
       }
     } catch (error) {
