@@ -1,0 +1,2 @@
+Final R8-01 package rebuild requested after completing bidirectional Android file transfer and updating the R7→R8 decision ledger.
+Target: one install package that contains the latest R8-01 code plus the latest handoff/decision record before owner real-device testing.
