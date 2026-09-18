@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from ai_center.daily_review import generate_review, latest_plan, latest_review
 from analytics.business_metrics import build_analytics, import_snapshot, import_template
 from analytics.operation_summary import build_summary, save_summary
+from core.decision_center import decision_snapshot, refresh_decision_center
 from core.storage import now_iso
 from core.r7_engine import (
     agent_registry, audit_history, command as job_command, create_job,
@@ -104,6 +105,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "bridge_command_receipts",
                         "bridge_closed_loop_self_test",
                         "verified_readonly_business_source",
+                        "autonomous_decision_center",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -136,6 +138,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/r7/engine": engine_status(),
                 "/api/r7/audit": audit_history(),
                 "/api/r7/model-routes": model_routes(),
+                "/api/r7/decision-center": decision_snapshot(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -168,6 +171,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/bridge/configure", "/api/bridge/disable", "/api/bridge/sync", "/api/bridge/report",
             "/api/bridge/self-test",
             "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
+            "/api/r7/decision-center/refresh",
         ):
             self.send_error(404)
             return
@@ -227,6 +231,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = job_command(payload)
             elif path == "/api/r7/scheduler/tick":
                 result = run_due_jobs()
+            elif path == "/api/r7/decision-center/refresh":
+                result = refresh_decision_center()
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
