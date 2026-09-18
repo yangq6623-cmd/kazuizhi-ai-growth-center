@@ -138,14 +138,27 @@ toast = function(message, type='ok') {
   script.async = false;
   script.dataset.r8DeviceCenter = '1';
   script.onload = () => {
-    if (document.querySelector('script[data-r8-device-file-patch]')) return;
-    const transfer = document.createElement('script');
-    transfer.src = 'r8_device_file_patch.js';
-    transfer.async = false;
-    transfer.dataset.r8DeviceFilePatch = '1';
-    transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
-    document.body.appendChild(transfer);
+    if (!document.querySelector('script[data-r8-device-file-patch]')) {
+      const transfer = document.createElement('script');
+      transfer.src = 'r8_device_file_patch.js';
+      transfer.async = false;
+      transfer.dataset.r8DeviceFilePatch = '1';
+      transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
+      document.body.appendChild(transfer);
+    }
   };
   script.onerror = () => toast('R8 单真机设备中心加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
+
+// R8 Social Media Center. It adds a separate top-level category for real
+// platform/device/account bindings and keeps login verification human-gated.
+(() => {
+  if (document.querySelector('script[data-r8-social-center]')) return;
+  const script = document.createElement('script');
+  script.src = 'social_media_center.js';
+  script.async = false;
+  script.dataset.r8SocialCenter = '1';
+  script.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
