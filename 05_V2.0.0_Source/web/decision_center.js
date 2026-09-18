@@ -52,7 +52,8 @@
     ensureDecisionPage();
     const summary=data?.manager_summary||{};
     $('decision-headline').textContent=summary.headline||'经理报告暂无结论';
-    $('decision-generated').textContent=data?.generated_at?`最近汇总：${r7FullDateTime? r7FullDateTime(data.generated_at):formatTime(data.generated_at)}`:'尚未生成';
+    const stamp=data?.generated_at?(typeof r7FullDateTime==='function'?r7FullDateTime(data.generated_at):formatTime(data.generated_at)):'尚未生成';
+    $('decision-generated').textContent=data?.generated_at?`最近汇总：${stamp}`:stamp;
     $('decision-planned').textContent=summary.planned??0;$('decision-completed').textContent=summary.completed??0;$('decision-queued').textContent=summary.queued??0;$('decision-failed').textContent=summary.failed??0;$('decision-rate').textContent=`${summary.completion_rate??0}%`;
     const decisions=data?.manager_decisions||[];
     $('decision-manager-list').className=decisions.length?'decision-stack':'friendly-empty';
