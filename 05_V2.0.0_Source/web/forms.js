@@ -58,17 +58,26 @@ toast = function(message, type='ok') {
   setTimeout(() => popup.className = '', duration);
 };
 
-// Load the manager-focused R7 enhancements after r7.js without changing the
-// stable dashboard shell. The patch is non-blocking and only affects R7 UX.
+// Load the manager-focused R7 enhancements after r7.js. The previous loader
+// only refreshed R7 when the workflow page happened to be open at the exact
+// moment this file finished loading. That left the KPI cards rendered by the
+// base UI without their click handlers until a later refresh. Always apply the
+// patch immediately and refresh R7 once so the four manager KPI cards work on
+// the first visit, not only after waiting for the 15-second scheduler refresh.
 (() => {
   if (document.querySelector('script[data-r7-manager-patch]')) return;
   const script = document.createElement('script');
   script.src = 'r7_manager_patch.js';
+  script.async = false;
   script.dataset.r7ManagerPatch = '1';
   script.onload = () => {
-    if ($('workflow')?.classList.contains('active') && typeof loadR7 === 'function') {
-      loadR7();
+    try {
+      if (typeof applyAutonomyCopy === 'function') applyAutonomyCopy();
+      if (typeof loadR7 === 'function') loadR7();
+    } catch (error) {
+      toast('AI 员工管理增强模块初始化失败：' + error.message, 'error');
     }
   };
+  script.onerror = () => toast('AI 员工管理增强模块加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
