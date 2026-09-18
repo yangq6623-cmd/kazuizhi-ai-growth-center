@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,8 +21,8 @@ try:
     second = ensure_daily_workforce()
     jobs = [job for job in list_jobs()["items"] if job.get("schedule_source") == "daily_workforce"]
 
-    if first["planned"] < 18:
-        raise AssertionError(f"Daily plan is too sparse: {first}")
+    if first["base_planned"] != 20 or first["planned"] < 20:
+        raise AssertionError(f"Daily plan must include the 20-job regional base: {first}")
     if first["created"] != first["planned"]:
         raise AssertionError(f"Initial schedule did not create every planned job: {first}")
     if second["created"] != 0:
@@ -45,10 +46,37 @@ try:
             raise AssertionError(f"Scheduled job is not queued locally: {job}")
         if not job.get("due_at") or not job.get("schedule_time"):
             raise AssertionError(f"Scheduled job missing exact execution time: {job}")
+        if not job.get("region_id") or not job.get("region_tier") or job.get("region_source") != "regional_operations_strategy":
+            raise AssertionError(f"Scheduled job is not bound to regional strategy: {job}")
 
     times = [hhmm for hhmm, *_ in DAILY_TEMPLATE]
     if times != sorted(times):
         raise AssertionError("Daily workforce template is not time ordered")
+
+    # The real execution layer must match the owner-approved 50/30/15/5 base
+    # strategy exactly: 10 Lianshui, 6 other Huai'an, 3 other Jiangsu, 1 ZJ/SH.
+    base_region_counts = Counter(region_id for *_, region_id in DAILY_TEMPLATE)
+    expected_regions = {
+        "lianshui": 10,
+        "huaian_main": 6,
+        "jiangsu_expand": 3,
+        "zhejiang_shanghai_reserve": 1,
+    }
+    if dict(base_region_counts) != expected_regions:
+        raise AssertionError(f"Regional workforce allocation mismatch: {dict(base_region_counts)}")
+    if first.get("region_job_counts") != expected_regions:
+        raise AssertionError(f"Persisted regional plan mismatch: {first}")
+
+    reserve = [job for job in jobs if job.get("region_id") == "zhejiang_shanghai_reserve"]
+    if len(reserve) != 1 or reserve[0].get("region_mode") != "reserve":
+        raise AssertionError(f"Strategic reserve task mismatch: {reserve}")
+    reserve_text = str(reserve[0].get("title") or "")
+    if "战略储备" not in reserve_text or "发布" in reserve_text:
+        raise AssertionError(f"Reserve region task must be research-only: {reserve_text}")
+
+    prepare = [job for job in jobs if job.get("region_id") == "jiangsu_expand"]
+    if len(prepare) != 3 or any(job.get("region_mode") != "prepare" for job in prepare):
+        raise AssertionError(f"Jiangsu expansion-prep tasks mismatch: {prepare}")
 
     patch = (SRC / "web" / "r7_manager_patch.js").read_text(encoding="utf-8")
     required_ui = (
@@ -60,6 +88,6 @@ try:
         if token not in patch:
             raise AssertionError(f"Manager UX patch missing contract token: {token}")
 
-    print("PASS: full-day 8-role AI workforce schedule, idempotency, finance guardrail, timestamps, clickable KPI filters and dismissible finance reminders")
+    print("PASS: full-day 8-role workforce, exact 50/30/15/5 regional execution, idempotency, reserve-area truth guardrail, finance safety, timestamps and manager controls")
 finally:
     shutil.rmtree(sandbox, ignore_errors=True)
