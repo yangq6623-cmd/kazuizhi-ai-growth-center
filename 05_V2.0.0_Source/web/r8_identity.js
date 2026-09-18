@@ -1,8 +1,8 @@
 (() => {
   const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-01B.4.1 屏幕同步加载修复';
-  const PREVIOUS_PHASE = 'R8-01B.4';
+  const PHASE = 'R8-01B.4.2 屏幕同步启动修复';
+  const PREVIOUS_PHASE = 'R8-01B.4.1';
   const LEGACY_PHASE = 'R8-01B.3';
 
   function buildLabel() {
@@ -12,6 +12,24 @@
     const runLabel = run && !run.startsWith('__') ? `Build #${run}` : 'Source build';
     const commitLabel = commit && !commit.startsWith('__') ? commit.slice(0, 8) : 'local';
     return `${runLabel} · ${commitLabel}`;
+  }
+
+  function showLoaderStatus(text, kind='warn') {
+    const panel = document.getElementById('r8-device-center');
+    if (!panel) return;
+    let node = document.getElementById('r8-b4-loader-status');
+    if (!node) {
+      node = document.createElement('div');
+      node.id = 'r8-b4-loader-status';
+      node.className = 'notice';
+      const head = panel.querySelector('.r8-console-head');
+      if (head) head.insertAdjacentElement('afterend', node);
+      else panel.prepend(node);
+    }
+    node.textContent = text;
+    node.dataset.kind = kind;
+    node.style.background = kind === 'ok' ? '#eaf8ef' : kind === 'stop' ? '#f8e5e3' : '#fff7df';
+    node.style.color = kind === 'ok' ? '#237244' : kind === 'stop' ? '#9a392f' : '#8b6509';
   }
 
   function loadBridgeUsabilityPatch() {
@@ -26,87 +44,69 @@
     document.body.appendChild(script);
   }
 
-  function b4Ready() {
+  function mirrorReady() {
     return !!(window.R8DeviceMirrorSync && typeof window.R8DeviceMirrorSync.syncOnce === 'function');
   }
 
-  function activateB4IfReady() {
-    if (!b4Ready()) return false;
+  function activateMirror() {
+    if (!mirrorReady()) return false;
     try {
       if (typeof window.R8DeviceMirrorSync.startContinuous === 'function') {
         window.R8DeviceMirrorSync.startContinuous();
       }
+      const panel = document.getElementById('r8-device-center');
+      if (panel) panel.dataset.mirrorLoader = 'ready';
+      showLoaderStatus('手机屏幕同步模块已加载。连接真机后会自动同步，也可以使用“测试截图”。', 'ok');
       return true;
     } catch (error) {
+      showLoaderStatus('屏幕同步模块启动失败：' + error.message, 'stop');
       if (typeof toast === 'function') toast('R8 屏幕同步模块启动失败：' + error.message, 'error');
       return false;
     }
   }
 
-  function loadDeviceB4Hotfix(force=false) {
-    if (b4Ready()) {
-      activateB4IfReady();
+  function loadMirrorDirect() {
+    if (mirrorReady()) {
+      activateMirror();
       return;
     }
 
-    const existing = document.querySelector('script[data-r8-device-b4-hotfix]');
-    if (existing && !force) return;
-    if (existing && force) existing.remove();
+    const old = document.querySelector('script[data-r8-device-b4-hotfix]');
+    if (old) old.remove();
 
+    showLoaderStatus('正在加载手机屏幕同步模块…', 'warn');
     const script = document.createElement('script');
-    script.src = `r8_device_b4_mirror_hotfix.js?v=231-${Date.now()}`;
+    script.src = 'r8_device_b4_mirror_hotfix.js';
     script.async = false;
     script.dataset.r8DeviceB4Hotfix = '1';
     script.onload = () => {
-      if (!activateB4IfReady() && typeof toast === 'function') {
-        toast('R8 屏幕同步文件已加载，但控制模块没有完成初始化，系统将自动重试', 'error');
+      if (!activateMirror()) {
+        showLoaderStatus('屏幕同步文件已载入，但模块没有完成初始化。请关闭程序后重新打开一次。', 'stop');
       }
+      setTimeout(() => {
+        if (mirrorReady()) {
+          activateMirror();
+          if (!document.getElementById('r8-mirror-controls')) {
+            showLoaderStatus('同步模块已就绪，但控制条未挂载。请进入社媒中心并重新打开真机操作台。', 'warn');
+          }
+        }
+      }, 500);
     };
     script.onerror = () => {
-      if (typeof toast === 'function') toast('R8 真机屏幕同步控制模块加载失败，系统将自动重试', 'error');
+      showLoaderStatus('屏幕同步脚本加载失败：' + script.src, 'stop');
+      if (typeof toast === 'function') toast('R8 真机屏幕同步脚本加载失败，请重新安装最新版本', 'error');
     };
     document.body.appendChild(script);
   }
 
-  function installB4Watchdog() {
-    let checks = 0;
-    const verify = () => {
-      checks += 1;
-      const panel = document.getElementById('r8-device-center');
-      if (!panel) {
-        if (checks < 20) setTimeout(verify, 500);
-        return;
-      }
-
-      const controls = document.getElementById('r8-mirror-controls');
-      if (b4Ready()) {
-        activateB4IfReady();
-        if (controls || checks >= 20) return;
-      } else {
-        loadDeviceB4Hotfix(true);
-      }
-
-      if (checks < 20) setTimeout(verify, 700);
-      else if (!document.getElementById('r8-mirror-controls') && typeof toast === 'function') {
-        toast('R8 屏幕同步控制条仍未显示，请安装最新构建版本', 'error');
-      }
-    };
-    setTimeout(verify, 350);
-  }
-
   function loadDeviceB3Patch() {
-    if (document.querySelector('script[data-r8-device-b3]')) {
-      loadDeviceB4Hotfix();
-      return;
-    }
+    if (document.querySelector('script[data-r8-device-b3]')) return;
     const script = document.createElement('script');
     script.src = 'r8_device_b3_patch.js';
     script.async = false;
     script.dataset.r8DeviceB3 = '1';
-    script.onload = loadDeviceB4Hotfix;
     script.onerror = () => {
       if (typeof toast === 'function') toast('R8 熄屏恢复与虚拟手机控制模块加载失败，请重新安装最新版本', 'error');
-      loadDeviceB4Hotfix(true);
     };
     document.body.appendChild(script);
   }
@@ -123,7 +123,7 @@
     script.onload = loadDeviceB3Patch;
     script.onerror = () => {
       if (typeof toast === 'function') toast('R8 社媒终端驾驶舱模块加载失败，请重新安装最新版本', 'error');
-      loadDeviceB4Hotfix(true);
+      loadDeviceB3Patch();
     };
     document.body.appendChild(script);
   }
@@ -132,14 +132,10 @@
     let attempts = 0;
     const start = () => {
       attempts += 1;
-      if (document.getElementById('r8-device-center')) {
-        loadTerminalCockpitPatch();
-        // #230 proved the device console itself can mount while B4 never becomes
-        // visible. Load B4 again independently after the real panel exists, so
-        // cockpit/B3 loader timing can no longer suppress the screen-sync bar.
-        setTimeout(() => loadDeviceB4Hotfix(true), 500);
-        setTimeout(() => loadDeviceB4Hotfix(true), 1400);
-        installB4Watchdog();
+      const panel = document.getElementById('r8-device-center');
+      if (panel) {
+        loadMirrorDirect();
+        setTimeout(loadTerminalCockpitPatch, 250);
         return;
       }
       if (attempts < 240) {
@@ -164,7 +160,7 @@
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-01B.4.1 屏幕同步加载修复';
+    if (badge) badge.textContent = 'R8 Preview · R8-01B.4.2 屏幕同步启动修复';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
     if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';
