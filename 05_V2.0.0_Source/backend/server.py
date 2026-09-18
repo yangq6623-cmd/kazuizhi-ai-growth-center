@@ -89,6 +89,115 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _status_payload(self):
+        return dict(
+            get_version(),
+            status="online",
+            capabilities=[
+                "daily_review", "operation_summary", "problem_analysis",
+                "growth_opportunities", "tomorrow_plan", "review_history",
+                "ai_memory", "user_growth_analysis", "order_conversion_analysis",
+                "technician_supply_analysis", "leader_promotion_analysis",
+                "channel_effect_analysis", "local_keyword_library",
+                "seo_content_generation", "geo_local_optimization",
+                "ad_copy_generation", "short_video_script", "ai_task_management",
+                "promotion_calendar", "competition_analysis",
+                "customer_demand_analysis", "operations_command_center",
+                "integration_status_center", "external_ai_connection_test",
+                "ai_operations_assistant", "system_self_diagnostics",
+                "approved_job_engine", "truthful_progress", "agent_role_registry",
+                "scheduler_and_audit", "bidirectional_operations_bridge",
+                "offline_autonomous_mode", "bridge_command_receipts",
+                "bridge_closed_loop_self_test", "verified_readonly_business_source",
+                "autonomous_decision_center", "r8_single_android_device_center",
+                "r8_adb_truthful_probe", "r8_device_screenshot",
+                "r8_manual_takeover", "r8_device_action_audit",
+                "r8_device_file_transfer", "r8_social_media_center",
+                "r8_platform_device_account_binding",
+            ],
+        )
+
+    def _api_get_payload(self, path):
+        """Resolve only the requested endpoint.
+
+        This deliberately avoids the old eager route dictionary, which executed
+        every R7/R8 provider for every GET. In particular an ordinary R7 page
+        must never launch an ADB scan or fail because a phone is unplugged.
+        """
+        if path == "/api/status":
+            return self._status_payload()
+        if path == "/api/tasks":
+            return {"status": "not_connected", "running": None, "completed": None, "failed": None}
+        if path == "/api/logs":
+            return {"latest": "V2 Beta dashboard service running"}
+        if path == "/api/statistics":
+            return {"status": "not_connected", "users": None, "orders": None, "promotion": None}
+        if path == "/api/kazuizhi":
+            return {"status": "not_connected", "users": None, "masters": None, "leaders": None}
+        if path == "/api/daily-review/latest":
+            return latest_review()
+        if path == "/api/operation-summary/today":
+            return build_summary()
+        if path == "/api/tomorrow-plan/latest":
+            return latest_plan()
+        if path == "/api/history":
+            return list_reviews()
+        if path == "/api/memory":
+            return get_memory()
+        if path == "/api/experiments":
+            return get_experiments()
+        if path == "/api/business-analytics":
+            return build_analytics()
+        if path == "/api/business-metrics/template":
+            return import_template()
+        if path == "/api/business-source/status":
+            return business_source_status(build_analytics())
+        if path == "/api/promotion/keywords":
+            return list_keywords()
+        if path == "/api/promotion/history":
+            return promotion_history()
+        if path == "/api/operations/tasks":
+            return list_tasks()
+        if path == "/api/operations/calendar":
+            return get_calendar()
+        if path == "/api/insights/competition":
+            return competition_history()
+        if path == "/api/insights/demand":
+            return demand_insights()
+        if path == "/api/command-center":
+            return command_center()
+        if path == "/api/control-center":
+            return control_center()
+        if path == "/api/integrations":
+            return integration_status()
+        if path == "/api/system/diagnostics":
+            return system_diagnostics()
+        if path == "/api/bridge/status":
+            return bridge_status()
+        if path == "/api/bridge/commands":
+            return list_bridge_commands()
+        if path == "/api/r7/jobs":
+            return list_jobs()
+        if path == "/api/r7/agents":
+            return agent_registry()
+        if path == "/api/r7/engine":
+            return engine_status()
+        if path == "/api/r7/audit":
+            return audit_history()
+        if path == "/api/r7/model-routes":
+            return model_routes()
+        if path == "/api/r7/decision-center":
+            return decision_snapshot()
+        if path == "/api/r8/control":
+            return control_status()
+        if path == "/api/r8/device/status":
+            return device_scan_and_sync()
+        if path == "/api/r8/device/audit":
+            return device_audit()
+        if path == "/api/r8/social":
+            return social_center_status()
+        raise KeyError(path)
+
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
@@ -138,77 +247,22 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         if path.startswith("/api/"):
+            if not path.startswith("/api/r8/"):
+                try:
+                    refresh_business_if_due()
+                except Exception:
+                    pass
             try:
-                refresh_business_if_due()
-            except Exception:
-                pass
-            routes = {
-                "/api/status": dict(
-                    get_version(),
-                    status="online",
-                    capabilities=[
-                        "daily_review", "operation_summary", "problem_analysis",
-                        "growth_opportunities", "tomorrow_plan", "review_history",
-                        "ai_memory", "user_growth_analysis", "order_conversion_analysis",
-                        "technician_supply_analysis", "leader_promotion_analysis",
-                        "channel_effect_analysis", "local_keyword_library",
-                        "seo_content_generation", "geo_local_optimization",
-                        "ad_copy_generation", "short_video_script", "ai_task_management",
-                        "promotion_calendar", "competition_analysis",
-                        "customer_demand_analysis", "operations_command_center",
-                        "integration_status_center", "external_ai_connection_test",
-                        "ai_operations_assistant", "system_self_diagnostics",
-                        "approved_job_engine", "truthful_progress", "agent_role_registry",
-                        "scheduler_and_audit", "bidirectional_operations_bridge",
-                        "offline_autonomous_mode", "bridge_command_receipts",
-                        "bridge_closed_loop_self_test", "verified_readonly_business_source",
-                        "autonomous_decision_center", "r8_single_android_device_center",
-                        "r8_adb_truthful_probe", "r8_device_screenshot",
-                        "r8_manual_takeover", "r8_device_action_audit",
-                        "r8_device_file_transfer", "r8_social_media_center",
-                        "r8_platform_device_account_binding",
-                    ],
-                ),
-                "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
-                "/api/logs": {"latest": "V2 Beta dashboard service running"},
-                "/api/statistics": {"status": "not_connected", "users": None, "orders": None, "promotion": None},
-                "/api/kazuizhi": {"status": "not_connected", "users": None, "masters": None, "leaders": None},
-                "/api/daily-review/latest": latest_review(),
-                "/api/operation-summary/today": build_summary(),
-                "/api/tomorrow-plan/latest": latest_plan(),
-                "/api/history": list_reviews(),
-                "/api/memory": get_memory(),
-                "/api/experiments": get_experiments(),
-                "/api/business-analytics": build_analytics(),
-                "/api/business-metrics/template": import_template(),
-                "/api/business-source/status": business_source_status(build_analytics()),
-                "/api/promotion/keywords": list_keywords(),
-                "/api/promotion/history": promotion_history(),
-                "/api/operations/tasks": list_tasks(),
-                "/api/operations/calendar": get_calendar(),
-                "/api/insights/competition": competition_history(),
-                "/api/insights/demand": demand_insights(),
-                "/api/command-center": command_center(),
-                "/api/control-center": control_center(),
-                "/api/integrations": integration_status(),
-                "/api/system/diagnostics": system_diagnostics(),
-                "/api/bridge/status": bridge_status(),
-                "/api/bridge/commands": list_bridge_commands(),
-                "/api/r7/jobs": list_jobs(),
-                "/api/r7/agents": agent_registry(),
-                "/api/r7/engine": engine_status(),
-                "/api/r7/audit": audit_history(),
-                "/api/r7/model-routes": model_routes(),
-                "/api/r7/decision-center": decision_snapshot(),
-                "/api/r8/control": control_status(),
-                "/api/r8/device/status": device_scan_and_sync(),
-                "/api/r8/device/audit": device_audit(),
-                "/api/r8/social": social_center_status(),
-            }
-            if path not in routes:
+                payload = self._api_get_payload(path)
+            except KeyError:
                 self.send_error(404)
                 return
-            self._json_ok(routes[path])
+            except Exception as error:
+                # Always return a structured response instead of dropping the
+                # local HTTP connection and surfacing an opaque "Failed to fetch".
+                self._json_error(500, error)
+                return
+            self._json_ok(payload)
             return
         super().do_GET()
 
