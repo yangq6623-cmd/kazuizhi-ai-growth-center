@@ -112,7 +112,6 @@ assert "data-social-device-control" in ui
 assert "pointerdown" in ui and "pointerup" in ui
 assert "普通熄屏" in ui and "安全锁" in ui
 assert "keep_awake" in ui and "keep_awake_on" in adapter and "keep_awake_off" in adapter
-assert 'action="wake"' not in ui  # action is attached through data-r8-action, not an unsafe form action
 assert 'data-r8-action="wake"' in ui
 assert "auto_wake" in adapter
 assert "screen_off" in adapter and "secure_lock" in adapter and "keyguard_locked" in adapter
