@@ -35,6 +35,12 @@
   }
 
   async function refreshMirror() {
+    // R8-01B.4 owns the stable packaged-WebView screenshot renderer.
+    // Once it is present, never overwrite its data-URL frame with the older
+    // object-URL path that caused intermittent/black rendering in #229.
+    if (window.R8DeviceMirrorSync && typeof window.R8DeviceMirrorSync.syncOnce === 'function') {
+      return window.R8DeviceMirrorSync.syncOnce({wake:false, quiet:true, source:'b3'});
+    }
     if (refreshBusy) return;
     const deviceId = currentDeviceId();
     const img = document.getElementById('r8-device-screen');
@@ -132,7 +138,7 @@
 
     const label = panel.querySelector('.r8-console-head label');
     const desc = panel.querySelector('.r8-console-head p');
-    if (label) label.textContent = '社媒中心 · R8-01B.3 虚拟手机控制';
+    if (label) label.textContent = '社媒中心 · R8-01B.4 真机屏幕同步与触控';
     if (desc) desc.textContent = '电脑端手机画面就是主控制面板。普通熄屏自动唤醒并重新抓屏；操作会话期间保持亮屏，关闭操作台后恢复正常休眠。';
 
     ensureSessionNote();

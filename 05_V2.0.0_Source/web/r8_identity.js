@@ -1,7 +1,8 @@
 (() => {
   const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-01B.3 屏幕休眠与虚拟控制';
+  const PHASE = 'R8-01B.4 屏幕同步与触控修复';
+  const PREVIOUS_PHASE = 'R8-01B.3';
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -31,7 +32,7 @@
     script.async = false;
     script.dataset.r8DeviceB4Hotfix = '1';
     script.onerror = () => {
-      if (typeof toast === 'function') toast('R8 真机画面同步修复模块加载失败，请重新安装最新版本', 'error');
+      if (typeof toast === 'function') toast('R8 真机屏幕同步控制模块加载失败，请重新安装最新版本', 'error');
     };
     document.body.appendChild(script);
   }
@@ -68,6 +69,23 @@
     document.body.appendChild(script);
   }
 
+  function loadDeviceRuntimeAfterMount() {
+    let attempts = 0;
+    const start = () => {
+      attempts += 1;
+      if (document.getElementById('r8-device-center')) {
+        loadTerminalCockpitPatch();
+        return;
+      }
+      if (attempts < 240) {
+        setTimeout(start, 100);
+        return;
+      }
+      if (typeof toast === 'function') toast('R8 真机操作台未完成初始化，请刷新页面或重新安装最新版本', 'error');
+    };
+    start();
+  }
+
   async function applyR8Identity() {
     document.title = `卡嘴子 AI 增长运营中心 ${DISPLAY_VERSION}`;
     const meta = document.querySelector('meta[name="kazuizhi-build"]');
@@ -76,10 +94,11 @@
     const baseline = document.querySelector('.baseline');
     if (baseline) {
       baseline.innerHTML = `<b>${DISPLAY_VERSION}</b><br><span>${PHASE}</span><code>${buildLabel()}</code>`;
+      baseline.dataset.previousPhase = PREVIOUS_PHASE;
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-01B.3 屏幕休眠与虚拟控制';
+    if (badge) badge.textContent = 'R8 Preview · R8-01B.4 屏幕同步与触控修复';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
     if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';
@@ -88,10 +107,13 @@
     if (workflowLabel) workflowLabel.textContent = 'R7 Final 稳定底座 + R8-00 安全层 + R8-01 真机设备层';
 
     const heading = document.querySelector('#dashboard .command-welcome h2');
-    if (heading) heading.textContent = 'R7 稳定运行，R8 正在完成 Gate 2 前的虚拟手机控制收口。';
+    if (heading) heading.textContent = 'R7 稳定运行，R8 正在完成 Gate 2 前的真实手机屏幕同步与触控闭环。';
 
     loadBridgeUsabilityPatch();
-    loadTerminalCockpitPatch();
+    // The R8 device UI is created later by forms.js. Wait for the real DOM
+    // target before loading cockpit/B3/B4 patches so #229's early-load race
+    // cannot leave an online phone behind a permanently black screen.
+    loadDeviceRuntimeAfterMount();
 
     try {
       const status = await fetch('/api/status', {cache: 'no-store'}).then(r => r.json());
