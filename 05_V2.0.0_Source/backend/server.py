@@ -16,7 +16,10 @@ from core.r7_engine import (
     agent_registry, audit_history, command as job_command, create_job,
     engine_status, list_jobs, run_due_jobs,
 )
-from core.r8_control import control_status
+from core.r8_control import (
+    control_status, register_account, remove_account, social_center_status,
+    update_account_status,
+)
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
 from integrations.android_device import (
@@ -138,55 +141,32 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             try:
                 refresh_business_if_due()
             except Exception:
-                # Live business data must never prevent the local R7 control plane from loading.
                 pass
             routes = {
                 "/api/status": dict(
                     get_version(),
                     status="online",
                     capabilities=[
-                        "daily_review",
-                        "operation_summary",
-                        "problem_analysis",
-                        "growth_opportunities",
-                        "tomorrow_plan",
-                        "review_history",
-                        "ai_memory",
-                        "user_growth_analysis",
-                        "order_conversion_analysis",
-                        "technician_supply_analysis",
-                        "leader_promotion_analysis",
-                        "channel_effect_analysis",
-                        "local_keyword_library",
-                        "seo_content_generation",
-                        "geo_local_optimization",
-                        "ad_copy_generation",
-                        "short_video_script",
-                        "ai_task_management",
-                        "promotion_calendar",
-                        "competition_analysis",
-                        "customer_demand_analysis",
-                        "operations_command_center",
-                        "integration_status_center",
-                        "external_ai_connection_test",
-                        "ai_operations_assistant",
-                        "system_self_diagnostics",
-                        "approved_job_engine",
-                        "truthful_progress",
-                        "agent_role_registry",
-                        "scheduler_and_audit",
-                        "bidirectional_operations_bridge",
-                        "offline_autonomous_mode",
-                        "bridge_command_receipts",
-                        "bridge_closed_loop_self_test",
-                        "verified_readonly_business_source",
-                        "autonomous_decision_center",
-                        "r8_single_android_device_center",
-                        "r8_adb_truthful_probe",
-                        "r8_device_screenshot",
-                        "r8_manual_takeover",
-                        "r8_device_action_audit",
-                        "r8_device_file_transfer",
+                        "daily_review", "operation_summary", "problem_analysis",
+                        "growth_opportunities", "tomorrow_plan", "review_history",
+                        "ai_memory", "user_growth_analysis", "order_conversion_analysis",
+                        "technician_supply_analysis", "leader_promotion_analysis",
+                        "channel_effect_analysis", "local_keyword_library",
+                        "seo_content_generation", "geo_local_optimization",
+                        "ad_copy_generation", "short_video_script", "ai_task_management",
+                        "promotion_calendar", "competition_analysis",
+                        "customer_demand_analysis", "operations_command_center",
+                        "integration_status_center", "external_ai_connection_test",
+                        "ai_operations_assistant", "system_self_diagnostics",
+                        "approved_job_engine", "truthful_progress", "agent_role_registry",
+                        "scheduler_and_audit", "bidirectional_operations_bridge",
+                        "offline_autonomous_mode", "bridge_command_receipts",
+                        "bridge_closed_loop_self_test", "verified_readonly_business_source",
+                        "autonomous_decision_center", "r8_single_android_device_center",
+                        "r8_adb_truthful_probe", "r8_device_screenshot",
+                        "r8_manual_takeover", "r8_device_action_audit",
+                        "r8_device_file_transfer", "r8_social_media_center",
+                        "r8_platform_device_account_binding",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -223,6 +203,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/r8/control": control_status(),
                 "/api/r8/device/status": device_scan_and_sync(),
                 "/api/r8/device/audit": device_audit(),
+                "/api/r8/social": social_center_status(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -269,7 +250,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     except OSError:
                         pass
             return
-        if path not in (
+
+        allowed_posts = (
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
             "/api/business-source/configure", "/api/business-source/test", "/api/business-source/refresh",
@@ -280,11 +262,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/integrations/ai/configure", "/api/integrations/ai/test",
             "/api/ai/command", "/api/system/diagnostics",
             "/api/bridge/configure", "/api/bridge/disable", "/api/bridge/sync", "/api/bridge/report",
-            "/api/bridge/self-test",
-            "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
-            "/api/r7/decision-center/refresh",
+            "/api/bridge/self-test", "/api/r7/jobs", "/api/r7/jobs/command",
+            "/api/r7/scheduler/tick", "/api/r7/decision-center/refresh",
             "/api/r8/device/action", "/api/r8/device/takeover",
-        ):
+            "/api/r8/social/account", "/api/r8/social/account/status", "/api/r8/social/account/remove",
+        )
+        if path not in allowed_posts:
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -349,6 +332,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = device_execute_action(payload)
             elif path == "/api/r8/device/takeover":
                 result = device_set_takeover(payload)
+            elif path == "/api/r8/social/account":
+                register_account(payload)
+                result = social_center_status()
+            elif path == "/api/r8/social/account/status":
+                update_account_status(payload)
+                result = social_center_status()
+            elif path == "/api/r8/social/account/remove":
+                remove_account(payload)
+                result = social_center_status()
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
@@ -406,7 +398,6 @@ class DashboardServer(ThreadingHTTPServer):
 
 def create_server(port=8876):
     web = validate_resources()
-    # Bind synchronously: an occupied R3 port must fail before opening a browser.
     server = DashboardServer(("127.0.0.1", port), partial(DashboardHandler, directory=str(web)))
     print((web / "WEB_VERSION.txt").read_text(encoding="utf-8"), flush=True)
     return server
