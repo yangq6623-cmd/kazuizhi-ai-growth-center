@@ -58,12 +58,9 @@ toast = function(message, type='ok') {
   setTimeout(() => popup.className = '', duration);
 };
 
-// Load the manager-focused R7 enhancements after r7.js. The previous loader
-// only refreshed R7 when the workflow page happened to be open at the exact
-// moment this file finished loading. That left the KPI cards rendered by the
-// base UI without their click handlers until a later refresh. Always apply the
+// Load the manager-focused R7 enhancements after r7.js. Always apply the
 // patch immediately and refresh R7 once so the four manager KPI cards work on
-// the first visit, not only after waiting for the 15-second scheduler refresh.
+// the first visit, not only after waiting for the scheduler refresh.
 (() => {
   if (document.querySelector('script[data-r7-manager-patch]')) return;
   const script = document.createElement('script');
@@ -79,5 +76,17 @@ toast = function(message, type='ok') {
     }
   };
   script.onerror = () => toast('AI 员工管理增强模块加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
+
+// Autonomous Decision Center V1 is deliberately a separate enhancement layer:
+// employee reports -> R7 manager summary -> ChatGPT strategy handoff.
+(() => {
+  if (document.querySelector('script[data-r7-decision-center]')) return;
+  const script = document.createElement('script');
+  script.src = 'decision_center.js';
+  script.async = false;
+  script.dataset.r7DecisionCenter = '1';
+  script.onerror = () => toast('AI 自主决策中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
