@@ -12,6 +12,18 @@
     return `${runLabel} · ${commitLabel}`;
   }
 
+  function loadBridgeUsabilityPatch() {
+    if (document.querySelector('script[data-r7-bridge-usability]')) return;
+    const script = document.createElement('script');
+    script.src = 'r7_bridge_usability_patch.js';
+    script.async = false;
+    script.dataset.r7BridgeUsability = '1';
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('双向运营桥交互恢复模块加载失败，请重新安装最新版本', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
   async function applyR8Identity() {
     document.title = `卡嘴子 AI 增长运营中心 ${DISPLAY_VERSION}`;
     const meta = document.querySelector('meta[name="kazuizhi-build"]');
@@ -33,6 +45,8 @@
 
     const heading = document.querySelector('#dashboard .command-welcome h2');
     if (heading) heading.textContent = 'R7 稳定运行，R8 已进入真实 Android 单真机接入阶段。';
+
+    loadBridgeUsabilityPatch();
 
     try {
       const status = await fetch('/api/status', {cache: 'no-store'}).then(r => r.json());
