@@ -12,6 +12,7 @@ from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from core.autonomy import ensure_daily_review
 from core.daily_workforce import ensure_daily_workforce
+from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from integrations.bridge import sync_once as bridge_sync_once
 
@@ -27,6 +28,10 @@ def start_scheduler():
                 ensure_daily_workforce()
                 ensure_daily_review()
                 run_due_jobs()
+                # R7 acts as the manager: every 5 minutes it rebuilds the employee
+                # reports and strategy evidence for the ChatGPT control layer.
+                if tick % 20 == 0:
+                    refresh_decision_center()
             except (OSError, ValueError) as error:
                 print(f"R7 scheduler check failed: {error}", flush=True)
             if tick % 4 == 0:
