@@ -20,6 +20,15 @@ Modules:
 - R8-01B Screen-Off / Keyguard / Secure-Lock State Separation
 - R8-01B R8 Auto / Human Control / Pause Modes
 - R8-01B USB Task Keep-Awake / Restore Normal Sleep Policy
+- R8-01B.2 AI Social Terminal Cockpit
+- R8-01B.2 Compact Two-Column Phone + Task Driving Layout
+- R8-01B.2 Platform Dock with Platform Recognition Icons
+- R8-01B.2 Current Device / Platform / Account / Task Context Bar
+- R8-01B.2 Owner Attention Queue and Chinese Risk Labels
+- R8-01B.2 Task / Platform / Human / Audit Side Tabs
+- R8-01B.2 Device Health Score and Daily Platform Run Chain
+- R8-01B.2 Phone Zoom / Fullscreen / Right-Click Back Controls
+- R8-01B.2 Explainable AI Decision Placeholder for R8-02
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State
 - R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
