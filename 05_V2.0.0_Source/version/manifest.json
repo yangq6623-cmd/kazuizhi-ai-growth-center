@@ -10,9 +10,10 @@
   "r8_preview": {
     "display_version": "V2.1.0 Beta R8 Preview",
     "release": "R8 Preview",
-    "phase": "R8-00",
+    "phase": "R8-01",
     "runtime_build": "KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW",
     "product": "Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview",
-    "pilot_device_limit": 1
+    "pilot_device_limit": 1,
+    "device_center": "adb_truthful_probe_screenshot_control_takeover_audit"
   }
 }
