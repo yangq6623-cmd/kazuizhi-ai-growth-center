@@ -23,6 +23,13 @@ ALLOWED_KINDS = {"manual_task", "daily_review", "diagnostics"}
 COMMAND_ID = re.compile(r"^[A-Za-z0-9._:-]{1,80}$")
 
 
+def _drive_relative_tail(value):
+    """Return the Windows path after ``X:\`` for drive-letter recovery."""
+    text = str(value or "").strip().replace("\\", "/")
+    match = re.match(r"^[A-Za-z]:/(.+)$", text)
+    return match.group(1).strip("/") if match else ""
+
+
 def _config():
     env_root = os.environ.get("KAZUIZHI_BRIDGE_ROOT", "").strip()
     saved = read_json(CONFIG_PATH, {"provider": "filesystem_sync", "root": "", "enabled": False})
@@ -77,6 +84,62 @@ def _probe_root(root):
                 pass
 
 
+def _candidate_relocated_roots(saved_root):
+    """Yield mounted Windows drives containing the same saved relative folder.
+
+    Google Drive can silently move from e.g. G: to D:.  The persisted bridge
+    configuration remains the source of truth; only the drive letter may be
+    repaired.  We never scan arbitrary folders or clear the old configuration.
+    """
+    if os.name != "nt":
+        return []
+    tail = _drive_relative_tail(saved_root)
+    if not tail:
+        return []
+    original = str(saved_root).replace("\\", "/").lower()
+    results = []
+    for letter in "CDEFGHIJKLMNOPQRSTUVWXYZAB":
+        drive = Path(f"{letter}:/")
+        try:
+            if not drive.exists():
+                continue
+            candidate = drive / Path(tail)
+            if str(candidate).replace("\\", "/").lower() == original:
+                continue
+            # Never create an AI_Command folder just because another drive exists.
+            # Auto-recovery is allowed only when the exact saved relative folder
+            # already exists on that mounted drive.
+            if candidate.is_dir():
+                results.append(candidate)
+        except OSError:
+            continue
+    return results
+
+
+def _recover_moved_root(config):
+    """Repair only the drive letter of an already-saved bridge root."""
+    saved_root = str(config.get("root") or "").strip()
+    if not saved_root or config.get("source") == "environment":
+        return config, None
+    for candidate in _candidate_relocated_roots(saved_root):
+        bridge_root = candidate if candidate.name == BRIDGE_DIR else candidate / BRIDGE_DIR
+        connected, _ = _probe_root(bridge_root)
+        if not connected:
+            continue
+        updated = dict(config)
+        updated.update(
+            root=str(candidate),
+            enabled=True,
+            source="auto_drive_recovery",
+            recovered_from=saved_root,
+            recovered_at=now_iso(),
+            drive_relative_tail=_drive_relative_tail(str(candidate)),
+        )
+        write_json(CONFIG_PATH, updated)
+        return updated, saved_root
+    return config, None
+
+
 def _write_external(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -109,8 +172,14 @@ def configure_bridge(payload):
     connected, error = _probe_root(root)
     if not connected:
         raise ValueError("双向桥目录不可写，请检查云盘同步目录或权限")
-    config = {"provider": "filesystem_sync", "root": str(base), "enabled": True,
-              "configured_at": now_iso(), "source": "owner_config"}
+    config = {
+        "provider": "filesystem_sync",
+        "root": str(base),
+        "enabled": True,
+        "configured_at": now_iso(),
+        "source": "owner_config",
+        "drive_relative_tail": _drive_relative_tail(str(base)),
+    }
     write_json(CONFIG_PATH, config)
     return bridge_status()
 
@@ -152,16 +221,26 @@ def bridge_status():
             "offline_policy": "ChatGPT/云端不可用时继续执行最后已批准的本地低风险任务，并积累结果等待下次同步。",
         }
     connected, error = _probe_root(root)
+    recovered_from = None
+    if not connected:
+        config, recovered_from = _recover_moved_root(config)
+        if recovered_from:
+            root = _root(config)
+            connected, error = _probe_root(root)
+    message = "双向桥可用；本机上报、AI计划接收和执行回执将自动同步。" if connected else \
+              "同步目录暂不可用；R7 已自动退回本地自主运行。"
+    if connected and recovered_from:
+        message = f"检测到云盘盘符变化，已从 {recovered_from} 自动恢复到 {config.get('root')}；双向同步已恢复。"
     return {
         "id": "operations_bridge", "name": "双向运营桥",
         "status": "connected" if connected else "degraded",
         "status_label": "已连接" if connected else "同步目录不可用",
         "provider": config.get("provider", "filesystem_sync"), "root": str(config.get("root") or ""),
         "bridge_root": str(root),
+        "recovered_from": recovered_from or config.get("recovered_from"),
         "operating_mode": "bridge_plus_local" if connected else "local_autonomous",
         "operating_mode_label": "AI双向运营" if connected else "本地自主运行",
-        "message": "双向桥可用；本机上报、AI计划接收和执行回执将自动同步。" if connected else
-                   "同步目录暂不可用；R7 已自动退回本地自主运行。",
+        "message": message,
         "last_sync_at": state.get("last_sync_at"), "last_report_at": state.get("last_report_at"),
         "last_error": error or state.get("last_error"),
         "pending_commands": _pending_count(root) if connected else 0,
