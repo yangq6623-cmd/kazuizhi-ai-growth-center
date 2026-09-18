@@ -24,8 +24,39 @@
     document.body.appendChild(script);
   }
 
+  function loadDeviceB4Hotfix() {
+    if (document.querySelector('script[data-r8-device-b4-hotfix]')) return;
+    const script = document.createElement('script');
+    script.src = 'r8_device_b4_mirror_hotfix.js';
+    script.async = false;
+    script.dataset.r8DeviceB4Hotfix = '1';
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('R8 真机画面同步修复模块加载失败，请重新安装最新版本', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
+  function loadDeviceB3Patch() {
+    if (document.querySelector('script[data-r8-device-b3]')) {
+      loadDeviceB4Hotfix();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'r8_device_b3_patch.js';
+    script.async = false;
+    script.dataset.r8DeviceB3 = '1';
+    script.onload = loadDeviceB4Hotfix;
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('R8 熄屏恢复与虚拟手机控制模块加载失败，请重新安装最新版本', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
   function loadTerminalCockpitPatch() {
-    if (document.querySelector('script[data-r8-terminal-cockpit]')) return;
+    if (document.querySelector('script[data-r8-terminal-cockpit]')) {
+      loadDeviceB3Patch();
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'r8_terminal_cockpit_patch.js';
     script.async = false;
@@ -33,18 +64,6 @@
     script.onload = loadDeviceB3Patch;
     script.onerror = () => {
       if (typeof toast === 'function') toast('R8 社媒终端驾驶舱模块加载失败，请重新安装最新版本', 'error');
-    };
-    document.body.appendChild(script);
-  }
-
-  function loadDeviceB3Patch() {
-    if (document.querySelector('script[data-r8-device-b3]')) return;
-    const script = document.createElement('script');
-    script.src = 'r8_device_b3_patch.js';
-    script.async = false;
-    script.dataset.r8DeviceB3 = '1';
-    script.onerror = () => {
-      if (typeof toast === 'function') toast('R8 熄屏恢复与虚拟手机控制模块加载失败，请重新安装最新版本', 'error');
     };
     document.body.appendChild(script);
   }
