@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from core.storage import now_iso, read_json, write_json
@@ -16,8 +17,22 @@ from core.r8_control import control_status, record_device_probe, register_device
 
 AUDIT_PATH = "r8/device_audit.json"
 RUNTIME_PATH = "r8/device_runtime.json"
+ADB_CONFIG_PATH = "integrations/adb.json"
 TRANSFER_DIR = "/sdcard/Download/Kazuizhi"
 MAX_AUDIT = 500
+
+
+def _adb_config():
+    data = read_json(ADB_CONFIG_PATH, {})
+    return data if isinstance(data, dict) else {}
+
+
+def _save_adb_config(**updates):
+    data = _adb_config()
+    data.update(updates)
+    data["updated_at"] = now_iso()
+    write_json(ADB_CONFIG_PATH, data)
+    return data
 
 
 def _candidate_adb_paths():
@@ -25,6 +40,10 @@ def _candidate_adb_paths():
     configured = str(os.environ.get("KAZUIZHI_ADB_PATH") or "").strip()
     if configured:
         p = Path(configured).expanduser()
+        candidates.append(p / "adb.exe" if p.is_dir() else p)
+    saved = str(_adb_config().get("path") or "").strip()
+    if saved:
+        p = Path(saved).expanduser()
         candidates.append(p / "adb.exe" if p.is_dir() else p)
     for command in ("adb", "adb.exe"):
         found = shutil.which(command)
@@ -51,7 +70,10 @@ def find_adb():
     for path in _candidate_adb_paths():
         try:
             if path.is_file():
-                return str(path.resolve())
+                resolved = str(path.resolve())
+                if _adb_config().get("path") != resolved:
+                    _save_adb_config(path=resolved, source="auto_discovery")
+                return resolved
         except OSError:
             continue
     return None
@@ -125,6 +147,46 @@ def _parse_awake(text):
     return None
 
 
+def _bool_token(value):
+    token = str(value or "").strip().lower()
+    if token in {"true", "1", "yes"}:
+        return True
+    if token in {"false", "0", "no"}:
+        return False
+    return None
+
+
+def _parse_trust_state(text):
+    value = str(text or "")
+    locked_match = re.search(r"deviceLocked\s*=\s*(true|false|1|0)", value, re.I)
+    secure_match = re.search(r"deviceSecure\s*=\s*(true|false|1|0)", value, re.I)
+    return {
+        "locked": _bool_token(locked_match.group(1)) if locked_match else None,
+        "secure": _bool_token(secure_match.group(1)) if secure_match else None,
+    }
+
+
+def _parse_keyguard(text):
+    value = str(text or "")
+    if re.search(r"mKeyguardShowing\s*=\s*true|isStatusBarKeyguard\s*=\s*true|mShowingLockscreen\s*=\s*true", value, re.I):
+        return True
+    if re.search(r"mKeyguardShowing\s*=\s*false|isStatusBarKeyguard\s*=\s*false|mShowingLockscreen\s*=\s*false", value, re.I):
+        return False
+    return None
+
+
+def _screen_state(awake, locked, secure):
+    if awake is False:
+        return "screen_off", "熄屏"
+    if locked is True:
+        if secure is True:
+            return "secure_lock", "安全锁定/需人工"
+        return "keyguard", "锁屏界面/需人工确认"
+    if awake is True:
+        return "awake", "亮屏/可操作"
+    return "unknown", "未知"
+
+
 def _shell(device_id, *args, timeout=8):
     return _run(["-s", device_id, "shell", *args], timeout=timeout)
 
@@ -132,7 +194,7 @@ def _shell(device_id, *args, timeout=8):
 def _device_details(device):
     device_id = device["device_id"]
     if device.get("state") != "device":
-        return dict(device, connected=False, screen_awake=None)
+        return dict(device, connected=False, screen_awake=None, screen_state="unknown", screen_state_label="未知")
 
     def prop(name):
         try:
@@ -152,6 +214,18 @@ def _device_details(device):
         awake = _parse_awake(_shell(device_id, "dumpsys", "power"))
     except RuntimeError:
         awake = None
+    try:
+        trust = _parse_trust_state(_shell(device_id, "dumpsys", "trust"))
+    except RuntimeError:
+        trust = {"locked": None, "secure": None}
+    locked = trust.get("locked")
+    secure = trust.get("secure")
+    if locked is None:
+        try:
+            locked = _parse_keyguard(_shell(device_id, "dumpsys", "window"))
+        except RuntimeError:
+            locked = None
+    state, state_label = _screen_state(awake, locked, secure)
     model = prop("ro.product.model") or device.get("model_hint") or "Android"
     return dict(
         device,
@@ -163,6 +237,10 @@ def _device_details(device):
         battery=battery,
         screen=screen,
         screen_awake=awake,
+        device_locked=locked,
+        device_secure=secure,
+        screen_state=state,
+        screen_state_label=state_label,
     )
 
 
@@ -214,7 +292,7 @@ def scan_and_sync():
     adb = find_adb()
     if not adb:
         return {
-            "adb": {"found": False, "path": None, "status": "missing"},
+            "adb": {"found": False, "path": None, "status": "missing", "persisted": False},
             "devices": [],
             "pilot": {"limit": 1, "connected": 0},
             "message": "未找到 adb.exe；请安装 Android Platform Tools 或设置 KAZUIZHI_ADB_PATH。",
@@ -224,7 +302,7 @@ def scan_and_sync():
         raw_devices = _parse_devices_output(output)
     except (RuntimeError, subprocess.TimeoutExpired) as error:
         return {
-            "adb": {"found": True, "path": adb, "status": "error"},
+            "adb": {"found": True, "path": adb, "status": "error", "persisted": True},
             "devices": [],
             "pilot": {"limit": 1, "connected": 0},
             "message": str(error),
@@ -239,6 +317,13 @@ def scan_and_sync():
     primary = connected[0] if connected else None
     blocked = connected[1:]
     if primary:
+        _save_adb_config(
+            path=adb,
+            last_device_id=primary.get("device_id"),
+            last_model=primary.get("model"),
+            last_android=primary.get("android_version"),
+            last_seen_at=now_iso(),
+        )
         try:
             if primary["device_id"] not in registered_ids:
                 register_device({
@@ -267,7 +352,7 @@ def scan_and_sync():
     modes = runtime.setdefault("devices", {})
     all_known_ids = {item.get("device_id") for item in devices} | {item.get("device_id") for item in registered}
     for device_id in [value for value in all_known_ids if value]:
-        entry = modes.setdefault(device_id, {"mode": "r8", "updated_at": now_iso()})
+        entry = modes.setdefault(device_id, {"mode": "r8", "keep_awake": False, "updated_at": now_iso()})
         _record_connection_transition(entry, device_id, "connected" if device_id in current_connected_ids else "disconnected")
     _save_runtime(runtime)
 
@@ -275,8 +360,9 @@ def scan_and_sync():
     control_devices = {item.get("device_id"): item for item in control.get("devices", [])}
     accounts = list(control.get("accounts") or [])
     for item in devices:
-        entry = modes.setdefault(item["device_id"], {"mode": "r8", "updated_at": now_iso()})
+        entry = modes.setdefault(item["device_id"], {"mode": "r8", "keep_awake": False, "updated_at": now_iso()})
         item["control_mode"] = entry.get("mode", "r8")
+        item["keep_awake"] = bool(entry.get("keep_awake"))
         item["current_task"] = entry.get("current_task")
         registered_device = control_devices.get(item["device_id"]) or {}
         item["risk_level"] = registered_device.get("risk_level", "unknown")
@@ -287,12 +373,14 @@ def scan_and_sync():
     message = "未发现已授权 Android 真机"
     if primary:
         message = "已通过 ADB 识别 1 台真实 Android 手机"
-        if primary.get("screen_awake") is False:
-            message += "；手机当前锁屏/熄屏，自动操作保持停止"
+        if primary.get("screen_state") == "screen_off":
+            message += "；手机当前熄屏，点击屏幕或开始普通操作会先安全唤醒"
+        elif primary.get("screen_state") in {"secure_lock", "keyguard"}:
+            message += "；手机当前锁定，需要人工解锁后继续"
     if blocked:
         message += f"；另有 {len(blocked)} 台设备因单真机试点被阻止"
     return {
-        "adb": {"found": True, "path": adb, "status": "ready"},
+        "adb": {"found": True, "path": adb, "status": "ready", "persisted": True},
         "devices": devices,
         "primary_device_id": primary.get("device_id") if primary else None,
         "pilot": {"limit": 1, "connected": len(connected), "blocked_extra": len(blocked)},
@@ -306,6 +394,10 @@ def _require_connected(device_id):
     if not device or not device.get("connected"):
         raise ValueError("目标手机当前未通过 ADB 在线")
     return device
+
+
+def _fresh_device_details(device_id):
+    return _device_details({"device_id": device_id, "state": "device"})
 
 
 def screenshot_bytes(device_id):
@@ -384,6 +476,53 @@ def pull_file_bytes(device_id, remote_name):
     return name, bytes(data)
 
 
+def _blocked_for_lock(device_id, action, actor, device, reason):
+    _append_audit({
+        "device_id": device_id,
+        "action": action or "unknown",
+        "actor": actor,
+        "result": "blocked",
+        "detail": {"reason": reason, "screen_state": device.get("screen_state")},
+    })
+    if reason == "secure_lock":
+        raise ValueError("手机处于安全锁定状态，请先人工解锁后再交还 R8")
+    if reason == "keyguard_locked":
+        raise ValueError("手机停留在锁屏界面，请人工确认解锁后继续")
+    raise ValueError("手机自动唤醒失败，请检查设备后人工处理")
+
+
+def _ensure_ready_for_action(device_id, action, actor, device):
+    if action in {"power", "wake", "keep_awake_on", "keep_awake_off"}:
+        return device
+    if device.get("screen_awake") is False:
+        _shell(device_id, "input", "keyevent", "26")
+        time.sleep(0.7)
+        refreshed = _fresh_device_details(device_id)
+        _append_audit({
+            "device_id": device_id,
+            "action": "auto_wake",
+            "actor": "system",
+            "result": "ok" if refreshed.get("screen_awake") else "blocked",
+            "detail": {"requested_action": action, "screen_state": refreshed.get("screen_state")},
+        })
+        device = refreshed
+    if device.get("screen_awake") is False:
+        _blocked_for_lock(device_id, action, actor, device, "wake_failed")
+    if device.get("device_locked") is True:
+        reason = "secure_lock" if device.get("device_secure") is True else "keyguard_locked"
+        _blocked_for_lock(device_id, action, actor, device, reason)
+    return device
+
+
+def _set_keep_awake(device_id, enabled):
+    _shell(device_id, "svc", "power", "stayon", "usb" if enabled else "false")
+    state = _runtime_state()
+    devices = state.setdefault("devices", {})
+    previous = devices.get(device_id) or {}
+    devices[device_id] = dict(previous, keep_awake=bool(enabled), updated_at=now_iso())
+    _save_runtime(state)
+
+
 def execute_action(payload):
     payload = payload or {}
     device_id = str(payload.get("device_id") or "").strip()
@@ -394,17 +533,9 @@ def execute_action(payload):
     device = _require_connected(device_id)
     runtime = _runtime_state()
     mode = (runtime.get("devices") or {}).get(device_id, {}).get("mode", "r8")
-    if mode == "human" and actor != "owner":
-        raise ValueError("设备处于人工接管状态")
-    if device.get("screen_awake") is False and action != "power":
-        _append_audit({
-            "device_id": device_id,
-            "action": action or "unknown",
-            "actor": actor,
-            "result": "blocked",
-            "detail": {"reason": "screen_locked_or_off"},
-        })
-        raise ValueError("手机处于锁屏/熄屏状态；为避免误操作，除唤醒键外已停止设备动作")
+    if mode in {"human", "paused"} and actor != "owner":
+        raise ValueError("设备当前不允许 R8 自动操作")
+    device = _ensure_ready_for_action(device_id, action, actor, device)
 
     if action == "tap":
         x, y = int(payload.get("x")), int(payload.get("y"))
@@ -433,6 +564,17 @@ def execute_action(payload):
         key = {"back": "4", "home": "3", "power": "26"}[action]
         _shell(device_id, "input", "keyevent", key)
         detail = {"keyevent": key}
+    elif action == "wake":
+        if device.get("screen_awake") is False:
+            _shell(device_id, "input", "keyevent", "26")
+            time.sleep(0.6)
+        refreshed = _fresh_device_details(device_id)
+        detail = {"screen_state": refreshed.get("screen_state"), "screen_state_label": refreshed.get("screen_state_label")}
+        device = refreshed
+    elif action in {"keep_awake_on", "keep_awake_off"}:
+        enabled = action == "keep_awake_on"
+        _set_keep_awake(device_id, enabled)
+        detail = {"keep_awake": enabled, "policy": "usb" if enabled else "normal"}
     else:
         raise ValueError("不支持的设备动作")
 
@@ -452,17 +594,18 @@ def set_takeover(payload):
     payload = payload or {}
     device_id = str(payload.get("device_id") or "").strip()
     mode = str(payload.get("mode") or "human").strip().lower()
-    if mode not in {"human", "r8"}:
-        raise ValueError("mode 只能是 human 或 r8")
+    if mode not in {"human", "r8", "paused"}:
+        raise ValueError("mode 只能是 human、r8 或 paused")
     _require_connected(device_id)
     state = _runtime_state()
     devices = state.setdefault("devices", {})
     previous = devices.get(device_id) or {}
     devices[device_id] = dict(previous, mode=mode, updated_at=now_iso())
     _save_runtime(state)
+    action = "takeover" if mode == "human" else "return_to_r8" if mode == "r8" else "pause"
     event = _append_audit({
         "device_id": device_id,
-        "action": "takeover" if mode == "human" else "return_to_r8",
+        "action": action,
         "actor": "owner",
         "result": "ok",
     })
