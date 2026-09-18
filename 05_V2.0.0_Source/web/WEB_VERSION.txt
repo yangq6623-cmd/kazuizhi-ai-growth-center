@@ -12,6 +12,7 @@ Modules:
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State
 - R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
+- R8-01 Bidirectional File Transfer via Download/Kazuizhi
 - R8-01 Human Takeover / Return to R8
 - R8-01 Disconnect and Lock-Screen Stop Boundary
 - R8-01 Device Action Audit
