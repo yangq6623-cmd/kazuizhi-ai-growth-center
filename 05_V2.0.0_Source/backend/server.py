@@ -5,7 +5,7 @@ import sys
 from functools import partial
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from ai_center.daily_review import generate_review, latest_plan, latest_review
 from analytics.business_metrics import build_analytics, import_snapshot, import_template
 from analytics.operation_summary import build_summary, save_summary
@@ -15,8 +15,14 @@ from core.r7_engine import (
     agent_registry, audit_history, command as job_command, create_job,
     engine_status, list_jobs, run_due_jobs,
 )
+from core.r8_control import control_status
 from core.version import BUILD_ID, get_version
 from memory.memory_store import get_experiments, get_memory, remember
+from integrations.android_device import (
+    device_audit, execute_action as device_execute_action,
+    scan_and_sync as device_scan_and_sync, screenshot_bytes as device_screenshot_bytes,
+    set_takeover as device_set_takeover,
+)
 from integrations.bridge import (
     bridge_status, configure_bridge, disable_bridge, export_report,
     list_bridge_commands, self_test as bridge_self_test, sync_once as bridge_sync_once,
@@ -40,9 +46,11 @@ from promotion.content_center import (
 )
 from records.history_store import append_event, list_reviews
 
+
 def get_web_path():
     root = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
     return root / "web"
+
 
 def validate_resources():
     web = get_web_path()
@@ -52,13 +60,40 @@ def validate_resources():
             raise RuntimeError(f"V2 dashboard identity mismatch: {name}")
     return web
 
+
 class DashboardHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
+    def _json_error(self, code, message):
+        data = json.dumps({"error": str(message)}, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
-        path = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        path = parsed.path
+        if path == "/api/r8/device/screenshot":
+            query = parse_qs(parsed.query)
+            device_id = str((query.get("device_id") or [""])[0]).strip()
+            if not device_id:
+                self._json_error(400, "device_id 不能为空")
+                return
+            try:
+                data = device_screenshot_bytes(device_id)
+            except (ValueError, RuntimeError, OSError) as error:
+                self._json_error(400, error)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path.startswith("/api/"):
             try:
                 refresh_business_if_due()
@@ -106,6 +141,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         "bridge_closed_loop_self_test",
                         "verified_readonly_business_source",
                         "autonomous_decision_center",
+                        "r8_single_android_device_center",
+                        "r8_adb_truthful_probe",
+                        "r8_device_screenshot",
+                        "r8_manual_takeover",
+                        "r8_device_action_audit",
                     ],
                 ),
                 "/api/tasks": {"status": "not_connected", "running": None, "completed": None, "failed": None},
@@ -139,6 +179,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "/api/r7/audit": audit_history(),
                 "/api/r7/model-routes": model_routes(),
                 "/api/r7/decision-center": decision_snapshot(),
+                "/api/r8/control": control_status(),
+                "/api/r8/device/status": device_scan_and_sync(),
+                "/api/r8/device/audit": device_audit(),
             }
             if path not in routes:
                 self.send_error(404)
@@ -172,6 +215,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/bridge/self-test",
             "/api/r7/jobs", "/api/r7/jobs/command", "/api/r7/scheduler/tick",
             "/api/r7/decision-center/refresh",
+            "/api/r8/device/action", "/api/r8/device/takeover",
         ):
             self.send_error(404)
             return
@@ -233,6 +277,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = run_due_jobs()
             elif path == "/api/r7/decision-center/refresh":
                 result = refresh_decision_center()
+            elif path == "/api/r8/device/action":
+                result = device_execute_action(payload)
+            elif path == "/api/r8/device/takeover":
+                result = device_set_takeover(payload)
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):
@@ -266,7 +314,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     "summary": {"headline": f"已保存 {len(result['tasks'])} 项明日计划。"},
                     "problems": [], "opportunities": [], "tomorrow_plan": result,
                 })
-        except (ValueError, json.JSONDecodeError, OSError) as error:
+        except (ValueError, json.JSONDecodeError, OSError, RuntimeError) as error:
             data = json.dumps({"error": str(error)}, ensure_ascii=False).encode("utf-8")
             self.send_response(400)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -288,6 +336,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+
 class DashboardServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
@@ -295,6 +344,7 @@ class DashboardServer(ThreadingHTTPServer):
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
+
 
 def create_server(port=8876):
     web = validate_resources()
