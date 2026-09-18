@@ -137,6 +137,15 @@ toast = function(message, type='ok') {
   script.src = 'r8_device_center.js';
   script.async = false;
   script.dataset.r8DeviceCenter = '1';
+  script.onload = () => {
+    if (document.querySelector('script[data-r8-device-file-patch]')) return;
+    const transfer = document.createElement('script');
+    transfer.src = 'r8_device_file_patch.js';
+    transfer.async = false;
+    transfer.dataset.r8DeviceFilePatch = '1';
+    transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
+    document.body.appendChild(transfer);
+  };
   script.onerror = () => toast('R8 单真机设备中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
