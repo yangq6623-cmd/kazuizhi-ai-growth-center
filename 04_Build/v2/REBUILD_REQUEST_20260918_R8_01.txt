@@ -1,0 +1,3 @@
+R8-01 rebuild requested after restoring the frozen R3 handoff index.
+Target: V2.1.0 Beta R8 Preview / R8-01 single real Android device center.
+Required: all R7/R8 automated checks, Windows package build, installer test, artifact provenance, installer + portable artifacts.
