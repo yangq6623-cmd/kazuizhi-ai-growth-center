@@ -129,44 +129,33 @@ toast = function(message, type='ok') {
   document.body.appendChild(info);
 })();
 
-// R8-01 truthful Android device center. This layer only reads/control devices
-// through the local backend's ADB adapter; the UI never invents online state.
+// R8 Social Media Center is the single business entry for real phones,
+// platform/account bindings and device operation. Connection & health stays
+// infrastructure-only; it no longer owns a second copy of phone controls.
 (() => {
-  if (document.querySelector('script[data-r8-device-center]')) return;
-  const script = document.createElement('script');
-  script.src = 'r8_device_center.js';
-  script.async = false;
-  script.dataset.r8DeviceCenter = '1';
-  script.onload = () => {
-    if (!document.querySelector('script[data-r8-device-file-patch]')) {
+  if (document.querySelector('script[data-r8-social-center]')) return;
+  const social = document.createElement('script');
+  social.src = 'social_media_center.js';
+  social.async = false;
+  social.dataset.r8SocialCenter = '1';
+  social.onload = () => {
+    if (document.querySelector('script[data-r8-device-center]')) return;
+    const device = document.createElement('script');
+    device.src = 'r8_device_center.js';
+    device.async = false;
+    device.dataset.r8DeviceCenter = '1';
+    device.onload = () => {
+      if (document.querySelector('script[data-r8-device-file-patch]')) return;
       const transfer = document.createElement('script');
       transfer.src = 'r8_device_file_patch.js';
       transfer.async = false;
       transfer.dataset.r8DeviceFilePatch = '1';
       transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
       document.body.appendChild(transfer);
-    }
-    if (!document.querySelector('script[data-r8-device-power-policy]')) {
-      const power = document.createElement('script');
-      power.src = 'r8_device_power_policy.js';
-      power.async = false;
-      power.dataset.r8DevicePowerPolicy = '1';
-      power.onerror = () => toast('R8 自动唤醒策略模块加载失败，请重新安装最新版本', 'error');
-      document.body.appendChild(power);
-    }
+    };
+    device.onerror = () => toast('R8 单真机设备控制模块加载失败，请重新安装最新版本', 'error');
+    document.body.appendChild(device);
   };
-  script.onerror = () => toast('R8 单真机设备中心加载失败，请重新安装最新版本', 'error');
-  document.body.appendChild(script);
-})();
-
-// R8 Social Media Center. It adds a separate top-level category for real
-// platform/device/account bindings and keeps login verification human-gated.
-(() => {
-  if (document.querySelector('script[data-r8-social-center]')) return;
-  const script = document.createElement('script');
-  script.src = 'social_media_center.js';
-  script.async = false;
-  script.dataset.r8SocialCenter = '1';
-  script.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
-  document.body.appendChild(script);
+  social.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(social);
 })();
