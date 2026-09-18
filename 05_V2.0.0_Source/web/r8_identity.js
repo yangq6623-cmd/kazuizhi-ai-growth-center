@@ -3,6 +3,7 @@
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
   const PHASE = 'R8-01B.4.1 屏幕同步加载修复';
   const PREVIOUS_PHASE = 'R8-01B.4';
+  const LEGACY_PHASE = 'R8-01B.3';
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -159,6 +160,7 @@
     if (baseline) {
       baseline.innerHTML = `<b>${DISPLAY_VERSION}</b><br><span>${PHASE}</span><code>${buildLabel()}</code>`;
       baseline.dataset.previousPhase = PREVIOUS_PHASE;
+      baseline.dataset.legacyPhase = LEGACY_PHASE;
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
