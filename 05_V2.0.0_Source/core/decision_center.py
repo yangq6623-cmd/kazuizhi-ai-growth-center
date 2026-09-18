@@ -8,6 +8,7 @@ external publication/results and never executes financial actions.
 from datetime import datetime
 
 from analytics.business_metrics import build_analytics
+from core.region_strategy import build_region_strategy
 from core.storage import now_iso, read_json, write_json
 
 
@@ -129,7 +130,7 @@ def _public_signal_count(jobs):
     return total
 
 
-def _manager_decisions(reports, jobs, business_status):
+def _manager_decisions(reports, jobs, business_status, region_strategy):
     total_planned = sum(item["planned"] for item in reports)
     total_completed = sum(item["completed"] for item in reports)
     total_failed = sum(item["failed"] for item in reports)
@@ -156,6 +157,16 @@ def _manager_decisions(reports, jobs, business_status):
             "reason": "生产经营聚合数据处于已验证状态，用户增长与订单转化判断应优先使用真实数据。",
             "execution": "autonomous_read_only_analysis",
         })
+    region_rows = region_strategy.get("regions", []) if isinstance(region_strategy, dict) else []
+    core = next((row for row in region_rows if row.get("tier") == "S"), None)
+    main = next((row for row in region_rows if row.get("tier") == "A"), None)
+    if core and main:
+        decisions.append({
+            "level": "medium",
+            "action": "按区域作战优先级分配非资金运营工作量",
+            "reason": f"当前策略保持{core.get('name')}为核心样板区、{main.get('name')}为主战区；区域扩张只依据可核验证据逐步推进。",
+            "execution": "regional_non_financial_prioritization",
+        })
     if total_planned and ratio >= 70:
         decisions.append({
             "level": "normal", "action": "保留当前有效节奏，并把更多资源给表现更好的方向",
@@ -174,7 +185,7 @@ def _manager_decisions(reports, jobs, business_status):
             "reason": "当前证据不足以支持明显加码或缩减，避免为了显得忙而制造无效任务。",
             "execution": "autonomous_non_financial",
         })
-    return decisions[:5]
+    return decisions[:6]
 
 
 def refresh_decision_center():
@@ -189,13 +200,14 @@ def refresh_decision_center():
     engine = engine_status()
     analytics = build_analytics()
     business_status = analytics.get("status")
+    region_strategy = build_region_strategy(analytics=analytics)
     planned = sum(item["planned"] for item in reports)
     completed = sum(item["completed"] for item in reports)
     queued = sum(item["queued"] for item in reports)
     running = sum(item["running"] for item in reports)
     failed = sum(item["failed"] for item in reports)
     completion_rate = round(completed * 100 / planned) if planned else 0
-    decisions = _manager_decisions(reports, today_jobs, business_status)
+    decisions = _manager_decisions(reports, today_jobs, business_status, region_strategy)
     proposals = [
         {"agent": item["agent"], "proposal": item["judgement"], "evidence": item["evidence"][:3]}
         for item in reports if item["planned"] or item["evidence"] or item["failed"]
@@ -219,18 +231,21 @@ def refresh_decision_center():
         "employee_reports": reports,
         "manager_decisions": decisions,
         "employee_proposals": proposals,
+        "region_strategy": region_strategy,
         "chatgpt_handoff": {
             "status": "ready_for_strategy_review",
-            "purpose": "供 ChatGPT 总控制大脑做跨员工复盘、解释原因并形成下一阶段策略。",
+            "purpose": "供 ChatGPT 总控制大脑做跨员工、跨平台、跨区域复盘，解释原因并形成下一阶段策略。",
             "questions": [
                 "哪些方向应该加码、保持、减少或停止？",
                 "员工之间的发现是否互相印证或存在冲突？",
+                "涟水、淮安其他区县、江苏扩张区和江浙沪储备区的工作量是否需要调整？",
                 "下一工作日的资源和任务优先级应如何调整？",
             ],
         },
         "guardrails": {
             "financial": "退款、提现、结算、改价、付款、转账等资金事项永远交平台人工处理。",
             "external_publish": "没有真实平台连接、发布回执或链接时，只能记为草稿/待发布，不能记为已发布。",
+            "region_opening": "区域作战中心只提供优先级和准备度建议，不自动修改小程序后台区域开放状态。",
             "self_modification": "只允许调整策略、计划、模板和优先级；不得自行修改程序代码或安全边界。",
         },
     }
@@ -240,6 +255,6 @@ def refresh_decision_center():
 
 def decision_snapshot():
     data = read_json(DECISION_PATH, {})
-    if not data or data.get("date") != str(datetime.now().astimezone().date()):
+    if not data or data.get("date") != str(datetime.now().astimezone().date()) or not data.get("region_strategy"):
         return refresh_decision_center()
     return data
