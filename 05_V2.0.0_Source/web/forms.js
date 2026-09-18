@@ -107,3 +107,24 @@ toast = function(message, type='ok') {
   script.onerror = () => toast('AI 自主决策中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
+
+// R8 Preview identity is an additive display/package layer over the frozen R7 core.
+// build_info.js is stamped by GitHub Actions with the real run number and commit.
+(() => {
+  if (document.querySelector('script[data-r8-build-info]')) return;
+  const info = document.createElement('script');
+  info.src = 'build_info.js';
+  info.async = false;
+  info.dataset.r8BuildInfo = '1';
+  info.onload = () => {
+    if (document.querySelector('script[data-r8-identity]')) return;
+    const identity = document.createElement('script');
+    identity.src = 'r8_identity.js';
+    identity.async = false;
+    identity.dataset.r8Identity = '1';
+    identity.onerror = () => toast('R8 Preview 版本标识模块加载失败，请重新安装最新版本', 'error');
+    document.body.appendChild(identity);
+  };
+  info.onerror = () => toast('R8 Preview 构建信息加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(info);
+})();

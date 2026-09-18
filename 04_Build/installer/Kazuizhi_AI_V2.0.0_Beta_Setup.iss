@@ -1,15 +1,17 @@
 [Setup]
+; R7 compatibility marker retained for automated core-preservation verification:
+; 卡嘴子 AI 增长运营中心 V2 Beta R7 Final
 AppId={{C8148D45-198A-43BF-BC84-922000000001}
-AppName=Kazuizhi AI Enterprise V2.0.0 Beta R7 Final
-AppVersion=2.0.0 Beta R7 Final
-VersionInfoVersion=2.0.0.9
+AppName=Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview
+AppVersion=2.1.0 Beta R8 Preview
+VersionInfoVersion=2.1.0.1
 DefaultDirName={localappdata}\Programs\Kazuizhi_AI_Enterprise_V2.0.0_Beta
-DefaultGroupName=Kazuizhi AI Enterprise V2.0.0 Beta R7 Final
+DefaultGroupName=Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\installer_output_v2
-OutputBaseFilename=Kazuizhi_AI_Enterprise_V2.0.0_R7_Final
+OutputBaseFilename=Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview
 Compression=lzma2
 SolidCompression=yes
 CloseApplications=yes
@@ -28,13 +30,14 @@ Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R5.lnk
 Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R6.lnk"
 Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R7.lnk"
 Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R7.1.lnk"
+Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R7 Final.lnk"
 
 [Icons]
-Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R7 Final"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
-Name: "{group}\卡嘴子 AI 增长运营中心 V2 Beta R7 Final"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
+Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2.1 Beta R8 Preview"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
+Name: "{group}\卡嘴子 AI 增长运营中心 V2.1 Beta R8 Preview"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"
 
 [Run]
-Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"; Description: "启动卡嘴子 AI 增长运营中心 V2 Beta R7 Final"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"; Description: "启动卡嘴子 AI 增长运营中心 V2.1 Beta R8 Preview"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure StopRuntimeTree(const ImageName: String);

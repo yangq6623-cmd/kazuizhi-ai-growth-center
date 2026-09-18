@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP 'KazuizhiV2InstallerTest'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
 function Install-Beta {
@@ -27,10 +27,12 @@ function Assert-PersistentFilesExist([hashtable]$Expected) {
 Install-Beta
 $exe = Join-Path $testRoot $name
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-if ($version.FileVersion -ne '2.0.0.9' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.0.0 Beta R7 Final') { throw 'Windows EXE version mismatch' }
+if ($version.FileVersion -ne '2.1.0.1' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview') { throw 'Windows EXE version mismatch' }
 & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Installed autonomous runtime failed verification' }
 
+# R8 Preview intentionally preserves the proven R7/V2 user-data root so upgrades
+# never orphan jobs, Memory, plans, audit records or business-source configuration.
 $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
 New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
 $sentinel = Join-Path $dataRoot 'user-data-preservation-test.txt'
@@ -98,4 +100,4 @@ if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable'
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data sentinel' }
 Assert-PersistentFilesExist $persistentFiles
 Remove-Item -LiteralPath $sentinel -Force
-Write-Host 'PASS: autonomous install, clean byte-exact reinstall preservation, active-runtime upgrade, watchdog shutdown, Windows version, runtime verification, active data validity, uninstall preservation'
+Write-Host 'PASS: R8 Preview install, clean byte-exact reinstall preservation, active-runtime upgrade, watchdog shutdown, Windows version, R7 core runtime verification, active data validity, uninstall preservation'

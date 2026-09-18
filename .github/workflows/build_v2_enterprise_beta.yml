@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI Enterprise V2.0.0 Beta R7 Final
+name: Build Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview
 on:
   workflow_dispatch:
   push:
@@ -35,6 +35,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Stamp R8 Preview build number and commit
+        run: |
+          $path = '05_V2.0.0_Source/web/build_info.js'
+          $text = Get-Content -LiteralPath $path -Raw
+          $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $text = $text.Replace('__GITHUB_SHA__', '${{ github.sha }}')
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
       - name: Install build dependencies
         run: |
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
@@ -53,6 +60,8 @@ jobs:
         run: python 04_Build/v2/test_region_strategy.py
       - name: Verify R8-00 safety and single-real-device pilot control plane
         run: python 04_Build/v2/test_r8_block_00.py
+      - name: Verify R8 Preview package and visible identity separation
+        run: python 04_Build/v2/test_r8_identity.py
       - name: Verify production business source safety contract
         run: python 04_Build/v2/test_live_business_source.py
       - name: Verify every visible R7 control has an interaction path
@@ -64,38 +73,38 @@ jobs:
         run: ./04_Build/build_v2_windows.ps1
       - name: Test silent install, launch, reinstall and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record verified artifact provenance
+      - name: Record verified R8 Preview artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.0.0_R7_Final.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.0.0 Beta R7 Final'
-            build = 'KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL'
+            version = 'V2.1.0 Beta R8 Preview'
+            phase = 'R8-00'
+            runtime_build = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW'
+            r7_compatibility_build = 'KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL'
+            github_run_number = '${{ github.run_number }}'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('source identity', 'R3/history preservation', 'all 20 recovery capabilities', 'R7 Block A atomic persistent storage', 'R7 Block A real task/keyword/draft/summary/plan/Memory persistence', 'R7 Block A full pre-R7 user-data backup', 'R7 Block A interrupted-job recovery', 'R7 Block A frontend/backend build identity', 'R7 Block B bidirectional operations bridge', 'R7 Block B offline autonomous fallback', 'R7 Block B command idempotency and dedupe', 'R7 Block B cloud command local approval boundary', 'R7 Block B ACK and execution receipts', 'R7 Block B unsafe remote command rejection', 'R7 Block B bridge diagnostics and command center status', 'full-day eight-role AI workforce schedule', 'time-spread autonomous daily execution', 'manager KPI click-through filters', 'dismissible finance reminders with retained audit record', 'full task timestamps', 'autonomous decision center V1', 'eight employee upward reports', 'R7 manager evidence summary', 'ChatGPT strategy handoff package', 'five-minute manager refresh', 'regional operations command center V1', '50/30/15/5 non-financial regional work allocation', 'regional readiness evidence scoring', 'region opening manual-only guardrail', 'R8-00 one-real-device pilot limit', 'R8-00 owner focus', 'R8-00 owner-gated video publishing', 'R8-00 finance manual-only boundary', 'R8-00 anti-spoofing and no-risk-evasion guardrails', 'R8-00 verification human fail-safe', 'financial and external-publication decision guardrails', 'R7 approval and job lifecycle', 'truthful progress', 'local scheduler and audit chain', 'R6 migration backup', 'agent role registry', 'model route verification', 'visible button interaction binding', 'visible action feedback', 'front-end to back-end action route coverage', 'cross-origin write rejection', 'AI task create and status update', '7-day promotion calendar', 'evidence-based competition report', 'customer demand truth boundary', 'command-center aggregation', 'windowed runtime without console', 'five business analyses', 'verified production read-only business source', 'fixed HTTPS endpoint', 'encrypted read-only key storage', 'aggregate-only sensitive-field rejection', 'five promotion modules', 'proposal-only policy', 'forbidden-claim rejection', 'persistence', 'truth policy', 'sensitive-field rejection', 'daily review APIs', 'AI Memory storage', 'clear port conflict', 'legacy runtime shutdown', 'stale shortcut cleanup', 'install', 'Windows version metadata', 'reinstall', 'real R7 user-data preservation', 'uninstall')
-            acceptance = 'Automated checks passed; user visual acceptance pending'
+            checks = @('R7 Final core compatibility preserved', 'R8 Preview package identity', 'R8 visible build number and commit', 'R8-00 one-real-device pilot limit', 'R8-00 owner focus', 'R8-00 owner-gated video publishing', 'R8-00 finance manual-only boundary', 'R8-00 anti-spoofing and no-risk-evasion guardrails', 'R8-00 verification human fail-safe', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'eight-role AI workforce', 'autonomous decision center', 'regional operations strategy', 'verified production read-only business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
+            acceptance = 'Automated checks passed; owner visual acceptance and first real Android device test pending'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
-          Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/TEST_GUIDE.md
-          Copy-Item docs/V2.0.0_BETA_R7_1_BUTTON_AND_LAUNCH_HANDOFF_20260916.md installer_output_v2/BUTTON_AND_LAUNCH_GUIDE.md
-          Copy-Item docs/V2.0.0_BETA_MIGRATION_HANDOFF.md installer_output_v2/BASELINE_MIGRATION_GUIDE.md
-          Copy-Item docs/R7_FINAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
-          Copy-Item docs/R7_FINAL_UPGRADE_NOTES.md installer_output_v2/UPGRADE_NOTES.md
-          Copy-Item docs/R7_FINAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
-          Copy-Item docs/R7_FINAL_KNOWN_ISSUES.md installer_output_v2/KNOWN_ISSUES.md
-      - name: Upload V2.0.0 Beta R7 Final installer
+          Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/R7_CORE_HANDOFF.md
+          Copy-Item docs/R7_FINAL_USER_GUIDE.md installer_output_v2/R7_FINAL_USER_GUIDE.md
+          Copy-Item docs/R7_FINAL_TEST_REPORT.md installer_output_v2/R7_FINAL_TEST_REPORT.md
+          Copy-Item docs/R8_PREVIEW_R8_00_HANDOFF_20260918.md installer_output_v2/R8_PREVIEW_HANDOFF.md
+      - name: Upload V2.1.0 Beta R8 Preview installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_R7_Final
+          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload V2.0.0 Beta R7 Final portable application
+      - name: Upload V2.1.0 Beta R8 Preview portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.0.0_R7_Final_Portable
+          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90

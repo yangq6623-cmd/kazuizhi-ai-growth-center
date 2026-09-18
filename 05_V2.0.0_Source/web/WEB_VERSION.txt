@@ -1,9 +1,18 @@
 Kazuizhi AI Growth Center
-Version: V2.0.0 Beta R7 Final
-Frontend Build: KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL
+Version: V2.1.0 Beta R8 Preview
+R8 Phase: R8-00
+Runtime Build: KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW
+Frontend Compatibility Build: KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
 Modules:
+- R7 Final Core Preserved
+- R8-00 Platform Safety Control Plane
+- R8-00 Single Real Android Device Pilot
+- R8-00 Owner Focus for Tomorrow Plan
+- R8-00 Owner-Gated Video Publishing
+- R8-00 Finance Manual-Only Boundary
+- R8-00 Verification Human Fail-Safe
 - KPI Dashboard
 - Growth Analysis
 - SEO/GEO Center
