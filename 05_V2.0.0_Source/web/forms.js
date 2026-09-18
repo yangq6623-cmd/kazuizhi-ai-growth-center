@@ -146,6 +146,14 @@ toast = function(message, type='ok') {
       transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
       document.body.appendChild(transfer);
     }
+    if (!document.querySelector('script[data-r8-device-power-policy]')) {
+      const power = document.createElement('script');
+      power.src = 'r8_device_power_policy.js';
+      power.async = false;
+      power.dataset.r8DevicePowerPolicy = '1';
+      power.onerror = () => toast('R8 自动唤醒策略模块加载失败，请重新安装最新版本', 'error');
+      document.body.appendChild(power);
+    }
   };
   script.onerror = () => toast('R8 单真机设备中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
