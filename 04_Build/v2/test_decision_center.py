@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import sys
@@ -13,7 +14,9 @@ os.environ["LOCALAPPDATA"] = str(sandbox)
 
 try:
     from core.daily_workforce import ensure_daily_workforce
+    from core.decision_bridge import export_decision_handoff
     from core.decision_center import EMPLOYEES, decision_snapshot, refresh_decision_center
+    from integrations.bridge import configure_bridge
 
     workforce = ensure_daily_workforce()
     report = refresh_decision_center()
@@ -41,6 +44,20 @@ try:
     if cached.get("date") != report.get("date"):
         raise AssertionError("Decision snapshot did not persist today's report")
 
+    bridge_base = sandbox / "drive"
+    bridge = configure_bridge({"root": str(bridge_base)})
+    if bridge.get("status") != "connected":
+        raise AssertionError(f"Test bridge did not connect: {bridge}")
+    exported = export_decision_handoff(report)
+    if not exported.get("exported"):
+        raise AssertionError(f"Decision handoff did not export: {exported}")
+    handoff_path = Path(exported["path"])
+    payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "kazuizhi-chatgpt-strategy-handoff/v1":
+        raise AssertionError("ChatGPT bridge handoff schema mismatch")
+    if payload.get("decision_center", {}).get("date") != report.get("date"):
+        raise AssertionError("Exported handoff does not contain the current manager report")
+
     ui = (SRC / "web" / "decision_center.js").read_text(encoding="utf-8")
     for token in (
         "AI 自主决策中心 V1", "8 个员工日报", "经理判断",
@@ -56,9 +73,10 @@ try:
         raise AssertionError("Decision center refresh API route missing")
 
     run = (SRC / "run.py").read_text(encoding="utf-8")
-    if "tick % 20 == 0" not in run or "refresh_decision_center()" not in run:
-        raise AssertionError("Five-minute manager refresh loop missing")
+    for token in ("tick % 20 == 0", "refresh_decision_center()", "export_decision_handoff(manager_report)"):
+        if token not in run:
+            raise AssertionError(f"Manager refresh/bridge loop missing: {token}")
 
-    print("PASS: 8 employee reports, R7 manager decisions, ChatGPT strategy handoff, finance/publishing guardrails and five-minute refresh")
+    print("PASS: 8 employee reports, R7 manager decisions, ChatGPT bridge handoff, finance/publishing guardrails and five-minute refresh")
 finally:
     shutil.rmtree(sandbox, ignore_errors=True)
