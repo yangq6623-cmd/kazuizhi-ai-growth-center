@@ -87,6 +87,15 @@ toast = function(message, type='ok') {
   script.src = 'decision_center.js';
   script.async = false;
   script.dataset.r7DecisionCenter = '1';
+  script.onload = () => {
+    if (document.querySelector('script[data-r7-region-strategy]')) return;
+    const region = document.createElement('script');
+    region.src = 'region_strategy.js';
+    region.async = false;
+    region.dataset.r7RegionStrategy = '1';
+    region.onerror = () => toast('区域作战中心加载失败，请重新安装最新版本', 'error');
+    document.body.appendChild(region);
+  };
   script.onerror = () => toast('AI 自主决策中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
