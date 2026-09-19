@@ -29,6 +29,7 @@ Modules:
 - R8-01B.2 Device Health Score and Daily Platform Run Chain
 - R8-01B.2 Phone Zoom / Fullscreen / Right-Click Back Controls
 - R8-01B.2 Explainable AI Decision Placeholder for R8-02
+- R8-01B.4.3 Static Phone Mirror Bootstrap Before Dynamic UI Patches
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State
 - R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power

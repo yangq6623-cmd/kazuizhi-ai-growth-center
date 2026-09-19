@@ -1,8 +1,8 @@
 (() => {
   const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-01B.4.2 屏幕同步启动修复';
-  const PREVIOUS_PHASE = 'R8-01B.4.1';
+  const PHASE = 'R8-01B.4.3 屏幕同步静态启动修复';
+  const PREVIOUS_PHASE = 'R8-01B.4.2';
   const LEGACY_PHASE = 'R8-01B.3';
 
   function buildLabel() {
@@ -160,7 +160,7 @@
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-01B.4.2 屏幕同步启动修复';
+    if (badge) badge.textContent = 'R8 Preview · R8-01B.4.3 屏幕同步静态启动修复';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
     if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';

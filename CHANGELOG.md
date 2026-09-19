@@ -1,3 +1,9 @@
+# V2.1.0 Beta R8 Preview R8-01B.4.3 — 2026-09-19
+
+- Load the packaged WebView phone-mirror renderer directly before the dynamic R8 UI patches to eliminate startup-order stalls.
+- Keep the runtime identity loader as a fallback and cache-bust the direct mirror script for upgraded installations.
+- Add a regression contract covering the static bootstrap order, runtime fallback and PNG validation path.
+
 # V2.0.0 Beta R7.1 — 2026-09-16
 
 - Diagnosed the reported R6 screen as an older extracted executable still serving port 8876; the shown GitHub artifact was the separate V1.9.5 R3 build.
