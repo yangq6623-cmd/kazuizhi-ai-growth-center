@@ -3,10 +3,13 @@ from pathlib import Path
 repo = Path(SPECPATH).resolve().parent
 source = repo / "05_V2.0.0_Source"
 marker = "KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL"
+r8_marker = "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919"
 for filename in ("index.html", "WEB_VERSION.txt"):
     text = (source / "web" / filename).read_text(encoding="utf-8")
     if marker not in text or "1.9.5" in text:
         raise ValueError("Invalid V2 frontend identity")
+if r8_marker not in (source / "web" / "WEB_VERSION.txt").read_text(encoding="utf-8"):
+    raise ValueError("Invalid R8 Final frontend identity")
 name = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
 a = Analysis([str(source / "run.py")], pathex=[str(source)],
              binaries=[], datas=[(str(source / "web"), "web"),

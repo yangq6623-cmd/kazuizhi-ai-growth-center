@@ -6,14 +6,15 @@
   "product": "Kazuizhi AI Enterprise V2.0.0 Beta R7 Final",
   "source": "05_V2.0.0_Source/web",
   "base_commit": "ec921b14714a963ee7b012c3d7cc2265cfa66705",
-  "scope": "R7 Final core preserved; R8 Preview adds the external growth, platform safety and single-real-device pilot layers without breaking R7 data or runtime contracts.",
-  "r8_preview": {
-    "display_version": "V2.1.0 Beta R8 Preview",
-    "release": "R8 Preview",
-    "phase": "R8-01",
-    "runtime_build": "KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW",
-    "product": "Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview",
+  "scope": "R7 Final core preserved; R8-00 through R8-08 complete the truthful social growth operations layer without breaking R7 data or runtime contracts.",
+  "r8_final": {
+    "display_version": "V2.1.0 R8 Final",
+    "release": "R8 Final",
+    "phase": "R8-08",
+    "runtime_build": "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919",
+    "product": "Kazuizhi AI Enterprise V2.1.0 R8 Final",
     "pilot_device_limit": 1,
-    "device_center": "adb_truthful_probe_screenshot_control_takeover_audit"
+    "device_center": "adb_truthful_probe_screenshot_control_takeover_audit",
+    "modules": ["R8-00", "R8-01", "R8-02", "R8-03", "R8-04", "R8-05", "R8-06", "R8-07", "R8-08"]
   }
 }

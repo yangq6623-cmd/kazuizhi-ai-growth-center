@@ -108,7 +108,7 @@ toast = function(message, type='ok') {
   document.body.appendChild(script);
 })();
 
-// R8 Preview identity is an additive display/package layer over the frozen R7 core.
+// R8 Final identity is an additive display/package layer over the frozen R7 core.
 // build_info.js is stamped by GitHub Actions with the real run number and commit.
 (() => {
   if (document.querySelector('script[data-r8-build-info]')) return;
@@ -122,10 +122,10 @@ toast = function(message, type='ok') {
     identity.src = 'r8_identity.js';
     identity.async = false;
     identity.dataset.r8Identity = '1';
-    identity.onerror = () => toast('R8 Preview 版本标识模块加载失败，请重新安装最新版本', 'error');
+    identity.onerror = () => toast('R8 Final 版本标识模块加载失败，请重新安装最终版', 'error');
     document.body.appendChild(identity);
   };
-  info.onerror = () => toast('R8 Preview 构建信息加载失败，请重新安装最新版本', 'error');
+  info.onerror = () => toast('R8 Final 构建信息加载失败，请重新安装最终版', 'error');
   document.body.appendChild(info);
 })();
 

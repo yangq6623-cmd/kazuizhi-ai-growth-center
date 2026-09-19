@@ -167,9 +167,19 @@
     return `<div id="social-add-form" class="social-form-shell" hidden><div class="social-form-grid"><label>真实手机<select id="social-form-device"><option value="">请选择手机</option>${devices.map(d=>`<option value="${esc(d.device_id)}">${esc(d.label||d.device_id)}</option>`).join('')}</select></label><label>平台<select id="social-form-platform">${PLATFORMS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select></label><label>账号标识<input id="social-form-alias" maxlength="100" placeholder="用户名/账号备注"></label><label>终端内名称<input id="social-form-label" maxlength="80" placeholder="例如：涟水抖音主账号"></label></div><div class="social-note"><b>不保存平台明文密码。</b> 首次登录、短信验证码、扫码、人脸或异常验证必须在真实手机 App 内人工完成。设备 ID 是终端主身份；手机号只作为设备属性，不作为系统主键。</div><div class="social-actions"><button id="social-form-save" class="primary-button">保存平台账号绑定</button><button id="social-form-cancel" class="outline-button">取消</button></div></div>`;
   }
 
+  function enhanceAccountForm(){
+    const grid=document.querySelector('#social-add-form .social-form-grid');
+    if(!grid||document.getElementById('social-form-role'))return;
+    grid.insertAdjacentHTML('beforeend',`<label>账号角色<select id="social-form-role"><option value="brand">主品牌号</option><option value="service" selected>服务矩阵号</option></select></label>
+      <label>自动化等级<select id="social-form-level"><option value="L1">L1 只观察</option><option value="L2" selected>L2 确认后互动</option><option value="L3">L3 已批准低风险自动化</option><option value="L4">L4 专项验收 Connector</option></select></label>
+      <label>服务地区<input id="social-form-region" maxlength="80" value="涟水" placeholder="例如：涟水"></label>
+      <label>服务类型<input id="social-form-service" maxlength="120" value="本地生活服务" placeholder="例如：家电维修"></label>`);
+  }
+
   function render(){
     const host=document.getElementById('social-center-body'); if(!host)return;
     host.innerHTML=`<div class="social-tabs">${TABS.map(([id,name])=>`<button class="social-tab ${activeTab===id?'active':''}" data-social-tab="${id}">${name}</button>`).join('')}</div>${currentView()}${addForm()}`;
+    enhanceAccountForm();
     bindViewEvents();
   }
 
@@ -186,10 +196,14 @@
     const platform=document.getElementById('social-form-platform').value;
     const alias=document.getElementById('social-form-alias').value.trim();
     const label=document.getElementById('social-form-label').value.trim()||alias;
+    const role=document.getElementById('social-form-role')?.value||'service';
+    const automation_level=document.getElementById('social-form-level')?.value||'L2';
+    const region=document.getElementById('social-form-region')?.value.trim()||'涟水';
+    const service_category=document.getElementById('social-form-service')?.value.trim()||'本地生活服务';
     if(!device_id)return typeof toast==='function'&&toast('请先选择真实手机','error');
     if(!alias)return typeof toast==='function'&&toast('请填写平台账号标识','error');
     try{
-      social=await request('/api/r8/social/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id,platform,alias,label})});
+      social=await request('/api/r8/social/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id,platform,alias,label,role,automation_level,region,service_category})});
       if(typeof toast==='function')toast('平台账号已绑定；请在真实手机完成登录后再确认授权');
       render();
     }catch(error){if(typeof toast==='function')toast(error.message,'error');}

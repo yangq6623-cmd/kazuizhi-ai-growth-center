@@ -1,4 +1,4 @@
-name: Build Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview
+name: Build Kazuizhi AI Enterprise V2.1.0 R8 Final
 on:
   workflow_dispatch:
   push:
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Stamp R8 Preview build number and commit
+      - name: Stamp R8 Final build number and commit
         run: |
           $path = '05_V2.0.0_Source/web/build_info.js'
           $text = Get-Content -LiteralPath $path -Raw
@@ -65,7 +65,9 @@ jobs:
         run: python 04_Build/v2/test_r8_device_center.py
       - name: Verify R8 standalone social media center architecture
         run: python 04_Build/v2/test_r8_social_center.py
-      - name: Verify R8 Preview package and visible identity separation
+      - name: Verify R8-00 through R8-08 complete growth operations loop
+        run: python 04_Build/v2/test_r8_complete_growth_ops.py
+      - name: Verify R8 Final package and visible identity separation
         run: python 04_Build/v2/test_r8_identity.py
       - name: Verify production business source safety contract
         run: python 04_Build/v2/test_live_business_source.py
@@ -76,41 +78,45 @@ jobs:
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
       - name: Build and verify V2 source and packaged runtime
         run: ./04_Build/build_v2_windows.ps1
+      - name: Scan final installer with Microsoft Defender when available
+        run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install, launch, reinstall and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record verified R8 Preview artifact provenance
+      - name: Record verified R8 Final artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = 'V2.1.0 Beta R8 Preview'
-            phase = 'R8-01 device center + standalone social media center preview'
-            runtime_build = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW'
+            version = 'V2.1.0 R8 Final'
+            phase = 'R8-08 complete truthful growth operations delivery'
+            runtime_build = 'KZ-ENTERPRISE-V2.1-R8-FINAL-20260919'
             r7_compatibility_build = 'KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL'
             github_run_number = '${{ github.run_number }}'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7 Final core compatibility preserved', 'R8 Preview package identity', 'R8 visible build number and commit', 'R8-00 one-real-device pilot limit', 'R8-00 owner focus', 'R8-00 owner-gated video publishing', 'R8-00 finance manual-only boundary', 'R8-00 anti-spoofing and no-risk-evasion guardrails', 'R8-00 verification human fail-safe', 'R8-01 truthful ADB device detection contract', 'R8-01 screenshot/action/takeover API wiring', 'R8-01B.4.3 static phone mirror bootstrap', 'R8-01 device operation audit', 'R8-01 lock-screen stop boundary', 'R8 social center durable backend state', 'R8 one-phone-many-platform-account model', 'R8 single-device serial platform execution rule', 'R8 social account human-login boundary', 'R8 social center no-browser-localStorage source of truth', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'eight-role AI workforce', 'autonomous decision center', 'regional operations strategy', 'verified production read-only business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
-            acceptance = 'Automated checks passed; owner visual acceptance and first real Android device/social-center test pending'
+            checks = @('R7 Final core compatibility preserved', 'R8 Final package identity', 'R8 visible build number and commit', 'R8-00 safety and finance boundaries', 'R8-01 truthful Android device center', 'R8-02 platform intelligence radar and unique account routing', 'R8-03 growth ID traceability', 'R8-04 eight-agent content committee', 'R8-05 RTX 3060 worker contract and quality gate', 'R8-06 owner publish approval', 'R8-07 truthful receipts and unified conversations', 'R8-08 attribution and learning feedback', 'multi-account matrix fields and L1-L4 levels', 'cross-account deduplication and stop-contact', 'persistent upgrade migration', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'verified business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'Defender scan gate', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
+            acceptance = 'All software and packaging checks passed; real platform credentials, device, GPU model and production data remain truthful live-acceptance inputs'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/R7_CORE_HANDOFF.md
           Copy-Item docs/R7_FINAL_USER_GUIDE.md installer_output_v2/R7_FINAL_USER_GUIDE.md
           Copy-Item docs/R7_FINAL_TEST_REPORT.md installer_output_v2/R7_FINAL_TEST_REPORT.md
-          Copy-Item docs/R8_PREVIEW_R8_00_HANDOFF_20260918.md installer_output_v2/R8_PREVIEW_HANDOFF.md
-          Copy-Item docs/R8_R7_TO_R8_DECISION_LEDGER_AND_DEVICE_PLAN_20260918.md installer_output_v2/R8_DECISION_LEDGER_AND_DEVICE_PLAN.md
-      - name: Upload V2.1.0 Beta R8 Preview installer
+          Copy-Item docs/R8_FINAL_COMPLETE_HANDOFF_20260919.md installer_output_v2/R8_FINAL_COMPLETE_HANDOFF.md
+          Copy-Item docs/R8_FINAL_USER_GUIDE_20260919.md installer_output_v2/R8_FINAL_USER_GUIDE.md
+          Copy-Item docs/R8_FINAL_TEST_REPORT_20260919.md installer_output_v2/R8_FINAL_TEST_REPORT.md
+          Copy-Item docs/R8_FINAL_KNOWN_ISSUES_20260919.md installer_output_v2/R8_FINAL_LIVE_CONFIGURATION.md
+      - name: Upload V2.1.0 R8 Final installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview
+          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Final
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload V2.1.0 Beta R8 Preview portable application
+      - name: Upload V2.1.0 R8 Final portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview_Portable
+          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Final_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90

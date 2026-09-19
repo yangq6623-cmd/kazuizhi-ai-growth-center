@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe'
 $testRoot = Join-Path $env:RUNNER_TEMP 'KazuizhiV2InstallerTest'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
 function Install-Beta {
@@ -27,11 +27,11 @@ function Assert-PersistentFilesExist([hashtable]$Expected) {
 Install-Beta
 $exe = Join-Path $testRoot $name
 $version = (Get-Item -LiteralPath $exe).VersionInfo
-if ($version.FileVersion -ne '2.1.0.1' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview') { throw 'Windows EXE version mismatch' }
+if ($version.FileVersion -ne '2.1.0.8' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.1.0 R8 Final') { throw 'Windows EXE version mismatch' }
 & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $exe
 if ($LASTEXITCODE -ne 0) { throw 'Installed autonomous runtime failed verification' }
 
-# R8 Preview intentionally preserves the proven R7/V2 user-data root so upgrades
+# R8 Final intentionally preserves the proven R7/V2 user-data root so upgrades
 # never orphan jobs, Memory, plans, audit records or business-source configuration.
 $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
 New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
@@ -60,17 +60,11 @@ Install-Beta
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Clean reinstall modified user data sentinel' }
 Assert-PersistentFiles $persistentFiles
 
-# Real-world upgrade regression: the visible runtime and watchdog-style helper names
-# are running from the installed directory and therefore hold packaged DLLs open.
-# The installer must close all of them itself before replacing files.
-$monitorExe = Join-Path $testRoot 'KazuizhiMonitoring.exe'
-$supervisorExe = Join-Path $testRoot 'KazuizhiSupervisor.exe'
-Copy-Item -LiteralPath $exe -Destination $monitorExe -Force
-Copy-Item -LiteralPath $exe -Destination $supervisorExe -Force
+# Real-world upgrade regression: the visible runtime is running from the installed
+# directory and holds packaged files open. Inno Setup Restart Manager must close
+# the executable being replaced without custom taskkill code.
 $activeProcesses = @(
-    (Start-Process -FilePath $exe -ArgumentList @('--no-browser','--port','18876') -PassThru -WindowStyle Hidden),
-    (Start-Process -FilePath $monitorExe -ArgumentList @('--no-browser','--port','18877') -PassThru -WindowStyle Hidden),
-    (Start-Process -FilePath $supervisorExe -ArgumentList @('--no-browser','--port','18878') -PassThru -WindowStyle Hidden)
+    (Start-Process -FilePath $exe -ArgumentList @('--no-browser','--port','18876') -PassThru -WindowStyle Hidden)
 )
 Start-Sleep -Seconds 2
 foreach ($runtime in $activeProcesses) {
@@ -84,8 +78,6 @@ foreach ($runtime in $activeProcesses) {
     $runtime.Refresh()
     if (-not $runtime.HasExited) { throw "Installer left active runtime/helper process running: $($runtime.Id)" }
 }
-Remove-Item -LiteralPath $monitorExe,$supervisorExe -Force -ErrorAction SilentlyContinue
-
 # While the runtime is active it may legitimately update jobs/plans. The installer contract
 # is that those files remain present and valid; byte equality is intentionally checked above
 # in the clean-reinstall phase instead of confusing runtime writes with installer corruption.
@@ -100,4 +92,4 @@ if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable'
 if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data sentinel' }
 Assert-PersistentFilesExist $persistentFiles
 Remove-Item -LiteralPath $sentinel -Force
-Write-Host 'PASS: R8 Preview install, clean byte-exact reinstall preservation, active-runtime upgrade, watchdog shutdown, Windows version, R7 core runtime verification, active data validity, uninstall preservation'
+Write-Host 'PASS: R8 Final install, clean byte-exact reinstall preservation, Restart Manager active-runtime upgrade, Windows version, R7 core runtime verification, active data validity, uninstall preservation'

@@ -1,4 +1,4 @@
-"""Canonical V2 runtime identity with an additive R8 Preview layer."""
+"""Canonical V2 runtime identity with the complete R8 delivery layer."""
 
 # R7 compatibility identity stays stable so the proven R7 core, static assets and
 # existing user-data migrations keep working while R8 is developed on top.
@@ -8,13 +8,13 @@ RELEASE = "R7 Final"
 BUILD_ID = "KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL"
 PRODUCT_NAME = "Kazuizhi AI Enterprise V2.0.0 Beta R7 Final"
 
-# R8 package/display identity. This is what the owner should see in R8 Preview
-# installers and the dashboard while R8-00 through R8-08 are implemented.
-R8_DISPLAY_VERSION = "V2.1.0 Beta R8 Preview"
-R8_RELEASE = "R8 Preview"
-R8_PHASE = "R8-01"
-R8_RUNTIME_BUILD = "KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW"
-R8_PRODUCT_NAME = "Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview"
+# R8 final package/display identity. The proven R7 identity above remains as a
+# compatibility contract for user-data migration and existing integrations.
+R8_DISPLAY_VERSION = "V2.1.0 R8 Final"
+R8_RELEASE = "R8 Final"
+R8_PHASE = "R8-08"
+R8_RUNTIME_BUILD = "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919"
+R8_PRODUCT_NAME = "Kazuizhi AI Enterprise V2.1.0 R8 Final"
 
 
 def get_version():

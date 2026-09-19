@@ -48,7 +48,7 @@ HARD_BLOCKED_ACTIONS = {
 def _default_state():
     return {
         "schema": SCHEMA,
-        "phase": "R8-01",
+        "phase": "R8-08",
         "pilot": {
             "enabled": True,
             "device_limit": 1,
@@ -88,7 +88,7 @@ def _default_state():
             "platform_policy_required": True,
             "truthful_receipts_required": True,
             "platform_passwords_not_stored": True,
-            "one_platform_account_per_device_binding": True,
+            "multiple_platform_accounts_per_device": True,
             "one_device_many_platform_accounts": True,
             "single_device_foreground_serial": True,
             "multi_device_parallel_after_pilot": True,
@@ -99,8 +99,8 @@ def _default_state():
 
 def _migrate_state(state):
     changed = False
-    if state.get("phase") != "R8-01":
-        state["phase"] = "R8-01"
+    if state.get("phase") != "R8-08":
+        state["phase"] = "R8-08"
         changed = True
     pilot = state.setdefault("pilot", {})
     strategy = "先单真机跑通，再增加第二台设备；单手机多平台串行，多手机并行"
@@ -122,7 +122,7 @@ def _migrate_state(state):
     hard = state.setdefault("hard_rules", {})
     rules = {
         "platform_passwords_not_stored": True,
-        "one_platform_account_per_device_binding": True,
+        "multiple_platform_accounts_per_device": True,
         "one_device_many_platform_accounts": True,
         "single_device_foreground_serial": True,
         "multi_device_parallel_after_pilot": True,
@@ -135,6 +135,20 @@ def _migrate_state(state):
         hard.pop("one_platform_window_per_device", None)
         changed = True
     state.setdefault("accounts", [])
+    if "one_platform_account_per_device_binding" in hard:
+        hard.pop("one_platform_account_per_device_binding", None)
+        changed = True
+    for account in state.get("accounts", []):
+        defaults = {
+            "role": "service",
+            "region": "",
+            "service_category": "",
+            "automation_level": "L2",
+        }
+        for key, value in defaults.items():
+            if key not in account:
+                account[key] = value
+                changed = True
     state.setdefault("devices", [])
     return changed
 
@@ -241,8 +255,8 @@ def record_device_probe(device_id, connected, source="adb", detail=""):
 def register_account(payload):
     """Create/update one platform account bound to one real phone.
 
-    One phone may host many different platform accounts, while a specific
-    phone/platform binding has one active account record. Passwords/tokens are
+    One phone may host many platform accounts, including multiple aliases on
+    the same platform. Passwords/tokens are
     intentionally not accepted or stored. Login verification happens in the
     real platform app and is marked separately by the owner.
     """
@@ -266,16 +280,22 @@ def register_account(payload):
         raise ValueError("平台账号必须绑定已登记真机")
 
     accounts = state.setdefault("accounts", [])
-    existing_by_binding = next(
-        (item for item in accounts if item.get("platform") == platform and item.get("device_id") == device_id),
-        None,
-    )
     requested_id = str(payload.get("account_id") or "").strip()
-    if existing_by_binding and requested_id and existing_by_binding.get("account_id") != requested_id:
-        raise ValueError("同一台手机的同一平台只能保留一个当前账号绑定")
-
-    existing = existing_by_binding
-    account_id = existing.get("account_id") if existing else (requested_id or f"{platform}:{device_id}")
+    existing = next((item for item in accounts if requested_id and item.get("account_id") == requested_id), None)
+    if not existing:
+        existing = next(
+            (item for item in accounts if item.get("platform") == platform and item.get("device_id") == device_id and item.get("alias") == alias),
+            None,
+        )
+    account_id = existing.get("account_id") if existing else (requested_id or f"{platform}:{device_id}:{len(accounts)+1}")
+    role = str(payload.get("role") or "service").strip()
+    if role not in {"brand", "service"}:
+        raise ValueError("账号角色只支持主品牌号或服务矩阵号")
+    automation_level = str(payload.get("automation_level") or "L2").strip().upper()
+    if automation_level not in {"L1", "L2", "L3", "L4"}:
+        raise ValueError("自动化等级只支持 L1-L4")
+    region = str(payload.get("region") or "涟水").strip()[:80]
+    service_category = str(payload.get("service_category") or ("综合服务" if role == "brand" else "本地生活服务")).strip()[:120]
     now = now_iso()
     if existing:
         existing.update({
@@ -283,6 +303,10 @@ def register_account(payload):
             "label": label,
             "platform_name": PLATFORMS[platform],
             "updated_at": now,
+            "role": role,
+            "region": region,
+            "service_category": service_category,
+            "automation_level": automation_level,
         })
     else:
         accounts.append({
@@ -296,6 +320,10 @@ def register_account(payload):
             "login_verified_at": None,
             "health": "unknown",
             "risk_level": "unknown",
+            "role": role,
+            "region": region,
+            "service_category": service_category,
+            "automation_level": automation_level,
             "automation_paused": False,
             "last_error": None,
             "created_at": now,
@@ -396,7 +424,7 @@ def social_center_status():
         "accounts": accounts,
         "rules": {
             "one_device_many_platform_accounts": True,
-            "one_phone_platform_binding_one_current_account": True,
+            "multiple_accounts_per_platform": True,
             "single_device_foreground_serial": True,
             "multi_device_parallel_after_pilot": True,
             "passwords_stored": False,
@@ -450,6 +478,11 @@ def authorize_action(payload):
             return deny("账号处于风险状态，已停止自动动作", human=True)
     if action in VIDEO_PUBLICATION_ACTIONS and not owner_approved:
         return deny("视频必须经过老板人工审核并点击确认发布", human=True)
+    automation_level = account.get("automation_level", "L2") if account_id else "L2"
+    if action in INTERACTION_ACTIONS | TEXT_PUBLICATION_ACTIONS and automation_level == "L1":
+        return deny("该账号处于 L1 观察模式，只允许读取和形成机会卡片")
+    if action in INTERACTION_ACTIONS | TEXT_PUBLICATION_ACTIONS and automation_level == "L2" and not owner_approved:
+        return deny("该账号处于 L2 辅助模式，对外互动必须人工批准", human=True)
     if action in LOW_RISK_ACTIONS | INTERACTION_ACTIONS | TEXT_PUBLICATION_ACTIONS | VIDEO_PUBLICATION_ACTIONS:
         return {
             "allowed": True,

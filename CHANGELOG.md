@@ -1,3 +1,16 @@
+# V2.1.0 R8 Final — 2026-09-19
+
+- Completed R8-00 through R8-08 as one truthful growth-operations workflow.
+- Added platform signal intake, deduplication, unique-account routing and durable growth IDs.
+- Added the eight-agent content committee, owner review, RTX 3060 worker contract and quality gates.
+- Added owner-gated publishing, verifiable platform receipts and unified conversations/leads.
+- Added order attribution, 24h/72h/7-day metrics, content genes and learning feedback.
+- Expanded one-phone-many-account bindings with role, region, service category and L1-L4 automation levels.
+- Enforced cross-account stop-contact, platform/content matching and real local video paths.
+- Added the R8 Final center, diagnostics, API coverage and full end-to-end regression tests.
+- Reworked the installer to ZIP non-solid packaging and removed custom forced task termination to address Defender ML false positives seen in Preview #236.
+- Added CI Defender scanning, security provenance, final handoff, user guide and live-configuration notes.
+
 # V2.1.0 Beta R8 Preview R8-01B.4.3 — 2026-09-19
 
 - Load the packaged WebView phone-mirror renderer directly before the dynamic R8 UI patches to eliminate startup-order stalls.

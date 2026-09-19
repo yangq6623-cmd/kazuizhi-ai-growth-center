@@ -21,6 +21,13 @@ from core.r8_control import (
     update_account_status,
 )
 from core.version import BUILD_ID, get_version
+from core.r8_growth_ops import (
+    configure_video_worker, context_export, create_content_brief, create_growth_case,
+    create_video_job, dashboard as growth_dashboard, diagnostics as growth_diagnostics,
+    ingest_message, ingest_signal, list_collection, record_attribution, record_metrics,
+    record_publish_receipt, review_content, route_signal, run_learning_cycle,
+    schedule_publish, update_conversation, update_video_job, upsert_lead,
+)
 from memory.memory_store import get_experiments, get_memory, remember
 from integrations.android_device import (
     device_audit, execute_action as device_execute_action,
@@ -113,7 +120,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "r8_adb_truthful_probe", "r8_device_screenshot",
                 "r8_manual_takeover", "r8_device_action_audit",
                 "r8_device_file_transfer", "r8_social_media_center",
-                "r8_platform_device_account_binding",
+                "r8_platform_device_account_binding", "r8_public_signal_radar",
+                "r8_growth_id_traceability", "r8_eight_role_content_committee",
+                "r8_local_3060_video_orchestration", "r8_owner_gated_publish_queue",
+                "r8_truthful_platform_receipts", "r8_unified_conversations_and_leads",
+                "r8_order_attribution", "r8_24h_72h_7d_metrics",
+                "r8_learning_feedback_loop", "r8_complete_growth_operations_center",
             ],
         )
 
@@ -196,6 +208,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return device_audit()
         if path == "/api/r8/social":
             return social_center_status()
+        if path == "/api/r8/growth/summary":
+            return growth_dashboard()
+        if path == "/api/r8/growth/diagnostics":
+            return growth_diagnostics()
+        if path == "/api/r8/growth/context":
+            return context_export()
+        collections = {
+            "/api/r8/growth/signals": "signals", "/api/r8/growth/growth-cases": "growth_cases",
+            "/api/r8/growth/content-jobs": "content_jobs", "/api/r8/growth/video-jobs": "video_jobs",
+            "/api/r8/growth/publish-jobs": "publish_jobs", "/api/r8/growth/conversations": "conversations",
+            "/api/r8/growth/messages": "messages", "/api/r8/growth/leads": "leads",
+            "/api/r8/growth/attribution": "attribution", "/api/r8/growth/metric-snapshots": "metric_snapshots",
+            "/api/r8/growth/content-genes": "content_genes", "/api/r8/growth/learning-cycles": "learning_cycles",
+            "/api/r8/growth/audit": "audit",
+        }
+        if path in collections:
+            return list_collection(collections[path])
         raise KeyError(path)
 
     def do_GET(self):
@@ -320,6 +349,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/r7/scheduler/tick", "/api/r7/decision-center/refresh",
             "/api/r8/device/action", "/api/r8/device/takeover",
             "/api/r8/social/account", "/api/r8/social/account/status", "/api/r8/social/account/remove",
+            "/api/r8/growth/signals", "/api/r8/growth/signals/route", "/api/r8/growth/cases",
+            "/api/r8/growth/content", "/api/r8/growth/content/review", "/api/r8/growth/video-worker",
+            "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing",
+            "/api/r8/growth/publishing/receipt", "/api/r8/growth/messages",
+            "/api/r8/growth/conversations/update", "/api/r8/growth/leads", "/api/r8/growth/attribution",
+            "/api/r8/growth/metrics", "/api/r8/growth/learning/run",
         )
         if path not in allowed_posts:
             self.send_error(404)
@@ -395,6 +430,38 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             elif path == "/api/r8/social/account/remove":
                 remove_account(payload)
                 result = social_center_status()
+            elif path == "/api/r8/growth/signals":
+                result = ingest_signal(payload)
+            elif path == "/api/r8/growth/signals/route":
+                result = route_signal(payload)
+            elif path == "/api/r8/growth/cases":
+                result = create_growth_case(payload)
+            elif path == "/api/r8/growth/content":
+                result = create_content_brief(payload)
+            elif path == "/api/r8/growth/content/review":
+                result = review_content(payload)
+            elif path == "/api/r8/growth/video-worker":
+                result = configure_video_worker(payload)
+            elif path == "/api/r8/growth/videos":
+                result = create_video_job(payload)
+            elif path == "/api/r8/growth/videos/update":
+                result = update_video_job(payload)
+            elif path == "/api/r8/growth/publishing":
+                result = schedule_publish(payload)
+            elif path == "/api/r8/growth/publishing/receipt":
+                result = record_publish_receipt(payload)
+            elif path == "/api/r8/growth/messages":
+                result = ingest_message(payload)
+            elif path == "/api/r8/growth/conversations/update":
+                result = update_conversation(payload)
+            elif path == "/api/r8/growth/leads":
+                result = upsert_lead(payload)
+            elif path == "/api/r8/growth/attribution":
+                result = record_attribution(payload)
+            elif path == "/api/r8/growth/metrics":
+                result = record_metrics(payload)
+            elif path == "/api/r8/growth/learning/run":
+                result = run_learning_cycle(payload)
             elif path == "/api/daily-review/generate":
                 snapshot = payload.get("snapshot")
                 if snapshot is not None and not isinstance(snapshot, dict):

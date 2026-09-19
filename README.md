@@ -1,5 +1,22 @@
 # 卡嘴子 AI 增长运营中心
 
+当前交付版本：**V2.1.0 R8 Final / R8-08**
+
+## R8 Final 当前状态
+
+R8-00 至 R8-08 的软件模块已完整接入：安全总控、真实 Android 手机、社媒账号矩阵、平台情报雷达、增长 ID、八员工内容委员会、RTX 3060 视频 Worker 合同、老板审核发布、真实平台回执、统一消息/线索、订单归因和 24h/72h/7天学习回写。
+
+外部平台、真实手机、GPU 模型和经营数据只有在实际授权或配置后才显示可用；系统不会用模拟状态冒充已连接或已发布。
+
+最终交付资料：
+
+- `docs/R8_FINAL_COMPLETE_HANDOFF_20260919.md`
+- `docs/R8_FINAL_USER_GUIDE_20260919.md`
+- `docs/R8_FINAL_TEST_REPORT_20260919.md`
+- `docs/R8_FINAL_KNOWN_ISSUES_20260919.md`
+
+以下内容保留为历史基线说明。
+
 项目：Kazuizhi AI Growth Center
 
 当前正式开发基线：**V1.9.5 Enterprise R3**

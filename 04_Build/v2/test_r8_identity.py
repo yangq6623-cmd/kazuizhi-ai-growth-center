@@ -8,9 +8,9 @@ sys.path.insert(0, str(SRC))
 
 from core import version  # noqa: E402
 
-EXPECTED_DISPLAY = "V2.1.0 Beta R8 Preview"
-EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW"
-EXPECTED_PHASE = "R8-01"
+EXPECTED_DISPLAY = "V2.1.0 R8 Final"
+EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919"
+EXPECTED_PHASE = "R8-08"
 
 status = version.get_version()
 if status.get("display_version") != EXPECTED_DISPLAY:
@@ -21,7 +21,7 @@ if status.get("r8_phase") != EXPECTED_PHASE:
     raise AssertionError("R8 phase missing")
 
 manifest = json.loads((SRC / "version" / "manifest.json").read_text(encoding="utf-8"))
-preview = manifest.get("r8_preview") or {}
+preview = manifest.get("r8_final") or {}
 if preview.get("display_version") != EXPECTED_DISPLAY or preview.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 manifest identity mismatch")
 if preview.get("phase") != EXPECTED_PHASE:
@@ -31,6 +31,9 @@ web_version = (SRC / "web" / "WEB_VERSION.txt").read_text(encoding="utf-8")
 identity = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
 build_info = (SRC / "web" / "build_info.js").read_text(encoding="utf-8")
 forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
+final_center = (SRC / "web" / "r8_final_center.js").read_text(encoding="utf-8")
+final_style = (SRC / "web" / "r8_final.css").read_text(encoding="utf-8")
+social_center = (SRC / "web" / "social_media_center.js").read_text(encoding="utf-8")
 for value in (EXPECTED_DISPLAY, EXPECTED_RUNTIME, EXPECTED_PHASE):
     if value not in web_version:
         raise AssertionError(f"WEB_VERSION missing {value}")
@@ -40,19 +43,33 @@ if "build_info.js" not in forms or "r8_identity.js" not in forms:
     raise AssertionError("R8 visible identity scripts are not loaded")
 if "runNumber" not in build_info or "commit" not in build_info:
     raise AssertionError("R8 build provenance fields missing")
+for marker in ("r8_final.css", "r8_final_center.js", "loadFinalGrowthCenter"):
+    if marker not in identity:
+        raise AssertionError(f"R8 Final center loader missing {marker}")
+for label in ("升级总控", "情报雷达", "内容委员会", "3060视频工厂", "审核与发布", "消息与线索", "归因与学习", "审计与体检"):
+    if label not in final_center:
+        raise AssertionError(f"R8 Final UI missing tab: {label}")
+for route in ("/api/r8/growth/signals", "/api/r8/growth/publishing/receipt", "/api/r8/growth/learning/run", "/api/r8/growth/diagnostics"):
+    if route not in final_center:
+        raise AssertionError(f"R8 Final UI route missing: {route}")
+if ".r8-final-tabs" not in final_style or ".r8-gate-grid" not in final_style:
+    raise AssertionError("R8 Final responsive style contract missing")
+for field in ("social-form-role", "social-form-level", "social-form-region", "social-form-service"):
+    if field not in social_center:
+        raise AssertionError(f"R8 account-matrix UI field missing: {field}")
 
 installer = (ROOT / "04_Build" / "installer" / "Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
 windows_version = (ROOT / "04_Build" / "v2" / "windows_version.txt").read_text(encoding="utf-8")
 workflow = (ROOT / ".github" / "workflows" / "build_v2_enterprise_beta.yml").read_text(encoding="utf-8")
 for value in (
-    "Kazuizhi AI Enterprise V2.1.0 Beta R8 Preview",
-    "Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview",
+    "Kazuizhi AI Enterprise V2.1.0 R8 Final",
+    "Kazuizhi_AI_Enterprise_V2.1.0_R8_Final",
 ):
     if value not in installer:
         raise AssertionError(f"R8 installer identity missing: {value}")
-if "2.1.0.1" not in windows_version or "R8 Preview" not in windows_version:
+if "2.1.0.8" not in windows_version or "R8 Final" not in windows_version:
     raise AssertionError("R8 Windows version identity missing")
-if "Kazuizhi_AI_Enterprise_V2.1.0_R8_Preview" not in workflow:
+if "Kazuizhi_AI_Enterprise_V2.1.0_R8_Final" not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: R8 Preview package, visible build identity, R8-01 phase and R7 compatibility layer are distinct and traceable")
+print("PASS: R8 Final package, visible build identity, R8-08 phase and R7 compatibility layer are distinct and traceable")

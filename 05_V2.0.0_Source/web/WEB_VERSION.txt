@@ -1,7 +1,7 @@
 Kazuizhi AI Growth Center
-Version: V2.1.0 Beta R8 Preview
-R8 Phase: R8-01
-Runtime Build: KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW
+Version: V2.1.0 R8 Final
+R8 Phase: R8-08
+Runtime Build: KZ-ENTERPRISE-V2.1-R8-FINAL-20260919
 Frontend Compatibility Build: KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
@@ -28,7 +28,18 @@ Modules:
 - R8-01B.2 Task / Platform / Human / Audit Side Tabs
 - R8-01B.2 Device Health Score and Daily Platform Run Chain
 - R8-01B.2 Phone Zoom / Fullscreen / Right-Click Back Controls
-- R8-01B.2 Explainable AI Decision Placeholder for R8-02
+- R8-02 Platform Intelligence Radar and Unique Account Routing
+- R8-03 User Voice, Content Genes and Growth ID Traceability
+- R8-04 Eight-Agent Content Committee and Review Workflow
+- R8-05 RTX 3060 Local Video Worker Contract and Quality Gates
+- R8-06 Owner Approval and Publish Authorization
+- R8-07 Scheduled Publishing, Truthful Receipts and Unified Conversations
+- R8-08 Lead CRM, Order Attribution, Metrics and Learning Loop
+- R8 Multi-Account Matrix by Role, Region and Service Category
+- R8 L1-L4 Account Automation Levels
+- R8 Cross-Account Deduplication and Stop-Contact Guardrail
+- R8 24h / 72h / 7-day Measurement Windows
+- R8 External Connector Truth State and Complete Audit Diagnostics
 - R8-01B.4.3 Static Phone Mirror Bootstrap Before Dynamic UI Patches
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State

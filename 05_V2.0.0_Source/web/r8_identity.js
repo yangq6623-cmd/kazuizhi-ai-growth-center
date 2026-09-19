@@ -1,8 +1,8 @@
 (() => {
-  const DISPLAY_VERSION = 'V2.1.0 Beta R8 Preview';
-  const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-BETA-20260918-R8-PREVIEW';
-  const PHASE = 'R8-01B.4.3 屏幕同步静态启动修复';
-  const PREVIOUS_PHASE = 'R8-01B.4.2';
+  const DISPLAY_VERSION = 'V2.1.0 R8 Final';
+  const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-R8-FINAL-20260919';
+  const PHASE = 'R8-08 全模块最终交付';
+  const PREVIOUS_PHASE = 'R8-01B.4.3';
   const LEGACY_PHASE = 'R8-01B.3';
 
   function buildLabel() {
@@ -147,6 +147,25 @@
     start();
   }
 
+  function loadFinalGrowthCenter() {
+    if (!document.querySelector('link[data-r8-final-style]')) {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = 'r8_final.css';
+      style.dataset.r8FinalStyle = '1';
+      document.head.appendChild(style);
+    }
+    if (document.querySelector('script[data-r8-final-center]')) return;
+    const script = document.createElement('script');
+    script.src = 'r8_final_center.js';
+    script.async = false;
+    script.dataset.r8FinalCenter = '1';
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('R8 最终增长中心加载失败，请重新安装最终版', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
   async function applyR8Identity() {
     document.title = `卡嘴子 AI 增长运营中心 ${DISPLAY_VERSION}`;
     const meta = document.querySelector('meta[name="kazuizhi-build"]');
@@ -160,24 +179,25 @@
     }
 
     const badge = document.querySelector('#dashboard .welcome-badge');
-    if (badge) badge.textContent = 'R8 Preview · R8-01B.4.3 屏幕同步静态启动修复';
+    if (badge) badge.textContent = 'R8 Final · R8-00 至 R8-08 全模块';
 
     const mainButton = document.querySelector('#dashboard .welcome-actions .go-page[data-target="workflow"]');
-    if (mainButton) mainButton.innerHTML = '查看 R8 Preview 工作流 <b>→</b>';
+    if (mainButton) mainButton.innerHTML = '查看 R8 最终工作流 <b>→</b>';
 
     const workflowLabel = document.querySelector('#workflow .page-title small');
-    if (workflowLabel) workflowLabel.textContent = 'R7 Final 稳定底座 + R8-00 安全层 + R8-01 真机设备层';
+    if (workflowLabel) workflowLabel.textContent = 'R7 稳定底座 + R8-00 至 R8-08 完整增长运营层';
 
     const heading = document.querySelector('#dashboard .command-welcome h2');
-    if (heading) heading.textContent = 'R7 稳定运行，R8 正在完成 Gate 2 前的真实手机屏幕同步与触控闭环。';
+    if (heading) heading.textContent = 'R8 全模块已交付：从平台雷达到内容、视频、发布、线索归因和复盘学习。';
 
     loadBridgeUsabilityPatch();
     loadDeviceRuntimeAfterMount();
+    loadFinalGrowthCenter();
 
     try {
       const status = await fetch('/api/status', {cache: 'no-store'}).then(r => r.json());
-      if (status.runtime_build !== RUNTIME_BUILD || status.r8_phase !== 'R8-01') {
-        if (typeof toast === 'function') toast('R8 安装包身份不一致，请重新安装最新 R8 Preview', 'error');
+      if (status.runtime_build !== RUNTIME_BUILD || status.r8_phase !== 'R8-08') {
+        if (typeof toast === 'function') toast('R8 安装包身份不一致，请重新安装最新 R8 Final', 'error');
       }
     } catch (error) {
       // The normal app health check will surface local-service failures separately.
