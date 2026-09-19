@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -25,15 +26,15 @@ def read_json(relative_path, default):
 
 
 def write_json(relative_path, value):
-    """Atomically persist JSON in the user-data directory.
+    """Persist JSON with Windows file-lock recovery.
 
-    The temporary file is created beside the destination, flushed and fsynced,
-    then replaced atomically. This keeps an interrupted write from leaving a
-    half-written JSON document that would look like lost user data on restart.
+    Uses atomic replacement when possible and retries transient Windows
+    PermissionError cases before returning failure to the caller.
     """
     path = data_root() / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
+    last_error = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -47,14 +48,24 @@ def write_json(relative_path, value):
             json.dump(value, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+
+        for attempt in range(3):
+            try:
+                os.replace(temporary, path)
+                return value
+            except PermissionError as error:
+                last_error = error
+                time.sleep(0.5 * (attempt + 1))
+
+        if last_error:
+            raise last_error
+        return value
     finally:
         if temporary is not None and temporary.exists():
             try:
                 temporary.unlink()
             except OSError:
                 pass
-    return value
 
 
 def now_iso():
