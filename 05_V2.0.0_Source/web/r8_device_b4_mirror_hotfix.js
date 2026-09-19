@@ -1,6 +1,7 @@
 (() => {
   let busy = false;
   let continuousTimer = null;
+  let continuousEnabled = false;
   let bound = false;
   let lastFrameAt = 0;
 
@@ -25,15 +26,21 @@
     return document.getElementById('r8-device-center');
   }
 
-  function showEmpty(text) {
+  function hasFrame() {
+    const img = document.getElementById('r8-device-screen');
+    return !!(img && img.dataset.mirrorReady === '1' && img.src);
+  }
+  function showEmpty(text, force=false) {
+
+
     const empty = document.getElementById('r8-screen-empty');
     const img = document.getElementById('r8-device-screen');
-    if (img) {
+    if (img && (force || !hasFrame())) {
       img.style.display = 'none';
       img.dataset.mirrorReady = '0';
     }
     if (empty) {
-      empty.style.display = 'block';
+      empty.style.display = force || !hasFrame() ? 'block' : 'none';
       empty.textContent = text;
     }
   }
@@ -150,6 +157,14 @@
     const empty = document.getElementById('r8-screen-empty');
     if (!img) return Promise.reject(new Error('真机画面组件尚未就绪'));
     return new Promise((resolve, reject) => {
+      if (img.src === frame.dataUrl && img.complete && img.naturalWidth > 0) {
+        img.style.display = 'block';
+        img.dataset.mirrorReady = '1';
+        if (empty) empty.style.display = 'none';
+        lastFrameAt = Date.now();
+        resolve(true);
+        return;
+      }
       img.onload = () => {
         img.style.display = 'block';
         img.dataset.mirrorReady = '1';
@@ -174,7 +189,7 @@
     try {
       setState('同步中…', 'warn');
       setDetail('正在检查 ADB、屏幕状态和 PNG 截图');
-      showEmpty('正在同步真实手机画面…');
+      if (!hasFrame()) showEmpty('正在同步真实手机画面…');
       const d = await readyDevice(wake);
       const frame = await fetchFrame(d.device_id);
       await renderFrame(frame);
@@ -184,9 +199,9 @@
       setDetail(`设备 ${d.model || d.device_id} · PNG ${kb} KB · 最后刷新 ${time}`);
       return true;
     } catch (error) {
-      showEmpty('屏幕同步失败：' + error.message);
-      setState('同步失败', 'stop');
-      setDetail(error.message);
+      if (!hasFrame()) showEmpty('屏幕同步失败：' + error.message, true);
+      setState(hasFrame() ? '连接波动，自动重试' : '同步失败', hasFrame() ? 'warn' : 'stop');
+      setDetail((hasFrame() ? '已保留上一帧 · ' : '') + error.message);
       if (!quiet && typeof toast === 'function') toast('手机画面同步失败：' + error.message, 'error');
       return false;
     } finally {
@@ -209,13 +224,14 @@
     } catch (error) {
       setState('截图测试失败', 'stop');
       setDetail(error.message);
-      showEmpty('测试截图失败：' + error.message);
+      if (!hasFrame()) showEmpty('测试截图失败：' + error.message, true);
       if (typeof toast === 'function') toast('测试截图失败：' + error.message, 'error');
     }
   }
 
   function stopContinuous(silent=false) {
-    if (continuousTimer) clearInterval(continuousTimer);
+    continuousEnabled = false;
+    if (continuousTimer) clearTimeout(continuousTimer);
     continuousTimer = null;
     const btn = document.getElementById('r8-mirror-continuous');
     if (btn) btn.classList.remove('active');
@@ -227,14 +243,17 @@
 
   function startContinuous() {
     ensureControls();
-    if (continuousTimer) clearInterval(continuousTimer);
+    continuousEnabled = true;
+    if (continuousTimer) clearTimeout(continuousTimer);
     const btn = document.getElementById('r8-mirror-continuous');
     if (btn) btn.classList.add('active');
-    syncOnce({wake:true, quiet:false, source:'continuous'});
-    continuousTimer = setInterval(() => {
-      if (!panelVisible()) return;
-      syncOnce({wake:true, quiet:true, source:'continuous'});
-    }, 1200);
+    const loop = async (first=false) => {
+      if (!continuousEnabled) return;
+      if (panelVisible()) await syncOnce({wake:true, quiet:!first, source:'continuous'});
+      if (!continuousEnabled) return;
+      continuousTimer = setTimeout(() => loop(false), 900);
+    };
+    loop(true);
   }
 
   function bind() {
@@ -292,7 +311,7 @@
     testScreenshot,
     startContinuous,
     stopContinuous,
-    status:() => ({running:!!continuousTimer, busy, lastFrameAt})
+    status:() => ({running:continuousEnabled, busy, lastFrameAt})
   };
 
   if (!bind()) {

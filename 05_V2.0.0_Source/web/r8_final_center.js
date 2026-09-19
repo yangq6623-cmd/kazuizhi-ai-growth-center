@@ -8,6 +8,18 @@
   const COLLECTIONS = ['signals','growth_cases','content_jobs','video_jobs','publish_jobs','conversations','messages','leads','attribution','metric_snapshots','learning_cycles','audit'];
   let activeTab = 'overview';
   let summary = {counts:{},gates:[],video_worker:{hardware:{}},connectors:[]};
+  const CN = {
+    ready:'已就绪',pending:'待完成',published:'已发布',approved:'已审核',rejected:'已退回',failed:'失败',queued:'排队中',running:'执行中',
+    pending_connector:'待授权平台',pending_device:'待连接真机',waiting_first_case:'待首条真实任务',pending_worker:'待配置视频模型',
+    waiting_first_receipt:'待真实发布回执',waiting_first_message:'待真实消息',waiting_metrics:'待效果数据',waiting_learning_cycle:'待首轮复盘',
+    new:'新建',routed:'已路由',no_matching_account:'无匹配账号',candidate_needs_authorization:'候选账号待授权',planning:'策划中',
+    content_pending_approval:'内容待审核',content_approved:'内容已通过',revision_requested:'待修改',waiting_worker:'等待视频模型',
+    awaiting_owner_review:'等待老板审核',human_required:'转人工',qualified:'有效线索',closed:'已结束',conversion:'转化',search:'搜索增长',
+    brand:'品牌',education:'知识科普',recruitment:'招募',low:'低',medium:'中',high:'高',normal:'正常',attention:'需注意',
+    douyin:'抖音',xiaohongshu:'小红书',kuaishou:'快手',wechat_channels:'视频号',weibo:'微博',bilibili:'B站',forum:'论坛/社区',blog:'博客/内容站',other:'其他平台'
+  };
+  const cn = value => CN[value] || value;
+
   let data = Object.fromEntries(COLLECTIONS.map(name => [name, []]));
 
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -48,7 +60,7 @@
   }
 
   function overview(){
-    const gates=(summary.gates||[]).map(g=>`<div class="r8-gate"><span class="r8-state ${stateClass(g.live)}">${esc(g.live)}</span><small>${esc(g.id)}</small><h4>${esc(g.name)}</h4><p>软件：${esc(g.software)} · 上线：${esc(g.live)}</p></div>`).join('');
+    const gates=(summary.gates||[]).map(g=>`<div class="r8-gate"><span class="r8-state ${stateClass(g.live)}">${esc(cn(g.live))}</span><small>${esc(g.id.replace('Gate','关口'))}</small><h4>${esc(g.name)}</h4><p>软件：${esc(cn(g.software))} · 上线：${esc(cn(g.live))}</p></div>`).join('');
     const connectors=(summary.connectors||[]).map(x=>`<div class="r8-final-row"><div class="r8-final-row-head"><h4>${esc(x.name)}</h4><span class="r8-state ${stateClass(x.state)}">${x.state==='ready'?'已授权':'待配置'}</span></div><p>登记账号 ${x.configured?'有':'无'} · 已授权 ${x.authorized||0}</p></div>`).join('');
     return `${kpis()}<div class="r8-truth"><b>交付原则：</b>${esc(summary.delivery?.truth_policy||'外部能力未连接时明确显示待配置。')}</div>
       <article class="wide"><div class="article-head"><div><label>R8-00 至 R8-08</label><h3>软件升级与上线验收关口</h3></div><span class="chip">软件模块已齐全 · 现场数据逐项验收</span></div><div class="r8-gate-grid">${gates}</div></article>
@@ -58,7 +70,7 @@
   function signalRows(){
     const rows=items('signals');
     if(!rows.length)return '<div class="r8-empty">尚无需求信号。可手工录入真实公开来源，或等待平台 Connector 接入。</div>';
-    return `<div class="r8-final-list">${rows.map(s=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(s.region)} · ${esc(s.service_category)}</h4><div class="r8-final-meta"><span>${esc(s.platform_name||s.platform)}</span><span>意向 ${esc(s.intent_level)}</span><span>风险 ${esc(s.risk_level)}</span><span>${esc(s.route_state)}</span></div></div><span class="r8-state ${stateClass(s.route_state)}">${esc(s.status)}</span></div><p>${esc(s.summary)}</p><div class="r8-final-actions"><button data-r8-route="${esc(s.signal_id)}">选择唯一账号</button><button class="primary" data-r8-growth="${esc(s.signal_id)}">建立增长 ID</button>${s.source_url?`<a href="${esc(s.source_url)}" target="_blank" rel="noreferrer">查看来源</a>`:''}</div></div>`).join('')}</div>`;
+    return `<div class="r8-final-list">${rows.map(s=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(s.region)} · ${esc(s.service_category)}</h4><div class="r8-final-meta"><span>${esc(s.platform_name||cn(s.platform))}</span><span>意向 ${esc(cn(s.intent_level))}</span><span>风险 ${esc(cn(s.risk_level))}</span><span>${esc(cn(s.route_state))}</span></div></div><span class="r8-state ${stateClass(s.route_state)}">${esc(cn(s.status))}</span></div><p>${esc(s.summary)}</p><div class="r8-final-actions"><button data-r8-route="${esc(s.signal_id)}">选择唯一账号</button><button class="primary" data-r8-growth="${esc(s.signal_id)}">建立增长 ID</button>${s.source_url?`<a href="${esc(s.source_url)}" target="_blank" rel="noreferrer">查看来源</a>`:''}</div></div>`).join('')}</div>`;
   }
 
   function radar(){
@@ -72,8 +84,8 @@
 
   function content(){
     const growth=items('growth_cases'); const jobs=items('content_jobs');
-    const growthRows=growth.length?growth.map(g=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(g.growth_id)}</h4><div class="r8-final-meta"><span>${esc(g.region)}</span><span>${esc(g.service_category)}</span><span>${esc(g.business_goal)}</span></div></div><span class="r8-state ${stateClass(g.status)}">${esc(g.status)}</span></div><p>${esc(g.hypothesis)}</p><div class="r8-final-actions">${g.content_job_id?'<span>已形成内容任务</span>':`<button class="primary" data-r8-content-create="${esc(g.growth_id)}">八员工联合策划</button>`}</div></div>`).join(''):'<div class="r8-empty">先从情报雷达建立增长 ID。</div>';
-    const jobRows=jobs.length?jobs.map(j=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(j.title_candidates?.[0]||j.content_id)}</h4><div class="r8-final-meta"><span>${esc(j.region)}</span><span>${esc(j.platform)}</span><span>${esc(j.content_goal)}</span></div></div><span class="r8-state ${stateClass(j.approval_state)}">${esc(j.approval_state)}</span></div><p><b>前三秒：</b>${esc(j.first_three_seconds)}</p><div class="r8-committee">${(j.committee||[]).map(x=>`<div><b>${esc(x.role)}</b><br>${esc(x.recommendation)}</div>`).join('')}</div><div class="r8-final-actions">${j.approval_state==='pending'?`<button class="primary" data-r8-content-approve="${esc(j.content_id)}">审核通过</button><button data-r8-content-revise="${esc(j.content_id)}">退回修改</button>`:''}${j.approval_state==='approved'?`<button class="primary" data-r8-video-create="${esc(j.content_id)}">进入视频工厂</button>`:''}</div></div>`).join(''):'<div class="r8-empty">尚无内容委员会任务。</div>';
+    const growthRows=growth.length?growth.map(g=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(g.growth_id)}</h4><div class="r8-final-meta"><span>${esc(g.region)}</span><span>${esc(g.service_category)}</span><span>${esc(cn(g.business_goal))}</span></div></div><span class="r8-state ${stateClass(g.status)}">${esc(cn(g.status))}</span></div><p>${esc(g.hypothesis)}</p><div class="r8-final-actions">${g.content_job_id?'<span>已形成内容任务</span>':`<button class="primary" data-r8-content-create="${esc(g.growth_id)}">八员工联合策划</button>`}</div></div>`).join(''):'<div class="r8-empty">先从情报雷达建立增长 ID。</div>';
+    const jobRows=jobs.length?jobs.map(j=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(j.title_candidates?.[0]||j.content_id)}</h4><div class="r8-final-meta"><span>${esc(j.region)}</span><span>${esc(cn(j.platform))}</span><span>${esc(cn(j.content_goal))}</span></div></div><span class="r8-state ${stateClass(j.approval_state)}">${esc(cn(j.approval_state))}</span></div><p><b>前三秒：</b>${esc(j.first_three_seconds)}</p><div class="r8-committee">${(j.committee||[]).map(x=>`<div><b>${esc(x.role)}</b><br>${esc(x.recommendation)}</div>`).join('')}</div><div class="r8-final-actions">${j.approval_state==='pending'?`<button class="primary" data-r8-content-approve="${esc(j.content_id)}">审核通过</button><button data-r8-content-revise="${esc(j.content_id)}">退回修改</button>`:''}${j.approval_state==='approved'?`<button class="primary" data-r8-video-create="${esc(j.content_id)}">进入视频工厂</button>`:''}</div></div>`).join(''):'<div class="r8-empty">尚无内容委员会任务。</div>';
     return `<div class="grid two"><article><label>R8-03 增长 ID</label><h3>从来源一直追踪到订单和复盘</h3><div class="r8-final-list">${growthRows}</div></article><article><label>R8-04 八员工内容委员会</label><h3>每条内容都有理由和成功标准</h3><div class="r8-final-list">${jobRows}</div></article></div>`;
   }
 
@@ -111,7 +123,8 @@
   function current(){return ({overview,radar,content,video,publish,messages,learning,audit}[activeTab]||overview)();}
   function render(){const host=byId('r8-final-body');if(!host)return;host.innerHTML=`<div class="r8-final-tabs">${TABS.map(([id,label])=>`<button class="r8-final-tab ${activeTab===id?'active':''}" data-r8-final-tab="${id}">${label}</button>`).join('')}</div>${current()}`;bind();}
 
-  async function action(fn, success){try{await fn();notify(success);await refresh(true);}catch(error){notify(error.message,'error');}}
+  function setFeedback(message,kind=''){const box=byId('r8-action-feedback');if(!box)return;box.hidden=false;box.className=`r8-action-feedback ${kind}`.trim();box.textContent=message;}
+  async function action(fn, success){setFeedback('正在执行，请稍候…');try{const result=await fn();setFeedback(success,'ok');notify(success);await refresh(true);return result;}catch(error){setFeedback('执行未完成：'+error.message,'error');notify(error.message,'error');return null;}}
   function bind(){
     document.querySelectorAll('[data-r8-final-tab]').forEach(b=>b.onclick=()=>{activeTab=b.dataset.r8FinalTab;render();});
     byId('r8-signal-save')?.addEventListener('click',()=>action(()=>post('/api/r8/growth/signals',{platform:byId('r8-signal-platform').value,source_url:byId('r8-signal-url').value,source_id:'manual-'+Date.now(),region:byId('r8-signal-region').value,service_category:byId('r8-signal-service').value,intent_level:byId('r8-signal-intent').value,recommended_action:byId('r8-signal-action').value,summary:byId('r8-signal-summary').value,source:'human_import'}),'真实需求信号已保存并查重'));
@@ -145,7 +158,7 @@
     const group=document.createElement('small');group.className='nav-group';group.textContent='R8 增长闭环';
     const button=document.createElement('button');button.className='nav';button.dataset.page='r8-final-center';button.dataset.title='R8 增长运营总控';button.dataset.subtitle='从真实需求到发布、线索、订单和学习回写';button.innerHTML='<span>◆</span>R8 增长总控';
     if(firstGroup){nav.insertBefore(group,firstGroup);nav.insertBefore(button,firstGroup);}else{nav.append(group,button);}
-    const section=document.createElement('section');section.id='r8-final-center';section.className='page';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 Final · Complete Growth Operations</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 老板确认发布 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
+    const section=document.createElement('section');section.id='r8-final-center';section.className='page';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 最终版 · 全链路增长运营</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 老板确认发布 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-action-feedback" class="r8-action-feedback" hidden></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
     main.appendChild(section);
     button.addEventListener('click',()=>{if(typeof openPage==='function')openPage('r8-final-center');refresh();});
     byId('r8-final-refresh').addEventListener('click',()=>refresh());

@@ -225,7 +225,7 @@ def dashboard():
             })
         counts = {key: len(state[key]) for key in (
             "signals", "growth_cases", "content_jobs", "video_jobs", "publish_jobs",
-            "conversations", "leads", "attribution", "learning_cycles",
+            "conversations", "leads", "attribution", "metric_snapshots", "content_genes", "learning_cycles",
         )}
         gates = [
             {"id": "Gate 0", "name": "安全与总控", "software": "ready", "live": "ready"},
@@ -454,8 +454,62 @@ def review_content(payload):
         growth["status"] = "content_approved" if action == "approve" else item["approval_state"]
         growth["updated_at"] = now_iso()
         _audit(state, "content_reviewed", content_id, f"内容审核：{item['approval_state']}；{note or '无补充说明'}", reviewer)
+
+
         _save(state)
         return item
+def import_promotion_draft(payload):
+    """Move a saved local draft into the truthful R8 review/publish chain."""
+    payload = payload or {}
+    draft_id = _clean_text(payload.get("draft_id"), "草稿 ID", 160)
+    platform = _platform(payload.get("platform"))
+    from promotion.content_center import history as promotion_history
+
+    drafts = promotion_history().get("items") or []
+    draft = next((row for row in drafts if str(row.get("id")) == draft_id), None)
+    if not draft:
+        raise ValueError("未找到该内容草稿，请刷新内容增长页面")
+    with _LOCK:
+        state = _state()
+        existing = next((row for row in state["content_jobs"] if row.get("source_draft_id") == draft_id and row.get("platform") == platform), None)
+        if existing:
+            return {"created": False, "item": existing, "message": "该草稿已在 R8 审核队列中"}
+
+    inputs = draft.get("input") or {}
+    output = draft.get("output") or {}
+    region = _clean_text(inputs.get("region") or "涟水", "地区", 80)
+    service = _clean_text(inputs.get("service") or "本地生活服务", "服务类型", 120)
+    title = output.get("title") or output.get("headline") or output.get("caption") or draft.get("kind") or "内容草稿"
+    summary = output.get("draft") or output.get("positioning") or output.get("hook") or str(title)
+    signal = ingest_signal({
+        "platform": platform,
+        "source_id": f"promotion-draft:{draft_id}",
+        "summary": str(summary)[:1000],
+        "region": region,
+        "service_category": service,
+        "intent_level": "medium",
+        "recommended_action": "human",
+        "dedupe_key": f"promotion-draft:{draft_id}:{platform}",
+    })["item"]
+    route_signal({"signal_id": signal["signal_id"]})
+    growth = create_growth_case({"signal_id": signal["signal_id"], "business_goal": "conversion"})["item"]
+    content = create_content_brief({"growth_id": growth["growth_id"]})["item"]
+    with _LOCK:
+        state = _state()
+        item = _find(state["content_jobs"], "content_id", content["content_id"], "内容任务")
+        item["source_draft_id"] = draft_id
+        item["source_draft_kind"] = draft.get("kind")
+        item["draft_payload"] = output
+        item["title_candidates"] = [str(title)[:180]] + [x for x in item.get("title_candidates", []) if x != title]
+        item["source_evidence"] = "老板在内容增长工作台生成并提交的本机草稿；发布前仍需人工审核。"
+        item["updated_at"] = now_iso()
+        signal_item = _find(state["signals"], "signal_id", signal["signal_id"], "来源信号")
+        signal_item["source_type"] = "owner_content_draft"
+        _audit(state, "promotion_draft_imported", item["content_id"], f"内容草稿进入 R8 审核：{draft.get('kind') or draft_id}", "owner")
+        _save(state)
+        return {"created": True, "item": item, "growth_id": growth["growth_id"], "message": "草稿已进入 R8 人工审核队列"}
+
+
 
 
 def configure_video_worker(payload):
@@ -894,13 +948,55 @@ def context_export():
 
 def diagnostics():
     summary = dashboard()
+    try:
+        from integrations.manager import integration_status
+        integrations = integration_status()
+    except Exception:
+        integrations = {"external_ai": {}, "bridge": {}}
+    try:
+        from integrations.business_data import business_source_status
+        business = business_source_status()
+    except Exception:
+        business = {}
+    counts = summary["counts"]
+    video_ready = summary["video_worker"].get("configured") and summary["video_worker"]["hardware"].get("detected")
+    published = any(row.get("status") == "published" for row in _state()["publish_jobs"])
+    bridge_ready = integrations.get("bridge", {}).get("status") == "connected"
+    ai_ready = integrations.get("external_ai", {}).get("status") == "connected"
     checks = [
-        {"id": "storage", "name": "R8 持久化数据", "status": "pass", "detail": STATE_PATH},
-        {"id": "safety", "name": "安全与资金边界", "status": "pass", "detail": "验证码/人脸/资金/风控绕过均不在允许动作中"},
-        {"id": "device", "name": "真实 Android 设备", "status": "pass" if summary["devices"]["connected"] else "pending", "detail": f"在线 {summary['devices']['connected']} 台"},
-        {"id": "account", "name": "真实平台账号", "status": "pass" if summary["accounts"]["authorized"] else "pending", "detail": f"已授权 {summary['accounts']['authorized']} 个"},
-        {"id": "video_worker", "name": "RTX 3060 视频 Worker", "status": "pass" if summary["video_worker"].get("configured") and summary["video_worker"]["hardware"].get("detected") else "pending", "detail": summary["video_worker"]["hardware"].get("name") or "未检测到/未配置"},
-        {"id": "receipt", "name": "真实发布回执", "status": "pass" if any(gate["id"] == "Gate 5" and gate["live"] == "ready" for gate in summary["gates"]) else "pending", "detail": "未拿到真实 URL 时不会标记发布成功"},
-        {"id": "attribution", "name": "真实归因与学习", "status": "pass" if summary["counts"]["learning_cycles"] else "pending", "detail": "等待首次上线 24h/72h/7天数据"},
+        {"step": 0, "id": "foundation", "name": "安全底座与持久化", "status": "pass", "detail": f"本机持久化正常；{STATE_PATH}", "action": "无需处理"},
+        {"step": 1, "id": "device", "name": "真机连接与屏幕控制", "status": "pass" if summary["devices"]["connected"] else "blocked", "detail": f"ADB 在线 {summary['devices']['connected']} 台", "action": "连接并授权一台 Android 真机"},
+        {"step": 2, "id": "business", "name": "真实经营数据", "status": "pass" if business.get("status") == "connected" else "blocked", "detail": business.get("message") or "经营数据未接入", "action": "在连接与体检中配置只读经营数据"},
+        {"step": 3, "id": "chatgpt", "name": "总控与 ChatGPT 分析回路", "status": "pass" if bridge_ready else "blocked", "detail": "双向运营桥已连接" if bridge_ready else "双向运营桥未连接", "action": "配置双向运营桥"},
+        {"step": 4, "id": "external_ai", "name": "外部大模型增强", "status": "pass" if ai_ready else "pending", "detail": integrations.get("external_ai", {}).get("message") or "未配置；本地规则仍可运行", "action": "如需联网模型分析，在连接与体检中配置 API"},
+        {"step": 5, "id": "account", "name": "平台账号授权", "status": "pass" if summary["accounts"]["authorized"] else "blocked", "detail": f"已授权 {summary['accounts']['authorized']} 个", "action": "在社媒中心绑定账号，并在真机完成人工登录"},
+        {"step": 6, "id": "content", "name": "情报、内容与审核", "status": "pass" if counts["content_jobs"] else "pending", "detail": f"信号 {counts['signals']} 条，内容任务 {counts['content_jobs']} 条", "action": "录入真实信号或把内容草稿提交到 R8 审核"},
+        {"step": 7, "id": "video", "name": "本地视频生成", "status": "pass" if video_ready else "blocked", "detail": summary["video_worker"]["hardware"].get("name") or "未检测到 GPU", "action": "填写真实模型目录和成片输出目录"},
+        {"step": 8, "id": "publish", "name": "真实发布与回执", "status": "pass" if published else "blocked", "detail": "已取得真实平台 URL" if published else "尚无真实发布回执", "action": "先完成账号授权、人工审核，再由真实设备发布并回填 URL"},
+        {"step": 9, "id": "metrics", "name": "24h/72h/7天效果数据", "status": "pass" if counts.get("metric_snapshots") else "pending", "detail": f"效果快照 {counts.get('metric_snapshots', 0)} 条，订单归因 {counts.get('attribution', 0)} 条", "action": "发布后按时间点录入真实指标和订单归因"},
+        {"step": 10, "id": "learning", "name": "复盘学习回写总控", "status": "pass" if counts["learning_cycles"] else "pending", "detail": f"学习回写 {counts['learning_cycles']} 轮", "action": "具备真实指标后运行学习回写"},
     ]
-    return {"checks": checks, "summary": summary, "status": "ready_for_live_acceptance"}
+    passed = sum(1 for row in checks if row["status"] == "pass")
+    score = round(passed / len(checks) * 10, 1)
+    blockers = [row for row in checks if row["status"] == "blocked"]
+    state = _state()
+    evidence = {
+        "business_summary": business.get("summary") if business.get("status") == "connected" else None,
+        "content_drafts": counts.get("content_jobs", 0),
+        "video_outputs": [row.get("output_path") for row in state["video_jobs"] if row.get("output_path")],
+        "published_urls": [row.get("receipt", {}).get("url") for row in state["publish_jobs"] if row.get("status") == "published" and row.get("receipt", {}).get("url")],
+        "indexed_pages": [],
+        "indexing_status": "未接入站点地图/Search Console/站长平台，不能验证搜索收录",
+    }
+    return {
+        "checks": checks,
+        "summary": summary,
+        "score": score,
+        "passed": passed,
+        "total": len(checks),
+        "first_blocker": blockers[0] if blockers else None,
+        "status": "closed_loop_ready" if not blockers and checks[-1]["status"] == "pass" else "blocked_before_closed_loop",
+        "truth": "体检只认真实连接、真实发布 URL 与真实指标；不会用演示数据冒充上线结果。",
+        "evidence": evidence,
+        "executed_at": now_iso(),
+    }

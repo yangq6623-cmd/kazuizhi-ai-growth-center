@@ -14,7 +14,9 @@
     "runtime_build": "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919",
     "product": "Kazuizhi AI Enterprise V2.1.0 R8 Final",
     "pilot_device_limit": 1,
-    "device_center": "adb_truthful_probe_screenshot_control_takeover_audit",
+    "device_center": "adb_truthful_probe_stable_last_frame_control_takeover_audit",
+    "command_architecture": "owner_team_execution_data_learning_pyramid",
+    "acceptance_audit": "truthful_zero_to_ten_with_first_blocker_and_evidence",
     "modules": ["R8-00", "R8-01", "R8-02", "R8-03", "R8-04", "R8-05", "R8-06", "R8-07", "R8-08"]
   }
 }

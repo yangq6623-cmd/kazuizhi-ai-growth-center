@@ -8,6 +8,7 @@ screen state and it never attempts to bypass Android/platform verification.
 import os
 import re
 import shutil
+import threading
 import subprocess
 import time
 from pathlib import Path
@@ -19,6 +20,10 @@ AUDIT_PATH = "r8/device_audit.json"
 RUNTIME_PATH = "r8/device_runtime.json"
 ADB_CONFIG_PATH = "integrations/adb.json"
 TRANSFER_DIR = "/sdcard/Download/Kazuizhi"
+_SCREENSHOT_LOCK = threading.Lock()
+_SCREENSHOT_CACHE = {}
+_SCREENSHOT_CACHE_SECONDS = 0.8
+_SCREENSHOT_AUDIT_SECONDS = 30
 MAX_AUDIT = 500
 
 
@@ -401,12 +406,36 @@ def _fresh_device_details(device_id):
 
 
 def screenshot_bytes(device_id):
-    _require_connected(device_id)
-    data = _run(["-s", device_id, "exec-out", "screencap", "-p"], timeout=12, binary=True)
-    if not isinstance(data, (bytes, bytearray)) or not bytes(data).startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RuntimeError("ADB 截图未返回有效 PNG")
-    _append_audit({"device_id": device_id, "action": "screenshot", "actor": "owner", "result": "ok"})
-    return bytes(data)
+    device_id = str(device_id or "").strip()
+    if not device_id:
+        raise ValueError("device_id 不能为空")
+    now = time.monotonic()
+    cached = _SCREENSHOT_CACHE.get(device_id)
+    if cached and now - cached[0] <= _SCREENSHOT_CACHE_SECONDS:
+        return cached[1]
+    # A full scan reads many getprop/dumpsys fields and made every frame take
+    # several seconds. A frame only needs a truthful lightweight ADB check.
+    with _SCREENSHOT_LOCK:
+        now = time.monotonic()
+        cached = _SCREENSHOT_CACHE.get(device_id)
+        if cached and now - cached[0] <= _SCREENSHOT_CACHE_SECONDS:
+            return cached[1]
+        state = str(_run(["-s", device_id, "get-state"], timeout=4) or "").strip()
+        if state != "device":
+            raise ValueError("目标手机当前未通过 ADB 在线")
+        data = _run(["-s", device_id, "exec-out", "screencap", "-p"], timeout=12, binary=True)
+        if not isinstance(data, (bytes, bytearray)) or not bytes(data).startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("ADB 截图未返回有效 PNG")
+        result = bytes(data)
+        previous_audit = cached[2] if cached and len(cached) > 2 else 0
+        captured_at = time.monotonic()
+        audit_at = captured_at
+        if captured_at - previous_audit >= _SCREENSHOT_AUDIT_SECONDS:
+            _append_audit({"device_id": device_id, "action": "screenshot_stream", "actor": "owner", "result": "ok"})
+        else:
+            audit_at = previous_audit
+        _SCREENSHOT_CACHE[device_id] = (captured_at, result, audit_at)
+        return result
 
 
 def _safe_transfer_name(name):

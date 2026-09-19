@@ -69,6 +69,8 @@ jobs:
         run: python 04_Build/v2/test_r8_complete_growth_ops.py
       - name: Verify R8 Final package and visible identity separation
         run: python 04_Build/v2/test_r8_identity.py
+      - name: Verify phone mirror stability, command pyramid and content-to-publish bridge
+        run: python 04_Build/v2/test_r8_completion_upgrade.py
       - name: Verify production business source safety contract
         run: python 04_Build/v2/test_live_business_source.py
       - name: Verify every visible R7 control has an interaction path
@@ -96,7 +98,7 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7 Final core compatibility preserved', 'R8 Final package identity', 'R8 visible build number and commit', 'R8-00 safety and finance boundaries', 'R8-01 truthful Android device center', 'R8-02 platform intelligence radar and unique account routing', 'R8-03 growth ID traceability', 'R8-04 eight-agent content committee', 'R8-05 RTX 3060 worker contract and quality gate', 'R8-06 owner publish approval', 'R8-07 truthful receipts and unified conversations', 'R8-08 attribution and learning feedback', 'multi-account matrix fields and L1-L4 levels', 'cross-account deduplication and stop-contact', 'persistent upgrade migration', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'verified business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'Defender scan gate', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
+            checks = @('R7 Final core compatibility preserved', 'R8 Final package identity', 'R8 visible build number and commit', 'stable phone mirror with last-frame retention', 'fast ADB screenshot probe and request coalescing', 'Chinese command pyramid navigation', '0-to-10 truthful closed-loop audit', 'content draft to R8 review/publish bridge', 'persistent button execution feedback', 'R8-00 safety and finance boundaries', 'R8-01 truthful Android device center', 'R8-02 platform intelligence radar and unique account routing', 'R8-03 growth ID traceability', 'R8-04 eight-agent content committee', 'R8-05 RTX 3060 worker contract and quality gate', 'R8-06 owner publish approval', 'R8-07 truthful receipts and unified conversations', 'R8-08 attribution and learning feedback', 'multi-account matrix fields and L1-L4 levels', 'cross-account deduplication and stop-contact', 'persistent upgrade migration', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'verified business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'Defender scan gate', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
             acceptance = 'All software and packaging checks passed; real platform credentials, device, GPU model and production data remain truthful live-acceptance inputs'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/R7_CORE_HANDOFF.md

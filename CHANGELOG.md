@@ -1,3 +1,15 @@
+# V2.1.0 R8 Final Stability Update — 2026-09-20
+
+- Fixed the real-device screen disappearing between captures by retaining the last valid frame during background refresh.
+- Replaced overlapping 1.2-second screenshot polling with an adaptive loop and lightweight ADB state checks.
+- Added screenshot request coalescing, no-cache response headers and audit-log throttling.
+- Reorganized the product into a Chinese command pyramid: owner control, AI team, execution, data feedback and learning return.
+- Added persistent success/failure feedback and Chinese status labels across the R8 growth center.
+- Connected locally generated content drafts to the R8 review, authorized-account, publishing-receipt and metrics workflow.
+- Added an evidence-backed 0-to-10 closed-loop audit showing the first real blocker, collected business data, generated assets, published URLs and indexing status.
+- Added inline local-video worker configuration with real path validation.
+- Added regression coverage for phone-frame stability, draft import, truthful audit and the new command architecture.
+
 # V2.1.0 R8 Final — 2026-09-19
 
 - Completed R8-00 through R8-08 as one truthful growth-operations workflow.

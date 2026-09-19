@@ -2,8 +2,8 @@
   const DISPLAY_VERSION = 'V2.1.0 R8 Final';
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-R8-FINAL-20260919';
   const PHASE = 'R8-08 全模块最终交付';
-  const PREVIOUS_PHASE = 'R8-01B.4.3';
-  const LEGACY_PHASE = 'R8-01B.3';
+  const PREVIOUS_PHASE = 'R8-01B.5';
+  const LEGACY_PHASE = 'R8-01B.4.3';
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -76,7 +76,7 @@
 
     showLoaderStatus('正在加载手机屏幕同步模块…', 'warn');
     const script = document.createElement('script');
-    script.src = 'r8_device_b4_mirror_hotfix.js';
+    script.src = 'r8_device_b4_mirror_hotfix.js?v=R8-01B.5';
     script.async = false;
     script.dataset.r8DeviceB4Hotfix = '1';
     script.onload = () => {
@@ -146,6 +146,18 @@
     };
     start();
   }
+  function loadCommandPyramid() {
+    if (document.querySelector('script[data-r8-command-pyramid]')) return;
+    const script = document.createElement('script');
+    script.src = 'r8_command_pyramid.js';
+    script.async = false;
+    script.dataset.r8CommandPyramid = '1';
+    script.onerror = () => {
+      if (typeof toast === 'function') toast('总控金字塔与 0→10 体检模块加载失败，请重新安装最新版', 'error');
+    };
+    document.body.appendChild(script);
+  }
+
 
   function loadFinalGrowthCenter() {
     if (!document.querySelector('link[data-r8-final-style]')) {
@@ -172,6 +184,7 @@
     if (meta) meta.setAttribute('content', RUNTIME_BUILD);
 
     const baseline = document.querySelector('.baseline');
+    loadCommandPyramid();
     if (baseline) {
       baseline.innerHTML = `<b>${DISPLAY_VERSION}</b><br><span>${PHASE}</span><code>${buildLabel()}</code>`;
       baseline.dataset.previousPhase = PREVIOUS_PHASE;

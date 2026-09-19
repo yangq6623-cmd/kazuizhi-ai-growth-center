@@ -22,7 +22,7 @@ from core.r8_control import (
 )
 from core.version import BUILD_ID, get_version
 from core.r8_growth_ops import (
-    configure_video_worker, context_export, create_content_brief, create_growth_case,
+    configure_video_worker, context_export, create_content_brief, create_growth_case, import_promotion_draft,
     create_video_job, dashboard as growth_dashboard, diagnostics as growth_diagnostics,
     ingest_message, ingest_signal, list_collection, record_attribution, record_metrics,
     record_publish_receipt, review_content, route_signal, run_learning_cycle,
@@ -243,6 +243,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -353,6 +355,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/r8/growth/content", "/api/r8/growth/content/review", "/api/r8/growth/video-worker",
             "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing",
             "/api/r8/growth/publishing/receipt", "/api/r8/growth/messages",
+            "/api/r8/growth/import-draft",
             "/api/r8/growth/conversations/update", "/api/r8/growth/leads", "/api/r8/growth/attribution",
             "/api/r8/growth/metrics", "/api/r8/growth/learning/run",
         )
@@ -436,6 +439,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = route_signal(payload)
             elif path == "/api/r8/growth/cases":
                 result = create_growth_case(payload)
+            elif path == "/api/r8/growth/import-draft":
+                result = import_promotion_draft(payload)
             elif path == "/api/r8/growth/content":
                 result = create_content_brief(payload)
             elif path == "/api/r8/growth/content/review":

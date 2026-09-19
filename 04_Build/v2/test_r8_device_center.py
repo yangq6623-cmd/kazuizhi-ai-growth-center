@@ -138,13 +138,13 @@ for field in ("当前平台", "当前账号", "当前任务", "风险状态", "�
 # ordinary screen-off auto resume, non-secure keyguard dismissal and safe app launch.
 assert "kz-platform-dock" in cockpit_ui and "kz-platform-icon" in cockpit_ui
 assert "任务" in cockpit_ui and "平台" in cockpit_ui and "人工处理" in cockpit_ui and "日志" in cockpit_ui
-mirror_tag = 'r8_device_b4_mirror_hotfix.js?v=R8-01B.4.3'
+mirror_tag = 'r8_device_b4_mirror_hotfix.js?v=R8-01B.5'
 assert mirror_tag in index_ui, "stable phone mirror must be loaded directly by index.html"
 assert index_ui.index(mirror_tag) < index_ui.index('forms.js'), "phone mirror must boot before dynamic UI patches"
 assert "r8_device_b3_patch.js" in identity_ui
 assert "r8_device_b4_mirror_hotfix.js" in identity_ui, "identity loader must retain a runtime fallback"
+assert "R8-01B.5" in identity_ui
 assert "R8-01B.4.3" in identity_ui
-assert "R8-01B.3" in identity_ui
 assert "R8DeviceMirrorSync" in b4_ui and "validPng" in b4_ui
 assert "keep_awake_on" in b3_ui and "keep_awake_off" in b3_ui
 assert "refreshMirror" in b3_ui and "screen_off" in b3_ui

@@ -40,7 +40,11 @@ Modules:
 - R8 Cross-Account Deduplication and Stop-Contact Guardrail
 - R8 24h / 72h / 7-day Measurement Windows
 - R8 External Connector Truth State and Complete Audit Diagnostics
-- R8-01B.4.3 Static Phone Mirror Bootstrap Before Dynamic UI Patches
+- R8-01B.5 Stable Last-Frame Phone Mirror and Adaptive Refresh
+- R8 Chinese Command Pyramid and Organized Navigation
+- R8 0-to-10 Truthful Closed-Loop Acceptance Audit
+- R8 Content Draft to Review / Publish / Metrics Bridge
+- R8 Persistent Action Feedback and Inline Video Worker Configuration
 - R8-01 Truthful Local ADB Discovery and Probe
 - R8-01 Device ID / Model / Android / Battery / Screen State
 - R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
