@@ -110,4 +110,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.0-r8-operational' }
-          gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag installer_output_v2/* --clobber
+          } else {
+            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+          }
