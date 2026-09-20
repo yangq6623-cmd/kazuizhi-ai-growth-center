@@ -17,6 +17,7 @@ on:
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
+  id-token: write
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -70,6 +71,34 @@ jobs:
         run: python 04_Build/v2/verify_r8_operational.py --source
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1
+      - name: Sign in to Azure Artifact Signing
+        if: vars.KZ_ARTIFACT_SIGNING_ENABLED == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign final installer with Azure Artifact Signing
+        if: vars.KZ_ARTIFACT_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.KZ_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.KZ_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.KZ_ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: 卡嘴子 AI 自动化运行平台
+          description-url: https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center
+      - name: Verify final installer signature
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          if ('${{ vars.KZ_ARTIFACT_SIGNING_ENABLED }}' -eq 'true' -and $signature.Status -ne 'Valid') {
+            throw "Artifact Signing was enabled but the installer signature is not valid: $($signature.Status)"
+          }
+          Write-Host "Installer signature status: $($signature.Status)"
       - name: Scan final installer with Microsoft Defender when available
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install, launch, overwrite upgrade and uninstall
