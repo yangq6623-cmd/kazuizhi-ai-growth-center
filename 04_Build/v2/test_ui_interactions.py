@@ -38,6 +38,7 @@ class ButtonParser(HTMLParser):
 def main():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     scripts = "\n".join(path.read_text(encoding="utf-8") for path in WEB.glob("*.js"))
+    persistence_patch = (WEB / "r8_persistence_patch.js").read_text(encoding="utf-8")
     server = SERVER.read_text(encoding="utf-8")
 
     parser = ButtonParser()
@@ -131,6 +132,15 @@ def main():
     for route in required_routes:
         if route not in server:
             failures.append(f"Frontend action has no backend route: {route}")
+
+    # A broad child-list observer previously refreshed business persistence after
+    # every text update, including its own button label changes. That recursive
+    # request loop made the otherwise loaded dashboard appear frozen.
+    for token in ("refreshScheduled", "refreshRunning", "record.addedNodes", "inputWasAdded"):
+        if token not in persistence_patch:
+            failures.append(f"Business persistence loop guard missing: {token}")
+    if "new MutationObserver(() =>" in persistence_patch:
+        failures.append("Business persistence must not observe every page mutation")
 
     if failures:
         raise SystemExit("\n".join(failures))

@@ -1,5 +1,7 @@
 (() => {
   let lastBusinessStatus = null;
+  let refreshScheduled = false;
+  let refreshRunning = false;
 
   async function request(path, options) {
     const response = await fetch(path, options || {cache: 'no-store'});
@@ -42,11 +44,24 @@
   }
 
   async function refreshBusinessPersistence() {
-    if (!document.querySelector('#business-source-key')) return;
+    if (!document.querySelector('#business-source-key') || refreshRunning) return;
+    refreshRunning = true;
     try {
       const data = await request('/api/business-source/status', {cache: 'no-store'});
       applyBusinessStatus(data);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      refreshRunning = false;
+    }
+  }
+
+  function scheduleBusinessPersistenceRefresh(delay = 80) {
+    if (refreshScheduled || !document.querySelector('#business-source-key')) return;
+    refreshScheduled = true;
+    setTimeout(async () => {
+      refreshScheduled = false;
+      await refreshBusinessPersistence();
+    }, delay);
   }
 
   document.addEventListener('click', async event => {
@@ -104,14 +119,18 @@
     }
   }, true);
 
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('#business-source-key')) refreshBusinessPersistence();
+  const observer = new MutationObserver(records => {
+    const inputWasAdded = records.some(record => [...record.addedNodes].some(node =>
+      node.nodeType === Node.ELEMENT_NODE &&
+      (node.matches?.('#business-source-key') || node.querySelector?.('#business-source-key'))
+    ));
+    if (inputWasAdded) scheduleBusinessPersistenceRefresh();
   });
   observer.observe(document.documentElement, {childList: true, subtree: true});
   document.addEventListener('click', event => {
     if (event.target.closest && event.target.closest('[data-page="analytics"], [data-target="analytics"]')) {
-      setTimeout(refreshBusinessPersistence, 120);
+      scheduleBusinessPersistenceRefresh(120);
     }
   });
-  setTimeout(refreshBusinessPersistence, 250);
+  scheduleBusinessPersistenceRefresh(250);
 })();
