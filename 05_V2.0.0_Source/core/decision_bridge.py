@@ -30,20 +30,33 @@ def _atomic_json(path, value):
 
 
 def export_decision_handoff(report):
-    """Write one latest-decision handoff only when the existing bridge is healthy."""
+    """Write the latest R7 decision context plus pending R8 content requests."""
     from integrations.bridge import bridge_status
+    from promotion.content_factory import pending_chatgpt_handoff
 
     status = bridge_status()
     if status.get("status") != "connected" or not status.get("bridge_root"):
         return {"exported": False, "status": status.get("status"), "reason": status.get("message")}
     root = Path(status["bridge_root"])
+    content_requests = pending_chatgpt_handoff()
     payload = {
-        "schema": "kazuizhi-chatgpt-strategy-handoff/v1",
+        "schema": "kazuizhi-chatgpt-strategy-handoff/v2",
         "exported_at": now_iso(),
-        "source": "R7 autonomous decision center",
+        "source": "R7 autonomous decision center + R8 content factory",
         "decision_center": report,
-        "instruction": "请由 ChatGPT 总控制大脑基于真实员工汇报和经理判断做跨部门复盘；非资金低风险策略可回传 R7，资金事项不得自动执行。",
+        "content_production_requests": content_requests,
+        "instruction": (
+            "ChatGPT是唯一总控制：基于真实员工汇报、经理判断和待生产内容请求，负责经营判断、选题、痛点、"
+            "标题、文案、深层脚本、分镜、素材决策、平台适配和质检决策。对content_production_requests中的"
+            "任务，按kazuizhi-content-production/v1生成结构化production_plan，并以kind=content_production"
+            "写回bridge inbox。R8/RTX3060/本地程序只负责执行。资金事项不得自动执行。"
+        ),
     }
     target = root / "outbox" / "latest_decision.json"
     _atomic_json(target, payload)
-    return {"exported": True, "path": str(target), "exported_at": payload["exported_at"]}
+    return {
+        "exported": True,
+        "path": str(target),
+        "exported_at": payload["exported_at"],
+        "content_requests": content_requests.get("count", 0),
+    }
