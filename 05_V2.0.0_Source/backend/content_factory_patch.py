@@ -67,6 +67,50 @@ def _serve_mp4(handler, path):
         pass
 
 
+def _enhanced_handoff(limit=20):
+    """Include rejected-version context so ChatGPT does not blindly repeat it."""
+    data = content_factory._load()
+    requests = []
+    for video in data.get("videos", []):
+        if video.get("status") != "等待ChatGPT策划":
+            continue
+        campaign = next((x for x in data.get("campaigns", []) if x.get("id") == video.get("campaign_id")), None)
+        if not campaign:
+            continue
+        previous = video.get("production_plan") if isinstance(video.get("production_plan"), dict) else None
+        review = video.get("review") if isinstance(video.get("review"), dict) else None
+        requests.append({
+            "video_id": video["id"],
+            "campaign_id": campaign["id"],
+            "region": campaign.get("region"),
+            "service": campaign.get("service"),
+            "growth_goal": campaign.get("goal"),
+            "user_problem": campaign.get("title"),
+            "evidence": campaign.get("evidence"),
+            "available_local_assets": len([
+                x for x in data.get("assets", [])
+                if x.get("campaign_id") == campaign["id"] and x.get("exists")
+            ]),
+            "local_material_optional": True,
+            "owner_review": review,
+            "previous_plan_version": video.get("plan_version") or 0,
+            "previous_topic": (previous or {}).get("topic"),
+            "previous_titles": (previous or {}).get("titles") or [],
+            "instruction": (
+                "由ChatGPT作为唯一总控制生成或重做选题深化、痛点、标题、深层脚本、分镜、素材决策、"
+                "平台适配与质检标准。若存在owner_review和previous_*字段，必须避免机械重复被退回版本。"
+                "按kazuizhi-content-production/v1返回content_production指令。"
+            ),
+        })
+        if len(requests) >= limit:
+            break
+    return {"schema": "kazuizhi-content-production-requests/v1", "items": requests, "count": len(requests)}
+
+
+# Runtime replaces the early v2 handoff helper with the review-aware version.
+content_factory.pending_chatgpt_handoff = _enhanced_handoff
+
+
 if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
     _original_do_get = _server.DashboardHandler.do_GET
     _original_do_post = _server.DashboardHandler.do_POST
@@ -90,7 +134,7 @@ if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
 
     def _do_post(self):
         parsed = urlsplit(self.path)
-        if parsed.path == "/api/content-factory/chatgpt-plan":
+        if parsed.path in {"/api/content-factory/chatgpt-plan", "/api/content-factory/review"}:
             origin = self.headers.get("Origin")
             allowed_origins = {
                 f"http://127.0.0.1:{self.server.server_port}",
@@ -101,12 +145,22 @@ if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
                 return
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 64 * 1024:
-                self._json_error(413 if length > 64 * 1024 else 400, "生产方案大小不正确")
+                self._json_error(413 if length > 64 * 1024 else 400, "请求大小不正确")
                 return
             try:
                 payload = json.loads(self.rfile.read(length) or b"{}")
-                result = content_factory.apply_chatgpt_plan(payload)
-                self._json_ok(result, code=201)
+                if parsed.path == "/api/content-factory/chatgpt-plan":
+                    result = content_factory.apply_chatgpt_plan(payload)
+                    self._json_ok(result, code=201)
+                    return
+                result = content_factory.review_video(payload)
+                if str(payload.get("decision") or "").strip() in {"退回重做", "退回修改", "整片重做", "重做指定镜头"}:
+                    result = content_factory.update_runtime_state(
+                        result["id"], status="等待ChatGPT策划",
+                        bottleneck="老板已退回当前成片，等待ChatGPT重新策划",
+                        auto_action="把上一版方案和审核结果回传ChatGPT，生成新版本；无需人工处理中间步骤",
+                    )
+                self._json_ok(result)
             except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self._json_error(400, error)
             return
