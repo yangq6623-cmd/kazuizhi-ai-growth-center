@@ -41,8 +41,15 @@ def source_checks():
     server = (source / "backend/server.py").read_text(encoding="utf-8")
     for route in ("/api/content-factory/assets/upload", "/api/video-worker/render", "/api/r8/device/screenshot"):
         check(route in server, f"Required API missing: {route}")
+    patch = (source / "backend/content_factory_patch.py").read_text(encoding="utf-8")
+    check("/api/content-factory/chatgpt-plan" in patch and "/api/content-factory/candidate-file" in patch,
+          "ChatGPT plan or final video review route missing")
+    contract = (source / "promotion/production_contract.py").read_text(encoding="utf-8")
+    check("kazuizhi-content-production/v1" in contract and "missing_material_must_not_block" in contract,
+          "ChatGPT production contract missing")
     worker = (source / "promotion/video_worker.py").read_text(encoding="utf-8")
-    check("h264_nvenc" in worker and "libx264" in worker, "GPU/CPU video encoding fallback missing")
+    check("h264_nvenc" in worker and "libx264" in worker and "run_pending" in worker,
+          "GPU/CPU automatic video queue missing")
     spec = (ROOT / "04_Build/kazuizhi_v2.0.0.spec").read_text(encoding="utf-8")
     check("console=False" in spec and "imageio_ffmpeg" in spec, "Packaged video runtime missing")
 
@@ -97,7 +104,76 @@ def exercise(command):
                     "title": "空调不制冷先检查什么", "evidence": "真实客服高频问题",
                     "goal": "获得可追溯的本地咨询",
                 })
-                material = b"\x89PNG\r\n\x1a\n" + b"r8-test-material"
+
+                # Critical R8 V2 rule: owner local material is optional. A production
+                # request must be accepted with zero uploaded assets and no manual script.
+                _, video = http_json(base, "/api/content-factory/videos", {
+                    "campaign_id": campaign["id"],
+                    "cta": "通过小程序提交需求，等待师傅报价",
+                })
+                check(video["status"] == "等待ChatGPT策划", "No-asset request did not enter ChatGPT planning state")
+                check(video.get("asset_ids") == [], "No-asset request unexpectedly requires owner material")
+
+                plan = {
+                    "schema": "kazuizhi-content-production/v1",
+                    "version": 1,
+                    "campaign_id": campaign["id"],
+                    "objective": "获得可追溯的本地咨询",
+                    "target_platforms": ["抖音", "视频号"],
+                    "topic": "空调不制冷先检查什么",
+                    "pain_point": "用户担心一上门就被要求加氟或产生不透明费用",
+                    "titles": ["空调不制冷，先别急着加氟"],
+                    "script": "空调不制冷时，先看滤网、外机和运行状态，再由师傅现场检测后判断原因。真实维修过程以现场素材为准。",
+                    "storyboard": [
+                        {
+                            "shot_id": "S01", "purpose": "提出用户痛点", "duration_seconds": 3,
+                            "subtitle": "空调不制冷，一定就是缺氟吗？",
+                            "source_preference": ["local_real", "ai_generated", "info_card"],
+                        },
+                        {
+                            "shot_id": "S02", "purpose": "解释真实检测原则", "duration_seconds": 4,
+                            "subtitle": "先检查，再检测，最后判断故障原因",
+                            "required_real": True,
+                            "source_preference": ["local_real", "info_card"],
+                        },
+                    ],
+                    "cta": "通过小程序提交需求，等待师傅报价",
+                    "output": {"width": 1080, "height": 1920, "fps": 30, "duration_seconds": 12},
+                }
+                _, planned = http_json(base, "/api/content-factory/chatgpt-plan", {
+                    "video_id": video["id"], "campaign_id": campaign["id"], "production_plan": plan,
+                })
+                check(planned["status"] in {"等待生产", "生产中"}, "ChatGPT production contract did not enter local queue")
+
+                _, worker = http_json(base, "/api/video-worker")
+                check(worker["ffmpeg_found"] and worker["encoder"] in {"h264_nvenc", "libx264"}, "Packaged FFmpeg worker unavailable")
+
+                # The independent video worker should pick the job automatically. No
+                # owner click is allowed between ChatGPT plan and FINAL.MP4.
+                final_video = None
+                for _ in range(120):
+                    _, factory = http_json(base, "/api/content-factory")
+                    current = next(x for x in factory["videos"] if x["id"] == video["id"])
+                    if current["status"] == "等待人工审核":
+                        final_video = current
+                        break
+                    if current["status"] == "异常待处理":
+                        raise AssertionError(f"Automatic video production failed: {current.get('last_error')}")
+                    time.sleep(1)
+                check(final_video is not None, "Automatic no-asset production did not reach owner review")
+                candidate = next((x for x in final_video.get("candidates", []) if x.get("exists")), None)
+                check(candidate and candidate.get("technical_qc", {}).get("passed"), "FINAL.MP4 technical QC failed")
+                check(all(x.get("source") != "ai_generated" for x in candidate.get("source_summary", [])),
+                      "Missing real material was silently represented as generated real footage")
+                preview = f"/api/content-factory/candidate-file?video_id={urllib.parse.quote(video['id'])}&candidate_id={urllib.parse.quote(candidate['id'])}"
+                with urllib.request.urlopen(base + preview, timeout=30) as response:
+                    final_bytes = response.read()
+                    check(response.headers.get_content_type() == "video/mp4" and len(final_bytes) > 10 * 1024,
+                          "Final review video route did not return a playable MP4 payload")
+
+                # Owner material remains an optional enrichment source and may be added
+                # at any time without changing the production prerequisite.
+                material = b"\x89PNG\r\n\x1a\n" + b"optional-r8-test-material"
                 headers = {
                     "Content-Type": "application/octet-stream",
                     "X-Campaign-ID": urllib.parse.quote(campaign["id"]),
@@ -108,15 +184,8 @@ def exercise(command):
                 request = urllib.request.Request(base + "/api/content-factory/assets/upload", data=material, headers=headers, method="POST")
                 with urllib.request.urlopen(request, timeout=20) as response:
                     asset = json.load(response)
-                check(asset["exists"] and Path(asset["local_path"]).is_file(), "Managed asset upload failed")
-                _, video = http_json(base, "/api/content-factory/videos", {
-                    "campaign_id": campaign["id"],
-                    "script": "先检查滤网和外机状态，再由师傅现场判断。",
-                    "duration_target": 10, "cta": "通过小程序提交需求，等待师傅报价",
-                })
-                check(video["status"] == "等待生产", "Video did not enter production queue")
-                _, worker = http_json(base, "/api/video-worker")
-                check(worker["ffmpeg_found"] and worker["encoder"] in {"h264_nvenc", "libx264"}, "Packaged FFmpeg worker unavailable")
+                check(asset["exists"] and Path(asset["local_path"]).is_file(), "Optional material intake failed")
+
                 _, device = http_json(base, "/api/r8/device/status")
                 if "status" in device:
                     check(device["status"] in {"online", "waiting_device", "adb_error", "missing_adb"}, "Device state is not truthful")
@@ -161,7 +230,7 @@ def main():
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: V2.2 R8 Operational identity, migration, content, device, video and approval gates")
+    print("PASS: R8 ChatGPT contract -> automatic local execution -> FINAL.MP4 -> owner review gate")
 
 
 if __name__ == "__main__":
