@@ -34,10 +34,9 @@
   }
 
   function refresh(){renderAccountWorkbench();ensureConversionWorkbench();ensureSearchSummary()}
-  const originalRefresh=window.refreshAll;
-  if(typeof originalRefresh==='function')window.refreshAll=async(...args)=>{const result=await originalRefresh(...args);refresh();return result};
-  const originalSearchActivate=window.searchGrowthActivate;
-  window.searchGrowthActivate=async(...args)=>{const result=await originalSearchActivate?.(...args);try{window.state.search=await fetch('/api/search-growth',{cache:'no-store'}).then(r=>r.json())}catch{}ensureSearchSummary();return result};
+  window.addEventListener('operational:refreshed',refresh);
+  window.addEventListener('operational:search-updated',ensureSearchSummary);
+  window.addEventListener('operational:device-status',refresh);
   refresh();
   window.setTimeout(refresh,500);
 })();
