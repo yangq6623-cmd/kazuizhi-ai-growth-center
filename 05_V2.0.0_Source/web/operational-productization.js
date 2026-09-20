@@ -86,6 +86,19 @@
     document.head.appendChild(script);
   }
 
+  function loadFinalization(){
+    if(!document.querySelector('link[data-v221-finalization]')){
+      const link=document.createElement('link');
+      link.rel='stylesheet';link.href='/operational-finalization.css';link.dataset.v221Finalization='1';document.head.appendChild(link);
+    }
+    if(document.querySelector('script[data-v221-finalization]'))return;
+    const script=document.createElement('script');
+    script.src='/operational-finalization.js';
+    script.defer=true;
+    script.dataset.v221Finalization='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -99,5 +112,6 @@
   relabelNavigation();
   refresh();
   loadWorkbench();
+  loadFinalization();
   window.setTimeout(refresh,400);
 })();
