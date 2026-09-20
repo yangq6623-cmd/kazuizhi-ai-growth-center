@@ -68,6 +68,7 @@ finally:
 
 mirror = (SRC / "web" / "r8_device_b4_mirror_hotfix.js").read_text(encoding="utf-8")
 pyramid = (SRC / "web" / "r8_command_pyramid.js").read_text(encoding="utf-8")
+identity = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
 promotion_ui = (SRC / "web" / "promotion.js").read_text(encoding="utf-8")
 backend = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
 assert mirror.index("function hasFrame") < mirror.index("function showEmpty")
@@ -77,4 +78,15 @@ assert "0→10 全链路验收" in pyramid and "一、总控与决策" in pyrami
 assert "提交到 R8 审核" in promotion_ui
 assert "/api/r8/growth/import-draft" in backend
 
-print("PASS: stable phone frames, content-to-publish bridge, Chinese command pyramid and 0-to-10 truthful audit")
+# Startup stability contract: the AI command homepage must not start the phone
+# cockpit/mirror runtime or keep a permanent whole-main MutationObserver alive.
+# Device-heavy runtime is armed once and only starts after a terminal is opened.
+assert "armDeviceRuntimeLoader" in identity
+assert "loadDeviceRuntimeOnDemand" in identity
+assert "loadDeviceRuntimeAfterMount" not in identity
+assert "devicePanelVisible()" in identity
+assert "new MutationObserver(()=>enhanceR8())" not in pyramid
+assert "observer.observe(target,{subtree:true,childList:true})" not in pyramid
+assert "settleEnhancements" in pyramid
+
+print("PASS: stable phone frames, lazy device runtime, bounded R8 startup, content-to-publish bridge and truthful 0-to-10 audit")

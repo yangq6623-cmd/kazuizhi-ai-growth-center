@@ -110,7 +110,21 @@
     if(overview&&!overview.querySelector('[data-r8-open-accounts]'))overview.insertAdjacentHTML('beforeend','<button class="primary-small" data-r8-open-accounts="1" style="margin-top:12px">去绑定和授权平台账号</button>');
   }
 
-  function boot(){injectStyles();ensurePyramid();setTimeout(()=>{organiseNavigation();enhanceR8();},700);setTimeout(()=>{organiseNavigation();enhanceR8();},1800);const observer=new MutationObserver(()=>enhanceR8());const target=document.querySelector('main');if(target)observer.observe(target,{subtree:true,childList:true});}
+  function settleEnhancements(){
+    let attempts=0;
+    const run=()=>{
+      attempts+=1;
+      organiseNavigation();
+      enhanceR8();
+      const finalReady=!!document.getElementById('r8-final-center');
+      const socialReady=!!document.getElementById('social-center');
+      const navigationReady=document.querySelector('aside nav')?.dataset.pyramidReady==='1';
+      if(!(finalReady&&socialReady&&navigationReady)&&attempts<20)setTimeout(run,150);
+    };
+    run();
+  }
+
+  function boot(){injectStyles();ensurePyramid();setTimeout(settleEnhancements,0);}
   window.R8CommandPyramid={refresh:refreshPyramid,organiseNavigation,showDiagnostics};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();

@@ -4,6 +4,8 @@
   const PHASE = 'R8-08 全模块最终交付';
   const PREVIOUS_PHASE = 'R8-01B.5';
   const LEGACY_PHASE = 'R8-01B.4.3';
+  let deviceRuntimeArmed = false;
+  let deviceRuntimeLoading = false;
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -48,15 +50,21 @@
     return !!(window.R8DeviceMirrorSync && typeof window.R8DeviceMirrorSync.syncOnce === 'function');
   }
 
+  function devicePanelVisible() {
+    const panel = document.getElementById('r8-device-center');
+    const social = document.getElementById('social-center');
+    return !!(panel && !panel.hidden && social && social.classList.contains('active'));
+  }
+
   function activateMirror() {
     if (!mirrorReady()) return false;
     try {
-      if (typeof window.R8DeviceMirrorSync.startContinuous === 'function') {
+      if (devicePanelVisible() && typeof window.R8DeviceMirrorSync.startContinuous === 'function') {
         window.R8DeviceMirrorSync.startContinuous();
       }
       const panel = document.getElementById('r8-device-center');
       if (panel) panel.dataset.mirrorLoader = 'ready';
-      showLoaderStatus('手机屏幕同步模块已加载。连接真机后会自动同步，也可以使用“测试截图”。', 'ok');
+      showLoaderStatus('手机屏幕同步模块已加载。打开真机操作台后才会启动连续同步，也可以使用“测试截图”。', 'ok');
       return true;
     } catch (error) {
       showLoaderStatus('屏幕同步模块启动失败：' + error.message, 'stop');
@@ -71,8 +79,8 @@
       return;
     }
 
-    const old = document.querySelector('script[data-r8-device-b4-hotfix]');
-    if (old) old.remove();
+    const existing = document.querySelector('script[data-r8-device-b4-hotfix]');
+    if (existing) return;
 
     showLoaderStatus('正在加载手机屏幕同步模块…', 'warn');
     const script = document.createElement('script');
@@ -84,12 +92,7 @@
         showLoaderStatus('屏幕同步文件已载入，但模块没有完成初始化。请关闭程序后重新打开一次。', 'stop');
       }
       setTimeout(() => {
-        if (mirrorReady()) {
-          activateMirror();
-          if (!document.getElementById('r8-mirror-controls')) {
-            showLoaderStatus('同步模块已就绪，但控制条未挂载。请进入社媒中心并重新打开真机操作台。', 'warn');
-          }
-        }
+        if (mirrorReady()) activateMirror();
       }, 500);
     };
     script.onerror = () => {
@@ -128,24 +131,42 @@
     document.body.appendChild(script);
   }
 
-  function loadDeviceRuntimeAfterMount() {
+  function loadDeviceRuntimeOnDemand() {
+    if (deviceRuntimeLoading) return;
+    deviceRuntimeLoading = true;
     let attempts = 0;
     const start = () => {
       attempts += 1;
       const panel = document.getElementById('r8-device-center');
       if (panel) {
         loadMirrorDirect();
-        setTimeout(loadTerminalCockpitPatch, 250);
+        setTimeout(loadTerminalCockpitPatch, 120);
+        deviceRuntimeLoading = false;
         return;
       }
-      if (attempts < 240) {
+      if (attempts < 30) {
         setTimeout(start, 100);
         return;
       }
-      if (typeof toast === 'function') toast('R8 真机操作台未完成初始化，请刷新页面或重新安装最新版本', 'error');
+      deviceRuntimeLoading = false;
+      if (typeof toast === 'function') toast('R8 真机操作台未完成初始化，请重新打开社媒终端', 'error');
     };
     start();
   }
+
+  function armDeviceRuntimeLoader() {
+    if (deviceRuntimeArmed) return;
+    deviceRuntimeArmed = true;
+    document.addEventListener('click', event => {
+      const terminal = event.target.closest && event.target.closest('[data-social-device-control]');
+      if (!terminal) return;
+      setTimeout(loadDeviceRuntimeOnDemand, 0);
+    }, true);
+    setTimeout(() => {
+      if (devicePanelVisible()) loadDeviceRuntimeOnDemand();
+    }, 700);
+  }
+
   function loadCommandPyramid() {
     if (document.querySelector('script[data-r8-command-pyramid]')) return;
     const script = document.createElement('script');
@@ -157,7 +178,6 @@
     };
     document.body.appendChild(script);
   }
-
 
   function loadFinalGrowthCenter() {
     if (!document.querySelector('link[data-r8-final-style]')) {
@@ -204,7 +224,7 @@
     if (heading) heading.textContent = 'R8 全模块已交付：从平台雷达到内容、视频、发布、线索归因和复盘学习。';
 
     loadBridgeUsabilityPatch();
-    loadDeviceRuntimeAfterMount();
+    armDeviceRuntimeLoader();
     loadFinalGrowthCenter();
 
     try {
