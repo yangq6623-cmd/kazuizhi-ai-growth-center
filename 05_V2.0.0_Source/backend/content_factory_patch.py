@@ -1,5 +1,6 @@
 """Runtime HTTP routes used by the R8 content-factory review UI."""
 
+import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -68,6 +69,7 @@ def _serve_mp4(handler, path):
 
 if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
     _original_do_get = _server.DashboardHandler.do_GET
+    _original_do_post = _server.DashboardHandler.do_POST
 
     def _do_get(self):
         parsed = urlsplit(self.path)
@@ -86,5 +88,30 @@ if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
             return
         return _original_do_get(self)
 
+    def _do_post(self):
+        parsed = urlsplit(self.path)
+        if parsed.path == "/api/content-factory/chatgpt-plan":
+            origin = self.headers.get("Origin")
+            allowed_origins = {
+                f"http://127.0.0.1:{self.server.server_port}",
+                f"http://localhost:{self.server.server_port}",
+            }
+            if origin and origin not in allowed_origins:
+                self._json_error(403, "Cross-origin changes are not allowed")
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 64 * 1024:
+                self._json_error(413 if length > 64 * 1024 else 400, "生产方案大小不正确")
+                return
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}")
+                result = content_factory.apply_chatgpt_plan(payload)
+                self._json_ok(result, code=201)
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self._json_error(400, error)
+            return
+        return _original_do_post(self)
+
     _server.DashboardHandler.do_GET = _do_get
+    _server.DashboardHandler.do_POST = _do_post
     _server.DashboardHandler._kz_content_factory_patched = True
