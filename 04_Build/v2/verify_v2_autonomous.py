@@ -120,9 +120,19 @@ def exercise(command):
                 check(operating["state"] == "queued" and operating["mode"] == "local", "Non-financial job did not auto-queue")
                 check(operating["execution"] == "autonomous" and operating["risk"] == "non_financial", "Non-financial classification failed")
                 post("/api/r7/scheduler/tick", {})
-                with urllib.request.urlopen(base + "/api/r7/jobs") as response:
-                    jobs = json.load(response)["items"]
-                operating = next(x for x in jobs if x["id"] == operating["id"])
+                # A packaged runtime can complete the asynchronous scheduler tick just
+                # after the request returns. Poll briefly instead of treating that
+                # normal handoff as a failed autonomous execution.
+                deadline = time.time() + 5
+                while True:
+                    with urllib.request.urlopen(base + "/api/r7/jobs") as response:
+                        jobs = json.load(response)["items"]
+                    operating = next(x for x in jobs if x["id"] == operating["id"])
+                    if operating["state"] == "completed":
+                        break
+                    if time.time() >= deadline:
+                        break
+                    time.sleep(.1)
                 check(operating["state"] == "completed" and operating["progress"] == 100, "Autonomous operating job did not complete")
                 check(operating.get("result"), "Autonomous operating result missing")
 
