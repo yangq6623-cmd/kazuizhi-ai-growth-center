@@ -1,3 +1,4 @@
+document.body.classList.toggle('embedded',new URLSearchParams(location.search).get('embedded')==='1');
 const $=id=>document.getElementById(id);
 const state={factory:null};
 function esc(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}

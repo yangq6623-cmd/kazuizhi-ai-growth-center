@@ -22,7 +22,7 @@ def get_version():
         "release": RELEASE,
         "build": BUILD_ID,
         "product": PRODUCT_NAME,
-        "source": "05_V2.0.0_Source/web/operational.html",
+        "source": "05_V2.0.0_Source/web/index.html",
         "display_version": R8_DISPLAY_VERSION,
         "runtime_build": R8_RUNTIME_BUILD,
         "r8_release": R8_RELEASE,

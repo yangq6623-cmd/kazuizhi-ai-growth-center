@@ -250,8 +250,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         path = parsed.path
         if path == "/":
-            self.path = "/operational.html"
-            path = "/operational.html"
+            # R7 remains the complete primary console. The V2.2 operational
+            # loop is an additive workspace reachable from that console.
+            self.path = "/index.html"
+            path = "/index.html"
         query = parse_qs(parsed.query)
         if path == "/api/r8/device/screenshot":
             device_id = str((query.get("device_id") or [""])[0]).strip()

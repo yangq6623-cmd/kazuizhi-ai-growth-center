@@ -3,7 +3,7 @@
   const GROUPS = [
     ['一、总控与决策', ['dashboard','workflow']],
     ['二、团队与设备', ['social-center','connections']],
-    ['三、增长执行', ['r8-final-center','promotion','automation']],
+    ['三、增长执行', ['r8-final-center','operational-hub','promotion','automation']],
     ['四、数据反馈', ['analytics','insights','summary','review']],
     ['五、复盘与沉淀', ['plan','history','memory','handoff']],
   ];

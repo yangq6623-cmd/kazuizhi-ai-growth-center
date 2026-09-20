@@ -27,9 +27,17 @@ def check(value, message):
 def source_checks():
     source = ROOT / "05_V2.0.0_Source"
     html = (source / "web/operational.html").read_text(encoding="utf-8")
+    r7_html = (source / "web/index.html").read_text(encoding="utf-8")
+    r7_app = (source / "web/app.js").read_text(encoding="utf-8")
     check(BUILD in html, "Operational UI build identity missing")
     for label in ("今天让什么结果发生", "增长战役", "内容工厂", "手机与真机", "账号与发布", "咨询与订单", "SEO 与 GEO", "连接与体检"):
         check(label in html, f"Operational page missing: {label}")
+    check("返回 R7 完整总控制台" in html and "/index.html" in html, "Operational workspace cannot return to R7")
+    for label in ("AI 指挥中心", "任务与员工", "今日复盘", "经营分析", "内容增长", "市场洞察", "任务日历", "运营总结", "明日计划", "历史记录", "运营记忆"):
+        check(label in r7_html, f"R7 primary console module missing: {label}")
+    check("内容生产与发布" in r7_app and "operational-hub" in r7_app and "/operational.html?embedded=1" in r7_app, "R7 console is missing the merged V2.2 workspace")
+    pyramid = (source / "web/r8_command_pyramid.js").read_text(encoding="utf-8")
+    check("'operational-hub'" in pyramid, "Merged V2.2 workspace is missing from the R7/R8 navigation pyramid")
     server = (source / "backend/server.py").read_text(encoding="utf-8")
     for route in ("/api/content-factory/assets/upload", "/api/video-worker/render", "/api/r8/device/screenshot"):
         check(route in server, f"Required API missing: {route}")
@@ -75,8 +83,11 @@ def exercise(command):
                 check(status["version"] == "2.2.0" and status["stage"] == "Operational" and status["build"] == BUILD, "Wrong runtime identity")
                 with urllib.request.urlopen(base + "/", timeout=10) as response:
                     root_html = response.read().decode("utf-8")
-                    check(BUILD in root_html and "今天让什么结果发生" in root_html, "Root did not serve operational console")
+                    check(BUILD in root_html and "AI 指挥中心" in root_html and "运营记忆" in root_html, "Root did not serve the complete R7 console")
                     check(response.headers["Cache-Control"] == "no-store", "Cache protection missing")
+                with urllib.request.urlopen(base + "/operational.html", timeout=10) as response:
+                    operational_html = response.read().decode("utf-8")
+                    check(BUILD in operational_html and "今天让什么结果发生" in operational_html, "Additive operational workspace is unavailable")
                 for asset in ("operational.css", "operational-device.css", "operational-video.css", "operational.js", "operational-factory.js", "operational-device.js"):
                     with urllib.request.urlopen(base + "/" + asset, timeout=10) as response:
                         check(response.status == 200 and len(response.read()) > 100, f"Packaged UI asset missing: {asset}")
