@@ -77,6 +77,15 @@
     });
   }
 
+  function loadWorkbench(){
+    if(document.querySelector('script[data-v221-workbench]'))return;
+    const script=document.createElement('script');
+    script.src='/operational-workbench.js';
+    script.defer=true;
+    script.dataset.v221Workbench='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -92,5 +101,6 @@
 
   relabelNavigation();
   refresh();
+  loadWorkbench();
   window.setTimeout(refresh,400);
 })();
