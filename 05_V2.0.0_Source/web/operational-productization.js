@@ -93,11 +93,8 @@
     if(!button)return;
     window.changeOperationalPage?.(button.dataset.ownerTarget);
   });
-
-  const originalRefresh=window.refreshAll;
-  if(typeof originalRefresh==='function')window.refreshAll=async(...args)=>{const result=await originalRefresh(...args);refresh();return result};
-  const originalSync=window.syncOperationalDeviceStatus;
-  window.syncOperationalDeviceStatus=payload=>{originalSync?.(payload);refresh()};
+  window.addEventListener('operational:refreshed',refresh);
+  window.addEventListener('operational:device-status',refresh);
 
   relabelNavigation();
   refresh();
