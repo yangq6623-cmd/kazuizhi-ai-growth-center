@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+04_Build/dist/
+04_Build/build/
+04_Build/output/
+*.log
+
+/build_v2/
+/dist_v2/
+/installer_output_v2/

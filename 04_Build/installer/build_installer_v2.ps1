@@ -1,8 +1,14 @@
 $ErrorActionPreference = 'Stop'
-$compiler = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
-if (!$compiler) { $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-if (!(Test-Path -LiteralPath $compiler)) { throw 'Inno Setup 6 compiler missing' }
+$command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+$candidates = @(
+    $(if ($command) { $command.Source }),
+    $(Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
+    $(Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
+    $(Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe')
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+$compiler = $candidates | Select-Object -First 1
+if (!$compiler) { throw 'Inno Setup 6 compiler missing' }
 & $compiler (Join-Path $PSScriptRoot 'Kazuizhi_AI_V2.0.0_Beta_Setup.iss')
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
-$setup = Join-Path $PSScriptRoot '../../installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe'
-if (!(Test-Path -LiteralPath $setup)) { throw 'V2.1.0 R8 Final Setup was not produced' }
+$setup = Join-Path $PSScriptRoot '../../installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+if (!(Test-Path -LiteralPath $setup)) { throw 'V2.2 R8 Operational Setup was not produced' }

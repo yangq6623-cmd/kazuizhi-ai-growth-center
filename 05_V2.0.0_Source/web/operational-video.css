@@ -1,0 +1,1 @@
+.worker-status{display:grid;gap:3px;margin:10px 0;padding:10px;border-radius:9px;background:#f6f8fb;color:var(--muted);font-size:12px}.worker-status b,.worker-status span,.worker-status small{display:block}.worker-status.ready{background:var(--green-soft);color:var(--green)}.worker-status.wait{background:var(--orange-soft);color:var(--orange)}

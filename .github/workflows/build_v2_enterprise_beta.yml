@@ -1,15 +1,13 @@
-name: Build Kazuizhi AI Enterprise V2.1.0 R8 Final
+name: Build Kazuizhi AI Enterprise V2.2 R8 Operational
 on:
   workflow_dispatch:
   push:
     branches: [main, 'codex/v2-*']
+    tags: ['v2.2.0-r8-operational*']
     paths:
       - '05_V2.0.0_Source/**'
-      - '04_Build/v2/**'
-      - '04_Build/kazuizhi_v2.0.0.spec'
-      - '04_Build/build_v2_windows.ps1'
-      - '04_Build/installer/*v2*'
-      - '04_Build/installer/*V2*'
+      - '04_Build/**'
+      - 'docs/R8_OPERATIONAL_*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     branches: [main]
@@ -18,11 +16,11 @@ on:
       - '04_Build/**'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: core.autocrlf
@@ -35,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Stamp R8 Final build number and commit
+      - name: Stamp visible build number and commit
         run: |
           $path = '05_V2.0.0_Source/web/build_info.js'
           $text = Get-Content -LiteralPath $path -Raw
@@ -43,82 +41,72 @@ jobs:
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
-      - name: Install build dependencies
+      - name: Install pinned build and video dependencies
         run: |
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
-      - name: Verify R6 migration and audit corruption protection
-        run: python 04_Build/v2/test_r7_engine.py
-      - name: Verify R7 Block A stability and durable persistence
-        run: python 04_Build/v2/test_r7_block_a.py
-      - name: Verify R7 Block B command center and bidirectional bridge
-        run: python 04_Build/v2/test_r7_block_b.py
-      - name: Verify full daily AI workforce and manager dashboard UX
-        run: python 04_Build/v2/test_daily_workforce.py
-      - name: Verify autonomous decision center and employee manager reports
-        run: python 04_Build/v2/test_decision_center.py
-      - name: Verify regional operations strategy and expansion guardrails
-        run: python 04_Build/v2/test_region_strategy.py
-      - name: Verify R8-00 safety and single-real-device pilot control plane
-        run: python 04_Build/v2/test_r8_block_00.py
-      - name: Verify R8-01 Android ADB device center contract
-        run: python 04_Build/v2/test_r8_device_center.py
-      - name: Verify R8 standalone social media center architecture
-        run: python 04_Build/v2/test_r8_social_center.py
-      - name: Verify R8-00 through R8-08 complete growth operations loop
-        run: python 04_Build/v2/test_r8_complete_growth_ops.py
-      - name: Verify R8 Final package and visible identity separation
-        run: python 04_Build/v2/test_r8_identity.py
-      - name: Verify phone mirror stability, command pyramid and content-to-publish bridge
-        run: python 04_Build/v2/test_r8_completion_upgrade.py
-      - name: Verify production business source safety contract
-        run: python 04_Build/v2/test_live_business_source.py
-      - name: Verify every visible R7 control has an interaction path
-        run: python 04_Build/v2/test_ui_interactions.py
-      - name: Check frontend script syntax
+      - name: Verify inherited R7 data safety and command engine
+        run: |
+          python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r7_block_a.py
+          python 04_Build/v2/test_r7_block_b.py
+      - name: Verify inherited R8 final control plane and growth loop
+        run: |
+          python 04_Build/v2/test_daily_workforce.py
+          python 04_Build/v2/test_decision_center.py
+          python 04_Build/v2/test_region_strategy.py
+          python 04_Build/v2/test_r8_block_00.py
+          python 04_Build/v2/test_r8_device_center.py
+          python 04_Build/v2/test_r8_social_center.py
+          python 04_Build/v2/test_r8_complete_growth_ops.py
+          python 04_Build/v2/test_r8_identity.py
+          python 04_Build/v2/test_r8_completion_upgrade.py
+          python 04_Build/v2/test_live_business_source.py
+          python 04_Build/v2/test_ui_interactions.py
+      - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
-      - name: Build and verify V2 source and packaged runtime
+      - name: Verify V2.2 R8 Operational source closed loop
+        run: python 04_Build/v2/verify_r8_operational.py --source
+      - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1
       - name: Scan final installer with Microsoft Defender when available
         run: ./04_Build/v2/test_windows_security.ps1
-      - name: Test silent install, launch, reinstall and uninstall
+      - name: Test silent install, launch, overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record verified R8 Final artifact provenance
+      - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.1.0_R8_Final.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = 'V2.1.0 R8 Final'
-            phase = 'R8-08 complete truthful growth operations delivery'
-            runtime_build = 'KZ-ENTERPRISE-V2.1-R8-FINAL-20260919'
-            r7_compatibility_build = 'KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL'
-            github_run_number = '${{ github.run_number }}'
+            version = '2.2.0 R8 Operational'
+            build = 'KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7 Final core compatibility preserved', 'R8 Final package identity', 'R8 visible build number and commit', 'stable phone mirror with last-frame retention', 'fast ADB screenshot probe and request coalescing', 'Chinese command pyramid navigation', '0-to-10 truthful closed-loop audit', 'content draft to R8 review/publish bridge', 'persistent button execution feedback', 'R8-00 safety and finance boundaries', 'R8-01 truthful Android device center', 'R8-02 platform intelligence radar and unique account routing', 'R8-03 growth ID traceability', 'R8-04 eight-agent content committee', 'R8-05 RTX 3060 worker contract and quality gate', 'R8-06 owner publish approval', 'R8-07 truthful receipts and unified conversations', 'R8-08 attribution and learning feedback', 'multi-account matrix fields and L1-L4 levels', 'cross-account deduplication and stop-contact', 'persistent upgrade migration', 'R6 migration', 'R7 persistent user data', 'R7 bidirectional bridge', 'verified business source', 'visible UI interaction binding', 'frontend JavaScript syntax', 'windowed runtime packaging', 'Defender scan gate', 'silent install', 'active-runtime reinstall', 'user data preservation', 'uninstall')
-            acceptance = 'All software and packaging checks passed; real platform credentials, device, GPU model and production data remain truthful live-acceptance inputs'
+            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'real content growth ID', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'stable ADB PNG mirror contract', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated gates passed; real social account login/captcha and live platform publication remain owner-authorized field acceptance'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
-          Copy-Item docs/V2.0.0_BETA_R7_CORE_HANDOFF_20260916.md installer_output_v2/R7_CORE_HANDOFF.md
-          Copy-Item docs/R7_FINAL_USER_GUIDE.md installer_output_v2/R7_FINAL_USER_GUIDE.md
-          Copy-Item docs/R7_FINAL_TEST_REPORT.md installer_output_v2/R7_FINAL_TEST_REPORT.md
-          Copy-Item docs/R8_FINAL_COMPLETE_HANDOFF_20260919.md installer_output_v2/R8_FINAL_COMPLETE_HANDOFF.md
-          Copy-Item docs/R8_FINAL_USER_GUIDE_20260919.md installer_output_v2/R8_FINAL_USER_GUIDE.md
-          Copy-Item docs/R8_FINAL_TEST_REPORT_20260919.md installer_output_v2/R8_FINAL_TEST_REPORT.md
-          Copy-Item docs/R8_FINAL_KNOWN_ISSUES_20260919.md installer_output_v2/R8_FINAL_LIVE_CONFIGURATION.md
-      - name: Upload V2.1.0 R8 Final installer
+          Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
+          Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
+      - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Final
+          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload V2.1.0 R8 Final portable application
+      - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.1.0_R8_Final_Portable
+          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
+      - name: Publish tagged final installer to GitHub Releases
+        if: startsWith(github.ref, 'refs/tags/v2.2.0-r8-operational')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' installer_output_v2/* --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes

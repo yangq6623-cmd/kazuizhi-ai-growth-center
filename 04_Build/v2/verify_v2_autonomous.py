@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "Kazuizhi_AI_Enterprise_V2.0.0_Beta"
-BUILD = "KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL"
+BUILD = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
 
 
 def check(condition, message):
@@ -94,7 +94,7 @@ def exercise(command):
                 else:
                     raise AssertionError("Runtime startup timeout")
 
-                check(status["version"] == "2.0.0" and status["stage"] == "Beta" and status["build"] == BUILD, "Wrong API identity")
+                check(status["version"] == "2.2.0" and status["stage"] == "Operational" and status["build"] == BUILD, "Wrong API identity")
                 for path in ("/", "/?build=" + BUILD, "/WEB_VERSION.txt"):
                     with urllib.request.urlopen(base + path) as response:
                         text = response.read().decode("utf-8")

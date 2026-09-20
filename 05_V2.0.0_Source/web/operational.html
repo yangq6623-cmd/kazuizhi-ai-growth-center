@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" href="data:,">
+  <meta name="kazuizhi-build" content="KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920">
+  <title>卡嘴子 AI 真实运营工作台</title>
+  <link rel="stylesheet" href="operational.css">
+  <link rel="stylesheet" href="operational-device.css">
+  <link rel="stylesheet" href="operational-video.css">
+  <link rel="stylesheet" href="operational-search.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand"><span class="brand-mark">KZ</span><span><b>卡嘴子 AI</b><small>真实运营工作台</small></span></div>
+      <p class="nav-label">老板总控</p>
+      <button class="nav active" data-page="dashboard">今日总控</button>
+      <button class="nav" data-page="campaigns">增长战役</button>
+      <button class="nav" data-page="content">内容工厂</button>
+      <button class="nav" data-page="device">手机与真机</button>
+      <p class="nav-label">执行与转化</p>
+      <button class="nav" data-page="accounts">账号与发布</button>
+      <button class="nav" data-page="conversion">咨询与订单</button>
+      <p class="nav-label">增长与安全</p>
+      <button class="nav" data-page="search">SEO 与 GEO</button>
+      <button class="nav" data-page="health">连接与体检</button>
+      <div class="side-footer"><b>V2.2.0 R8 Operational</b><span>所有对外结果需真实回执</span></div>
+    </aside>
+    <main>
+      <header><div><p id="crumb">老板总控</p><h1 id="page-title">今天让什么结果发生</h1></div><div class="header-state"><span id="clock"></span><span class="online">● 本地服务正常</span></div></header>
+      <div id="feedback" class="feedback" hidden></div>
+
+      <section id="dashboard" class="page active">
+        <div class="hero"><div><p>当前唯一目标</p><h2>让更多淮安用户找到卡嘴子，并完成真实服务订单</h2><span>先跑通家电安装维修，再复制到水电、管道和涟水家政。</span></div><div class="goal"><small>本月真实完成订单</small><b id="order-goal">-- / 50</b><div class="progress"><i id="goal-progress"></i></div><span>最低验证目标 20 单</span></div></div>
+        <div class="migration-strip"><b>✓ 覆盖升级自动保留</b><span>任务与记忆</span><span>经营数据连接</span><span>手机设备资料</span><span>同步桥与账号档案</span><button data-page-target="health">查看体检</button></div>
+        <div class="pipeline" aria-label="真实运营闭环"><article><small>01</small><b>本地机会</b><span>用户问题与服务供给</span></article><article><small>02</small><b>内容生产</b><span>素材、脚本、视频候选</span></article><article class="focus"><small>03</small><b>老板审核</b><span>确认后才可发布</span></article><article><small>04</small><b>账号执行</b><span>排期、真机、真实链接</span></article><article><small>05</small><b>订单学习</b><span>咨询、履约、次日计划</span></article></div>
+        <div class="two-col"><article class="panel"><div class="panel-head"><div><p>今天自动推进</p><h3>增长任务状态</h3></div><button data-page-target="content">进入内容工厂</button></div><div id="today-tasks" class="task-list"></div></article><article class="panel"><div class="panel-head"><div><p>只需要你决定</p><h3>待审核视频</h3></div><span id="review-count" class="badge">0</span></div><div id="review-list" class="review-list"></div></article></div>
+        <div class="funnel" id="funnel"></div>
+      </section>
+
+      <section id="campaigns" class="page">
+        <div class="page-intro"><p>增长战役</p><h2>先确定一个真实问题，再让所有内容围绕它工作</h2><span>一个战役连接区域、服务、素材、视频、账号、咨询和订单。</span></div>
+        <div class="two-col"><article class="panel"><h3>新建增长战役</h3><form id="campaign-form" class="form-grid"><label>区域<select id="campaign-region"><option>涟水县</option><option>清江浦区</option><option>淮安区</option><option>淮阴区</option></select></label><label>服务项目<select id="campaign-service"><option>家电安装维修</option><option>水电安装维修</option><option>管道疏通维修</option><option>家政服务</option><option>邻里个人任务</option></select></label><label class="full">用户问题或选题<input id="campaign-title" maxlength="120" placeholder="例如：空调不制冷，用户担心上门乱收费"></label><label class="full">选题依据<textarea id="campaign-evidence" maxlength="500" rows="4" placeholder="例如：来自客服咨询、评论高频问题、真实服务现场或公开本地需求"></textarea></label><label class="full">业务目标<input id="campaign-goal" maxlength="160" value="获得可追溯的本地咨询或小程序需求"></label><button class="primary full" type="submit">建立增长ID并进入内容工厂</button></form></article><article class="panel"><p class="hint-title">建立后自动关联</p><ul class="plain-list"><li>同一个问题的短视频、图文、FAQ和官网内容页</li><li>每个发布账号、发布时间和真实平台链接</li><li>团长码、小程序来源、微信线索和订单结果</li><li>24小时、72小时、7天的保留、改写或停止结论</li></ul><p class="truth">系统不会把一次“播放量好”直接当作成功，只有真实咨询、需求和订单才进入经营结果。</p></article></div>
+        <article class="panel wide"><div class="panel-head"><div><p>当前战役</p><h3>所有内容都必须有增长ID</h3></div><button id="refresh-campaigns">刷新</button></div><div id="campaign-list" class="card-list"></div></article>
+      </section>
+
+      <section id="content" class="page">
+        <div class="page-intro"><p>内容工厂</p><h2>从本地问题和真实素材，到审核通过的成片</h2><span>视频、标题、封面和发布任务属于同一条内容供应链。</span></div>
+        <div class="factory-steps"><article><b>1</b><span>选择增长战役</span></article><article><b>2</b><span>汇总真实素材</span></article><article><b>3</b><span>生产与质检候选</span></article><article><b>4</b><span>人工审核</span></article><article><b>5</b><span>自动排期发布</span></article></div>
+        <div class="three-col"><article class="panel"><p>素材与脚本</p><h3>开始生产</h3><label>增长战役<select id="video-campaign"></select></label><div class="asset-intake"><label>本地素材类型<select id="asset-kind"><option>真实现场视频</option><option>真实现场照片</option><option>师傅讲解</option><option>品牌素材</option><option>AI辅助镜头</option></select></label><label>选择本地素材<input id="asset-file" type="file" accept="video/*,image/*,audio/*"></label><label class="consent"><input id="asset-consent" type="checkbox"> 已取得真实现场素材的拍摄与发布同意</label><button id="asset-upload" type="button">导入素材库</button><small id="asset-upload-status">素材只保存在本机，并绑定当前增长ID。</small></div><label>视频脚本<textarea id="video-script" rows="7" maxlength="2000" placeholder="先说明用户问题，再给出真实、可验证的解决流程。"></textarea></label><label>行动提示<input id="video-cta" maxlength="160" value="通过小程序提交需求，等待师傅报价"></label><button id="create-video" class="primary">创建视频生产任务</button><small>必须先登记真实存在的本地素材；AI辅助镜头不能冒充真实案例。</small></article><article class="panel"><p>视频审核台</p><h3>只审核成片，不手动排期</h3><div id="video-list" class="card-list compact"></div></article><article class="panel"><p>审核后自动执行</p><h3>AI会做什么</h3><div id="video-worker-status" class="worker-status">正在检查 RTX 3060 与视频组件…</div><ul class="plain-list"><li>按账号类型生成不同平台标题和配文</li><li>在授权范围内选择发布时间</li><li>检查重复度、账号状态和服务承接能力</li><li>真机或官方连接执行发布</li><li>没有链接和内容ID就标记为失败</li></ul><p class="truth">视频审核通过不等于已经发布；真实发布回执才算完成。</p></article></div>
+      </section>
+
+
+      <section id="device" class="page">
+        <div class="page-intro"><p>手机与真机执行</p><h2>稳定同步真实 Android 手机，画面波动时保留上一帧</h2><span>单击画面是真机点击，拖动是真机滑动；密码、人脸、验证码和平台风控仍转人工。</span></div>
+        <div class="device-toolbar"><button id="device-scan" class="primary">扫描手机</button><button id="device-sync-start">连续同步</button><button id="device-sync-once">测试截图</button><button id="device-sync-stop">停止同步</button><span id="device-connection" class="device-pill warn">手机未连接</span><span id="device-mirror-state" class="device-pill warn">未同步</span></div>
+        <div class="device-grid">
+          <article class="phone-panel"><div class="phone-stage"><img id="device-screen" alt="Android 真机画面" hidden><div id="device-empty">连接 USB 并允许调试后，点击“扫描手机”</div></div><div class="phone-actions"><button data-device-action="back">← 返回</button><button data-device-action="home">主页</button><button data-device-action="wake">唤醒</button><button data-device-action="power">电源键</button></div><small id="device-frame-detail">尚未读取画面；连接波动时不会清空最后一帧。</small></article>
+          <article class="panel device-side"><div><p>设备状态</p><h3 id="device-message">正在检查</h3></div><div class="device-meta"><div><small>型号</small><b id="device-model">--</b></div><div><small>设备ID</small><b id="device-id">--</b></div><div><small>Android</small><b id="device-android">--</b></div><div><small>电量</small><b id="device-battery">--</b></div><div><small>屏幕</small><b id="device-screen-state">--</b></div><div><small>控制权</small><b id="device-control">--</b></div></div><div class="mode-box"><p>控制模式</p><div><button data-device-mode="r8">R8 自动</button><button data-device-mode="human">人工控制</button><button data-device-mode="paused">暂停</button></div></div><details><summary>ADB 连接详情</summary><p id="device-adb">--</p></details><p class="truth">同步采用“有效 PNG 才替换画面”的策略；一次截图失败不会让手机画面闪退或变黑，并会自动重试。</p></article>
+        </div>
+      </section>
+      <section id="accounts" class="page"><div class="page-intro"><p>账号健康与发布</p><h2>账号像真实本地服务人员一样长期经营</h2><span>不做批量刷评、不冒充用户、不绕过平台安全验证。</span></div><div class="two-col"><article class="panel"><h3>账号档案</h3><form id="account-form" class="form-grid"><label>平台<select id="account-platform"><option>抖音</option><option>快手</option><option>小红书</option><option>视频号</option></select></label><label>账号名称<input id="account-name" maxlength="80" placeholder="例如：涟水家电维修"></label><label>区域<select id="account-region"><option>涟水县</option><option>清江浦区</option><option>淮安区</option><option>淮阴区</option></select></label><label>服务主线<select id="account-service"><option>家电安装维修</option><option>水电安装维修</option><option>管道疏通维修</option><option>家政服务</option></select></label><label class="full">连接状态<select id="account-status"><option>待人工登录授权</option><option>已验证可发布</option><option>需要人工处理</option><option>已暂停</option></select></label><button class="primary full" type="submit">保存账号档案</button></form></article><article class="panel"><p>自动互动边界</p><h3>有价值，才回复</h3><ul class="plain-list"><li>仅回应真实相关的本地服务问题</li><li>不复制评论、不无关提品牌、不虚构客户经历</li><li>用户主动需要时，才引导官方入口或微信客服</li><li>验证码、人脸、异常登录自动停下并通知人工</li></ul><p class="truth">账号健康的目的不是规避平台识别，而是建立长期可信的本地服务形象。</p></article></div><article class="panel wide"><div class="panel-head"><div><p>真实授权状态</p><h3>账号连接与发布能力</h3></div><button id="refresh-accounts">刷新</button></div><div id="account-list" class="card-list"></div></article></section>
+
+      <section id="conversion" class="page"><div class="page-intro"><p>咨询与订单</p><h2>让每一次曝光尽量能够追到真实服务结果</h2><span>团长码、内容ID、账号、区域和服务类别共同形成归因。</span></div><article class="panel wide"><h3>归因链</h3><div class="attribution"><span>内容增长ID</span><i>→</i><span>平台链接</span><i>→</i><span>小程序访问</span><i>→</i><span>团长码/微信线索</span><i>→</i><span>师傅报价</span><i>→</i><span>履约订单</span></div><p class="truth">没有可验证来源的数据，不显示为AI带来的订单；资金、退款、改价等全部保留人工处理。</p></article></section>
+
+      <section id="search" class="page">
+        <div class="page-intro"><p>本地搜索与 AI 答案增长</p><h2>一个真实问题，同时生成网页、FAQ、短答案和站内搜索内容</h2><span>SEO、GEO和短视频站内搜索共用增长ID与品牌事实，收录和引用只记录真实观察结果。</span></div>
+        <div class="two-col"><article class="panel"><h3>生成本地搜索内容包</h3><label>增长战役<select id="search-campaign"><option value="">选择增长战役</option></select></label><button id="search-pack" class="primary">生成网页、FAQ与 GEO 短答案</button><ul class="plain-list"><li>四个开放区域 × 实际服务类别的独立页面</li><li>用户真实问题、报价流程和服务边界</li><li>LocalBusiness、Service、FAQPage 结构化数据</li><li>豆包等AI可理解的简洁事实答案</li></ul></article><article class="panel"><div class="panel-head"><div><p>官网技术底座</p><h3>当前抓取与收录准备</h3></div><button id="search-audit">重新检查官网</button></div><div id="search-status" class="check-list"><p>等待检查。</p></div><p class="truth">生成内容包不等于已经上线；搜索收录、排名和AI引用都必须看到真实结果后才记录。</p></article></div>
+        <article class="panel wide"><div class="panel-head"><div><p>同源内容资产</p><h3>已生成的 SEO / GEO 内容包</h3></div></div><div id="search-pack-list" class="card-list"></div></article>
+      </section>
+      <section id="health" class="page"><div class="page-intro"><p>连接与上线体检</p><h2>每一条链路通过后，才允许交给下一环节</h2><span>升级过程中自动迁移；外部授权失效时才要求人工处理。</span></div><div id="health-list" class="check-list"></div></section>
+    </main>
+  </div>
+  <script src="operational.js"></script>
+  <script src="operational-factory.js"></script>
+  <script src="operational-device.js"></script>
+  <script src="operational-search.js"></script>
+</body>
+</html>

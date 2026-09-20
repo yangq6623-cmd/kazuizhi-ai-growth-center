@@ -1,6 +1,6 @@
 (() => {
-  const DISPLAY_VERSION = 'V2.1.0 R8 Final';
-  const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.1-R8-FINAL-20260919';
+  const DISPLAY_VERSION = 'V2.2.0 R8 Operational';
+  const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920';
   const PHASE = 'R8-08 全模块最终交付';
   const PREVIOUS_PHASE = 'R8-01B.5';
   const LEGACY_PHASE = 'R8-01B.4.3';

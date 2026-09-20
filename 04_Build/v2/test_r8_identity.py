@@ -8,8 +8,8 @@ sys.path.insert(0, str(SRC))
 
 from core import version  # noqa: E402
 
-EXPECTED_DISPLAY = "V2.1.0 R8 Final"
-EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919"
+EXPECTED_DISPLAY = "V2.2.0 R8 Operational"
+EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
 EXPECTED_PHASE = "R8-08"
 
 status = version.get_version()
@@ -62,14 +62,14 @@ installer = (ROOT / "04_Build" / "installer" / "Kazuizhi_AI_V2.0.0_Beta_Setup.is
 windows_version = (ROOT / "04_Build" / "v2" / "windows_version.txt").read_text(encoding="utf-8")
 workflow = (ROOT / ".github" / "workflows" / "build_v2_enterprise_beta.yml").read_text(encoding="utf-8")
 for value in (
-    "Kazuizhi AI Enterprise V2.1.0 R8 Final",
-    "Kazuizhi_AI_Enterprise_V2.1.0_R8_Final",
+    "Kazuizhi AI Enterprise V2.2.0 R8 Operational",
+    "Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational",
 ):
     if value not in installer:
         raise AssertionError(f"R8 installer identity missing: {value}")
-if "2.1.0.8" not in windows_version or "R8 Final" not in windows_version:
+if "2.2.0.20" not in windows_version or "R8 Operational" not in windows_version:
     raise AssertionError("R8 Windows version identity missing")
-if "Kazuizhi_AI_Enterprise_V2.1.0_R8_Final" not in workflow:
+if "Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational" not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
 print("PASS: R8 Final package, visible build identity, R8-08 phase and R7 compatibility layer are distinct and traceable")

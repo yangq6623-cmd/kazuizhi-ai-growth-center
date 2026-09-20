@@ -1,20 +1,18 @@
-"""Canonical V2 runtime identity with the complete R8 delivery layer."""
+"""Canonical V2.2 R8 Operational runtime identity."""
 
-# R7 compatibility identity stays stable so the proven R7 core, static assets and
-# existing user-data migrations keep working while R8 is developed on top.
-VERSION = "2.0.0"
-BUILD_STAGE = "Beta"
-RELEASE = "R7 Final"
-BUILD_ID = "KZ-ENTERPRISE-V2-BETA-20260917-R7-FINAL"
-PRODUCT_NAME = "Kazuizhi AI Enterprise V2.0.0 Beta R7 Final"
+VERSION = "2.2.0"
+BUILD_STAGE = "Operational"
+RELEASE = "R8"
+BUILD_ID = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
+PRODUCT_NAME = "Kazuizhi AI Enterprise V2.2.0 R8 Operational"
 
-# R8 final package/display identity. The proven R7 identity above remains as a
-# compatibility contract for user-data migration and existing integrations.
-R8_DISPLAY_VERSION = "V2.1.0 R8 Final"
-R8_RELEASE = "R8 Final"
+# Compatibility fields retained for the R8 UI modules, saved data and diagnostics
+# introduced by the #238 build. They now point at the single V2.2 identity.
+R8_DISPLAY_VERSION = "V2.2.0 R8 Operational"
+R8_RELEASE = "R8 Operational"
 R8_PHASE = "R8-08"
-R8_RUNTIME_BUILD = "KZ-ENTERPRISE-V2.1-R8-FINAL-20260919"
-R8_PRODUCT_NAME = "Kazuizhi AI Enterprise V2.1.0 R8 Final"
+R8_RUNTIME_BUILD = BUILD_ID
+R8_PRODUCT_NAME = PRODUCT_NAME
 
 
 def get_version():
@@ -24,7 +22,7 @@ def get_version():
         "release": RELEASE,
         "build": BUILD_ID,
         "product": PRODUCT_NAME,
-        "source": "05_V2.0.0_Source/web",
+        "source": "05_V2.0.0_Source/web/operational.html",
         "display_version": R8_DISPLAY_VERSION,
         "runtime_build": R8_RUNTIME_BUILD,
         "r8_release": R8_RELEASE,

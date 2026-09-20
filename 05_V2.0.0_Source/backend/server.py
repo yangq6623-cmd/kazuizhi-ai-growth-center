@@ -59,6 +59,16 @@ from promotion.content_center import (
     history as promotion_history, list_keywords,
 )
 from records.history_store import append_event, list_reviews
+from promotion.content_factory import (
+    add_asset as factory_add_asset, create_campaign as factory_create_campaign,
+    create_publish_plan as factory_create_publish_plan, create_video as factory_create_video,
+    dashboard as content_factory_dashboard, record_candidate as factory_record_candidate,
+    record_receipt as factory_record_receipt, review_video as factory_review_video,
+    save_account as factory_save_account,
+)
+from promotion.asset_intake import receive as receive_factory_asset
+from promotion.video_worker import render as render_local_video, status as video_worker_status
+from promotion.search_growth import audit as audit_search_site, create_pack as create_search_pack, status as search_growth_status
 
 
 def get_web_path():
@@ -68,10 +78,10 @@ def get_web_path():
 
 def validate_resources():
     web = get_web_path()
-    for name in ("index.html", "WEB_VERSION.txt"):
+    for name in ("operational.html", "index.html", "WEB_VERSION.txt"):
         text = (web / name).read_text(encoding="utf-8")
         if BUILD_ID not in text or re.search(r"1[.]9[.]5|ENTERPRISE-R[23]", text):
-            raise RuntimeError(f"V2 dashboard identity mismatch: {name}")
+            raise RuntimeError(f"R8 Operational dashboard identity mismatch: {name}")
     return web
 
 
@@ -126,6 +136,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "r8_truthful_platform_receipts", "r8_unified_conversations_and_leads",
                 "r8_order_attribution", "r8_24h_72h_7d_metrics",
                 "r8_learning_feedback_loop", "r8_complete_growth_operations_center",
+                "growth_campaign_center", "truthful_content_factory", "managed_local_media",
+                "rtx_video_worker", "owner_review_gate", "real_publish_receipts",
+                "seo_geo_site_audit", "local_search_content_pack",
             ],
         )
 
@@ -200,6 +213,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return model_routes()
         if path == "/api/r7/decision-center":
             return decision_snapshot()
+        if path == "/api/content-factory":
+            return content_factory_dashboard()
+        if path == "/api/video-worker":
+            return video_worker_status()
+        if path == "/api/search-growth":
+            return search_growth_status()
         if path == "/api/r8/control":
             return control_status()
         if path == "/api/r8/device/status":
@@ -230,6 +249,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
+        if path == "/":
+            self.path = "/operational.html"
+            path = "/operational.html"
         query = parse_qs(parsed.query)
         if path == "/api/r8/device/screenshot":
             device_id = str((query.get("device_id") or [""])[0]).strip()
@@ -303,6 +325,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if origin and origin not in {f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}"}:
             self.send_error(403, "Cross-origin changes are not allowed")
             return
+        if path == "/api/content-factory/assets/upload":
+            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                result = receive_factory_asset(self.rfile, length, self.headers)
+            except (ValueError, OSError) as error:
+                self._json_error(400, error)
+                return
+            self._json_ok(result, code=201)
+            return
         if path == "/api/r8/device/file-push":
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 20 * 1024 * 1024:
@@ -358,6 +389,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/r8/growth/import-draft",
             "/api/r8/growth/conversations/update", "/api/r8/growth/leads", "/api/r8/growth/attribution",
             "/api/r8/growth/metrics", "/api/r8/growth/learning/run",
+            "/api/content-factory/campaigns", "/api/content-factory/assets",
+            "/api/content-factory/videos", "/api/content-factory/candidates",
+            "/api/content-factory/review", "/api/content-factory/accounts",
+            "/api/content-factory/publish-plans", "/api/content-factory/receipts",
+            "/api/video-worker/render", "/api/search-growth/audit", "/api/search-growth/packs",
         )
         if path not in allowed_posts:
             self.send_error(404)
@@ -386,6 +422,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = generate_ad(payload)
             elif path == "/api/promotion/video-script":
                 result = generate_video(payload)
+            elif path == "/api/content-factory/campaigns":
+                result = factory_create_campaign(payload)
+            elif path == "/api/content-factory/assets":
+                result = factory_add_asset(payload)
+            elif path == "/api/content-factory/videos":
+                result = factory_create_video(payload)
+            elif path == "/api/content-factory/candidates":
+                result = factory_record_candidate(payload)
+            elif path == "/api/content-factory/review":
+                result = factory_review_video(payload)
+            elif path == "/api/content-factory/accounts":
+                result = factory_save_account(payload)
+            elif path == "/api/content-factory/publish-plans":
+                result = factory_create_publish_plan(payload)
+            elif path == "/api/content-factory/receipts":
+                result = factory_record_receipt(payload)
+            elif path == "/api/video-worker/render":
+                result = render_local_video(payload.get("video_id"))
+            elif path == "/api/search-growth/audit":
+                result = audit_search_site(payload)
+            elif path == "/api/search-growth/packs":
+                result = create_search_pack(payload)
             elif path == "/api/operations/tasks":
                 result = add_task(payload)
             elif path == "/api/operations/tasks/update":
