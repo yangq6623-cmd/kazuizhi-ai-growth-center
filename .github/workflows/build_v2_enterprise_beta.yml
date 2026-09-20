@@ -104,9 +104,10 @@ jobs:
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Publish tagged final installer to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/v2.2.0-r8-operational')
+      - name: Publish final installer to GitHub Releases
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.0-r8-operational')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create '${{ github.ref_name }}' installer_output_v2/* --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.0-r8-operational' }
+          gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
