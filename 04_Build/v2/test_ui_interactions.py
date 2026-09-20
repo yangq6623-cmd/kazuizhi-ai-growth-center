@@ -1,8 +1,9 @@
-"""R7 UI interaction contract audit.
+"""R7/R8 UI interaction and V2.2.1 productization contract audit.
 
-This test prevents visible buttons from shipping without an event path and verifies
-that card-like controls and the main click actions have matching feedback/routes.
-It is intentionally standard-library only so it can run in every Windows build.
+This test prevents visible buttons from shipping without an event path, verifies
+that card-like controls and the main click actions have matching feedback/routes,
+and protects the V2.2.1 operational workbench from device-state drift or recursive
+DOM observers.
 """
 from html.parser import HTMLParser
 from pathlib import Path
@@ -39,6 +40,11 @@ def main():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     scripts = "\n".join(path.read_text(encoding="utf-8") for path in WEB.glob("*.js"))
     persistence_patch = (WEB / "r8_persistence_patch.js").read_text(encoding="utf-8")
+    operational = (WEB / "operational.js").read_text(encoding="utf-8")
+    device = (WEB / "operational-device.js").read_text(encoding="utf-8")
+    productization = (WEB / "operational-productization.js").read_text(encoding="utf-8")
+    workbench = (WEB / "operational-workbench.js").read_text(encoding="utf-8")
+    search = (WEB / "operational-search.js").read_text(encoding="utf-8")
     server = SERVER.read_text(encoding="utf-8")
 
     parser = ButtonParser()
@@ -142,12 +148,40 @@ def main():
     if "new MutationObserver(() =>" in persistence_patch:
         failures.append("Business persistence must not observe every page mutation")
 
+    # V2.2.1: one truthful device state contract must drive both the device page
+    # and the health page. The old top-level device.status check was incompatible
+    # with the actual /api/r8/device/status payload.
+    if "device.status==='online'" in operational:
+        failures.append("Operational health still relies on obsolete top-level device.status")
+    for token in ("deviceSnapshot", "primary_device_id", "operational:device-status"):
+        if token not in operational:
+            failures.append(f"Unified operational device state missing: {token}")
+
+    # Continuous mirroring must recover from short ADB drops without clearing the
+    # last good frame, and it must stop when the user leaves the device page.
+    for token in ("FAILURE_LIMIT=3", "recoverDevice", "lastSuccessAt", "自动重试", "已保留上一帧", "deviceCenterDeactivate=()=>stop(true)"):
+        if token not in device:
+            failures.append(f"V2.2.1 device recovery contract missing: {token}")
+
+    # Productization must use explicit events, not a new all-page MutationObserver.
+    if "MutationObserver" in productization or "MutationObserver" in workbench:
+        failures.append("V2.2.1 productization must not add broad DOM observers")
+    for token in ("owner-todo", "待我处理", "health-action", "operational:refreshed"):
+        if token not in productization and token not in operational:
+            failures.append(f"V2.2.1 owner/health workbench missing: {token}")
+    for token in ("account-workbench", "conversion-workbench", "search-summary"):
+        if token not in workbench:
+            failures.append(f"V2.2.1 business workbench missing: {token}")
+    if "operational:search-updated" not in search:
+        failures.append("SEO/GEO workbench is not synchronized after search updates")
+
     if failures:
         raise SystemExit("\n".join(failures))
 
     print(f"PASS: {len(parser.buttons)} static buttons have interaction paths")
     print(f"PASS: {len(dynamic_contracts)} dynamic interaction families are bound")
     print(f"PASS: {len(required_routes)} action routes exist in backend")
+    print("PASS: V2.2.1 device recovery, owner todo, health, account, conversion and SEO/GEO workbench contracts")
 
 
 if __name__ == "__main__":
