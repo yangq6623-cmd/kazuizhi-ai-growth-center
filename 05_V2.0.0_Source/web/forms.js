@@ -172,3 +172,23 @@ toast = function(message, type='ok') {
   social.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(social);
 })();
+
+// V2.2.1 main-console productization layer. This keeps all legacy capabilities
+// available while reducing the number of primary navigation entries and folding
+// technical gate details behind business-first summaries.
+(() => {
+  if (!document.querySelector('link[data-main-productization]')) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = 'main-productization.css';
+    style.dataset.mainProductization = '1';
+    document.head.appendChild(style);
+  }
+  if (document.querySelector('script[data-main-productization]')) return;
+  const script = document.createElement('script');
+  script.src = 'main-productization.js';
+  script.async = false;
+  script.dataset.mainProductization = '1';
+  script.onerror = () => toast('产品化导航增强模块加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
