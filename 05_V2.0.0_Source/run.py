@@ -11,6 +11,7 @@ from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from backend import realtime_mirror_patch as _realtime_mirror_patch  # noqa: F401,E402
+from backend import content_factory_patch as _content_factory_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
