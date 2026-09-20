@@ -1,8 +1,10 @@
 (() => {
   const byId=id=>document.getElementById(id);
-  const FAILURE_LIMIT=3;
-  let current=null, running=false, busy=false, fallbackTimer=null, statusTimer=null, reconnectTimer=null, objectUrl=null, pointerStart=null;
-  let failureCount=0, reconnectCount=0, lastSuccessAt=null, lastError='', mode='idle', liveDeviceId=null, liveStartedAt=0;
+  const FAILURE_LIMIT=3, RECOVERY_RETRIES=3, DEVICE_HEARTBEAT_MS=4000;
+  let current=null, running=false, streamWanted=false, pageActive=false, busy=false;
+  let fallbackTimer=null, statusTimer=null, reconnectTimer=null, heartbeatTimer=null, objectUrl=null, pointerStart=null;
+  let streamFailureCount=0, deviceFailureCount=0, reconnectCount=0, lastSuccessAt=null, lastError='', mode='idle', liveDeviceId=null, liveStartedAt=0;
+  const liveMetrics={state:'idle',fps:'--',latency:'--',reconnects:0,fallback:false};
 
   async function json(path, options){
     const response=await fetch(path, options||{cache:'no-store'});
@@ -19,6 +21,16 @@
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   function setText(id,value){const node=byId(id);if(node)node.textContent=value??'--'}
   function setMirror(text,kind=''){const node=byId('device-mirror-state');if(node){node.textContent=text;node.className=`device-pill ${kind}`}}
+  function updateLiveMetrics(patch={}){
+    Object.assign(liveMetrics,patch);
+    setText('device-live-state',liveMetrics.state);
+    setText('device-live-fps',typeof liveMetrics.fps==='number'?`${liveMetrics.fps.toFixed(1)} FPS`:liveMetrics.fps);
+    setText('device-live-latency',typeof liveMetrics.latency==='number'?`${Math.max(0,Math.round(liveMetrics.latency))} ms`:liveMetrics.latency);
+    setText('device-live-reconnects',`${Math.max(0,Number(liveMetrics.reconnects)||0)} 次`);
+    setText('device-live-fallback',liveMetrics.fallback?'是（PNG 备用）':'否');
+    const fallback=byId('device-live-fallback');
+    if(fallback)fallback.className=liveMetrics.fallback?'metric-warn':'metric-ok';
+  }
   function publishState(){if(current)window.syncOperationalDeviceStatus?.(current)}
   function lastSuccessText(){return lastSuccessAt?new Date(lastSuccessAt).toLocaleTimeString():'尚无成功画面'}
   function clearTimers(){
@@ -28,8 +40,8 @@
     fallbackTimer=statusTimer=reconnectTimer=null;
   }
   function renderStatus(){
-    const d=primary(), recovering=failureCount>0&&failureCount<FAILURE_LIMIT;
-    setText('device-message',recovering?`实时投屏波动，正在自动恢复（${failureCount}/${FAILURE_LIMIT}）`:(current?.message||'等待设备状态'));
+    const d=primary(), recovering=deviceFailureCount>0&&deviceFailureCount<FAILURE_LIMIT;
+    setText('device-message',recovering?`设备连接波动，正在恢复（${deviceFailureCount}/${FAILURE_LIMIT}）`:(current?.message||'等待设备状态'));
     setText('device-model',d?.model||'未连接');
     setText('device-id',d?.device_id||'--');
     setText('device-android',d?.android_version||'--');
@@ -50,7 +62,7 @@
   async function scan({preserveTransient=false}={}){
     try{
       const next=await json('/api/r8/device/status',{cache:'no-store'}), d=primaryFrom(next);
-      if(d?.connected){current=next;lastError='';renderStatus();publishState();return d}
+      if(d?.connected){current=next;deviceFailureCount=0;lastError='';renderStatus();publishState();return d}
       if(!preserveTransient||!primary()?.connected){current=next;renderStatus();publishState()}
       return null;
     }catch(error){
@@ -59,6 +71,40 @@
       return null;
     }
   }
+
+  async function recoverDevice(expectedId){
+    for(let attempt=1;attempt<=RECOVERY_RETRIES;attempt+=1){
+      if(!pageActive)return null;
+      setText('device-message',`ADB 状态心跳恢复中 · 第 ${attempt}/${RECOVERY_RETRIES} 次`);
+      await wait(200+attempt*120);
+      try{
+        const next=await json('/api/r8/device/status',{cache:'no-store'});
+        const devices=Array.isArray(next.devices)?next.devices.filter(item=>item?.connected):[];
+        const recovered=devices.find(item=>item.device_id===expectedId)||primaryFrom(next);
+        if(recovered){current=next;deviceFailureCount=0;renderStatus();publishState();return recovered}
+      }catch(error){lastError=error.message}
+    }
+    return null;
+  }
+  async function heartbeat(){
+    heartbeatTimer=null;
+    if(!pageActive||document.visibilityState!=='visible')return;
+    const expectedId=primary()?.device_id||liveDeviceId;
+    let connected=await scan({preserveTransient:true});
+    if(!connected&&expectedId){
+      deviceFailureCount+=1;
+      connected=await recoverDevice(expectedId);
+      if(!connected&&deviceFailureCount>=FAILURE_LIMIT){
+        await scan({preserveTransient:false});
+        if(running)stop(true,true);
+      }
+    }
+    if(!pageActive)return;
+    if(connected&&streamWanted&&(!running||liveDeviceId!==connected.device_id))start(true,true);
+    if(pageActive)heartbeatTimer=setTimeout(heartbeat,DEVICE_HEARTBEAT_MS);
+  }
+  function startHeartbeat(){if(heartbeatTimer)clearTimeout(heartbeatTimer);heartbeatTimer=setTimeout(heartbeat,DEVICE_HEARTBEAT_MS)}
+  function stopHeartbeat(){if(heartbeatTimer)clearTimeout(heartbeatTimer);heartbeatTimer=null}
 
   async function readFrame(d){
     const response=await fetch(`/api/r8/device/screenshot?device_id=${encodeURIComponent(d.device_id)}&t=${Date.now()}`,{cache:'no-store'});
@@ -76,8 +122,9 @@
     return blob;
   }
   function markFallbackSuccess(blob){
-    failureCount=0;lastError='';lastSuccessAt=Date.now();
+    streamFailureCount=0;lastError='';lastSuccessAt=Date.now();
     setMirror('单帧备用模式','warn');
+    updateLiveMetrics({state:'fallback',fps:'--',latency:'--',fallback:true});
     setText('device-frame-detail',`实时流暂不可用 · PNG ${Math.max(1,Math.round(blob.size/1024))} KB · 最后成功 ${lastSuccessText()} · 正在后台尝试恢复实时投屏`);
     renderStatus();publishState();
   }
@@ -98,7 +145,7 @@
       markFallbackSuccess(blob);
       return true;
     }catch(error){
-      lastError=error.message;failureCount+=1;
+      lastError=error.message;streamFailureCount+=1;
       setMirror('备用画面读取失败','stop');
       setText('device-frame-detail',`${lastError} · 最后成功 ${lastSuccessText()}`);
       if(!quiet&&window.notify)window.notify(lastError,'error');
@@ -129,14 +176,15 @@
       if(running&&mode==='fallback')fallbackTimer=setTimeout(loop,1100);
     };
     loop();
-    reconnectTimer=setTimeout(()=>{if(running&&mode==='fallback')start(true)},5000);
+    reconnectTimer=setTimeout(()=>{if(running&&mode==='fallback')start(true,true)},5000);
   }
   function activateFallback(reason){
     if(!running)return;
     clearTimers();
     closeLiveRequest();
-    mode='fallback';failureCount=Math.max(1,failureCount);
+    mode='fallback';streamFailureCount=Math.max(1,streamFailureCount);
     setMirror('实时流暂不可用 · 单帧备用','warn');
+    updateLiveMetrics({state:'fallback',fps:'--',latency:'--',reconnects:reconnectCount,fallback:true});
     setText('device-frame-detail',`已自动降级到备用截图：${reason||'实时视频流未建立'} · 5秒后自动重连实时投屏`);
     startFallbackLoop();
   }
@@ -146,33 +194,39 @@
       const status=await json(`/api/r8/device/live-status?device_id=${encodeURIComponent(liveDeviceId)}&t=${Date.now()}`,{cache:'no-store'});
       const fps=Number(status.fps||0), frames=Number(status.frame_count||0), age=status.last_frame_age_ms, restarts=Number(status.restart_count||0);
       if(status.state==='streaming'&&frames>0){
-        failureCount=0;lastSuccessAt=Date.now()-Math.max(0,Number(age||0));
+        streamFailureCount=0;lastSuccessAt=Date.now()-Math.max(0,Number(age||0));
         const image=byId('device-screen'), empty=byId('device-empty');
         if(image){image.hidden=false;image.dataset.ready='1'}
         if(empty)empty.hidden=true;
         setMirror(`实时投屏 ${fps?fps.toFixed(1)+' FPS':''}`.trim(),'ok');
+        updateLiveMetrics({state:'streaming（持续传输）',fps,latency:age==null?'--':Number(age),reconnects:restarts+reconnectCount,fallback:false});
         setText('device-frame-detail',`持续视频流 · ${frames} 帧 · 画面延迟 ${age==null?'--':age+'ms'} · 自动重连 ${restarts+reconnectCount} 次`);
       }else if(status.state==='recovering'){
-        failureCount+=1;
-        setMirror(`实时投屏恢复中 ${Math.min(failureCount,FAILURE_LIMIT)}/${FAILURE_LIMIT}`,'warn');
+        streamFailureCount+=1;
+        setMirror(`实时投屏恢复中 ${Math.min(streamFailureCount,FAILURE_LIMIT)}/${FAILURE_LIMIT}`,'warn');
+        updateLiveMetrics({state:'recovering（自动恢复）',fps,latency:age==null?'--':Number(age),reconnects:restarts+reconnectCount,fallback:false});
         setText('device-frame-detail',status.last_error||'实时视频流正在自动重建');
-      }else if(Date.now()-liveStartedAt>5000){failureCount+=1}
-      if((age!=null&&age>3500)||failureCount>=FAILURE_LIMIT){activateFallback(status.last_error||'超过3.5秒没有收到新视频帧');return}
+      }else if(Date.now()-liveStartedAt>5000){streamFailureCount+=1;updateLiveMetrics({state:`${status.state||'connecting'}（等待视频帧）`,fps,latency:age==null?'--':Number(age),reconnects:restarts+reconnectCount,fallback:false})}
+      if((age!=null&&age>3500)||streamFailureCount>=FAILURE_LIMIT){activateFallback(status.last_error||'超过3.5秒没有收到新视频帧');return}
     }catch(error){
-      lastError=error.message;failureCount+=1;
-      setMirror(`实时投屏恢复中 ${Math.min(failureCount,FAILURE_LIMIT)}/${FAILURE_LIMIT}`,'warn');
+      lastError=error.message;streamFailureCount+=1;
+      setMirror(`实时投屏恢复中 ${Math.min(streamFailureCount,FAILURE_LIMIT)}/${FAILURE_LIMIT}`,'warn');
+      updateLiveMetrics({state:'status-error（状态读取失败）',reconnects:reconnectCount,fallback:false});
       setText('device-frame-detail',error.message);
-      if(failureCount>=FAILURE_LIMIT){activateFallback(error.message);return}
+      if(streamFailureCount>=FAILURE_LIMIT){activateFallback(error.message);return}
     }
     statusTimer=setTimeout(pollLiveStatus,1000);
   }
-  async function start(force=false){
+  async function start(force=false,isReconnect=false){
+    if(!pageActive)return false;
     if(running&&mode==='live'&&!force)return true;
+    if(isReconnect)reconnectCount+=1;
     clearTimers();
-    running=true;failureCount=0;
+    running=true;streamWanted=true;streamFailureCount=0;
     byId('device-sync-start')?.classList.add('active');
     try{
       let d=primary()||await scan();
+      if(!pageActive)return false;
       if(!d?.connected)throw new Error('未发现已授权的 Android 手机');
       if(d.screen_state==='secure_lock')throw new Error('手机处于安全锁定状态，请人工解锁');
       if(d.screen_state==='screen_off'){
@@ -183,6 +237,7 @@
       if(!image)throw new Error('真机画面组件未就绪');
       if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null}
       setMirror('正在建立实时投屏…','warn');
+      updateLiveMetrics({state:'connecting（正在连接）',fps:'--',latency:'--',reconnects:reconnectCount,fallback:false});
       setText('device-frame-detail','正在连接持续视频流，不再使用定时截图作为主画面');
       if(empty){empty.hidden=false;empty.textContent='正在建立实时手机投屏…'}
       image.hidden=false;image.dataset.ready='1';
@@ -191,16 +246,18 @@
       statusTimer=setTimeout(pollLiveStatus,700);
       return true;
     }catch(error){
-      lastError=error.message;reconnectCount+=1;
+      lastError=error.message;
       setMirror('实时投屏启动失败','stop');
+      updateLiveMetrics({state:'fallback（实时流启动失败）',fps:'--',latency:'--',reconnects:reconnectCount,fallback:true});
       setText('device-frame-detail',`${error.message} · 已切换备用截图并继续自动重试实时流`);
       mode='fallback';startFallbackLoop();
       return false;
     }
   }
-  function stop(silent=false){
-    running=false;clearTimers();closeLiveRequest();mode='idle';liveDeviceId=null;failureCount=0;
+  function stop(silent=false,keepRequested=false){
+    running=false;streamWanted=keepRequested;clearTimers();closeLiveRequest();mode='idle';liveDeviceId=null;streamFailureCount=0;
     byId('device-sync-start')?.classList.remove('active');
+    updateLiveMetrics({state:'stopped（已停止）',fps:'--',latency:'--',fallback:false});
     if(!silent)setMirror('实时投屏已停止','warn');
   }
 
@@ -222,18 +279,19 @@
   }
   function bind(){
     applyRealtimeLabels();
-    byId('device-scan')?.addEventListener('click',async()=>{const d=await scan();if(d)start(true)});
-    byId('device-sync-start')?.addEventListener('click',()=>start(true));
-    byId('device-sync-stop')?.addEventListener('click',()=>stop(false));
-    byId('device-sync-once')?.addEventListener('click',async()=>{const wasRunning=running;stop(true);await frame();if(wasRunning)setTimeout(()=>start(true),500)});
+    updateLiveMetrics();
+    byId('device-scan')?.addEventListener('click',async()=>{const d=await scan();if(d)start(true,false)});
+    byId('device-sync-start')?.addEventListener('click',()=>start(true,false));
+    byId('device-sync-stop')?.addEventListener('click',()=>stop(false,false));
+    byId('device-sync-once')?.addEventListener('click',async()=>{const wasRunning=running;stop(true,wasRunning);await frame();if(wasRunning)setTimeout(()=>start(true,false),500)});
     document.querySelectorAll('[data-device-mode]').forEach(button=>button.addEventListener('click',()=>takeover(button.dataset.deviceMode).catch(error=>window.notify?.(error.message,'error'))));
     document.querySelectorAll('[data-device-action]').forEach(button=>button.addEventListener('click',()=>action(button.dataset.deviceAction).catch(error=>window.notify?.(error.message,'error'))));
     const image=byId('device-screen');
-    image?.addEventListener('pointerdown',event=>{const d=primary();if(!d?.screen||failureCount>=FAILURE_LIMIT)return;pointerStart={point:point(event,image,d),clientX:event.clientX,clientY:event.clientY,at:Date.now()};try{image.setPointerCapture(event.pointerId)}catch{}});
-    image?.addEventListener('pointerup',event=>{const d=primary(),startPoint=pointerStart;pointerStart=null;if(!d?.screen||!startPoint||failureCount>=FAILURE_LIMIT)return;const end=point(event,image,d),distance=Math.hypot(event.clientX-startPoint.clientX,event.clientY-startPoint.clientY);const promise=distance<12?action('tap',{x:end.x,y:end.y},false):action('swipe',{x1:startPoint.point.x,y1:startPoint.point.y,x2:end.x,y2:end.y,duration:Math.max(100,Math.min(1500,Date.now()-startPoint.at))},false);promise.catch(error=>window.notify?.(error.message,'error'))});
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')stop(true);else if(byId('device')?.classList.contains('active'))setTimeout(()=>start(true),200)});
+    image?.addEventListener('pointerdown',event=>{const d=primary();if(!d?.screen)return;pointerStart={point:point(event,image,d),clientX:event.clientX,clientY:event.clientY,at:Date.now()};try{image.setPointerCapture(event.pointerId)}catch{}});
+    image?.addEventListener('pointerup',event=>{const d=primary(),startPoint=pointerStart;pointerStart=null;if(!d?.screen||!startPoint)return;const end=point(event,image,d),distance=Math.hypot(event.clientX-startPoint.clientX,event.clientY-startPoint.clientY);const promise=distance<12?action('tap',{x:end.x,y:end.y},false):action('swipe',{x1:startPoint.point.x,y1:startPoint.point.y,x2:end.x,y2:end.y,duration:Math.max(100,Math.min(1500,Date.now()-startPoint.at))},false);promise.catch(error=>window.notify?.(error.message,'error'))});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')window.deviceCenterDeactivate?.();else if(byId('device')?.classList.contains('active'))setTimeout(()=>window.deviceCenterActivate?.(),200)});
   }
-  window.deviceCenterActivate=async()=>{const d=await scan();if(d)start(true)};
-  window.deviceCenterDeactivate=()=>stop(true);
+  window.deviceCenterActivate=async()=>{pageActive=true;streamWanted=true;stopHeartbeat();const d=await scan();if(!pageActive)return;startHeartbeat();if(d&&!running)start(false,false);else if(d&&liveDeviceId!==d.device_id)start(true,true)};
+  window.deviceCenterDeactivate=()=>{pageActive=false;streamWanted=false;stopHeartbeat();stop(true,false)};
   bind();scan();
 })();

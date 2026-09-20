@@ -8,7 +8,7 @@
   <meta name="kazuizhi-build" content="KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920">
   <title>卡嘴子 AI 真实运营工作台</title>
   <link rel="stylesheet" href="operational.css">
-  <link rel="stylesheet" href="operational-device.css">
+  <link rel="stylesheet" href="operational-device.css?v=221-live-primary">
   <link rel="stylesheet" href="operational-video.css">
   <link rel="stylesheet" href="operational-search.css">
   <link rel="stylesheet" href="operational-navigation.css">
@@ -57,11 +57,12 @@
 
 
       <section id="device" class="page">
-        <div class="page-intro"><p>手机与真机执行</p><h2>稳定同步真实 Android 手机，画面波动时保留上一帧</h2><span>单击画面是真机点击，拖动是真机滑动；密码、人脸、验证码和平台风控仍转人工。</span></div>
-        <div class="device-toolbar"><button id="device-scan" class="primary">扫描手机</button><button id="device-sync-start">连续同步</button><button id="device-sync-once">测试截图</button><button id="device-sync-stop">停止同步</button><span id="device-connection" class="device-pill warn">手机未连接</span><span id="device-mirror-state" class="device-pill warn">未同步</span></div>
+        <div class="page-intro"><p>手机与真机执行</p><h2>实时投屏真实 Android 手机，视频与滑动连续显示</h2><span>主画面使用持续视频流；点击、滑动和按键走独立控制通道，实时流故障时才降级到单帧备用。</span></div>
+        <div class="device-toolbar"><button id="device-scan" class="primary">扫描手机</button><button id="device-sync-start">实时投屏</button><button id="device-sync-once">单帧备用测试</button><button id="device-sync-stop">停止投屏</button><span id="device-connection" class="device-pill warn">手机未连接</span><span id="device-mirror-state" class="device-pill warn">未同步</span></div>
+        <div class="device-stream-metrics" aria-label="实时投屏状态"><div><small>实时流状态</small><b id="device-live-state">idle</b></div><div><small>实际 FPS</small><b id="device-live-fps">--</b></div><div><small>当前延迟</small><b id="device-live-latency">--</b></div><div><small>重连次数</small><b id="device-live-reconnects">0 次</b></div><div><small>PNG 备用模式</small><b id="device-live-fallback" class="metric-ok">否</b></div></div>
         <div class="device-grid">
           <article class="phone-panel"><div class="phone-stage"><img id="device-screen" alt="Android 真机画面" hidden><div id="device-empty">连接 USB 并允许调试后，点击“扫描手机”</div></div><div class="phone-actions"><button data-device-action="back">← 返回</button><button data-device-action="home">主页</button><button data-device-action="wake">唤醒</button><button data-device-action="power">电源键</button></div><small id="device-frame-detail">尚未读取画面；连接波动时不会清空最后一帧。</small></article>
-          <article class="panel device-side"><div><p>设备状态</p><h3 id="device-message">正在检查</h3></div><div class="device-meta"><div><small>型号</small><b id="device-model">--</b></div><div><small>设备ID</small><b id="device-id">--</b></div><div><small>Android</small><b id="device-android">--</b></div><div><small>电量</small><b id="device-battery">--</b></div><div><small>屏幕</small><b id="device-screen-state">--</b></div><div><small>控制权</small><b id="device-control">--</b></div></div><div class="mode-box"><p>控制模式</p><div><button data-device-mode="r8">R8 自动</button><button data-device-mode="human">人工控制</button><button data-device-mode="paused">暂停</button></div></div><details><summary>ADB 连接详情</summary><p id="device-adb">--</p></details><p class="truth">同步采用“有效 PNG 才替换画面”的策略；一次截图失败不会让手机画面闪退或变黑，并会自动重试。</p></article>
+          <article class="panel device-side"><div><p>设备状态</p><h3 id="device-message">正在检查</h3></div><div class="device-meta"><div><small>型号</small><b id="device-model">--</b></div><div><small>设备ID</small><b id="device-id">--</b></div><div><small>Android</small><b id="device-android">--</b></div><div><small>电量</small><b id="device-battery">--</b></div><div><small>屏幕</small><b id="device-screen-state">--</b></div><div><small>控制权</small><b id="device-control">--</b></div></div><div class="mode-box"><p>控制模式</p><div><button data-device-mode="r8">R8 自动</button><button data-device-mode="human">人工控制</button><button data-device-mode="paused">暂停</button></div></div><details><summary>ADB 连接详情</summary><p id="device-adb">--</p></details><p class="truth">主模式为持续实时视频流；PNG 截图只作为故障备用。设备心跳、视频流与 ADB 人工控制互相独立。</p></article>
         </div>
       </section>
       <section id="accounts" class="page"><div class="page-intro"><p>账号健康与发布</p><h2>账号像真实本地服务人员一样长期经营</h2><span>不做批量刷评、不冒充用户、不绕过平台安全验证。</span></div><div class="two-col"><article class="panel"><h3>账号档案</h3><form id="account-form" class="form-grid"><label>平台<select id="account-platform"><option>抖音</option><option>快手</option><option>小红书</option><option>视频号</option></select></label><label>账号名称<input id="account-name" maxlength="80" placeholder="例如：涟水家电维修"></label><label>区域<select id="account-region"><option>涟水县</option><option>清江浦区</option><option>淮安区</option><option>淮阴区</option></select></label><label>服务主线<select id="account-service"><option>家电安装维修</option><option>水电安装维修</option><option>管道疏通维修</option><option>家政服务</option></select></label><label class="full">连接状态<select id="account-status"><option>待人工登录授权</option><option>已验证可发布</option><option>需要人工处理</option><option>已暂停</option></select></label><button class="primary full" type="submit">保存账号档案</button></form></article><article class="panel"><p>自动互动边界</p><h3>有价值，才回复</h3><ul class="plain-list"><li>仅回应真实相关的本地服务问题</li><li>不复制评论、不无关提品牌、不虚构客户经历</li><li>用户主动需要时，才引导官方入口或微信客服</li><li>验证码、人脸、异常登录自动停下并通知人工</li></ul><p class="truth">账号健康的目的不是规避平台识别，而是建立长期可信的本地服务形象。</p></article></div><article class="panel wide"><div class="panel-head"><div><p>真实授权状态</p><h3>账号连接与发布能力</h3></div><button id="refresh-accounts">刷新</button></div><div id="account-list" class="card-list"></div></article></section>
@@ -78,7 +79,7 @@
   </div>
   <script src="operational.js"></script>
   <script src="operational-factory.js"></script>
-  <script src="operational-device.js"></script>
+  <script src="operational-device.js?v=221-live-primary"></script>
   <script src="operational-search.js"></script>
 </body>
 </html>

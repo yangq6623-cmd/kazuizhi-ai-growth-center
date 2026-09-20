@@ -69,6 +69,8 @@ jobs:
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+          node 04_Build/v2/test_operational_device_live.js
+          if ($LASTEXITCODE -ne 0) { throw 'Operational realtime mirror browser regression failed' }
       - name: Verify V2.2 R8 Operational source closed loop
         run: python 04_Build/v2/verify_r8_operational.py --source
       - name: Build packaged runtime and installer

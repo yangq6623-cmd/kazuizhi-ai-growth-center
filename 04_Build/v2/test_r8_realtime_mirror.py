@@ -13,6 +13,8 @@ mirror_backend = (SRC / "integrations" / "android_live_mirror.py").read_text(enc
 route_patch = (SRC / "backend" / "realtime_mirror_patch.py").read_text(encoding="utf-8")
 mirror_ui = (SRC / "web" / "r8_device_b4_mirror_hotfix.js").read_text(encoding="utf-8")
 operational_ui = (SRC / "web" / "operational-device.js").read_text(encoding="utf-8")
+operational_html = (SRC / "web" / "operational.html").read_text(encoding="utf-8")
+operational_runtime_test = (ROOT / "04_Build" / "v2" / "test_operational_device_live.js").read_text(encoding="utf-8")
 run_source = (SRC / "run.py").read_text(encoding="utf-8")
 requirements = (SRC / "requirements.txt").read_text(encoding="utf-8")
 
@@ -51,9 +53,15 @@ assert "持续视频流" in operational_ui
 assert "function activateFallback" in operational_ui
 assert "function pollLiveStatus" in operational_ui
 assert "function startFallbackLoop" in operational_ui
+assert "function heartbeat" in operational_ui
+assert "heartbeatTimer" in operational_ui
 assert "setTimeout(()=>schedule(false),1200)" not in operational_ui
 assert "function schedule(" not in operational_ui
 assert "setMirror('连续同步正常'" not in operational_ui
+for metric_id in ("device-live-state", "device-live-fps", "device-live-latency", "device-live-reconnects", "device-live-fallback"):
+    assert metric_id in operational_html
+assert "normal live mode must not continue the old screenshot polling loop" in operational_runtime_test
+assert "requests.filter(request => request.url.includes('/api/r8/device/screenshot')).length" in operational_runtime_test
 
 # Packaged FFmpeg is already part of the Windows runtime and is reused for local
 # low-latency decode. No external browser service or unsafe phone spoofing is added.

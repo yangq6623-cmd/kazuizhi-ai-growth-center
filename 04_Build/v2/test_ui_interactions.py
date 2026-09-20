@@ -157,9 +157,13 @@ def main():
         if token not in operational:
             failures.append(f"Unified operational device state missing: {token}")
 
-    # Continuous mirroring must recover from short ADB drops without clearing the
-    # last good frame, and it must stop when the user leaves the device page.
-    for token in ("FAILURE_LIMIT=3", "recoverDevice", "lastSuccessAt", "自动重试", "已保留上一帧", "deviceCenterDeactivate=()=>stop(true)"):
+    # Device heartbeat, continuous video and ADB controls are independent. The
+    # browser must explicitly close both stream/status timers when the user leaves.
+    for token in (
+        "FAILURE_LIMIT=3", "RECOVERY_RETRIES=3", "recoverDevice", "lastSuccessAt",
+        "heartbeatTimer", "closeLiveRequest", "deviceCenterDeactivate=()=>{",
+        "stopHeartbeat()", "stop(true,false)",
+    ):
         if token not in device:
             failures.append(f"V2.2.1 device recovery contract missing: {token}")
 

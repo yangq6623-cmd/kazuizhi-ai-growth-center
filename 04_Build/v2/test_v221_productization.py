@@ -49,7 +49,9 @@ def main():
         "RECOVERY_RETRIES=3",
         "recoverDevice",
         "最后成功",
-        "window.deviceCenterDeactivate=()=>stop(true)",
+        "window.deviceCenterDeactivate=()=>{",
+        "stopHeartbeat()",
+        "stop(true,false)",
     ], "device recovery", failures)
 
     require(product, [
