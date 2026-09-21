@@ -16,6 +16,7 @@ from backend import content_factory_patch as _content_factory_patch  # noqa: F40
 # patches so all import-time aliases point at the final R8 content semantics.
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
 from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
+from promotion import video_worker_cpu_patch as _video_worker_cpu_patch  # noqa: F401,E402
 from backend import content_effects_patch as _content_effects_patch  # noqa: F401,E402
 # Productization truth/state patches install last so UI-facing aliases use one
 # Growth ID, one owner-action source and the durable R8 conversion ledger.
