@@ -1,6 +1,6 @@
 (() => {
   const byId=id=>document.getElementById(id);
-  const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const esc=value=>String(value??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 
   function relabelNavigation(){
     const link=document.querySelector('.r7-console-link');
@@ -124,6 +124,15 @@
     document.head.appendChild(script);
   }
 
+  function loadUiHotfix341(){
+    if(document.querySelector('script[data-r8-ui-hotfix-341]'))return;
+    const script=document.createElement('script');
+    script.src='/operational-ui-hotfix-341.js';
+    script.async=false;
+    script.dataset.r8UiHotfix341='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -141,5 +150,6 @@
   loadUiPolish();
   loadDeepProductization();
   loadUiFinal();
+  loadUiHotfix341();
   window.setTimeout(refresh,400);
 })();
