@@ -1,8 +1,10 @@
-"""R8-01B.3 runtime patch for ordinary screen-off recovery and safe app launch.
+"""R8-01B.3+ runtime patch for safe Android recovery and owner controls.
 
 This module extends the existing Android adapter without weakening its security
 boundary. Non-secure keyguard screens may be dismissed after a normal wake;
-secure locks and platform verification remain human-only.
+secure locks and platform verification remain human-only. V2.2.1 also exposes
+common owner controls (recents, volume, orientation) through the same audited
+device action route used by the existing buttons.
 """
 
 import time
@@ -16,6 +18,20 @@ PLATFORM_PACKAGES = {
     "wechat_channels": "com.tencent.mm",
     "weibo": "com.sina.weibo",
     "bilibili": "tv.danmaku.bili",
+}
+
+OWNER_KEYEVENTS = {
+    "recents": "187",
+    "volume_up": "24",
+    "volume_down": "25",
+}
+
+# Android user_rotation values: 0 portrait, 1 landscape clockwise, 2 reverse
+# portrait, 3 landscape counter-clockwise. We only expose owner-triggered
+# left/right landscape controls; automatic rotation can be restored separately.
+OWNER_ROTATIONS = {
+    "rotate_left": "3",
+    "rotate_right": "1",
 }
 
 _ORIGINAL_EXECUTE_ACTION = _base.execute_action
@@ -77,6 +93,31 @@ def _prepare_for_interaction(device_id, requested_action):
     return device
 
 
+def _require_owner_ready(device_id, action):
+    """Prepare a phone for a manual owner control without bypassing secure lock."""
+    device = _prepare_for_interaction(device_id, action)
+    if device.get("screen_awake") is False:
+        raise ValueError("手机自动唤醒失败，请检查设备后人工处理")
+    if device.get("device_secure") is True and device.get("device_locked") is True:
+        raise ValueError("手机处于安全锁定状态，请先人工解锁后再继续")
+    if device.get("device_locked") is True:
+        raise ValueError("手机仍停留在锁屏界面，请人工确认后继续")
+    return device
+
+
+def _audit_owner_control(device_id, action, actor, payload, detail):
+    event = _base._append_audit({
+        "device_id": device_id,
+        "action": action,
+        "actor": actor,
+        "task_id": str(payload.get("task_id") or "")[:120] or None,
+        "account_id": str(payload.get("account_id") or "")[:180] or None,
+        "result": "ok",
+        "detail": detail,
+    })
+    return {"ok": True, "device": _base._fresh_device_details(device_id), "event": event}
+
+
 def execute_action(payload):
     payload = payload or {}
     device_id = str(payload.get("device_id") or "").strip()
@@ -90,13 +131,7 @@ def execute_action(payload):
         package = PLATFORM_PACKAGES.get(platform)
         if not package:
             raise ValueError("当前平台没有已登记的 Android 启动入口")
-        device = _prepare_for_interaction(device_id, "launch_app")
-        if device.get("screen_awake") is False:
-            raise ValueError("手机自动唤醒失败，请检查设备后人工处理")
-        if device.get("device_secure") is True and device.get("device_locked") is True:
-            raise ValueError("手机处于安全锁定状态，请先人工解锁后再交还 R8")
-        if device.get("device_locked") is True:
-            raise ValueError("手机仍停留在锁屏界面，请人工确认后继续")
+        _require_owner_ready(device_id, "launch_app")
         output = _base._shell(
             device_id,
             "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1",
@@ -115,6 +150,28 @@ def execute_action(payload):
             "detail": {"platform": platform, "package": package},
         })
         return {"ok": True, "device": _base._fresh_device_details(device_id), "event": event}
+
+    if action in OWNER_KEYEVENTS:
+        _require_owner_ready(device_id, action)
+        keyevent = OWNER_KEYEVENTS[action]
+        _base._shell(device_id, "input", "keyevent", keyevent)
+        return _audit_owner_control(device_id, action, actor, payload, {"keyevent": keyevent, "owner_control": True})
+
+    if action in OWNER_ROTATIONS:
+        _require_owner_ready(device_id, action)
+        rotation = OWNER_ROTATIONS[action]
+        _base._shell(device_id, "settings", "put", "system", "accelerometer_rotation", "0")
+        _base._shell(device_id, "settings", "put", "system", "user_rotation", rotation)
+        time.sleep(0.25)
+        return _audit_owner_control(
+            device_id, action, actor, payload,
+            {"user_rotation": int(rotation), "auto_rotate": False, "owner_control": True},
+        )
+
+    if action == "rotate_auto":
+        _require_owner_ready(device_id, action)
+        _base._shell(device_id, "settings", "put", "system", "accelerometer_rotation", "1")
+        return _audit_owner_control(device_id, action, actor, payload, {"auto_rotate": True, "owner_control": True})
 
     if action not in {"power", "keep_awake_on", "keep_awake_off"}:
         _prepare_for_interaction(device_id, action)

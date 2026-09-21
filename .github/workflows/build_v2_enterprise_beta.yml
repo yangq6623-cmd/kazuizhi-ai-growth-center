@@ -62,8 +62,11 @@ jobs:
           python 04_Build/v2/test_r8_complete_growth_ops.py
           python 04_Build/v2/test_r8_identity.py
           python 04_Build/v2/test_r8_completion_upgrade.py
+          python 04_Build/v2/test_r8_content_factory_v2_completion.py
           python 04_Build/v2/test_live_business_source.py
           python 04_Build/v2/test_ui_interactions.py
+          python 04_Build/v2/test_v221_productization.py
+          python 04_Build/v2/test_r8_realtime_mirror.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -114,7 +117,7 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'real content growth ID', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'stable ADB PNG mirror contract', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'platform adaptation', 'production audit events', 'licensed-media safe adapter', 'AI-shot adapter', 'local TTS/subtitle adapter', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'V2.2.1 productization regression contract', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
             acceptance = 'Automated gates passed; real social account login/captcha and live platform publication remain owner-authorized field acceptance'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
