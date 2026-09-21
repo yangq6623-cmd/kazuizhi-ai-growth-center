@@ -99,10 +99,11 @@ def _growth_snapshot(active_id):
     with growth._LOCK:
         state = growth._state()
         signal_to_growth = {x.get("signal_id"): x.get("growth_id") for x in state.get("growth_cases", [])}
+        all_leads = state.get("leads", [])
         leads = []
-        for row in reversed(state.get("leads", [])):
+        for row in reversed(all_leads):
             gid = signal_to_growth.get(row.get("signal_id"))
-            if active_id and gid and gid != active_id:
+            if active_id and gid != active_id:
                 continue
             leads.append({
                 **row,
@@ -114,11 +115,14 @@ def _growth_snapshot(active_id):
                 "last_contact_at": row.get("updated_at") or row.get("first_touch_at"),
                 "next_action": row.get("next_follow_up_at") or ("等待人工处理" if row.get("stage") == "human_required" else "按线索状态继续跟进"),
             })
-        lead_growth = {row.get("lead_id"): row.get("growth_id") for row in leads}
+        all_lead_growth = {
+            row.get("lead_id"): signal_to_growth.get(row.get("signal_id"))
+            for row in all_leads
+        }
         attribution = []
         for row in reversed(state.get("attribution", [])):
-            gid = lead_growth.get(row.get("lead_id")) or signal_to_growth.get(next((x.get("signal_id") for x in state.get("leads", []) if x.get("lead_id") == row.get("lead_id")), None))
-            if active_id and gid and gid != active_id:
+            gid = all_lead_growth.get(row.get("lead_id"))
+            if active_id and gid != active_id:
                 continue
             attribution.append({**row, "growth_id": gid})
         metrics = [x for x in state.get("metric_snapshots", []) if not active_id or x.get("growth_id") == active_id]
