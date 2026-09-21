@@ -2,9 +2,9 @@
 
 The owner may drop optional files under ``data/r8/material_inbox/<campaign_id>``.
 Every file is indexed, but a file is promoted into the usable content library
-only when a sidecar explicitly classifies it.  Real customer/repair material
-also requires explicit consent metadata.  This keeps automatic scanning useful
-without silently treating unknown files as publishable real cases.
+only when a sidecar explicitly classifies it. Real customer/repair material
+also requires explicit consent metadata. Repeated scans reuse fingerprints for
+unchanged files so a large inbox does not waste disk/GPU workstation resources.
 """
 
 from __future__ import annotations
@@ -71,6 +71,11 @@ def scan_material_inbox():
     data = content_factory._load()
     campaign_ids = {str(x.get("id")) for x in data.get("campaigns", []) if x.get("id")}
     previous = read_json(INDEX_FILE, {"schema": 1, "items": []})
+    previous_items = previous.get("items", []) if isinstance(previous, dict) else []
+    previous_by_path = {
+        str(item.get("path")): item for item in previous_items
+        if isinstance(item, dict) and item.get("path")
+    }
     known_assets = {
         str(x.get("source_fingerprint")): x for x in data.get("assets", [])
         if x.get("source_fingerprint")
@@ -79,6 +84,8 @@ def scan_material_inbox():
     promoted = 0
     unclassified = 0
     invalid = 0
+    hash_reused = 0
+    hash_computed = 0
 
     root = inbox_root()
     for campaign_dir in sorted(root.iterdir() if root.exists() else []):
@@ -90,7 +97,18 @@ def scan_material_inbox():
                 continue
             try:
                 stat = path.stat()
-                fingerprint = _fingerprint(path)
+                prior = previous_by_path.get(str(path)) or {}
+                unchanged = (
+                    prior.get("fingerprint")
+                    and int(prior.get("bytes") or -1) == int(stat.st_size)
+                    and int(prior.get("mtime_ns") or -1) == int(stat.st_mtime_ns)
+                )
+                if unchanged:
+                    fingerprint = str(prior["fingerprint"])
+                    hash_reused += 1
+                else:
+                    fingerprint = _fingerprint(path)
+                    hash_computed += 1
             except OSError as error:
                 items.append({
                     "campaign_id": campaign_id, "path": str(path), "status": "读取失败",
@@ -111,6 +129,7 @@ def scan_material_inbox():
                 "extension": path.suffix.lower(),
                 "media_class": _media_class(path),
                 "bytes": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
                 "fingerprint": fingerprint,
                 "kind": kind or None,
                 "consent_confirmed": consent,
@@ -158,6 +177,7 @@ def scan_material_inbox():
                         "extension": path.suffix.lower(),
                         "media_class": entry["media_class"],
                         "bytes": stat.st_size,
+                        "mtime_ns": stat.st_mtime_ns,
                     },
                 })
                 known_assets[fingerprint] = asset
@@ -167,7 +187,7 @@ def scan_material_inbox():
             items.append(entry)
 
     result = {
-        "schema": 1,
+        "schema": 2,
         "scanned_at": now_iso(),
         "root": str(root),
         "items": items[-1000:],
@@ -176,6 +196,8 @@ def scan_material_inbox():
             "promoted": promoted,
             "unclassified": unclassified,
             "invalid": invalid,
+            "hash_reused": hash_reused,
+            "hash_computed": hash_computed,
         },
         "previous_scan_at": previous.get("scanned_at") if isinstance(previous, dict) else None,
     }
@@ -188,9 +210,15 @@ def status():
     if not isinstance(value, dict) or not value:
         return {
             "root": str(inbox_root()), "scanned_at": None,
-            "summary": {"indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0},
+            "summary": {
+                "indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0,
+                "hash_reused": 0, "hash_computed": 0,
+            },
             "items": [],
         }
     value.setdefault("root", str(inbox_root()))
-    value.setdefault("summary", {"indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0})
+    value.setdefault("summary", {
+        "indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0,
+        "hash_reused": 0, "hash_computed": 0,
+    })
     return value
