@@ -2,6 +2,7 @@
   'use strict';
   const byId=id=>document.getElementById(id);
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const ACTIVE_VIDEO_STATES=new Set(['等待ChatGPT策划','等待素材路由','等待生产','生产中','技术质检','等待ChatGPT质检','等待人工审核','退回重做','已授权发布','等待账号','等待最佳时间','发布执行中','异常待处理']);
 
   function deviceOnline(){
     const payload=window.state?.device||{};
@@ -10,15 +11,8 @@
   }
 
   function ownerCount(){
-    const factory=window.state?.factory||{};
-    const videos=factory.videos||[];
-    const accounts=factory.accounts||[];
-    let count=videos.filter(item=>item.status==='等待人工审核').length;
-    count+=accounts.filter(item=>item.connection_status!=='已验证可发布').length;
-    if(!deviceOnline())count+=1;
-    const audit=window.state?.search?.latest_audit;
-    if(!audit||audit.result!=='ready')count+=1;
-    return count;
+    const center=window.state?.factory?.action_center||{};
+    return Number(center.human_count||0);
   }
 
   function ensureOwnerNav(){
@@ -150,8 +144,8 @@
       producer.classList.add('content-producer');
       const p=producer.querySelector(':scope > p'),h3=producer.querySelector(':scope > h3');
       if(p)p.textContent='生产控制';if(h3)h3.textContent='创建自动生产任务';
-      const create=byId('create-video');if(create)create.textContent='开始 AI 自动生产';
-      const note=create?.nextElementSibling;if(note?.tagName==='SMALL')note.textContent='本地素材是可选增强资源；没有素材也不会阻塞生产。';
+      const create=byId('create-video');if(create&&!create.dataset.deepLocked)create.textContent='开始 AI 自动生产';
+      const note=create?.nextElementSibling;if(note?.tagName==='SMALL'&&!note.classList.contains('deep-task-lock'))note.textContent='本地素材是可选增强资源；没有素材也不会阻塞生产。';
     }
     if(review){
       review.classList.add('content-review');
@@ -165,8 +159,9 @@
     }
     ensureOptionalMaterials(producer,workspace);
     const select=byId('video-campaign');
+    const active=window.state?.factory?.active_campaign_id;
     const campaigns=window.state?.factory?.campaigns||[];
-    if(select&&!select.value&&campaigns.length){select.value=campaigns[campaigns.length-1].id}
+    if(select&&!select.value){select.value=active||campaigns[0]?.id||''}
     quietSamePageStep('content');
   }
 
@@ -189,18 +184,24 @@
     const campaignSubmit=byId('campaign-form')?.querySelector('button[type="submit"]');
     setButtonState(campaignSubmit,!!campaignTitle,'请先填写用户问题或选题',true);
 
-    const campaign=byId('video-campaign')?.value||'';
-    setButtonState(byId('create-video'),!!campaign,'请先创建或选择增长战役',true);
+    const campaign=byId('video-campaign')?.value||window.state?.factory?.active_campaign_id||'';
+    const activeTask=(window.state?.factory?.videos||[]).find(item=>item.campaign_id===campaign&&ACTIVE_VIDEO_STATES.has(item.status));
+    if(activeTask){
+      setButtonState(byId('create-video'),false,`已有任务 ${activeTask.id} · ${activeTask.status}`,true);
+      const create=byId('create-video');if(create){create.dataset.deepLocked='1';create.textContent=`当前任务：${activeTask.status}`}
+    }else{
+      const create=byId('create-video');if(create?.dataset.deepLocked){delete create.dataset.deepLocked;create.textContent='开始 AI 自动生产'}
+      setButtonState(create,!!campaign,'请先创建或选择增长战役',true);
+    }
 
-    const file=byId('asset-file')?.files?.[0];
-    const kind=byId('asset-kind')?.value||'';
+    const files=byId('asset-file')?.files||[];
     const consent=!!byId('asset-consent')?.checked;
-    const assetReady=!!campaign&&!!file&&(!kind.startsWith('真实')||consent);
-    const assetReason=!campaign?'请先选择增长战役':!file?'请选择要投递的照片或视频':kind.startsWith('真实')&&!consent?'真实现场素材需确认已取得拍摄与发布同意':'';
+    const assetReady=!!campaign&&files.length>0&&consent;
+    const assetReason=!campaign?'请先选择增长战役':!files.length?'请选择或拖入照片、视频、音频':!consent?'请确认拥有素材使用权及必要授权':'';
     setButtonState(byId('asset-upload'),assetReady,assetReason,false);
 
-    const searchCampaign=byId('search-campaign')?.value||'';
-    setButtonState(byId('search-pack'),!!searchCampaign,'请先选择增长战役',true);
+    const searchCampaign=byId('search-campaign')?.value||window.state?.factory?.active_campaign_id||'';
+    setButtonState(byId('search-pack'),!!searchCampaign,'请先建立增长战役',true);
 
     const online=deviceOnline();
     ['device-sync-start','device-sync-once','device-sync-stop'].forEach(id=>setButtonState(byId(id),online,'请先扫描并连接真实手机',false));
@@ -209,7 +210,7 @@
   function bindStateInputs(){
     if(document.documentElement.dataset.uiPolishBound)return;
     document.documentElement.dataset.uiPolishBound='1';
-    ['campaign-title','video-campaign','asset-file','asset-kind','asset-consent','search-campaign'].forEach(id=>{
+    ['campaign-title','video-campaign','asset-file','asset-consent','search-campaign'].forEach(id=>{
       const node=byId(id);if(!node)return;
       node.addEventListener('input',syncActionStates);node.addEventListener('change',syncActionStates);
     });
