@@ -21,6 +21,8 @@ def main():
     loader = read(WEB / "operational-productization.js")
     final_js = read(WEB / "operational-ui-final.js")
     final_css = read(WEB / "operational-ui-final.css")
+    hotfix_js = read(WEB / "operational-ui-hotfix-341.js")
+    hotfix_css = read(WEB / "operational-ui-hotfix-341.css")
     user_guide = read(DOCS / "R8_OPERATIONAL_USER_GUIDE.md")
     test_report = read(DOCS / "R8_OPERATIONAL_TEST_REPORT.md")
 
@@ -29,6 +31,8 @@ def main():
         "operational-ui-final.css",
         "operational-ui-final.js",
         "data-r8-ui-final",
+        "loadUiHotfix341",
+        "operational-ui-hotfix-341.js",
     ], "UI final loader", failures)
 
     require(final_js, [
@@ -49,6 +53,16 @@ def main():
         "系统总体状态",
     ], "UI final behavior", failures)
 
+    require(hotfix_js, [
+        "经营数据待接入",
+        "创建新的增长战役",
+        "/api/bridge/status",
+        "ChatGPT 总控已连接",
+        "ChatGPT 总控未连接",
+        "约每 60 秒同步一次",
+        "operational-ui-hotfix-341.css",
+    ], "#341 acceptance hotfix", failures)
+
     require(final_css, [
         "body.r8-ui-final",
         ".final-current-campaign",
@@ -61,7 +75,13 @@ def main():
         ".final-health-summary",
     ], "UI final visual system", failures)
 
-    if "MutationObserver" in final_js:
+    require(hotfix_css, [
+        ".hotfix-planning-truth",
+        ".hotfix-planning-truth.is-connected",
+        ".hotfix-planning-truth.is-blocked",
+    ], "#341 hotfix visual states", failures)
+
+    if "MutationObserver" in final_js or "MutationObserver" in hotfix_js:
         failures.append("UI final must use explicit operational events, not global MutationObserver polling")
 
     require(user_guide, [
@@ -88,7 +108,7 @@ def main():
 
     if failures:
         raise SystemExit("\n".join(failures))
-    print("PASS: R8 V2.2.1 Productized UI Final is visibly distinct and release docs match zero-material autonomy")
+    print("PASS: R8 V2.2.1 Productized UI Final + #341 truth hotfix are release-consistent")
 
 
 if __name__ == "__main__":
