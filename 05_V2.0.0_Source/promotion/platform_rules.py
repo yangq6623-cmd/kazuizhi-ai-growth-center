@@ -1,15 +1,15 @@
-"""Auditable publication guardrails for the R8 content factory.
+"""Auditable publication guardrails and verified performance learning.
 
 The rule center deliberately separates immutable safety gates from ChatGPT's
-operational strategy.  Platform-specific values below are conservative internal
-limits, not claims about current public platform policy.  ChatGPT may optimize
-hooks, titles, pacing and timing, but cannot override the owner approval gate,
-truthfulness, verified-account requirement or real publication receipts.
+operational strategy. Platform-specific values below are conservative internal
+limits, not claims about current public platform policy. ChatGPT may optimize
+hooks, titles, pacing and timing using verified outcomes, but cannot override
+the owner approval gate, truthfulness, account verification or real receipts.
 """
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from core.storage import now_iso, read_json, write_json
 
@@ -17,8 +17,14 @@ from core.storage import now_iso, read_json, write_json
 LEARNING_FILE = "r8/platform_rule_learning.json"
 RISKY_TERMS = ("最低价", "全城第一", "保证", "百分百", "100%", "假一赔", "绝对")
 PLATFORMS = ("抖音", "快手", "小红书", "视频号", "微博", "B站", "通用")
+CHECKPOINTS = {"24h", "72h", "7d"}
+METRIC_SOURCES = {"official_api", "platform_export", "manual_verified"}
+METRIC_FIELDS = (
+    "impressions", "plays", "completions", "likes", "comments", "saves", "shares",
+    "dms", "consultations", "orders", "completed_orders",
+)
 
-# Conservative internal caps used to keep one executable rule set stable.  They
+# Conservative internal caps used to keep one executable rule set stable. They
 # can be revised only after verified policy review; they are not represented as
 # official limits published by the platforms.
 INTERNAL_CAPS = {
@@ -46,7 +52,8 @@ def snapshot():
         "strategy_owner": "ChatGPT",
         "strategy_fields": ["hook", "title", "caption", "cover", "pacing", "schedule_hint", "cta"],
         "internal_caps": INTERNAL_CAPS,
-        "note": "平台运营策略由ChatGPT结合实际数据决定；硬安全规则固定。平台公开规则变化须经验证后再更新内部规则。",
+        "learning_inputs": ["真实发布回执", "24h真实指标", "72h真实指标", "7d真实指标"],
+        "note": "平台运营策略由ChatGPT结合已验证效果数据决定；硬安全规则固定。平台公开规则变化须经验证后再更新内部规则。",
     }
 
 
@@ -82,7 +89,16 @@ def evaluate(video, account, title, caption):
     hard_issues = []
     warnings = []
 
-    if not isinstance(video, dict) or video.get("status") != "已授权发布" or not video.get("approved_at"):
+    # Once the owner has approved a candidate the video may already have one
+    # platform plan and therefore carry a queue/publish status. Approval evidence,
+    # not a transient status string, is the fixed gate.
+    review = video.get("review") if isinstance(video, dict) else {}
+    if (
+        not isinstance(video, dict)
+        or not video.get("approved_at")
+        or not isinstance(review, dict)
+        or review.get("decision") != "确认发布"
+    ):
         hard_issues.append("未通过老板最终审核")
     if not isinstance(account, dict) or account.get("connection_status") != "已验证可发布":
         hard_issues.append("账号尚未验证可发布")
@@ -123,35 +139,121 @@ def evaluate(video, account, title, caption):
     }
 
 
+def _store():
+    value = read_json(LEARNING_FILE, {"schema": 2, "receipts": [], "metrics": []})
+    if not isinstance(value, dict):
+        value = {"schema": 2, "receipts": [], "metrics": []}
+    # migrate the v1 items list without losing old verified receipt evidence.
+    if "items" in value and "receipts" not in value:
+        value["receipts"] = value.get("items") or []
+    value.setdefault("receipts", [])
+    value.setdefault("metrics", [])
+    value["schema"] = 2
+    value.pop("items", None)
+    return value
+
+
 def record_outcome(platform, result, metadata=None):
-    store = read_json(LEARNING_FILE, {"schema": 1, "items": []})
-    if not isinstance(store, dict):
-        store = {"schema": 1, "items": []}
-    items = store.setdefault("items", [])
-    items.append({
+    store = _store()
+    receipts = store.setdefault("receipts", [])
+    receipts.append({
         "recorded_at": now_iso(),
         "platform": str(platform or "通用"),
         "result": str(result or "unknown"),
         "metadata": metadata if isinstance(metadata, dict) else {},
     })
-    store["items"] = items[-500:]
+    store["receipts"] = receipts[-500:]
     write_json(LEARNING_FILE, store)
     return learning_summary(store)
 
 
+def _number(value, name):
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name}必须是数字") from None
+    if number < 0:
+        raise ValueError(f"{name}不能小于0")
+    return int(number) if number.is_integer() else round(number, 4)
+
+
+def record_metrics(platform, plan_id, checkpoint, metrics, source, metadata=None):
+    checkpoint = str(checkpoint or "").strip()
+    source = str(source or "").strip()
+    if checkpoint not in CHECKPOINTS:
+        raise ValueError("效果复盘时间点必须为24h、72h或7d")
+    if source not in METRIC_SOURCES:
+        raise ValueError("效果指标必须来自官方接口、平台导出或人工核验")
+    if not str(plan_id or "").strip():
+        raise ValueError("发布计划ID不能为空")
+    raw = metrics if isinstance(metrics, dict) else {}
+    values = {name: _number(raw.get(name, 0), name) for name in METRIC_FIELDS}
+    store = _store()
+    rows = store.setdefault("metrics", [])
+    existing = next((
+        x for x in rows
+        if x.get("plan_id") == str(plan_id) and x.get("checkpoint") == checkpoint
+    ), None)
+    value = {
+        "recorded_at": now_iso(),
+        "platform": str(platform or "通用"),
+        "plan_id": str(plan_id),
+        "checkpoint": checkpoint,
+        "source": source,
+        "metrics": values,
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+    if existing:
+        existing.update(value)
+    else:
+        rows.append(value)
+    store["metrics"] = rows[-1000:]
+    write_json(LEARNING_FILE, store)
+    return learning_summary(store)
+
+
+def _safe_rate(numerator, denominator):
+    return round(float(numerator) / float(denominator), 5) if denominator else None
+
+
 def learning_summary(store=None):
-    store = store if isinstance(store, dict) else read_json(LEARNING_FILE, {"items": []})
-    items = store.get("items", []) if isinstance(store, dict) else []
-    by_platform = Counter(str(x.get("platform") or "通用") for x in items)
-    successes = Counter(str(x.get("platform") or "通用") for x in items if x.get("result") == "成功")
+    store = store if isinstance(store, dict) else _store()
+    receipts = store.get("receipts", []) if isinstance(store, dict) else []
+    metrics = store.get("metrics", []) if isinstance(store, dict) else []
+    receipt_by_platform = Counter(str(x.get("platform") or "通用") for x in receipts)
+    successes = Counter(str(x.get("platform") or "通用") for x in receipts if x.get("result") == "成功")
+    effect_by_platform = Counter(str(x.get("platform") or "通用") for x in metrics)
+    totals = defaultdict(lambda: {name: 0 for name in METRIC_FIELDS})
+    checkpoints = defaultdict(Counter)
+    for row in metrics:
+        platform = str(row.get("platform") or "通用")
+        checkpoints[platform][str(row.get("checkpoint") or "unknown")] += 1
+        values = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+        for name in METRIC_FIELDS:
+            totals[platform][name] += float(values.get(name) or 0)
+
+    platforms = sorted(set(receipt_by_platform) | set(effect_by_platform))
+    summaries = {}
+    for platform in platforms:
+        t = totals[platform]
+        summaries[platform] = {
+            "receipt_samples": receipt_by_platform[platform],
+            "verified_successes": successes[platform],
+            "effect_samples": effect_by_platform[platform],
+            "checkpoints": dict(checkpoints[platform]),
+            "totals": {name: int(value) if float(value).is_integer() else round(value, 4) for name, value in t.items()},
+            "derived": {
+                "play_rate": _safe_rate(t["plays"], t["impressions"]),
+                "completion_rate": _safe_rate(t["completions"], t["plays"]),
+                "consultation_rate": _safe_rate(t["consultations"], t["plays"]),
+                "order_rate": _safe_rate(t["orders"], t["consultations"]),
+                "completed_order_rate": _safe_rate(t["completed_orders"], t["orders"]),
+            },
+        }
     return {
-        "samples": len(items),
-        "platforms": {
-            platform: {
-                "samples": by_platform[platform],
-                "verified_successes": successes[platform],
-            }
-            for platform in sorted(by_platform)
-        },
-        "note": "当前只学习真实发布回执；曝光、咨询、订单等效果数据接入后再扩展策略学习。",
+        "samples": len(receipts) + len(metrics),
+        "receipt_samples": len(receipts),
+        "effect_samples": len(metrics),
+        "platforms": summaries,
+        "note": "只学习真实发布回执与已核验24h/72h/7d指标；ChatGPT可据此调整运营策略，但不能修改硬安全规则。",
     }
