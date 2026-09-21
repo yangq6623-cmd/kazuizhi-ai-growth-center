@@ -8,17 +8,31 @@
     if(!box)return;
     const accounts=window.state?.factory?.accounts||[];
     box.classList.add('account-workbench');
-    box.innerHTML=accounts.length?accounts.map(item=>`<article class="account-card"><div class="account-card-head"><div><small>${esc(item.platform||'未设置平台')}</small><b>${esc(item.account_name||'未命名账号')}</b></div><span class="account-state ${statusTone(item.connection_status)}">${esc(item.connection_status||'待配置')}</span></div><div class="account-grid"><div><small>区域</small><b>${esc(item.region||'未绑定')}</b></div><div><small>服务主线</small><b>${esc(item.service||'未设置')}</b></div><div><small>每日发布上限</small><b>${esc(item.daily_limit||1)} 条</b></div><div><small>发布能力</small><b>${item.connection_status==='已验证可发布'?'可进入排期':'暂不允许自动发布'}</b></div></div><div class="account-actions">${item.connection_status==='已验证可发布'?'<button data-owner-target="content">查看待发布内容</button>':'<button data-owner-target="device">去真机登录/处理</button>'}<button data-owner-target="health">查看体检</button></div></article>`).join(''):'<div class="empty workbench-empty"><b>还没有可运营账号</b><span>先建立账号档案，再通过真实手机完成人工登录授权。系统不会保存平台明文密码。</span><button data-owner-target="device">进入真机终端</button></div>';
+    box.innerHTML=accounts.length?accounts.map(item=>`<article class="account-card"><div class="account-card-head"><div><small>${esc(item.platform||'未设置平台')}</small><b>${esc(item.account_name||'未命名账号')}</b></div><span class="account-state ${statusTone(item.connection_status)}">${esc(item.connection_status||'待配置')}</span></div><div class="account-grid"><div><small>区域</small><b>${esc(item.region||'未绑定')}</b></div><div><small>服务主线</small><b>${esc(item.service||'未设置')}</b></div><div><small>绑定终端</small><b>${esc(item.device_id||'未绑定')}</b></div><div><small>发布能力</small><b>${item.connection_status==='已验证可发布'?'真实验证通过':'暂不允许自动发布'}</b></div></div><div class="account-actions">${item.connection_status==='已验证可发布'?'<button data-owner-target="content">查看待发布内容</button>':'<button data-owner-target="device">去真机登录/处理</button>'}<button data-owner-target="health">查看体检</button></div></article>`).join(''):'<div class="empty workbench-empty"><b>还没有可运营账号</b><span>先建立账号档案并绑定真实手机，再在平台 App 内完成人工登录。系统不会保存平台明文密码，也不会让用户手工勾选“已验证”。</span><button data-owner-target="device">进入真机终端</button></div>';
   }
 
+  function metricValue(value){return value===null||value===undefined?'未接入':value}
+  function metricClass(value){return value===null||value===undefined?'muted-value':''}
   function ensureConversionWorkbench(){
     const page=byId('conversion');if(!page)return;
     let workbench=byId('conversion-workbench');
     if(!workbench){workbench=document.createElement('section');workbench.id='conversion-workbench';workbench.className='conversion-workbench';page.appendChild(workbench)}
     const factory=window.state?.factory||{};
+    const summary=factory.conversion_summary||{};
     const verified=Number(factory.verified_publications||0);
-    const metrics=[['真实发布',verified,'已验证平台回执'],['有效咨询','未接入','等待真实咨询来源'],['小程序需求','未接入','等待小程序来源标识'],['师傅报价','未接入','等待业务系统回流'],['完成订单','未接入','等待履约结果回流']];
-    workbench.innerHTML=`<div class="conversion-metrics">${metrics.map(([name,value,note])=>`<article><small>${esc(name)}</small><b class="${value==='未接入'?'muted-value':''}">${esc(value)}</b><span>${esc(note)}</span></article>`).join('')}</div><div class="two-col conversion-lower"><article class="panel"><div class="panel-head"><div><p>真实归因接入状态</p><h3>哪些链路已经有数据，哪些还没有</h3></div></div><div class="source-status"><div><b>平台内容链接 / 内容ID</b><span class="${verified?'ready':'waiting'}">${verified?'已有真实发布回执':'等待首条真实发布'}</span></div><div><b>小程序访问来源</b><span class="waiting">尚未接入</span></div><div><b>团长码 / 微信线索</b><span class="waiting">尚未接入</span></div><div><b>师傅报价 / 履约订单</b><span class="waiting">尚未接入</span></div></div></article><article class="panel"><div class="panel-head"><div><p>下一步</p><h3>只在真实数据出现后进入经营结果</h3></div></div><ul class="plain-list"><li>每条发布保留平台真实链接和增长ID。</li><li>小程序访问必须携带来源标识，不能靠人工猜测归因。</li><li>咨询、报价、订单需要业务系统回流后再计数。</li><li>退款、改价、补贴、提现等资金动作继续保持人工处理。</li></ul><button class="workbench-primary" data-owner-target="health">检查数据链路</button></article></div>`;
+    const consultations=summary.consultations??null;
+    const mini=summary.mini_program_requests??null;
+    const quotes=summary.quotes??null;
+    const completed=summary.completed_orders??null;
+    const metrics=[
+      ['真实发布',verified,'只统计带平台真实回执'],
+      ['有效咨询',metricValue(consultations),consultations===null?'等待真实咨询/线索回流':'R8真实线索账本'],
+      ['小程序需求',metricValue(mini),mini===null?'等待小程序来源标识':'小程序真实来源数据'],
+      ['师傅报价',metricValue(quotes),quotes===null?'等待业务系统报价回流':'真实报价数据'],
+      ['完成订单',metricValue(completed),completed===null?'等待可验证订单归因':'已记录真实订单归因'],
+    ];
+    const active=factory.active_campaign_id||'未选择';
+    workbench.innerHTML=`<div class="conversion-metrics">${metrics.map(([name,value,note])=>`<article><small>${esc(name)}</small><b class="${metricClass(value==='未接入'?null:value)}">${esc(value)}</b><span>${esc(note)}</span></article>`).join('')}</div><div class="two-col conversion-lower"><article class="panel"><div class="panel-head"><div><p>真实归因接入状态</p><h3>当前增长ID：${esc(active)}</h3></div></div><div class="source-status"><div><b>平台内容链接 / 内容ID</b><span class="${verified?'ready':'waiting'}">${verified?'已有真实发布回执':'等待首条真实发布'}</span></div><div><b>真实咨询 / 线索</b><span class="${consultations!==null?'ready':'waiting'}">${consultations!==null?`${consultations} 条已回流`:'尚无可验证线索'}</span></div><div><b>小程序访问来源</b><span class="waiting">${mini!==null?'已接入':'尚未接入'}</span></div><div><b>订单归因</b><span class="${completed!==null?'ready':'waiting'}">${completed!==null?'已有真实归因记录':'尚未接入/尚无记录'}</span></div></div></article><article class="panel"><div class="panel-head"><div><p>下一步</p><h3>只在真实数据出现后进入经营结果</h3></div></div><ul class="plain-list"><li>发布、咨询和订单沿同一个增长ID追踪。</li><li>每条发布保留平台真实链接和内容ID。</li><li>小程序访问必须携带来源标识，不能靠人工猜测归因。</li><li>退款、改价、补贴、提现等资金动作继续保持人工处理。</li></ul><button class="workbench-primary" data-owner-target="health">检查数据链路</button></article></div>`;
   }
 
   function ensureSearchSummary(){
