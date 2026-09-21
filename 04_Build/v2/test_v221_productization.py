@@ -35,11 +35,13 @@ def main():
     ui_polish_css = read(WEB / "operational-ui-polish.css")
     deep_ui = read(WEB / "operational-deep-productization.js")
     deep_css = read(WEB / "operational-deep-productization.css")
+    workbench = read(WEB / "operational-workbench.js")
     main_js = read(WEB / "main-productization.js")
     main_css = read(WEB / "main-productization.css")
     forms = read(WEB / "forms.js")
     b3 = read(INTEGRATIONS / "android_device_b3.py")
     deep_backend = read(SRC / "backend" / "deep_productization_patch.py")
+    growth_chain = read(SRC / "backend" / "growth_chain_patch.py")
     asset_intake = read(SRC / "promotion" / "asset_intake.py")
     run = read(SRC / "run.py")
 
@@ -107,6 +109,8 @@ def main():
 
     require(ui_polish, [
         "ui-owner-todo",
+        "action_center",
+        "ACTIVE_VIDEO_STATES",
         "创建战役并自动开始",
         "本地素材投递箱",
         "不上传也能正常生产",
@@ -140,6 +144,14 @@ def main():
         "不能人工选择",
         "/api/content-factory/active-campaign",
     ], "deep productization backend", failures)
+    require(growth_chain, [
+        "growth_case_linked",
+        "内容工厂增长ID已与R8咨询/归因账本统一",
+        "conversion_summary",
+        "metric_snapshots",
+        "source_system",
+        "growth_id",
+    ], "unified Growth ID conversion bridge", failures)
     require(asset_intake, [
         "infer_kind",
         "VIDEO_EXTENSIONS",
@@ -175,7 +187,14 @@ def main():
         ".deep-device-more",
         ".deep-system-link",
     ], "deep productization visual system", failures)
-    require(run, ["deep_productization_patch"], "deep productization runtime install", failures)
+    require(workbench, [
+        "conversion_summary",
+        "当前增长ID",
+        "真实咨询 / 线索",
+        "真实验证通过",
+        "不会让用户手工勾选",
+    ], "truthful conversion/account workbench", failures)
+    require(run, ["deep_productization_patch", "growth_chain_patch"], "deep productization runtime install", failures)
 
     require(main_js, [
         "真实运营工作台",
