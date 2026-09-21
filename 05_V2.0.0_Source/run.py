@@ -16,6 +16,7 @@ from backend import content_factory_patch as _content_factory_patch  # noqa: F40
 # patches so all import-time aliases point at the final R8 content semantics.
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
 from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
+from backend import content_effects_patch as _content_effects_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
@@ -38,8 +39,6 @@ def start_scheduler():
                 ensure_daily_workforce()
                 ensure_daily_review()
                 run_due_jobs()
-                # R7 acts as manager. Every five minutes it exports the latest
-                # decision context plus pending content production/QC requests.
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
@@ -47,11 +46,7 @@ def start_scheduler():
                 print(f"R7 scheduler check failed: {error}", flush=True)
             if tick % 4 == 0:
                 try:
-                    # Material inbox is an optional enhancer. Classification or
-                    # missing files never block the main production queue.
                     scan_material_inbox()
-                    # Dedicated content decisions are consumed before generic R7
-                    # bridge commands so structured production/QC is not rejected.
                     sync_content_plans()
                     bridge_sync_once()
                     # Owner-approved content is automatically routed to every
