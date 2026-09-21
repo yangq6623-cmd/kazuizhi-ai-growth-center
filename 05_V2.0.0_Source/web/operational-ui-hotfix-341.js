@@ -49,6 +49,7 @@
     const hero=byId('final-task-hero');if(!hero)return;
     let note=hero.querySelector('.hotfix-planning-truth');
     if(!note){note=document.createElement('small');note.className='hotfix-planning-truth';hero.appendChild(note)}
+    note.classList.remove('is-blocked','is-connected');
     const task=activeVideo();
     if(!task){note.textContent='';note.hidden=true;return}
     note.hidden=false;
@@ -56,8 +57,10 @@
     if(task.status==='等待ChatGPT策划'||task.status==='退回重做'){
       if(bridgeTruth===null){note.textContent=`正在检查 ChatGPT 总控连接${age!==null?` · 已等待 ${age} 分钟`:''}`;return}
       if(bridgeConnected()){
+        note.classList.add('is-connected');
         note.textContent=`ChatGPT 总控已连接 · 本地调度约每 60 秒同步一次${age!==null?` · 当前已等待 ${age} 分钟`:''}`;
       }else{
+        note.classList.add('is-blocked');
         note.textContent=`ChatGPT 总控未连接 · 当前任务不会继续策划${bridgeTruth?.message?` · ${bridgeTruth.message}`:''}`;
       }
       return;
