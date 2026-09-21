@@ -1,11 +1,16 @@
-"""Export the latest R7 manager report for the ChatGPT strategy layer."""
+"""Export the latest R7/R8 decision context for the ChatGPT strategy layer."""
 
 import json
 import os
+import re
+import shutil
 import tempfile
 from pathlib import Path
 
 from core.storage import now_iso
+
+
+MAX_QC_VIDEO_BYTES = 25 * 1024 * 1024
 
 
 def _atomic_json(path, value):
@@ -29,27 +34,81 @@ def _atomic_json(path, value):
                 pass
 
 
+def _safe(value):
+    return re.sub(r"[^0-9A-Za-z_.-]", "_", str(value or ""))[:80] or "item"
+
+
+def _stage_qc_evidence(root, qc_requests):
+    """Copy small FINAL.MP4 evidence into the synced bridge for ChatGPT QC."""
+    copied = 0
+    skipped = 0
+    items = []
+    for request in qc_requests.get("items", []):
+        value = dict(request)
+        source_text = str(value.pop("local_candidate_path", "") or "")
+        source = Path(source_text) if source_text else None
+        if source and source.is_file():
+            try:
+                size = source.stat().st_size
+            except OSError:
+                size = 0
+            if 0 < size <= MAX_QC_VIDEO_BYTES:
+                directory = root / "outbox" / "content_qc" / _safe(value.get("video_id"))
+                directory.mkdir(parents=True, exist_ok=True)
+                target = directory / "FINAL.mp4"
+                try:
+                    if not target.is_file() or target.stat().st_size != size:
+                        shutil.copy2(source, target)
+                    value["bridge_video_path"] = str(target.relative_to(root)).replace("\\", "/")
+                    value["evidence_status"] = "video_copied"
+                    copied += 1
+                except OSError as error:
+                    value["evidence_status"] = "copy_failed"
+                    value["evidence_error"] = str(error)[:240]
+                    skipped += 1
+            else:
+                value["evidence_status"] = "video_too_large_or_empty"
+                skipped += 1
+        else:
+            value["evidence_status"] = "candidate_missing"
+            skipped += 1
+        items.append(value)
+    return {
+        "schema": qc_requests.get("schema") or "kazuizhi-content-qc-requests/v1",
+        "items": items,
+        "count": len(items),
+        "evidence": {"copied": copied, "skipped": skipped, "max_video_bytes": MAX_QC_VIDEO_BYTES},
+    }
+
+
 def export_decision_handoff(report):
-    """Write the latest R7 decision context plus pending R8 content requests."""
+    """Write R7 decision context plus pending production and post-render QC work."""
     from integrations.bridge import bridge_status
-    from promotion.content_factory import pending_chatgpt_handoff
+    from promotion import content_factory
+    from promotion.platform_rules import snapshot as platform_rule_snapshot
 
     status = bridge_status()
     if status.get("status") != "connected" or not status.get("bridge_root"):
         return {"exported": False, "status": status.get("status"), "reason": status.get("message")}
     root = Path(status["bridge_root"])
-    content_requests = pending_chatgpt_handoff()
+    content_requests = content_factory.pending_chatgpt_handoff()
+    qc_builder = getattr(content_factory, "pending_chatgpt_qc_handoff", None)
+    qc_requests = qc_builder() if callable(qc_builder) else {"items": [], "count": 0}
+    qc_requests = _stage_qc_evidence(root, qc_requests)
     payload = {
-        "schema": "kazuizhi-chatgpt-strategy-handoff/v2",
+        "schema": "kazuizhi-chatgpt-strategy-handoff/v3",
         "exported_at": now_iso(),
         "source": "R7 autonomous decision center + R8 content factory",
         "decision_center": report,
         "content_production_requests": content_requests,
+        "content_qc_requests": qc_requests,
+        "platform_rule_center": platform_rule_snapshot(),
         "instruction": (
-            "ChatGPT是唯一总控制：基于真实员工汇报、经理判断和待生产内容请求，负责经营判断、选题、痛点、"
-            "标题、文案、深层脚本、分镜、素材决策、平台适配和质检决策。对content_production_requests中的"
-            "任务，按kazuizhi-content-production/v1生成结构化production_plan，并以kind=content_production"
-            "写回bridge inbox。R8/RTX3060/本地程序只负责执行。资金事项不得自动执行。"
+            "ChatGPT是唯一总控制。对content_production_requests负责经营判断、选题、痛点、标题、文案、"
+            "深层脚本、分镜、素材决策、平台适配与质检标准，并按kazuizhi-content-production/v1以"
+            "kind=content_production写回bridge inbox。对content_qc_requests检查FINAL.MP4与技术/素材证据，"
+            "以kind=content_qc返回pass或rework及原因。R7/R8负责状态、硬规则、审计、发布与数据回流；"
+            "RTX3060和本地程序只执行。资金事项不得自动执行。"
         ),
     }
     target = root / "outbox" / "latest_decision.json"
@@ -59,4 +118,6 @@ def export_decision_handoff(report):
         "path": str(target),
         "exported_at": payload["exported_at"],
         "content_requests": content_requests.get("count", 0),
+        "content_qc_requests": qc_requests.get("count", 0),
+        "qc_evidence": qc_requests.get("evidence"),
     }
