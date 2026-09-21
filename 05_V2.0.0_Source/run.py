@@ -12,6 +12,10 @@ from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from backend import realtime_mirror_patch as _realtime_mirror_patch  # noqa: F401,E402
 from backend import content_factory_patch as _content_factory_patch  # noqa: F401,E402
+# Completion extensions deliberately install after the base server/compatibility
+# patches so all import-time aliases point at the final R8 content semantics.
+from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
+from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
@@ -20,6 +24,7 @@ from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
 from integrations.bridge import sync_once as bridge_sync_once
 from promotion.chatgpt_orchestrator import sync_content_plans
+from promotion.material_library import scan_material_inbox
 from promotion.video_worker import run_pending as run_pending_videos
 
 
@@ -35,7 +40,7 @@ def start_scheduler():
                 ensure_daily_review()
                 run_due_jobs()
                 # R7 acts as manager. Every five minutes it exports the latest
-                # decision context plus pending content requests to ChatGPT.
+                # decision context plus pending content production/QC requests.
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
@@ -43,14 +48,16 @@ def start_scheduler():
                 print(f"R7 scheduler check failed: {error}", flush=True)
             if tick % 4 == 0:
                 try:
-                    # Content-production contracts are consumed first so the
-                    # generic R7 bridge never rejects this dedicated command kind.
+                    # Material inbox is an optional enhancer. Classification or
+                    # missing files never block the main production queue.
+                    scan_material_inbox()
+                    # Dedicated content decisions are consumed first so the
+                    # generic R7 bridge never rejects these structured kinds.
                     sync_content_plans()
                     bridge_sync_once()
                 except (OSError, ValueError) as error:
-                    # Bridge failures never stop autonomous local work. They are surfaced
-                    # through bridge status/diagnostics and retried on the next cycle.
-                    print(f"R7 bridge sync deferred: {error}", flush=True)
+                    # Bridge/material failures never stop autonomous local work.
+                    print(f"R7 bridge/material sync deferred: {error}", flush=True)
             tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
@@ -97,6 +104,12 @@ def main():
         migrate_r6()
         migrate_to_v2_2()
         recover_interrupted()
+        # Run one material scan before background loops so pre-dropped optional
+        # assets are immediately visible to ChatGPT and the local executor.
+        try:
+            scan_material_inbox()
+        except (OSError, ValueError):
+            pass
         scheduler_stop = start_scheduler()
         video_worker_stop = start_video_production_worker()
         AIEngine().start()
