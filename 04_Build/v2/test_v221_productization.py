@@ -3,7 +3,7 @@
 The goal is not pixel-perfect testing. It prevents the known R8 UI/UX issues
 from silently returning: inconsistent device state, background mirror polling,
 technical-first navigation, unsupported owner controls, skeleton workbenches,
-and unverifiable business metrics.
+unverifiable business metrics, duplicate primary actions, and dead buttons.
 """
 from pathlib import Path
 
@@ -29,6 +29,8 @@ def main():
     product = read(WEB / "operational-productization.js")
     final = read(WEB / "operational-finalization.js")
     final_css = read(WEB / "operational-finalization.css")
+    ui_polish = read(WEB / "operational-ui-polish.js")
+    ui_polish_css = read(WEB / "operational-ui-polish.css")
     main_js = read(WEB / "main-productization.js")
     main_css = read(WEB / "main-productization.css")
     forms = read(WEB / "forms.js")
@@ -59,6 +61,9 @@ def main():
         "health-human",
         "loadFinalization",
         "operational-finalization.js",
+        "loadUiPolish",
+        "operational-ui-polish.css",
+        "operational-ui-polish.js",
     ], "productization layer", failures)
 
     require(final, [
@@ -88,6 +93,30 @@ def main():
         ".ops-table",
         ".health-filter-bar",
     ], "final operational visual system", failures)
+
+    require(ui_polish, [
+        "ui-owner-todo",
+        "创建战役并自动开始",
+        "本地素材投递箱",
+        "不上传也能正常生产",
+        "开始 AI 自动生产",
+        "setButtonState",
+        "请先创建或选择增长战役",
+        "quietSamePageStep",
+        "ui-engine-strip",
+    ], "R8 UI polish behavior", failures)
+    if "MutationObserver" in ui_polish:
+        failures.append("R8 UI polish must use explicit events, not a global DOM MutationObserver")
+    require(ui_polish_css, [
+        ".ui-owner-todo",
+        ".campaign-main",
+        ".campaign-side",
+        ".content-workspace",
+        ".content-review",
+        ".optional-materials",
+        "button:disabled",
+        ".ui-engine-strip",
+    ], "R8 UI polish visual system", failures)
 
     require(main_js, [
         "真实运营工作台",
