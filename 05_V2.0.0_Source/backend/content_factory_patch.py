@@ -68,11 +68,11 @@ def _serve_mp4(handler, path):
 
 
 def _enhanced_handoff(limit=20):
-    """Include rejected-version context so ChatGPT does not blindly repeat it."""
+    """Compatibility handoff used before the completion extension installs."""
     data = content_factory._load()
     requests = []
     for video in data.get("videos", []):
-        if video.get("status") != "等待ChatGPT策划":
+        if video.get("status") not in {"等待ChatGPT策划", "退回重做"}:
             continue
         campaign = next((x for x in data.get("campaigns", []) if x.get("id") == video.get("campaign_id")), None)
         if not campaign:
@@ -93,13 +93,14 @@ def _enhanced_handoff(limit=20):
             ]),
             "local_material_optional": True,
             "owner_review": review,
+            "previous_chatgpt_qc": video.get("chatgpt_qc"),
             "previous_plan_version": video.get("plan_version") or 0,
             "previous_topic": (previous or {}).get("topic"),
             "previous_titles": (previous or {}).get("titles") or [],
             "instruction": (
                 "由ChatGPT作为唯一总控制生成或重做选题深化、痛点、标题、深层脚本、分镜、素材决策、"
-                "平台适配与质检标准。若存在owner_review和previous_*字段，必须避免机械重复被退回版本。"
-                "按kazuizhi-content-production/v1返回content_production指令。"
+                "平台适配与质检标准。若存在owner_review、previous_chatgpt_qc和previous_*字段，"
+                "必须避免机械重复被退回版本。按kazuizhi-content-production/v1返回content_production指令。"
             ),
         })
         if len(requests) >= limit:
@@ -107,7 +108,8 @@ def _enhanced_handoff(limit=20):
     return {"schema": "kazuizhi-content-production-requests/v1", "items": requests, "count": len(requests)}
 
 
-# Runtime replaces the early v2 handoff helper with the review-aware version.
+# The completion extension installed by run.py replaces this compatibility
+# helper with the richer asset/rule/QC-aware handoff.
 content_factory.pending_chatgpt_handoff = _enhanced_handoff
 
 
@@ -134,7 +136,12 @@ if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
 
     def _do_post(self):
         parsed = urlsplit(self.path)
-        if parsed.path in {"/api/content-factory/chatgpt-plan", "/api/content-factory/review"}:
+        dedicated = {
+            "/api/content-factory/chatgpt-plan",
+            "/api/content-factory/chatgpt-qc",
+            "/api/content-factory/review",
+        }
+        if parsed.path in dedicated:
             origin = self.headers.get("Origin")
             allowed_origins = {
                 f"http://127.0.0.1:{self.server.server_port}",
@@ -153,8 +160,16 @@ if not getattr(_server.DashboardHandler, "_kz_content_factory_patched", False):
                     result = content_factory.apply_chatgpt_plan(payload)
                     self._json_ok(result, code=201)
                     return
+                if parsed.path == "/api/content-factory/chatgpt-qc":
+                    handler = getattr(content_factory, "apply_chatgpt_qc", None)
+                    if not callable(handler):
+                        raise ValueError("当前运行时尚未启用ChatGPT成片质检")
+                    result = handler(payload)
+                    self._json_ok(result)
+                    return
                 result = content_factory.review_video(payload)
-                if str(payload.get("decision") or "").strip() in {"退回重做", "退回修改", "整片重做", "重做指定镜头"}:
+                # Compatibility fallback for runtimes without the completion layer.
+                if str(payload.get("decision") or "").strip() in {"退回重做", "退回修改", "整片重做", "重做指定镜头"} and result.get("status") == "退回重做":
                     result = content_factory.update_runtime_state(
                         result["id"], status="等待ChatGPT策划",
                         bottleneck="老板已退回当前成片，等待ChatGPT重新策划",
