@@ -1,9 +1,9 @@
 """Final safety/state refinements for the R8 V2 content factory.
 
-This layer closes the small gap between FFmpeg technical completion and optional
-local post-processing. A worker-created FINAL.mp4 stays in a local finalizing
-state until subtitles/TTS have finished and a second technical QC passes. It
-also enforces the per-account daily publication cap before a plan is created.
+This layer closes the gap between FFmpeg completion and local post-processing,
+and enforces publication caps/duplicate prevention. Owner approval is durable:
+once a specific candidate is approved, multiple platform plans may be generated
+without weakening the human gate merely because the first plan changed status.
 """
 
 from __future__ import annotations
@@ -30,9 +30,6 @@ def record_candidate(payload):
     if not _is_worker_final(payload):
         return _ORIGINAL["record_candidate"](payload)
 
-    # Create the worker candidate directly in a non-reviewable finalizing state.
-    # This avoids a millisecond-scale race where an HTTP poll could otherwise see
-    # "等待ChatGPT质检" before subtitles/TTS and the second technical QC finish.
     data = cf._load()
     video = cf._by_id(data.get("videos", []), cf._clean(payload.get("video_id"), "视频ID", 64), "视频任务")
     local_path = cf._clean(payload.get("local_path"), "成片路径", 500)
@@ -114,11 +111,20 @@ def _today_key():
     return datetime.now().astimezone().date().isoformat()
 
 
+def _owner_approved(video):
+    review = video.get("review") if isinstance(video, dict) else {}
+    return bool(video.get("approved_at") and isinstance(review, dict) and review.get("decision") == "确认发布")
+
+
 def create_publish_plan(payload):
     data = cf._load()
     account_id = cf._clean(payload.get("account_id"), "账号ID", 64)
     video_id = cf._clean(payload.get("video_id"), "视频ID", 64)
     account = cf._by_id(data.get("accounts", []), account_id, "账号")
+    video = cf._by_id(data.get("videos", []), video_id, "视频任务")
+    if not _owner_approved(video):
+        raise ValueError("发布前硬规则未通过：视频尚未由老板最终确认发布")
+
     platform = str(account.get("platform") or "通用")
     internal = platform_rules.INTERNAL_CAPS.get(platform, platform_rules.INTERNAL_CAPS["通用"])
     cap = min(max(1, int(account.get("daily_limit") or 1)), int(internal.get("daily_publish") or 1))
@@ -139,7 +145,25 @@ def create_publish_plan(payload):
     ), None)
     if duplicate:
         raise ValueError("发布前硬规则未通过：同一视频已为该账号建立有效发布计划，禁止重复排期")
-    result = _ORIGINAL["create_publish_plan"](payload)
+
+    # The legacy base function checked the transient status string. Temporarily
+    # present the already-approved video as authorized solely during this atomic
+    # call; approval evidence above remains the real gate. The base function then
+    # moves it to 等待最佳时间 as usual.
+    original_status = video.get("status")
+    if original_status != "已授权发布":
+        video["status"] = "已授权发布"
+        cf._save(data)
+    try:
+        result = _ORIGINAL["create_publish_plan"](payload)
+    except Exception:
+        if original_status != "已授权发布":
+            rollback = cf._load()
+            current_video = cf._by_id(rollback.get("videos", []), video_id, "视频任务")
+            current_video["status"] = original_status
+            cf._save(rollback)
+        raise
+
     data = cf._load()
     current = cf._by_id(data.get("publication_plans", []), result.get("id"), "发布计划")
     current["daily_cap"] = {"limit": cap, "used_before_this_plan": len(today_plans), "date": today}
