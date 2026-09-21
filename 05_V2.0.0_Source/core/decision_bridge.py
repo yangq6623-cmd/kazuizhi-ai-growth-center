@@ -40,11 +40,7 @@ def _safe(value):
 
 
 def _build_qc_preview(source, target):
-    """Create a short low-resolution review copy when FINAL.MP4 is too large.
-
-    Failure is intentionally non-fatal: the bridge will still export the
-    technical/source evidence and mark the video preview as unavailable.
-    """
+    """Create a short low-resolution review copy when FINAL.MP4 is too large."""
     try:
         from promotion.video_worker import find_ffmpeg
         ffmpeg = find_ffmpeg()
@@ -110,15 +106,11 @@ def _stage_qc_evidence(root, qc_requests):
                     skipped += 1
             elif size > MAX_QC_VIDEO_BYTES:
                 preview = directory / "PREVIEW.mp4"
-                valid_existing = False
                 try:
                     valid_existing = preview.is_file() and 1024 < preview.stat().st_size <= MAX_QC_VIDEO_BYTES
                 except OSError:
                     valid_existing = False
-                if valid_existing:
-                    ok, error = True, None
-                else:
-                    ok, error = _build_qc_preview(source, preview)
+                ok, error = (True, None) if valid_existing else _build_qc_preview(source, preview)
                 if ok:
                     value["bridge_video_path"] = str(preview.relative_to(root)).replace("\\", "/")
                     value["evidence_status"] = "preview_generated"
@@ -147,14 +139,14 @@ def _stage_qc_evidence(root, qc_requests):
 
 
 def export_decision_handoff(report):
-    """Write R7 decision context plus pending production and post-render QC work.
+    """Write R7 decision context plus content planning/QC/performance feedback.
 
     Keep the original v1 envelope for older R7 consumers. New content-factory
     fields are additive and explicitly versioned by ``extensions_schema``.
     """
     from integrations.bridge import bridge_status
     from promotion import content_factory
-    from promotion.platform_rules import snapshot as platform_rule_snapshot
+    from promotion.platform_rules import learning_summary, snapshot as platform_rule_snapshot
 
     status = bridge_status()
     if status.get("status") != "connected" or not status.get("bridge_root"):
@@ -164,20 +156,23 @@ def export_decision_handoff(report):
     qc_builder = getattr(content_factory, "pending_chatgpt_qc_handoff", None)
     qc_requests = qc_builder() if callable(qc_builder) else {"items": [], "count": 0}
     qc_requests = _stage_qc_evidence(root, qc_requests)
+    verified_learning = learning_summary()
     payload = {
         "schema": "kazuizhi-chatgpt-strategy-handoff/v1",
-        "extensions_schema": "kazuizhi-chatgpt-content-extensions/v2",
+        "extensions_schema": "kazuizhi-chatgpt-content-extensions/v3",
         "exported_at": now_iso(),
         "source": "R7 autonomous decision center + R8 content factory",
         "decision_center": report,
         "content_production_requests": content_requests,
         "content_qc_requests": qc_requests,
         "platform_rule_center": platform_rule_snapshot(),
+        "verified_content_learning": verified_learning,
         "instruction": (
             "ChatGPT是唯一总控制。对content_production_requests负责经营判断、选题、痛点、标题、文案、"
-            "深层脚本、分镜、素材决策、平台适配与质检标准，并按kazuizhi-content-production/v1以"
-            "kind=content_production写回bridge inbox。对content_qc_requests检查FINAL.MP4或PREVIEW.MP4与"
-            "技术/素材证据，以kind=content_qc返回pass或rework及原因。R7/R8负责状态、硬规则、审计、"
+            "深层脚本、分镜、素材决策、平台适配与质检标准；可参考verified_content_learning中的真实发布"
+            "回执和24h/72h/7d已核验效果调整策略，但不得修改平台硬安全规则。按kazuizhi-content-production/v1"
+            "以kind=content_production写回bridge inbox。对content_qc_requests检查FINAL.MP4或PREVIEW.MP4"
+            "与技术/素材证据，以kind=content_qc返回pass或rework及原因。R7/R8负责状态、硬规则、审计、"
             "发布与数据回流；RTX3060和本地程序只执行。资金事项不得自动执行。"
         ),
     }
@@ -190,4 +185,5 @@ def export_decision_handoff(report):
         "content_requests": content_requests.get("count", 0),
         "content_qc_requests": qc_requests.get("count", 0),
         "qc_evidence": qc_requests.get("evidence"),
+        "verified_learning_samples": verified_learning.get("samples", 0),
     }
