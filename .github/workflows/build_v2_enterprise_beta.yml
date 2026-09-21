@@ -14,6 +14,7 @@ on:
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
+      - 'docs/R8_OPERATIONAL_*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -66,6 +67,7 @@ jobs:
           python 04_Build/v2/test_live_business_source.py
           python 04_Build/v2/test_ui_interactions.py
           python 04_Build/v2/test_v221_productization.py
+          python 04_Build/v2/test_r8_ui_final.py
           python 04_Build/v2/test_r8_realtime_mirror.py
       - name: Check every browser script
         run: |
@@ -112,13 +114,13 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.0 R8 Operational'
+            version = '2.2.1 R8 Productized UI Final'
             build = 'KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'platform adaptation', 'production audit events', 'licensed-media safe adapter', 'AI-shot adapter', 'local TTS/subtitle adapter', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'V2.2.1 productization regression contract', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated gates passed; real social account login/captcha and live platform publication remain owner-authorized field acceptance'
+            checks = @('operational UI identity', 'R8 V2.2.1 Productized UI Final regression', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'zero-local-material production', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'platform adaptation', 'production audit events', 'licensed-media safe adapter', 'AI-shot adapter', 'local TTS/subtitle adapter', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'V2.2.1 productization regression contract', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated gates passed; real social account login/captcha, real Android field behavior, RTX3060 field stability and live platform publication remain owner-authorized field acceptance'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
@@ -146,5 +148,5 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag installer_output_v2/* --clobber
           } else {
-            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.1 R8 Productized UI Final' --generate-notes
           }
