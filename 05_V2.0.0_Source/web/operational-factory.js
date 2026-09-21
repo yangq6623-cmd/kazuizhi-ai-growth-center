@@ -57,12 +57,23 @@
     const learning=factory.platform_learning||{};
     const events=(factory.production_events||[]).length;
     box.innerHTML=`
-      <div><b>素材索引</b><span>${material.indexed||0} 条 · 待分类 ${material.unclassified||0}</span></div>
-      <div><b>公开素材适配</b><span>${adapters.licensed_external?.ready?'已启用安全接口':'待配置'}</span></div>
-      <div><b>AI镜头适配</b><span>${adapters.ai_generated?.ready?'已启用输出接口':'待配置'}</span></div>
+      <div><b>素材索引</b><span>${material.indexed||0} 条 · 待分类 ${material.unclassified||0} · 已复用指纹 ${material.hash_reused||0}</span></div>
+      <div><b>公开素材适配</b><span>${adapters.licensed_external?.ready?'安全接口已启用':'待配置'}</span></div>
+      <div><b>AI镜头适配</b><span>${adapters.ai_generated?.ready?'输出接口已启用':'待配置'}</span></div>
       <div><b>ChatGPT成片质检</b><span>待质检 ${qc} 条</span></div>
       <div><b>平台规则学习</b><span>真实回执样本 ${learning.samples||0}</span></div>
       <div><b>生产审计</b><span>最近事件 ${events} 条</span></div>`;
+  }
+
+  function syncOwnerDashboard(){
+    const factory=window.state?.factory||{};const counts=factory.video_states||{};
+    const planning=(counts['等待ChatGPT策划']||0)+(counts['退回重做']||0);
+    const producing=(counts['等待生产']||0)+(counts['生产中']||0)+(counts['技术质检']||0)+(counts['后期增强中']||0);
+    const aiQc=counts['等待ChatGPT质检']||0;const ownerQc=counts['等待人工审核']||0;
+    const rows=byId('today-tasks')?.querySelectorAll('.task-row')||[];
+    if(rows[0]?.querySelector('span'))rows[0].querySelector('span').textContent=`等待 ChatGPT 策划 ${planning} 条；本地素材不是前置条件`;
+    if(rows[1]?.querySelector('span'))rows[1].querySelector('span').textContent=`本地生产 ${producing} 条 · ChatGPT 成片质检 ${aiQc} 条`;
+    if(rows[2]?.querySelector('span'))rows[2].querySelector('span').textContent=`等待老板最终审核 ${ownerQc} 条；通过后才进入账号排期`;
   }
 
   async function upload(){
@@ -108,7 +119,7 @@
     const button=event.target.closest?.('[data-render-video]');if(button)renderVideo(button.dataset.renderVideo,button)
   },true);
   byId('asset-upload')?.addEventListener('click',upload);
-  upgradeContentPage();
+  upgradeContentPage();syncOwnerDashboard();
   loadWorker();
-  window.addEventListener('operational:refreshed',()=>{upgradeContentPage();loadWorker()});
+  window.addEventListener('operational:refreshed',()=>{upgradeContentPage();syncOwnerDashboard();loadWorker()});
 })();
