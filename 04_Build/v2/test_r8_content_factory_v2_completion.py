@@ -17,7 +17,8 @@ with tempfile.TemporaryDirectory() as temp_dir:
     from promotion import content_factory
     import promotion.content_factory_v2_extensions  # noqa: F401
     import promotion.content_factory_v2_finalization_patch  # noqa: F401
-    from promotion import material_library, media_adapters, platform_rules
+    from promotion import content_effects, material_library, media_adapters, platform_rules
+    from promotion.publish_orchestrator import run_publish_planning
 
     campaign = content_factory.create_campaign({
         "region": "涟水县",
@@ -32,6 +33,8 @@ with tempfile.TemporaryDirectory() as temp_dir:
     inbox = data_root() / "r8" / "material_inbox" / campaign["id"]
     inbox.mkdir(parents=True, exist_ok=True)
     photo = inbox / "case.jpg"
+    # Deliberately unreadable image bytes: it must still be indexed truthfully as
+    # unreadable rather than silently assigned fake dimensions/quality.
     photo.write_bytes(b"fake-jpeg-for-index")
     (inbox / "case.jpg.json").write_text(json.dumps({
         "kind": "真实现场照片",
@@ -46,14 +49,16 @@ with tempfile.TemporaryDirectory() as temp_dir:
     assert indexed["source_origin"] == "material_inbox"
     assert indexed["source_fingerprint"]
     assert indexed["media_metadata"]["media_class"] == "image"
+    assert indexed["media_metadata"]["probe_status"] == "unreadable"
 
     # Unknown files are indexed but never silently treated as publishable. The
-    # unchanged first file must reuse its SHA256 instead of being rehashed.
+    # unchanged first file must reuse its SHA256 and technical probe.
     unknown = inbox / "unknown.png"
     unknown.write_bytes(b"unknown")
     scan = material_library.scan_material_inbox()
     assert scan["summary"]["unclassified"] >= 1
     assert scan["summary"]["hash_reused"] >= 1
+    assert scan["summary"]["probe_reused"] >= 1
 
     video = content_factory.create_video({"campaign_id": campaign["id"]})
     assert video["status"] == "等待ChatGPT策划"
@@ -103,7 +108,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
 
     output_root = data_root() / "r8" / "video_output" / campaign["id"] / video["id"]
     output_root.mkdir(parents=True, exist_ok=True)
-    final = output_root / "FINAL.mp4"
+    final = output_root / "manual_test_cut.mp4"
     final.write_bytes(b"0" * 20000)
     candidate = content_factory.record_candidate({
         "video_id": video["id"], "local_path": str(final), "duration_seconds": 12,
@@ -128,11 +133,11 @@ with tempfile.TemporaryDirectory() as temp_dir:
     assert handoff["count"] == 1
     assert handoff["items"][0]["previous_chatgpt_qc"]["status"] == "rework"
 
-    planned = content_factory.apply_chatgpt_plan({
+    content_factory.apply_chatgpt_plan({
         "video_id": video["id"], "campaign_id": campaign["id"],
         "production_plan": production_plan(2, "第二版"),
     })
-    final2 = output_root / "FINAL_v2.mp4"
+    final2 = output_root / "manual_test_cut_v2.mp4"
     final2.write_bytes(b"1" * 20000)
     candidate2 = content_factory.record_candidate({
         "video_id": video["id"], "local_path": str(final2), "duration_seconds": 12,
@@ -166,9 +171,13 @@ with tempfile.TemporaryDirectory() as temp_dir:
     except ValueError as error:
         assert "硬规则" in str(error) or "宣传承诺" in str(error)
 
-    publish = content_factory.create_publish_plan({
-        "video_id": video["id"], "account_id": account["id"],
-    })
+    # Owner approval should automatically create the missing platform plan with
+    # no second manual scheduling step.
+    orchestrated = run_publish_planning(limit=10)
+    result = next(x for x in orchestrated["items"] if x["video_id"] == video["id"])
+    assert result["created"] == 1
+    data = content_factory._load()
+    publish = next(x for x in data["publication_plans"] if x["video_id"] == video["id"])
     assert publish["rule_check"]["passed"] is True
     assert publish["strategy_source"] == "chatgpt_platform_adaptation"
     assert publish["daily_cap"]["limit"] == 1
@@ -178,8 +187,20 @@ with tempfile.TemporaryDirectory() as temp_dir:
         "platform_content_id": "content-001", "url": "https://example.com/content-001",
         "reason": "测试真实回执结构",
     })
-    assert receipt["learning_summary"]["samples"] == 1
-    assert platform_rules.learning_summary()["samples"] == 1
+    assert receipt["learning_summary"]["receipt_samples"] == 1
+
+    effects = content_effects.record_effect_metrics({
+        "plan_id": publish["id"], "checkpoint": "24h", "source": "manual_verified",
+        "metrics": {
+            "impressions": 1000, "plays": 700, "completions": 350,
+            "likes": 40, "comments": 10, "saves": 12, "shares": 8,
+            "dms": 6, "consultations": 5, "orders": 2, "completed_orders": 1,
+        },
+    })
+    assert effects["learning_summary"]["effect_samples"] == 1
+    learning = platform_rules.learning_summary()
+    assert learning["samples"] == 2
+    assert learning["platforms"]["抖音"]["derived"]["consultation_rate"] == round(5 / 700, 5)
 
     adapters = media_adapters.status(campaign["id"])
     assert adapters["licensed_external"]["ready"] is True
@@ -187,6 +208,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
 
     dashboard = content_factory.dashboard()
     assert dashboard["platform_rule_center"]["strategy_owner"] == "ChatGPT"
+    assert dashboard["platform_learning"]["effect_samples"] == 1
     assert dashboard["material_library"]["summary"]["indexed"] >= 2
     assert dashboard["production_events"]
 
