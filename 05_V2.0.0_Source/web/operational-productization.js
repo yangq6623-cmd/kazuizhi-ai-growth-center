@@ -99,6 +99,19 @@
     document.head.appendChild(script);
   }
 
+  function loadUiPolish(){
+    if(!document.querySelector('link[data-r8-ui-polish]')){
+      const link=document.createElement('link');
+      link.rel='stylesheet';link.href='/operational-ui-polish.css';link.dataset.r8UiPolish='1';document.head.appendChild(link);
+    }
+    if(document.querySelector('script[data-r8-ui-polish]'))return;
+    const script=document.createElement('script');
+    script.src='/operational-ui-polish.js';
+    script.defer=true;
+    script.dataset.r8UiPolish='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -113,5 +126,6 @@
   refresh();
   loadWorkbench();
   loadFinalization();
+  loadUiPolish();
   window.setTimeout(refresh,400);
 })();
