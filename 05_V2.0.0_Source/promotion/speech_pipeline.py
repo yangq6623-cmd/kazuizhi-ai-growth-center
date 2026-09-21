@@ -1,8 +1,8 @@
 """Optional local speech/subtitle execution for R8 video output.
 
-This module is execution-only.  ChatGPT supplies narration and subtitle text in
-the production contract.  Windows SAPI is used when available; otherwise the
-video remains valid and the adapter reports a truthful degraded state.  Whisper
+This module is execution-only. ChatGPT supplies narration and subtitle text in
+the production contract. Windows SAPI is used when available; otherwise the
+video remains valid and the adapter reports a truthful degraded state. Whisper
 verification is only enabled when a local model path is explicitly provided,
 so the runtime never downloads a model unexpectedly.
 """
@@ -27,13 +27,20 @@ def status():
             "available": bool(os.name == "nt" and powershell),
             "engine": "Windows SAPI" if os.name == "nt" and powershell else "not_available",
         },
-        "subtitles": {"available": True, "format": "srt"},
+        "subtitles": {
+            "available": True, "format": "srt",
+            "burn_policy": "尝试烧录；FFmpeg缺少libass时自动保留SRT旁挂字幕，不阻塞成片",
+        },
         "whisper_qc": {
             "available": bool(faster and whisper_model and Path(whisper_model).exists()),
             "model_path_configured": bool(whisper_model),
             "engine": "faster-whisper-local" if faster else "not_installed",
         },
     }
+
+
+def _flags():
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _stamp(seconds):
@@ -97,9 +104,9 @@ def _sapi_tts(text, output):
                 "$s.Dispose()\n"
             )
         result = subprocess.run(
-            [engine, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), str(text_file), str(output)],
-            capture_output=True, timeout=180, check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            [engine, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-File", str(script), str(text_file), str(output)],
+            capture_output=True, timeout=180, check=False, creationflags=_flags(),
         )
         if result.returncode == 0 and output.is_file() and output.stat().st_size > 1024:
             return {"status": "ready", "path": str(output), "message": "Windows SAPI本地配音已生成"}
@@ -116,6 +123,38 @@ def _sapi_tts(text, output):
                     pass
 
 
+def _burn_subtitles(ffmpeg, video, subtitle):
+    """Best-effort hard subtitles; keep the original MP4 if libass is absent."""
+    video = Path(video)
+    subtitle = Path(subtitle)
+    if not subtitle.is_file() or subtitle.stat().st_size == 0:
+        return {"status": "skipped", "message": "没有字幕文本需要烧录"}
+    temporary = video.with_name(video.stem + ".subtitles.tmp.mp4")
+    # FFmpeg's subtitles filter uses ':' as an option separator on Windows.
+    escaped = subtitle.resolve().as_posix().replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+    vf = f"subtitles='{escaped}'"
+    command = [
+        str(ffmpeg), "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(video), "-vf", vf,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-an", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(temporary),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=300, check=False, creationflags=_flags())
+        if result.returncode == 0 and temporary.is_file() and temporary.stat().st_size > 10 * 1024:
+            os.replace(temporary, video)
+            return {"status": "burned", "message": "字幕已烧录进FINAL.MP4"}
+        message = result.stderr.decode("utf-8", "replace")[-500:] if result.stderr else "字幕烧录不可用"
+        return {"status": "sidecar_only", "message": message or "保留SRT旁挂字幕"}
+    except (OSError, subprocess.SubprocessError) as error:
+        return {"status": "sidecar_only", "message": str(error)[:500]}
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _mux_audio(ffmpeg, video, audio):
     video = Path(video)
     audio = Path(audio)
@@ -127,10 +166,7 @@ def _mux_audio(ffmpeg, video, audio):
         "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac",
         "-b:a", "128k", "-shortest", "-movflags", "+faststart", str(temporary),
     ]
-    result = subprocess.run(
-        command, capture_output=True, timeout=300, check=False,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    result = subprocess.run(command, capture_output=True, timeout=300, check=False, creationflags=_flags())
     if result.returncode != 0 or not temporary.is_file() or temporary.stat().st_size < 10 * 1024:
         try:
             temporary.unlink(missing_ok=True)
@@ -164,19 +200,25 @@ def _whisper_qc(audio, expected_text):
 
 
 def enhance_final(video_id, plan, final_path, ffmpeg):
-    """Create subtitle sidecar, optionally add local TTS, and report speech QC."""
+    """Create/burn subtitles, optionally add local TTS, and report speech QC."""
     final_path = Path(final_path)
     output_root = final_path.parent
     subtitle_path = output_root / "FINAL.srt"
     build_srt(plan, subtitle_path)
+    subtitle_enabled = bool(((plan or {}).get("subtitle") or {}).get("enabled", True))
     voice_enabled = bool(((plan or {}).get("voice") or {}).get("enabled", True))
     narration = _narration(plan)
     result = {
         "video_id": str(video_id or ""),
-        "subtitle": {"status": "ready", "path": str(subtitle_path)},
+        "subtitle": {
+            "status": "ready" if subtitle_enabled else "disabled",
+            "path": str(subtitle_path), "burn": {"status": "not_run"},
+        },
         "tts": {"status": "skipped", "path": None, "message": "生产合同未启用配音"},
         "whisper_qc": {"status": "not_run", "passed": None},
     }
+    if subtitle_enabled and ffmpeg:
+        result["subtitle"]["burn"] = _burn_subtitles(ffmpeg, final_path, subtitle_path)
     if not voice_enabled:
         return result
     wav = output_root / "narration.wav"
