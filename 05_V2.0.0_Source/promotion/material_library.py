@@ -1,16 +1,18 @@
-"""Structured local material inbox and index for the R8 content factory.
+"""Structured local material inbox and technical index for R8.
 
 The owner may drop optional files under ``data/r8/material_inbox/<campaign_id>``.
-Every file is indexed, but a file is promoted into the usable content library
-only when a sidecar explicitly classifies it. Real customer/repair material
-also requires explicit consent metadata. Repeated scans reuse fingerprints for
-unchanged files so a large inbox does not waste disk/GPU workstation resources.
+Every supported file is indexed, but it becomes usable only when a sidecar
+classifies it. Real customer/repair material additionally requires consent.
+Unchanged files reuse both fingerprints and technical probes, making frequent
+background scans inexpensive even when the library grows.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from core.storage import data_root, now_iso, read_json, write_json
@@ -65,6 +67,96 @@ def _media_class(path):
     return "audio"
 
 
+def _quality_score(media_class, width=None, height=None, duration=None, bytes_size=0):
+    score = 45 if bytes_size else 0
+    if media_class in {"image", "video"} and width and height:
+        short = min(int(width), int(height))
+        long = max(int(width), int(height))
+        if short >= 1080 and long >= 1920:
+            score += 45
+        elif short >= 720 and long >= 1280:
+            score += 35
+        elif short >= 540:
+            score += 22
+        else:
+            score += 8
+    elif media_class == "audio":
+        score += 25
+    if duration is not None and float(duration) > 0:
+        score += 10
+    return max(0, min(100, int(score)))
+
+
+def _probe_image(path, bytes_size):
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            width, height = image.size
+            return {
+                "probe_status": "ok",
+                "width": int(width), "height": int(height),
+                "aspect_ratio": round(width / height, 4) if height else None,
+                "format": str(image.format or path.suffix.lstrip(".")).lower(),
+                "technical_quality_score": _quality_score("image", width, height, None, bytes_size),
+            }
+    except Exception as error:
+        return {
+            "probe_status": "unreadable",
+            "probe_error": str(error)[:240],
+            "technical_quality_score": 10 if bytes_size else 0,
+        }
+
+
+def _probe_av(path, media_class, bytes_size):
+    try:
+        from promotion.video_worker import find_ffmpeg
+        ffmpeg = find_ffmpeg()
+    except (ImportError, OSError):
+        ffmpeg = None
+    if not ffmpeg:
+        return {
+            "probe_status": "ffmpeg_unavailable",
+            "technical_quality_score": _quality_score(media_class, bytes_size=bytes_size),
+        }
+    try:
+        result = subprocess.run(
+            [str(ffmpeg), "-hide_banner", "-i", str(path)],
+            capture_output=True, timeout=12, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        text = (result.stderr + result.stdout).decode("utf-8", "replace")
+        duration = None
+        match = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", text)
+        if match:
+            duration = int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+        width = height = None
+        if media_class == "video":
+            dimensions = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", text, re.S)
+            if dimensions:
+                width, height = int(dimensions.group(1)), int(dimensions.group(2))
+        sample_rate = None
+        audio = re.search(r"Audio:.*?(\d{4,6})\s*Hz", text, re.S)
+        if audio:
+            sample_rate = int(audio.group(1))
+        return {
+            "probe_status": "ok" if (duration is not None or width or sample_rate) else "limited",
+            "duration_seconds": round(duration, 3) if duration is not None else None,
+            "width": width, "height": height,
+            "aspect_ratio": round(width / height, 4) if width and height else None,
+            "sample_rate_hz": sample_rate,
+            "technical_quality_score": _quality_score(media_class, width, height, duration, bytes_size),
+        }
+    except (OSError, subprocess.SubprocessError) as error:
+        return {
+            "probe_status": "probe_failed", "probe_error": str(error)[:240],
+            "technical_quality_score": _quality_score(media_class, bytes_size=bytes_size),
+        }
+
+
+def _probe(path, media_class, bytes_size):
+    return _probe_image(path, bytes_size) if media_class == "image" else _probe_av(path, media_class, bytes_size)
+
+
 def scan_material_inbox():
     from promotion import content_factory
 
@@ -86,6 +178,8 @@ def scan_material_inbox():
     invalid = 0
     hash_reused = 0
     hash_computed = 0
+    probe_reused = 0
+    probe_computed = 0
 
     root = inbox_root()
     for campaign_dir in sorted(root.iterdir() if root.exists() else []):
@@ -122,12 +216,26 @@ def scan_material_inbox():
             consent = bool(meta.get("consent_confirmed"))
             license_meta = meta.get("license") if isinstance(meta.get("license"), dict) else {}
             tags = meta.get("tags") if isinstance(meta.get("tags"), list) else []
+            media_class = _media_class(path)
+            if unchanged and isinstance(prior.get("media_metadata"), dict):
+                media_metadata = dict(prior["media_metadata"])
+                probe_reused += 1
+            else:
+                media_metadata = _probe(path, media_class, stat.st_size)
+                probe_computed += 1
+            media_metadata.update({
+                "filename": path.name,
+                "extension": path.suffix.lower(),
+                "media_class": media_class,
+                "bytes": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            })
             entry = {
                 "campaign_id": campaign_id,
                 "path": str(path),
                 "filename": path.name,
                 "extension": path.suffix.lower(),
-                "media_class": _media_class(path),
+                "media_class": media_class,
                 "bytes": stat.st_size,
                 "mtime_ns": stat.st_mtime_ns,
                 "fingerprint": fingerprint,
@@ -135,6 +243,8 @@ def scan_material_inbox():
                 "consent_confirmed": consent,
                 "tags": [str(x)[:80] for x in tags[:30]],
                 "license": license_meta,
+                "media_metadata": media_metadata,
+                "quality_score": media_metadata.get("technical_quality_score"),
                 "sidecar": str(sidecar_path) if sidecar_path else None,
                 "indexed_at": now_iso(),
                 "status": "已索引",
@@ -172,13 +282,8 @@ def scan_material_inbox():
                     "source_origin": "material_inbox",
                     "source_fingerprint": fingerprint,
                     "license": license_meta,
-                    "media_metadata": {
-                        "filename": path.name,
-                        "extension": path.suffix.lower(),
-                        "media_class": entry["media_class"],
-                        "bytes": stat.st_size,
-                        "mtime_ns": stat.st_mtime_ns,
-                    },
+                    "media_metadata": media_metadata,
+                    "quality_score": entry["quality_score"],
                 })
                 known_assets[fingerprint] = asset
                 promoted += 1
@@ -187,7 +292,7 @@ def scan_material_inbox():
             items.append(entry)
 
     result = {
-        "schema": 2,
+        "schema": 3,
         "scanned_at": now_iso(),
         "root": str(root),
         "items": items[-1000:],
@@ -198,6 +303,8 @@ def scan_material_inbox():
             "invalid": invalid,
             "hash_reused": hash_reused,
             "hash_computed": hash_computed,
+            "probe_reused": probe_reused,
+            "probe_computed": probe_computed,
         },
         "previous_scan_at": previous.get("scanned_at") if isinstance(previous, dict) else None,
     }
@@ -212,13 +319,13 @@ def status():
             "root": str(inbox_root()), "scanned_at": None,
             "summary": {
                 "indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0,
-                "hash_reused": 0, "hash_computed": 0,
+                "hash_reused": 0, "hash_computed": 0, "probe_reused": 0, "probe_computed": 0,
             },
             "items": [],
         }
     value.setdefault("root", str(inbox_root()))
     value.setdefault("summary", {
         "indexed": 0, "promoted": 0, "unclassified": 0, "invalid": 0,
-        "hash_reused": 0, "hash_computed": 0,
+        "hash_reused": 0, "hash_computed": 0, "probe_reused": 0, "probe_computed": 0,
     })
     return value
