@@ -16,6 +16,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
     from core.storage import data_root
     from promotion import content_factory
     import promotion.content_factory_v2_extensions  # noqa: F401
+    import promotion.content_factory_v2_finalization_patch  # noqa: F401
     from promotion import material_library, media_adapters, platform_rules
 
     campaign = content_factory.create_campaign({
@@ -46,11 +47,13 @@ with tempfile.TemporaryDirectory() as temp_dir:
     assert indexed["source_fingerprint"]
     assert indexed["media_metadata"]["media_class"] == "image"
 
-    # Unknown files are indexed but never silently treated as publishable.
+    # Unknown files are indexed but never silently treated as publishable. The
+    # unchanged first file must reuse its SHA256 instead of being rehashed.
     unknown = inbox / "unknown.png"
     unknown.write_bytes(b"unknown")
     scan = material_library.scan_material_inbox()
     assert scan["summary"]["unclassified"] >= 1
+    assert scan["summary"]["hash_reused"] >= 1
 
     video = content_factory.create_video({"campaign_id": campaign["id"]})
     assert video["status"] == "等待ChatGPT策划"
@@ -168,6 +171,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
     })
     assert publish["rule_check"]["passed"] is True
     assert publish["strategy_source"] == "chatgpt_platform_adaptation"
+    assert publish["daily_cap"]["limit"] == 1
 
     receipt = content_factory.record_receipt({
         "plan_id": publish["id"], "result": "成功",
