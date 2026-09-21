@@ -25,6 +25,7 @@ from core.r8_migration import migrate_to_v2_2
 from integrations.bridge import sync_once as bridge_sync_once
 from promotion.chatgpt_orchestrator import sync_content_plans
 from promotion.material_library import scan_material_inbox
+from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
 
 
@@ -34,8 +35,6 @@ def start_scheduler():
         tick = 0
         while not stop.is_set():
             try:
-                # Keep all eight AI roles on a purposeful time-based workday.
-                # Missed slots execute when the app next starts; future slots stay queued.
                 ensure_daily_workforce()
                 ensure_daily_review()
                 run_due_jobs()
@@ -51,13 +50,17 @@ def start_scheduler():
                     # Material inbox is an optional enhancer. Classification or
                     # missing files never block the main production queue.
                     scan_material_inbox()
-                    # Dedicated content decisions are consumed first so the
-                    # generic R7 bridge never rejects these structured kinds.
+                    # Dedicated content decisions are consumed before generic R7
+                    # bridge commands so structured production/QC is not rejected.
                     sync_content_plans()
                     bridge_sync_once()
+                    # Owner-approved content is automatically routed to every
+                    # matching verified target-platform account. This creates
+                    # publication plans only; real platform execution still needs
+                    # a verified connector/device receipt.
+                    run_publish_planning(limit=10)
                 except (OSError, ValueError) as error:
-                    # Bridge/material failures never stop autonomous local work.
-                    print(f"R7 bridge/material sync deferred: {error}", flush=True)
+                    print(f"R7 bridge/material/publish planning deferred: {error}", flush=True)
             tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
@@ -104,10 +107,9 @@ def main():
         migrate_r6()
         migrate_to_v2_2()
         recover_interrupted()
-        # Run one material scan before background loops so pre-dropped optional
-        # assets are immediately visible to ChatGPT and the local executor.
         try:
             scan_material_inbox()
+            run_publish_planning(limit=10)
         except (OSError, ValueError):
             pass
         scheduler_stop = start_scheduler()
