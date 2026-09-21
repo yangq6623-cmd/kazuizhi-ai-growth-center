@@ -111,6 +111,19 @@
     document.head.appendChild(script);
   }
 
+  function loadUiFinal(){
+    if(!document.querySelector('link[data-r8-ui-final]')){
+      const link=document.createElement('link');
+      link.rel='stylesheet';link.href='/operational-ui-final.css';link.dataset.r8UiFinal='1';document.head.appendChild(link);
+    }
+    if(document.querySelector('script[data-r8-ui-final]'))return;
+    const script=document.createElement('script');
+    script.src='/operational-ui-final.js';
+    script.async=false;
+    script.dataset.r8UiFinal='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -127,5 +140,6 @@
   loadFinalization();
   loadUiPolish();
   loadDeepProductization();
+  loadUiFinal();
   window.setTimeout(refresh,400);
 })();
