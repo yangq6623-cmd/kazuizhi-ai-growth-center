@@ -17,9 +17,10 @@ from backend import content_factory_patch as _content_factory_patch  # noqa: F40
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
 from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
 from backend import content_effects_patch as _content_effects_patch  # noqa: F401,E402
-# Productization truth/state patch installs last so UI-facing aliases use one
-# Growth ID, one owner-action source and control-plane verified account status.
+# Productization truth/state patches install last so UI-facing aliases use one
+# Growth ID, one owner-action source and the durable R8 conversion ledger.
 from backend import deep_productization_patch as _deep_productization_patch  # noqa: F401,E402
+from backend import growth_chain_patch as _growth_chain_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
