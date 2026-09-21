@@ -6,6 +6,9 @@ technical-first navigation, unsupported owner controls, skeleton workbenches,
 unverifiable business metrics, duplicate primary actions, dead buttons, split
 Growth IDs, user-written verification state, and manual media classification.
 """
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +25,72 @@ def require(text, tokens, label, failures):
     for token in tokens:
         if token not in text:
             failures.append(f"{label} missing: {token}")
+
+
+def runtime_contract(failures):
+    """Prove the deep rules work against isolated durable state, not just source text."""
+    old_local = os.environ.get("LOCALAPPDATA")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["LOCALAPPDATA"] = tmp
+        sys.path.insert(0, str(SRC))
+        try:
+            from backend import content_factory_patch  # noqa: F401
+            from promotion import content_factory_v2_extensions  # noqa: F401
+            from backend import deep_productization_patch  # noqa: F401
+            from backend import growth_chain_patch  # noqa: F401
+            from promotion import content_factory as cf
+            from promotion.asset_intake import infer_kind
+            from core import r8_growth_ops
+
+            campaign = cf.create_campaign({
+                "region": "涟水县",
+                "service": "家电安装维修",
+                "title": "空调不制冷，用户担心上门后乱收费",
+                "evidence": "真实本地高频咨询问题，用于隔离测试",
+                "goal": "获得可追溯的本地咨询或小程序需求",
+            })
+            dashboard = cf.dashboard()
+            if dashboard.get("active_campaign_id") != campaign["id"]:
+                failures.append("runtime: newly created campaign must become durable active Growth ID")
+            growth_state = r8_growth_ops._state()
+            if not any(x.get("growth_id") == campaign["id"] for x in growth_state.get("growth_cases", [])):
+                failures.append("runtime: content campaign Growth ID not mirrored into R8 growth ledger")
+
+            first = cf.create_video({"campaign_id": campaign["id"]})
+            try:
+                cf.create_video({"campaign_id": campaign["id"]})
+                failures.append("runtime: duplicate active video task was accepted")
+            except ValueError as error:
+                if "已有生产任务" not in str(error):
+                    failures.append(f"runtime: duplicate task rejected with unclear reason: {error}")
+            if first.get("status") != "等待ChatGPT策划":
+                failures.append("runtime: zero-material task should enter ChatGPT planning")
+
+            account = cf.save_account({
+                "platform": "抖音",
+                "account_name": "测试账号",
+                "region": "涟水县",
+                "service": "家电安装维修",
+                "connection_status": "已验证可发布",
+            })
+            if account.get("connection_status") == "已验证可发布":
+                failures.append("runtime: manual account metadata illegally claimed verified publish state")
+
+            if infer_kind("scene.mp4") != "真实现场视频":
+                failures.append("runtime: video material auto classification failed")
+            if infer_kind("photo.jpg") != "真实现场照片":
+                failures.append("runtime: image material auto classification failed")
+            if infer_kind("voice.m4a") != "师傅讲解":
+                failures.append("runtime: audio material auto classification failed")
+        finally:
+            try:
+                sys.path.remove(str(SRC))
+            except ValueError:
+                pass
+            if old_local is None:
+                os.environ.pop("LOCALAPPDATA", None)
+            else:
+                os.environ["LOCALAPPDATA"] = old_local
 
 
 def main():
@@ -229,6 +298,7 @@ def main():
         "未验证",
     ], "truthful empty-state contract", failures)
 
+    runtime_contract(failures)
     if failures:
         raise SystemExit("\n".join(failures))
     print("PASS: V2.2.1 deep productization regression contract")
