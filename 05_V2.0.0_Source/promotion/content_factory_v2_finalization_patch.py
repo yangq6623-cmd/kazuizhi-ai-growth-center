@@ -8,6 +8,7 @@ without weakening the human gate merely because the first plan changed status.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -146,10 +147,6 @@ def create_publish_plan(payload):
     if duplicate:
         raise ValueError("发布前硬规则未通过：同一视频已为该账号建立有效发布计划，禁止重复排期")
 
-    # The legacy base function checked the transient status string. Temporarily
-    # present the already-approved video as authorized solely during this atomic
-    # call; approval evidence above remains the real gate. The base function then
-    # moves it to 等待最佳时间 as usual.
     original_status = video.get("status")
     if original_status != "已授权发布":
         video["status"] = "已授权发布"
@@ -171,19 +168,43 @@ def create_publish_plan(payload):
     return current
 
 
+def dashboard():
+    value = _ORIGINAL["dashboard"]()
+    data = cf._load()
+    dynamic = Counter(str(x.get("status") or "未知") for x in data.get("videos", []))
+    states = value.setdefault("video_states", {})
+    for name, count in dynamic.items():
+        states[name] = count
+    plans = data.get("publication_plans", [])
+    approved = [x for x in data.get("videos", []) if _owner_approved(x)]
+    waiting_accounts = [x for x in approved if x.get("status") == "等待账号"]
+    value["publication_automation"] = {
+        "owner_approved_videos": len(approved),
+        "active_plans": sum(1 for x in plans if x.get("status") in {"等待最佳时间", "发布执行中"}),
+        "waiting_accounts": len(waiting_accounts),
+        "verified_publications": sum(1 for x in plans if x.get("status") == "已验证发布"),
+        "mode": "owner_gate_then_automatic_planning",
+        "truth": "老板通过后自动建立匹配账号的发布计划；未获得真实平台内容ID和URL前不算发布成功。",
+    }
+    return value
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
         return
     _ORIGINAL["record_candidate"] = cf.record_candidate
     _ORIGINAL["create_publish_plan"] = cf.create_publish_plan
+    _ORIGINAL["dashboard"] = cf.dashboard
     cf.record_candidate = record_candidate
     cf.create_publish_plan = create_publish_plan
     cf.finish_local_enhancements = finish_enhancements
+    cf.dashboard = dashboard
     try:
         from backend import server
         server.factory_record_candidate = record_candidate
         server.factory_create_publish_plan = create_publish_plan
+        server.content_factory_dashboard = dashboard
     except (ImportError, AttributeError):
         pass
     _INSTALLED = True
