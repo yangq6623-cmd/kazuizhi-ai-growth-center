@@ -67,7 +67,7 @@
     if(document.querySelector('script[data-v221-workbench]'))return;
     const script=document.createElement('script');
     script.src='/operational-workbench.js';
-    script.defer=true;
+    script.async=false;
     script.dataset.v221Workbench='1';
     document.head.appendChild(script);
   }
@@ -80,7 +80,7 @@
     if(document.querySelector('script[data-v221-finalization]'))return;
     const script=document.createElement('script');
     script.src='/operational-finalization.js';
-    script.defer=true;
+    script.async=false;
     script.dataset.v221Finalization='1';
     document.head.appendChild(script);
   }
@@ -93,7 +93,7 @@
     if(document.querySelector('script[data-r8-ui-polish]'))return;
     const script=document.createElement('script');
     script.src='/operational-ui-polish.js';
-    script.defer=true;
+    script.async=false;
     script.dataset.r8UiPolish='1';
     document.head.appendChild(script);
   }
@@ -106,7 +106,7 @@
     if(document.querySelector('script[data-r8-deep-productization]'))return;
     const script=document.createElement('script');
     script.src='/operational-deep-productization.js';
-    script.defer=true;
+    script.async=false;
     script.dataset.r8DeepProductization='1';
     document.head.appendChild(script);
   }
