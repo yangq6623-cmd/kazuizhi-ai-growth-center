@@ -27,6 +27,9 @@ from backend import growth_chain_patch as _growth_chain_patch  # noqa: F401,E402
 # ChatGPT production handoffs and exposes the shared world-state API.
 from core import decision_center_mission_patch as _decision_center_mission_patch  # noqa: F401,E402
 from backend import autonomous_ops_patch as _autonomous_ops_patch  # noqa: F401,E402
+# Extend the same bridge with a narrow, validated mission_decision contract so
+# ChatGPT can continue/stop/create the next non-financial Mission after R7 review.
+from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
 from core.daily_workforce import ensure_daily_workforce
@@ -63,10 +66,10 @@ def start_scheduler():
                     # execution. A ready campaign may enter its first production
                     # task automatically; owner review/publish truth gates remain.
                     sync_autonomous_ops(autostart=True)
-                    # Import any real ChatGPT response first. Remaining pending
-                    # requests are then exported/retried by a bounded watchdog;
-                    # a writable sync folder alone is never treated as proof
-                    # that ChatGPT received or processed the request.
+                    # Import real ChatGPT production/QC/Mission decisions first.
+                    # Remaining pending requests are then exported/retried by a
+                    # bounded watchdog; a writable sync folder alone is never
+                    # treated as proof that ChatGPT received or processed them.
                     sync_content_plans()
                     sync_chatgpt_handoffs()
                     bridge_sync_once()
