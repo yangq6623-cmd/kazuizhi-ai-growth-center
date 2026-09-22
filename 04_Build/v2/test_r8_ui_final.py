@@ -20,12 +20,18 @@ def require(text, tokens, label, failures):
 def main():
     failures = []
     loader = read(WEB / "operational-productization.js")
+    forms = read(WEB / "forms.js")
     final_js = read(WEB / "operational-ui-final.js")
     final_css = read(WEB / "operational-ui-final.css")
     hotfix_js = read(WEB / "operational-ui-hotfix-341.js")
     hotfix_css = read(WEB / "operational-ui-hotfix-341.css")
     usability_js = read(WEB / "operational-usability-349.js")
     usability_css = read(WEB / "operational-usability-349.css")
+    autonomous_js = read(WEB / "autonomous-ops.js")
+    autonomous_css = read(WEB / "autonomous-ops.css")
+    autonomous_core = read(SRC / "core" / "autonomous_ops.py")
+    autonomous_backend = read(SRC / "backend" / "autonomous_ops_patch.py")
+    mission_feedback = read(SRC / "core" / "decision_center_mission_patch.py")
     watchdog = read(SRC / "promotion" / "chatgpt_handoff_watchdog.py")
     runtime = read(SRC / "run.py")
     user_guide = read(DOCS / "R8_OPERATIONAL_USER_GUIDE.md")
@@ -38,7 +44,17 @@ def main():
         "data-r8-ui-final",
         "loadUiHotfix341",
         "operational-ui-hotfix-341.js",
+        "loadAutonomousOps",
+        "autonomous-ops.js",
+        "autonomous-ops.css",
     ], "UI final loader", failures)
+
+    require(forms, [
+        "data-autonomous-ops",
+        "autonomous-ops.css",
+        "autonomous-ops.js",
+        "自治运营主线",
+    ], "R7 boss Mission loader", failures)
 
     require(final_js, [
         "r8-ui-final",
@@ -92,6 +108,48 @@ def main():
         ".usability-build",
     ], "#349 visual states", failures)
 
+    require(autonomous_js, [
+        "卡嘴子自治运营主线",
+        "老板总控",
+        "执行中心",
+        "老板经营目标",
+        "当前 Mission 时间线",
+        "/api/autonomous-ops",
+        "/api/autonomous-ops/goal",
+        "真实平台回执",
+    ], "shared Mission UI", failures)
+    require(autonomous_css, [
+        ".mission-command-strip",
+        ".mission-state.running",
+        ".mission-state.human",
+        ".mission-state.danger",
+        ".mission-timeline",
+        ".mission-goal-editor",
+    ], "shared Mission visual system", failures)
+    require(autonomous_core, [
+        "MISSION-",
+        "sync_from_runtime",
+        "autostart=True",
+        "mission_context_for_growth",
+        "feedback_for_r7",
+        "老板目标 → ChatGPT总决策 → R7分析 → Mission → R8执行",
+        "真实平台回执",
+        "L4",
+    ], "autonomous operations core", failures)
+    require(autonomous_backend, [
+        "/api/autonomous-ops",
+        "/api/autonomous-ops/goal",
+        "mission_context",
+        "r7_context",
+        "apply_chatgpt_qc",
+        "record_receipt",
+    ], "autonomous operations backend bridge", failures)
+    require(mission_feedback, [
+        "mission_feedback",
+        "R8真实执行结果",
+        "feedback_for_r7",
+    ], "R8 to R7 feedback bridge", failures)
+
     require(watchdog, [
         "RETRY_AFTER_SECONDS = 300",
         "MAX_RETRIES = 3",
@@ -107,7 +165,11 @@ def main():
         "from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs",
         "sync_chatgpt_handoffs()",
         "sync_chatgpt_handoffs(force=True)",
-    ], "runtime watchdog wiring", failures)
+        "decision_center_mission_patch",
+        "autonomous_ops_patch",
+        "sync_autonomous_ops(autostart=True)",
+        "sync_autonomous_ops(autostart=False)",
+    ], "runtime autonomous loop wiring", failures)
 
     require(final_css, [
         "body.r8-ui-final",
@@ -127,9 +189,9 @@ def main():
         ".hotfix-planning-truth.is-blocked",
     ], "planning status visual states", failures)
 
-    for name, source in (("final", final_js), ("hotfix", hotfix_js), ("usability", usability_js)):
+    for name, source in (("final", final_js), ("hotfix", hotfix_js), ("usability", usability_js), ("autonomous", autonomous_js)):
         if "MutationObserver" in source:
-            failures.append(f"{name} UI must use explicit operational events, not global MutationObserver polling")
+            failures.append(f"{name} UI must use explicit events, not global MutationObserver polling")
 
     require(user_guide, [
         "本地素材是可选增强",
@@ -155,7 +217,7 @@ def main():
 
     if failures:
         raise SystemExit("\n".join(failures))
-    print("PASS: R8 V2.2.1 Productized UI + #349 field usability and truthful ChatGPT handoff")
+    print("PASS: R8 Productized UI + #349 usability + unified autonomous Mission continuity")
 
 
 if __name__ == "__main__":
