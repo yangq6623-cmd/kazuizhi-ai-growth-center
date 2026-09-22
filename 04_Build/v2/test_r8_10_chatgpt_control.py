@@ -1,12 +1,22 @@
+import importlib.util
 import os
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "05_V2.0.0_Source"
-os.sys.path.insert(0, str(SOURCE))
+sys.path.insert(0, str(SOURCE))
 
-from integrations import chatgpt_control as control  # noqa: E402
+# Load only the connector module under test. Importing the integrations package
+# also imports Android live-mirror dependencies that are irrelevant to this
+# contract test and are intentionally not installed in the lightweight CI job.
+MODULE_PATH = SOURCE / "integrations" / "chatgpt_control.py"
+spec = importlib.util.spec_from_file_location("r8_10_chatgpt_control_under_test", MODULE_PATH)
+if spec is None or spec.loader is None:
+    raise RuntimeError("cannot load chatgpt_control.py")
+control = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(control)
 
 
 def main() -> None:
