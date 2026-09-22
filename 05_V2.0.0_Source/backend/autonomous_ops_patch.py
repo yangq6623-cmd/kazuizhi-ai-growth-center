@@ -32,6 +32,8 @@ def _with_mission_context(limit=20):
     for item in payload.get("items", []):
         context = autonomous_ops.mission_context_for_growth(item.get("campaign_id"))
         if context:
+            # mission_context intentionally contains r7_context plus owner goal,
+            # Mission identity and verified R8 feedback as one decision envelope.
             item["mission_context"] = context
             item["instruction"] = (
                 str(item.get("instruction") or "") +
