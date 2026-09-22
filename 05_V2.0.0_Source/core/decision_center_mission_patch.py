@@ -20,6 +20,16 @@ def _augment(report):
         "ChatGPT在同一Mission中读取R7分析与R8真实执行结果；真实发布、咨询和订单结果回流后，"
         "用于下一轮加码/保持/减少/停止判断。"
     )
+    handoff["mission_decision_contract"] = {
+        "schema": "kazuizhi-mission-decision/v1",
+        "kind": "mission_decision",
+        "allowed_actions": ["continue", "stop", "create_mission"],
+        "instruction": (
+            "当真实证据足够支持下一步时，可返回kind=mission_decision。continue表示在同一Mission继续下一轮；"
+            "stop表示停止当前低收益非资金执行；create_mission必须提供region/service/title/evidence/goal，"
+            "用于新建下一轮经营Mission。不得绕过老板成片审核、账号验证、资金和合规边界。"
+        ),
+    }
     questions = handoff.setdefault("questions", [])
     mission_question = "当前Mission的R8执行与真实结果是否支持继续、加码、减少或停止？"
     if mission_question not in questions:
