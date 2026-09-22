@@ -1,16 +1,15 @@
-"""Canonical V2.2 R8 Operational runtime identity."""
+"""Canonical V2.2.2 autonomous Mission runtime identity."""
 
-VERSION = "2.2.0"
-BUILD_STAGE = "Operational"
+VERSION = "2.2.2"
+BUILD_STAGE = "Autonomous Mission Core"
 RELEASE = "R8"
-BUILD_ID = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
-PRODUCT_NAME = "Kazuizhi AI Enterprise V2.2.0 R8 Operational"
+BUILD_ID = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
+PRODUCT_NAME = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
 
-# Compatibility fields retained for the R8 UI modules, saved data and diagnostics
-# introduced by the #238 build. They now point at the single V2.2 identity.
-R8_DISPLAY_VERSION = "V2.2.0 R8 Operational"
-R8_RELEASE = "R8 Operational"
-R8_PHASE = "R8-08"
+# Compatibility fields retained for older R8 UI modules, saved data and diagnostics.
+R8_DISPLAY_VERSION = "V2.2.2 自治运营核心"
+R8_RELEASE = "R8 Autonomous Mission Core"
+R8_PHASE = "R8-09"
 R8_RUNTIME_BUILD = BUILD_ID
 R8_PRODUCT_NAME = PRODUCT_NAME
 
