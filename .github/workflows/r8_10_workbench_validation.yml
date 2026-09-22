@@ -5,13 +5,21 @@ on:
     branches: ['r8-10-*']
     paths:
       - '05_V2.0.0_Source/web/**'
+      - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
+      - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_control.py'
       - '04_Build/v2/test_r8_10_workbench.py'
+      - '04_Build/v2/test_r8_10_chatgpt_control.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
   pull_request:
     branches: [main]
     paths:
       - '05_V2.0.0_Source/web/**'
+      - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
+      - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_control.py'
       - '04_Build/v2/test_r8_10_workbench.py'
+      - '04_Build/v2/test_r8_10_chatgpt_control.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
 
 permissions:
@@ -31,6 +39,8 @@ jobs:
           python-version: '3.11'
       - name: Verify R8-10 workbench contract
         run: python 04_Build/v2/test_r8_10_workbench.py
+      - name: Verify ChatGPT control connection truth
+        run: python 04_Build/v2/test_r8_10_chatgpt_control.py
       - name: Verify existing UI interaction contracts
         run: |
           python 04_Build/v2/test_ui_interactions.py
