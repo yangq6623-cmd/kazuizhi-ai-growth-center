@@ -3,7 +3,7 @@
   const RUNTIME_BUILD = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922';
   const PHASE = 'R8-09 自治闭环收口';
   const PREVIOUS_PHASE = 'R8-08';
-  const LEGACY_PHASE = 'R8-01B.5';
+  const LEGACY_PHASE = 'R8-01B.4.3';
   let deviceRuntimeArmed = false;
   let deviceRuntimeLoading = false;
 
