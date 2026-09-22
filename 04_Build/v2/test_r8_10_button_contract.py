@@ -5,6 +5,7 @@ WEB = ROOT / "05_V2.0.0_Source" / "web"
 JS = (WEB / "r8_10_workbench.js").read_text(encoding="utf-8")
 CSS = (WEB / "r8_10_workbench.css").read_text(encoding="utf-8")
 INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+APP = (WEB / "app.js").read_text(encoding="utf-8")
 OPERATIONAL = (WEB / "operational.html").read_text(encoding="utf-8")
 
 
@@ -14,8 +15,8 @@ def require(text: str, needle: str, label: str) -> None:
 
 
 def main() -> None:
-    # Six primary buttons must route to an existing owner-facing page or a
-    # synthetic page created by the R8-10 shell.
+    # Six primary buttons must route to an existing owner-facing page, a page
+    # created by the legacy R7/R8 shell, or a synthetic R8-10 page.
     routes = {
         "老板总控": "dashboard",
         "AI决策中心": "workflow",
@@ -29,6 +30,9 @@ def main() -> None:
         require(JS, f"target:'{target}'", f"route target {target}")
         if target.startswith("r810-"):
             require(JS, f"ensureProxyPage('{target}'", f"synthetic page {target}")
+        elif target == "operational-hub":
+            require(APP, "section.id='operational-hub'", "dynamically created execution page")
+            require(APP, "button.dataset.page='operational-hub'", "execution navigation proxy")
         else:
             require(INDEX, f'id="{target}"', f"existing page {target}")
 
