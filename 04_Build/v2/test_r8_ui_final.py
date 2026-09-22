@@ -1,8 +1,9 @@
-"""Regression gate for the visibly distinct R8 V2.2.1 Productized UI Final layer."""
+"""Regression gate for the visibly distinct R8 V2.2.1 Productized UI + #349 usability layer."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "05_V2.0.0_Source" / "web"
+SRC = ROOT / "05_V2.0.0_Source"
 DOCS = ROOT / "docs"
 
 
@@ -23,6 +24,10 @@ def main():
     final_css = read(WEB / "operational-ui-final.css")
     hotfix_js = read(WEB / "operational-ui-hotfix-341.js")
     hotfix_css = read(WEB / "operational-ui-hotfix-341.css")
+    usability_js = read(WEB / "operational-usability-349.js")
+    usability_css = read(WEB / "operational-usability-349.css")
+    watchdog = read(SRC / "promotion" / "chatgpt_handoff_watchdog.py")
+    runtime = read(SRC / "run.py")
     user_guide = read(DOCS / "R8_OPERATIONAL_USER_GUIDE.md")
     test_report = read(DOCS / "R8_OPERATIONAL_TEST_REPORT.md")
 
@@ -56,12 +61,53 @@ def main():
     require(hotfix_js, [
         "经营数据待接入",
         "创建新的增长战役",
-        "/api/bridge/status",
-        "ChatGPT 总控已连接",
-        "ChatGPT 总控未连接",
-        "约每 60 秒同步一次",
+        "operational-usability-349.js",
+        "请求已写入ChatGPT同步桥",
+        "当前不能证明ChatGPT已接收",
         "operational-ui-hotfix-341.css",
-    ], "#341 acceptance hotfix", failures)
+    ], "truthful planning hotfix", failures)
+    if "/api/bridge/status" in hotfix_js or "ChatGPT 总控已连接" in hotfix_js:
+        failures.append("UI must not equate writable bridge status with ChatGPT acknowledgement")
+
+    require(usability_js, [
+        "r8-usability-349",
+        "今天要什么结果、现在卡在哪里",
+        "data-final-ui-new-campaign",
+        "把照片、视频或音频直接拖到这里",
+        "input.multiple=true",
+        "去连接手机",
+        "usability-account-flow",
+        "其余按钮暂不可用",
+        "usability-human",
+        "usability-auto",
+        "usability-build",
+    ], "#349 field usability", failures)
+    require(usability_css, [
+        ".usability-account-flow",
+        ".usability-material-drop",
+        ".usability-device-hint",
+        "button:disabled",
+        ".usability-human",
+        ".usability-auto",
+        ".usability-build",
+    ], "#349 visual states", failures)
+
+    require(watchdog, [
+        "RETRY_AFTER_SECONDS = 300",
+        "MAX_RETRIES = 3",
+        "bridge_unavailable",
+        "waiting_response",
+        "retry_exhausted",
+        "export_decision_handoff",
+        "异常待处理",
+    ], "ChatGPT handoff watchdog", failures)
+    if "writable sync folder is not the same thing" not in watchdog.lower():
+        failures.append("watchdog must explicitly separate bridge availability from ChatGPT receipt")
+    require(runtime, [
+        "from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs",
+        "sync_chatgpt_handoffs()",
+        "sync_chatgpt_handoffs(force=True)",
+    ], "runtime watchdog wiring", failures)
 
     require(final_css, [
         "body.r8-ui-final",
@@ -79,10 +125,11 @@ def main():
         ".hotfix-planning-truth",
         ".hotfix-planning-truth.is-connected",
         ".hotfix-planning-truth.is-blocked",
-    ], "#341 hotfix visual states", failures)
+    ], "planning status visual states", failures)
 
-    if "MutationObserver" in final_js or "MutationObserver" in hotfix_js:
-        failures.append("UI final must use explicit operational events, not global MutationObserver polling")
+    for name, source in (("final", final_js), ("hotfix", hotfix_js), ("usability", usability_js)):
+        if "MutationObserver" in source:
+            failures.append(f"{name} UI must use explicit operational events, not global MutationObserver polling")
 
     require(user_guide, [
         "本地素材是可选增强",
@@ -108,7 +155,7 @@ def main():
 
     if failures:
         raise SystemExit("\n".join(failures))
-    print("PASS: R8 V2.2.1 Productized UI Final + #341 truth hotfix are release-consistent")
+    print("PASS: R8 V2.2.1 Productized UI + #349 field usability and truthful ChatGPT handoff")
 
 
 if __name__ == "__main__":
