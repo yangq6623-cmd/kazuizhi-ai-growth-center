@@ -22,7 +22,13 @@ from backend import content_effects_patch as _content_effects_patch  # noqa: F40
 # Growth ID, one owner-action source and the durable R8 conversion ledger.
 from backend import deep_productization_patch as _deep_productization_patch  # noqa: F401,E402
 from backend import growth_chain_patch as _growth_chain_patch  # noqa: F401,E402
+# R7/R8 are two views over one Mission loop.  The decision patch feeds verified
+# R8 outcomes back into R7; the backend patch injects R7/Mission context into
+# ChatGPT production handoffs and exposes the shared world-state API.
+from core import decision_center_mission_patch as _decision_center_mission_patch  # noqa: F401,E402
+from backend import autonomous_ops_patch as _autonomous_ops_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
+from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
@@ -53,6 +59,10 @@ def start_scheduler():
             if tick % 4 == 0:
                 try:
                     scan_material_inbox()
+                    # One Mission joins R7 analysis, ChatGPT strategy and R8
+                    # execution. A ready campaign may enter its first production
+                    # task automatically; owner review/publish truth gates remain.
+                    sync_autonomous_ops(autostart=True)
                     # Import any real ChatGPT response first. Remaining pending
                     # requests are then exported/retried by a bounded watchdog;
                     # a writable sync folder alone is never treated as proof
@@ -65,6 +75,7 @@ def start_scheduler():
                     # publication plans only; real platform execution still needs
                     # a verified connector/device receipt.
                     run_publish_planning(limit=10)
+                    sync_autonomous_ops(autostart=False)
                 except (OSError, ValueError) as error:
                     print(f"R7 bridge/material/publish planning deferred: {error}", flush=True)
             tick += 1
@@ -115,9 +126,11 @@ def main():
         recover_interrupted()
         try:
             scan_material_inbox()
+            sync_autonomous_ops(autostart=True)
             sync_content_plans()
             sync_chatgpt_handoffs(force=True)
             run_publish_planning(limit=10)
+            sync_autonomous_ops(autostart=False)
         except (OSError, ValueError):
             pass
         scheduler_stop = start_scheduler()
