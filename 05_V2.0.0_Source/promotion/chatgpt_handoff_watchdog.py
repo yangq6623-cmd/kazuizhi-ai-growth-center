@@ -59,6 +59,11 @@ def _mark_nonpending_truth(data):
         handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else None
         if handoff is None:
             continue
+        # A retry-exhausted exception remains truthful until a real plan/QC
+        # response changes the task state. Do not silently turn it back into a
+        # generic local-execution state on the next scheduler tick.
+        if video.get("status") == "异常待处理" and handoff.get("phase") == "retry_exhausted":
+            continue
         phase = _phase_for(video)
         if video.get("status") not in PENDING_STATES and phase != handoff.get("phase"):
             handoff["phase"] = phase
