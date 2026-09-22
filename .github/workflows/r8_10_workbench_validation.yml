@@ -1,0 +1,51 @@
+name: Validate R8-10 Autonomous Workbench
+
+on:
+  push:
+    branches: ['r8-10-*']
+    paths:
+      - '05_V2.0.0_Source/web/**'
+      - '04_Build/v2/test_r8_10_workbench.py'
+      - '.github/workflows/r8_10_workbench_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/web/**'
+      - '04_Build/v2/test_r8_10_workbench.py'
+      - '.github/workflows/r8_10_workbench_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-workbench:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify R8-10 workbench contract
+        run: python 04_Build/v2/test_r8_10_workbench.py
+      - name: Verify existing UI interaction contracts
+        run: |
+          python 04_Build/v2/test_ui_interactions.py
+          python 04_Build/v2/test_v221_productization.py
+          python 04_Build/v2/test_r8_ui_final.py
+      - name: Syntax-check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" }
+          }
+      - name: Verify owner-facing truth rules
+        run: |
+          $text = Get-Content 05_V2.0.0_Source/web/r8_10_workbench.js -Raw
+          @('未验证连接','备用 AI 接口（可选）','待我处理','不会虚构软件缺陷','不会用估算数字代替') | ForEach-Object {
+            if (-not $text.Contains($_)) { throw "Missing R8-10 truth rule: $_" }
+          }
+          Write-Host 'R8-10 owner-facing truth rules verified.'
