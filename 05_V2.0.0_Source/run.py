@@ -1,4 +1,4 @@
-"""Kazuizhi AI Enterprise V2.2.0 R8 Operational entry point."""
+"""Kazuizhi AI Enterprise V2.2.2 Autonomous Mission Core entry point."""
 import argparse
 import ctypes
 import os
@@ -22,11 +22,14 @@ from backend import content_effects_patch as _content_effects_patch  # noqa: F40
 # Growth ID, one owner-action source and the durable R8 conversion ledger.
 from backend import deep_productization_patch as _deep_productization_patch  # noqa: F401,E402
 from backend import growth_chain_patch as _growth_chain_patch  # noqa: F401,E402
-# R7/R8 are two views over one Mission loop.  The decision patch feeds verified
+# R7/R8 are two views over one Mission loop. The decision patch feeds verified
 # R8 outcomes back into R7; the backend patch injects R7/Mission context into
 # ChatGPT production handoffs and exposes the shared world-state API.
 from core import decision_center_mission_patch as _decision_center_mission_patch  # noqa: F401,E402
 from backend import autonomous_ops_patch as _autonomous_ops_patch  # noqa: F401,E402
+# Direct ChatGPT gateway is local-only and stores its credential with Windows
+# DPAPI. The filesystem bridge remains an offline/fallback transport.
+from backend import ai_gateway_patch as _ai_gateway_patch  # noqa: F401,E402
 # Extend the same bridge with a narrow, validated mission_decision contract so
 # ChatGPT can continue/stop/create the next non-financial Mission after R7 review.
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
@@ -37,6 +40,7 @@ from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
+from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
@@ -66,11 +70,11 @@ def start_scheduler():
                     # execution. A ready campaign may enter its first production
                     # task automatically; owner review/publish truth gates remain.
                     sync_autonomous_ops(autostart=True)
-                    # Import real ChatGPT production/QC/Mission decisions first.
-                    # Remaining pending requests are then exported/retried by a
-                    # bounded watchdog; a writable sync folder alone is never
-                    # treated as proof that ChatGPT received or processed them.
+                    # Accept any returned fallback-bridge decisions first, then
+                    # prefer the direct AI Gateway. Only still-pending work is
+                    # exported/retried through the filesystem bridge watchdog.
                     sync_content_plans()
+                    run_ai_gateway(limit=2)
                     sync_chatgpt_handoffs()
                     bridge_sync_once()
                     # Owner-approved content is automatically routed to every
@@ -80,7 +84,7 @@ def start_scheduler():
                     run_publish_planning(limit=10)
                     sync_autonomous_ops(autostart=False)
                 except (OSError, ValueError) as error:
-                    print(f"R7 bridge/material/publish planning deferred: {error}", flush=True)
+                    print(f"R7 AI/bridge/material/publish planning deferred: {error}", flush=True)
             tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
@@ -89,7 +93,7 @@ def start_scheduler():
 
 
 def start_video_production_worker():
-    """Keep GPU/video work isolated so a long render cannot block R7/bridge ticks."""
+    """Keep GPU/video work isolated so a long render cannot block R7/AI ticks."""
     stop = threading.Event()
     def loop():
         while not stop.is_set():
@@ -113,15 +117,15 @@ def main():
     except OSError:
         console_message = (
             f"Port {args.port} is occupied by another Kazuizhi runtime. "
-            "Close the old Enterprise runtime and start V2.2.0 R8 Operational again."
+            "Close the old Enterprise runtime and start V2.2.2 Autonomous Mission Core again."
         )
         message = (
             f"端口 {args.port} 正被旧版卡嘴子程序占用。\n\n"
-            "请关闭旧版 Enterprise R2/R3/R4/R5/R6 程序，再重新启动 V2.2.0 R8 Operational。"
+            "请关闭旧版 Enterprise 程序，再重新启动 V2.2.2 自治运营核心。"
         )
         print(console_message, flush=True)
         if not args.no_browser and os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2.2 R8 Operational", 0x30)
+            ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2.2.2 自治运营核心", 0x30)
         raise SystemExit(2)
     with server:
         migrate_r6()
@@ -131,6 +135,7 @@ def main():
             scan_material_inbox()
             sync_autonomous_ops(autostart=True)
             sync_content_plans()
+            run_ai_gateway(limit=2)
             sync_chatgpt_handoffs(force=True)
             run_publish_planning(limit=10)
             sync_autonomous_ops(autostart=False)
