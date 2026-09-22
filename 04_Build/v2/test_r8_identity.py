@@ -8,9 +8,11 @@ sys.path.insert(0, str(SRC))
 
 from core import version  # noqa: E402
 
-EXPECTED_DISPLAY = "V2.2.0 R8 Operational"
-EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
-EXPECTED_PHASE = "R8-08"
+EXPECTED_DISPLAY = "V2.2.2 自治运营核心"
+EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
+EXPECTED_PHASE = "R8-09"
+EXPECTED_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
+EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core"
 
 status = version.get_version()
 if status.get("display_version") != EXPECTED_DISPLAY:
@@ -19,6 +21,8 @@ if status.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 runtime build missing")
 if status.get("r8_phase") != EXPECTED_PHASE:
     raise AssertionError("R8 phase missing")
+if status.get("product") != EXPECTED_PRODUCT:
+    raise AssertionError("R8 product identity missing")
 
 manifest = json.loads((SRC / "version" / "manifest.json").read_text(encoding="utf-8"))
 preview = manifest.get("r8_final") or {}
@@ -61,15 +65,12 @@ for field in ("social-form-role", "social-form-level", "social-form-region", "so
 installer = (ROOT / "04_Build" / "installer" / "Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
 windows_version = (ROOT / "04_Build" / "v2" / "windows_version.txt").read_text(encoding="utf-8")
 workflow = (ROOT / ".github" / "workflows" / "build_v2_enterprise_beta.yml").read_text(encoding="utf-8")
-for value in (
-    "Kazuizhi AI Enterprise V2.2.0 R8 Operational",
-    "Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational",
-):
+for value in (EXPECTED_PRODUCT, EXPECTED_INSTALLER):
     if value not in installer:
         raise AssertionError(f"R8 installer identity missing: {value}")
-if "2.2.0.20" not in windows_version or "R8 Operational" not in windows_version:
+if "2.2.2.22" not in windows_version or EXPECTED_PRODUCT not in windows_version:
     raise AssertionError("R8 Windows version identity missing")
-if "Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational" not in workflow:
+if EXPECTED_INSTALLER not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: R8 Final package, visible build identity, R8-08 phase and R7 compatibility layer are distinct and traceable")
+print("PASS: V2.2.2 Autonomous Mission Core package, visible identity, R8-09 phase and R7 compatibility are traceable")
