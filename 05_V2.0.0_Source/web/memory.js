@@ -18,3 +18,24 @@ $('save-memory').addEventListener('click', async () => {
     toast(error.message,'error');
   }
 });
+
+// R8-10 is intentionally loaded as a product shell over the proven #397
+// runtime. This keeps the R7/R8 state machines intact while unifying the
+// owner-facing workbench. Keeping the loader here avoids a destructive rewrite
+// of the legacy index page and makes rollback to #397 straightforward.
+(() => {
+  if (!document.querySelector('link[data-r810-workbench]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/r8_10_workbench.css';
+    link.dataset.r810Workbench = '1';
+    document.head.appendChild(link);
+  }
+  if (!document.querySelector('script[data-r810-workbench]')) {
+    const script = document.createElement('script');
+    script.src = '/r8_10_workbench.js';
+    script.defer = true;
+    script.dataset.r810Workbench = '1';
+    document.body.appendChild(script);
+  }
+})();
