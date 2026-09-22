@@ -68,3 +68,8 @@ def install():
 
 
 install()
+
+# R8-10 installs after the legacy API gateway so the owner UI gets a separate,
+# truthful ChatGPT-subscription control status. The legacy OpenAI API gateway
+# remains an optional advanced fallback and cannot set this state to verified.
+from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: E402,F401
