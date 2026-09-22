@@ -1,5 +1,5 @@
 Kazuizhi AI Growth Center
-Version: V2.2.2 自治运营核心
+Version: V2.2.2 Autonomous Mission Core
 R8 Phase: R8-09
 Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
