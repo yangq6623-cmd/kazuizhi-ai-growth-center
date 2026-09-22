@@ -1,16 +1,20 @@
-"""Canonical V2.2.2 autonomous Mission runtime identity."""
+"""Canonical V2.2.2 autonomous Mission runtime identity.
+
+BUILD_ID stays on the inherited static-shell contract so preserved R7/R8 HTML
+and data migrations continue to validate during an overwrite upgrade. The
+user-visible/runtime identity is V2.2.2 through R8_RUNTIME_BUILD.
+"""
 
 VERSION = "2.2.2"
 BUILD_STAGE = "Autonomous Mission Core"
 RELEASE = "R8"
-BUILD_ID = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
+BUILD_ID = "KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920"
 PRODUCT_NAME = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
 
-# Compatibility fields retained for older R8 UI modules, saved data and diagnostics.
 R8_DISPLAY_VERSION = "V2.2.2 自治运营核心"
 R8_RELEASE = "R8 Autonomous Mission Core"
 R8_PHASE = "R8-09"
-R8_RUNTIME_BUILD = BUILD_ID
+R8_RUNTIME_BUILD = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
 R8_PRODUCT_NAME = PRODUCT_NAME
 
 
