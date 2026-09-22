@@ -133,6 +133,19 @@
     document.head.appendChild(script);
   }
 
+  function loadAutonomousOps(){
+    if(!document.querySelector('link[data-autonomous-ops]')){
+      const link=document.createElement('link');
+      link.rel='stylesheet';link.href='/autonomous-ops.css';link.dataset.autonomousOps='1';document.head.appendChild(link);
+    }
+    if(document.querySelector('script[data-autonomous-ops]'))return;
+    const script=document.createElement('script');
+    script.src='/autonomous-ops.js';
+    script.async=false;
+    script.dataset.autonomousOps='1';
+    document.head.appendChild(script);
+  }
+
   function refresh(){renderOwnerTodo();enhanceHealth()}
 
   document.addEventListener('click',event=>{
@@ -151,5 +164,6 @@
   loadDeepProductization();
   loadUiFinal();
   loadUiHotfix341();
+  loadAutonomousOps();
   window.setTimeout(refresh,400);
 })();
