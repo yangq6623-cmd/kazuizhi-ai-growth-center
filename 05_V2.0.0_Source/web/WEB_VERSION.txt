@@ -1,109 +1,26 @@
 Kazuizhi AI Growth Center
-Version: V2.2.0 R8 Operational
-R8 Phase: R8-08
-Runtime Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
-Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
+Version: V2.2.2 自治运营核心
+R8 Phase: R8-09
+Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
+Frontend Compatibility Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
 Modules:
 - R7 Final Core Preserved
-- R8-00 Platform Safety Control Plane
-- R8-01 Single Real Android Device Center
-- R8-01A Durable Configuration Outside Install Directory
-- R8-01A Windows DPAPI Business Readonly Key Reuse
-- R8-01A Google Drive AI_Command Drive-Letter Auto Recovery
-- R8-01A Persisted ADB Path / Last Device Identity
-- R8-01A Durable Social Device / Platform / Account Bindings
-- R8-01B Interactive Desktop Phone Console in Social Media Center
-- R8-01B Direct Screenshot Tap and Mouse-Drag Swipe Mapping
-- R8-01B Screen-Off Auto Wake with Post-Wake Safety Recheck
-- R8-01B Screen-Off / Keyguard / Secure-Lock State Separation
-- R8-01B R8 Auto / Human Control / Pause Modes
-- R8-01B USB Task Keep-Awake / Restore Normal Sleep Policy
-- R8-01B.2 AI Social Terminal Cockpit
-- R8-01B.2 Compact Two-Column Phone + Task Driving Layout
-- R8-01B.2 Platform Dock with Platform Recognition Icons
-- R8-01B.2 Current Device / Platform / Account / Task Context Bar
-- R8-01B.2 Owner Attention Queue and Chinese Risk Labels
-- R8-01B.2 Task / Platform / Human / Audit Side Tabs
-- R8-01B.2 Device Health Score and Daily Platform Run Chain
-- R8-01B.2 Phone Zoom / Fullscreen / Right-Click Back Controls
-- R8-02 Platform Intelligence Radar and Unique Account Routing
-- R8-03 User Voice, Content Genes and Growth ID Traceability
-- R8-04 Eight-Agent Content Committee and Review Workflow
-- R8-05 RTX 3060 Local Video Worker Contract and Quality Gates
-- R8-06 Owner Approval and Publish Authorization
-- R8-07 Scheduled Publishing, Truthful Receipts and Unified Conversations
-- R8-08 Lead CRM, Order Attribution, Metrics and Learning Loop
-- R8 Multi-Account Matrix by Role, Region and Service Category
-- R8 L1-L4 Account Automation Levels
-- R8 Cross-Account Deduplication and Stop-Contact Guardrail
-- R8 24h / 72h / 7-day Measurement Windows
-- R8 External Connector Truth State and Complete Audit Diagnostics
-- R8-01B.5 Stable Last-Frame Phone Mirror and Adaptive Refresh
-- R8 Chinese Command Pyramid and Organized Navigation
-- R8 0-to-10 Truthful Closed-Loop Acceptance Audit
-- R8 Content Draft to Review / Publish / Metrics Bridge
-- R8 Persistent Action Feedback and Inline Video Worker Configuration
-- R8-01 Truthful Local ADB Discovery and Probe
-- R8-01 Device ID / Model / Android / Battery / Screen State
-- R8-01 Screenshot / Tap / Swipe / Text / Back / Home / Power
-- R8-01 Bidirectional File Transfer via Download/Kazuizhi
-- R8-01 Human Takeover / Return to R8
-- R8-01 Disconnect and Security-Lock Stop Boundary
-- R8-01 Device Action Audit
-- R8-00 Owner Focus for Tomorrow Plan
-- R8-00 Owner-Gated Video Publishing
-- R8-00 Finance Manual-Only Boundary
-- R8-00 Verification Human Fail-Safe
-- KPI Dashboard
-- Growth Analysis
-- SEO/GEO Center
-- AI Task Center
-- Automation Center
-- System Health
-- AI Daily Review Center
-- Daily Operation Summary
-- Problem Analysis
-- Growth Opportunities
-- Tomorrow Plan
-- Historical Review Records
-- AI Memory
-- User Growth Analysis
-- Order Conversion Analysis
-- Technician Supply Analysis
-- Leader Promotion Analysis
-- Channel Effect Analysis
-- Local Keyword Library
-- SEO Content Generation
-- GEO Local Optimization
-- AI Ad Copy Generation
-- AI Short Video Script
-- AI Task Management
-- Promotion Calendar
-- Competition Analysis
-- Customer Demand Analysis
-- Operations Command Center
-- Product Experience Redesign
-- Integration Status Center
-- External AI Connection Test
-- AI Operations Assistant
-- System Self Diagnostics
-- Approved Job Engine
-- Truthful Task Progress
-- Agent Role Registry
-- Scheduler and Audit Trail
-- Bidirectional Operations Bridge
-- Offline Autonomous Mode
-- AI Command Deduplication
-- ACK and Execution Receipts
-- V2.2 Owner Command Center
-- V2.2 Four-Area Growth Campaigns
-- V2.2 Truthful Content Factory
-- V2.2 Managed Local Media
-- V2.2 RTX 3060 Real-Media Video Worker
-- V2.2 Owner Video Approval Gate
-- V2.2 Account Health and Compliance Center
-- V2.2 Publish Scheduling and Real Receipts
-- V2.2 SEO/GEO Site Audit and Search Content Packs
-- V2.2 One-Time Backup and Configuration Migration
+- R7/R8 Shared Mission Identity
+- Boss Goal and Mission Timeline
+- Direct ChatGPT AI Gateway with Windows DPAPI Credential Storage
+- Filesystem Operations Bridge as Fallback Transport
+- R7 Decision Context into R8 ChatGPT Planning
+- R8 Verified Execution Feedback into R7 Review
+- Zero-Local-Material Truthful Production
+- ChatGPT Structured Production Contract
+- ChatGPT Post-Render Content QC
+- Owner Final Video Approval Gate
+- R8-01 Real Android Device Center
+- RTX 3060 / NVENC Local Production with CPU Fallback
+- Platform Rule Center and Verified Publish Receipts
+- SEO/GEO Content and Verification Center
+- Consultation / Order Attribution with Truthful Source Boundaries
+- Unified Boss / Execution Shell
+- Human Attention Only for Login, Verification, Owner Approval, Finance and True Exceptions
