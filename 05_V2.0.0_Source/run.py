@@ -29,6 +29,7 @@ from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
 from integrations.bridge import sync_once as bridge_sync_once
+from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
 from promotion.material_library import scan_material_inbox
 from promotion.publish_orchestrator import run_publish_planning
@@ -52,7 +53,12 @@ def start_scheduler():
             if tick % 4 == 0:
                 try:
                     scan_material_inbox()
+                    # Import any real ChatGPT response first. Remaining pending
+                    # requests are then exported/retried by a bounded watchdog;
+                    # a writable sync folder alone is never treated as proof
+                    # that ChatGPT received or processed the request.
                     sync_content_plans()
+                    sync_chatgpt_handoffs()
                     bridge_sync_once()
                     # Owner-approved content is automatically routed to every
                     # matching verified target-platform account. This creates
@@ -109,6 +115,8 @@ def main():
         recover_interrupted()
         try:
             scan_material_inbox()
+            sync_content_plans()
+            sync_chatgpt_handoffs(force=True)
             run_publish_planning(limit=10)
         except (OSError, ValueError):
             pass
