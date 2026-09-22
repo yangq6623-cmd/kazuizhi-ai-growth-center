@@ -38,7 +38,7 @@ forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
 final_center = (SRC / "web" / "r8_final_center.js").read_text(encoding="utf-8")
 final_style = (SRC / "web" / "r8_final.css").read_text(encoding="utf-8")
 social_center = (SRC / "web" / "social_media_center.js").read_text(encoding="utf-8")
-for value in (EXPECTED_DISPLAY, EXPECTED_RUNTIME, EXPECTED_PHASE):
+for value in ("V2.2.2 Autonomous Mission Core", EXPECTED_RUNTIME, EXPECTED_PHASE):
     if value not in web_version:
         raise AssertionError(f"WEB_VERSION missing {value}")
 if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity or EXPECTED_PHASE not in identity:
