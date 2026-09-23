@@ -61,6 +61,15 @@ def _safe_channels() -> dict:
         return {"channels": [], "summary": {}}
 
 
+def _safe_routes(active: dict | None) -> dict:
+    try:
+        from integrations.channel_router import build_routes
+        value = build_routes(active or {})
+        return value if isinstance(value, dict) else {}
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return {"routes": [], "summary": {}}
+
+
 def _candidate_summary(video: dict | None) -> dict | None:
     if not isinstance(video, dict):
         return None
@@ -196,6 +205,7 @@ def snapshot() -> dict:
     rows = [_mission_row(mission, factory, bus_receipts, channels) for mission in missions]
     active_id = (ops.get("active_mission") or {}).get("mission_id")
     active = next((x for x in rows if x.get("mission_id") == active_id), rows[0] if rows else None)
+    routes = _safe_routes(active)
     timeline = [x for x in (ops.get("timeline") or []) if isinstance(x, dict)]
     payload = {
         "schema": SCHEMA,
@@ -205,6 +215,7 @@ def snapshot() -> dict:
         "missions": rows[:50],
         "timeline": timeline[:100],
         "channel_registry": channels,
+        "channel_routes": routes,
         "business_snapshot": business,
         "control_bus": {
             "decision_receipts_seen": len(bus_receipts),
@@ -233,6 +244,7 @@ def export_to_control_bus(client=None) -> dict:
         client.ensure_private_repo()
         client.write_json("state/mission_ledger.json", ledger, "R8-11 Mission ledger sync")
         client.write_json("state/channel_registry.json", ledger.get("channel_registry") or {}, "R8-11 channel registry sync")
+        client.write_json("state/channel_routes.json", ledger.get("channel_routes") or {}, "R8-11 channel routes sync")
         active = ledger.get("active_mission") or {}
         mission_id = str(active.get("mission_id") or "").strip()
         if mission_id:
