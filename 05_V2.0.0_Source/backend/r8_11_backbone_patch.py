@@ -4,6 +4,9 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from backend import server
+# R8-11 makes the existing PRIVATE async Control Bus an explicit runtime
+# dependency so normal ChatGPT Decision Pack/Receipt polling is always active.
+from backend import async_control_bus_patch as _async_control_bus_patch  # noqa: F401,E402
 from core.mission_ledger import snapshot as mission_ledger_snapshot, sync_backbone
 from integrations.channel_registry import snapshot as channel_registry_snapshot
 
