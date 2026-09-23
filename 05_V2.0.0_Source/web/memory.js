@@ -38,4 +38,21 @@ $('save-memory').addEventListener('click', async () => {
     script.dataset.r810Workbench = '1';
     document.body.appendChild(script);
   }
+  // Local-first ChatGPT control: when this page is opened in the ChatGPT
+  // desktop app built-in browser, WebMCP Site Tools can call the localhost
+  // runtime directly. No business server or public port is required.
+  if (!document.querySelector('script[data-kz-site-tools]')) {
+    const siteTools = document.createElement('script');
+    siteTools.src = '/kz_site_tools.js';
+    siteTools.defer = true;
+    siteTools.dataset.kzSiteTools = '1';
+    document.body.appendChild(siteTools);
+  }
+  if (!document.querySelector('script[data-kz-local-direct-ui]')) {
+    const localUi = document.createElement('script');
+    localUi.src = '/kz_local_direct_ui.js';
+    localUi.defer = true;
+    localUi.dataset.kzLocalDirectUi = '1';
+    document.body.appendChild(localUi);
+  }
 })();
