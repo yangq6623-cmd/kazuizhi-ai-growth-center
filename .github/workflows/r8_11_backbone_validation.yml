@@ -10,6 +10,8 @@ on:
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
       - '04_Build/v2/test_r8_11_backbone.py'
@@ -25,6 +27,8 @@ on:
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
       - '04_Build/v2/test_r8_11_backbone.py'
@@ -63,7 +67,8 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/integrations/channel_registry.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
           python -m py_compile 05_V2.0.0_Source/run.py
-      - name: Verify no paid third-party token dependency
+          node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
+      - name: Verify no paid third-party token dependency and owner visibility
         run: |
           $registry = Get-Content 05_V2.0.0_Source/integrations/channel_registry.py -Raw
           @('no_paid_third_party_token_required','paid_token_required','真实安卓','human_login') | ForEach-Object {
@@ -73,4 +78,10 @@ jobs:
           @('state/mission_ledger.json','state/channel_registry.json','platform_content_id','verified_publications') | ForEach-Object {
             if (-not $ledger.Contains($_)) { throw "Missing R8-11 ledger contract: $_" }
           }
+          $ui = Get-Content 05_V2.0.0_Source/web/r8_11_backbone_ui.js -Raw
+          @('全渠道连接中心','无需付费第三方 Token','MISSION LEDGER','/api/r8-11/mission-ledger') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing R8-11 owner visibility: $_" }
+          }
+          $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
+          if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
           Write-Host 'R8-11 backbone uses the existing private Control Bus and requires no paid third-party token service.'
