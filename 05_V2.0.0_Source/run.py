@@ -15,6 +15,9 @@ from backend import content_factory_patch as _content_factory_patch  # noqa: F40
 # Completion extensions deliberately install after the base server/compatibility
 # patches so all import-time aliases point at the final R8 content semantics.
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
+# Validated ChatGPT Missions use local autonomous post-render QC so routine
+# production never depends on a permanently-open chat window or OpenAI API.
+from promotion import local_mission_qc_patch as _local_mission_qc_patch  # noqa: F401,E402
 from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
 from promotion import video_worker_cpu_patch as _video_worker_cpu_patch  # noqa: F401,E402
 from backend import content_effects_patch as _content_effects_patch  # noqa: F401,E402
@@ -46,6 +49,7 @@ from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
 from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
+from promotion.local_mission_qc_patch import recover_authorized_qc
 from promotion.material_library import scan_material_inbox
 from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
@@ -72,10 +76,11 @@ def start_scheduler():
                     # execution. A ready campaign may enter its first production
                     # task automatically; owner review/publish truth gates remain.
                     sync_autonomous_ops(autostart=True)
-                    # Accept any returned fallback-bridge decisions first, then
-                    # prefer the optional direct AI Gateway. Only still-pending
-                    # work is exported/retried through the bridge watchdog.
+                    # Accept returned plans first. Then recover routine QC for
+                    # already-authorized ChatGPT Missions locally before optional
+                    # API/realtime ChatGPT paths are considered.
                     sync_content_plans()
+                    recover_authorized_qc(limit=10)
                     run_ai_gateway(limit=2)
                     sync_chatgpt_handoffs()
                     bridge_sync_once()
@@ -156,6 +161,7 @@ def main():
             scan_material_inbox()
             sync_autonomous_ops(autostart=True)
             sync_content_plans()
+            recover_authorized_qc(limit=10)
             run_ai_gateway(limit=2)
             sync_chatgpt_handoffs(force=True)
             run_publish_planning(limit=10)
