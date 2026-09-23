@@ -59,6 +59,16 @@ $('save-memory').addEventListener('click', async () => {
     backbone.dataset.r811Backbone = '1';
     document.body.appendChild(backbone);
   }
+  // #481 field fix: execution-center tabs must always route into the embedded
+  // operational runtime. In particular, “真机执行” must never silently no-op
+  // when the iframe has not been created or is still loading.
+  if (!document.querySelector('script[data-r811-execution-tab-hotfix]')) {
+    const executionTabs = document.createElement('script');
+    executionTabs.src = '/r8_11_execution_tab_hotfix.js';
+    executionTabs.defer = true;
+    executionTabs.dataset.r811ExecutionTabHotfix = '1';
+    document.body.appendChild(executionTabs);
+  }
   // Optional same-PC real-time helper. Site Tools/WebMCP may call localhost when
   // available, but normal autonomous operation no longer depends on it.
   if (!document.querySelector('script[data-kz-site-tools]')) {
