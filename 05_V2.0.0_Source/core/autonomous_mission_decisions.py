@@ -1,7 +1,7 @@
 """Validated ChatGPT decisions for the autonomous Mission loop.
 
 This is deliberately narrow: ChatGPT may continue a Mission, pause a Mission,
-or create a new non-financial growth campaign.  It cannot approve final video
+or create a new non-financial growth campaign. It cannot approve final video
 publication, forge account verification, alter finance, or claim real-world
 results.
 """
@@ -109,6 +109,15 @@ def apply_chatgpt_mission_decision(payload):
         "source_type": "ChatGPT自治经营决策",
         "owner_note": reason,
     })
+
+    # Creating a campaign is not enough: it must become the active Growth ID
+    # before the shared R7/R8 Mission synchronizer can bind the new Mission.
+    # Persist this explicitly instead of relying on UI/extension side effects so
+    # signed Connector, tests and packaged runtime all behave identically.
+    factory = cf._load()
+    factory["active_campaign_id"] = campaign["id"]
+    cf._save(factory)
+
     result = autonomous_ops.sync_from_runtime(autostart=True)
     new_mission = result.get("active_mission") or {}
     data = autonomous_ops._load()
