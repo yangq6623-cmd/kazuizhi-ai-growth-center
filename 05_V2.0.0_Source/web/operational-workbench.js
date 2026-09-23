@@ -93,7 +93,7 @@
   function ensureSearchSummary(){
     const page=byId('search');if(!page)return;
     let summary=byId('search-summary');
-    if(!summary){summary=document.createElement('section');summary.id='search-summary';summary.className='search-summary';page.appendChild(summary)}
+    if(!summary){summary=document.createElement('section');summary.id='search-summary';summary.className='search-summary';const intro=page.querySelector('.page-intro');intro?.insertAdjacentElement('afterend',summary)}
     const data=window.state?.search||{};
     const packs=Array.isArray(data.packs)?data.packs:[];
     const audit=data.latest_audit;
