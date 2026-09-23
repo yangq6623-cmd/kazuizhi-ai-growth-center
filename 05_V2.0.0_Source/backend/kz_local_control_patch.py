@@ -15,6 +15,7 @@ from integrations.kz_local_control import (
 )
 
 _INSTALLED = False
+SITE_TOOLS_MARKER = "webmcp-local"
 
 
 def _client_is_loopback(handler) -> bool:
@@ -28,9 +29,13 @@ def _client_is_loopback(handler) -> bool:
 def _origin_allowed(handler) -> bool:
     if not _client_is_loopback(handler):
         return False
+    if str(handler.headers.get("X-KZ-Site-Tools") or "").strip() != SITE_TOOLS_MARKER:
+        return False
     origin = str(handler.headers.get("Origin") or "").strip()
     if not origin:
-        return True
+        # Non-browser/local automation clients are not accepted on the preferred
+        # WebMCP path. Remote/unattended automation must use the signed Relay.
+        return False
     return origin in {
         f"http://127.0.0.1:{handler.server.server_port}",
         f"http://localhost:{handler.server.server_port}",
@@ -77,7 +82,7 @@ def install():
         if path not in {"/api/kz-local-control/pair", "/api/kz-local-control/tool"}:
             return original_post(handler)
         if not _origin_allowed(handler):
-            handler._json_error(403, "KZ Local Control 只允许当前本机工作台调用")
+            handler._json_error(403, "KZ Local Control 只接受当前本机工作台的 Site Tools 调用")
             return
         try:
             payload = _read_json(handler)
