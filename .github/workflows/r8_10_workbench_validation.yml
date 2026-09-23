@@ -16,6 +16,8 @@ on:
       - '05_V2.0.0_Source/integrations/kz_local_control.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
       - '05_V2.0.0_Source/run.py'
       - '06_Cloud_Relay/**'
       - '04_Build/v2/test_r8_10_workbench.py'
@@ -26,6 +28,7 @@ on:
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
   pull_request:
@@ -43,6 +46,8 @@ on:
       - '05_V2.0.0_Source/integrations/kz_local_control.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
       - '05_V2.0.0_Source/run.py'
       - '06_Cloud_Relay/**'
       - '04_Build/v2/test_r8_10_workbench.py'
@@ -53,6 +58,7 @@ on:
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
 
@@ -87,6 +93,8 @@ jobs:
         run: python 04_Build/v2/test_r8_10_local_webmcp_control.py
       - name: Verify normal ChatGPT async control bus
         run: python 04_Build/v2/test_r8_10_async_control_bus.py
+      - name: Verify ChatGPT Mission local content autonomy fallback
+        run: python 04_Build/v2/test_r8_10_local_mission_content_autonomy.py
       - name: Verify owner-facing buttons and navigation
         run: python 04_Build/v2/test_r8_10_button_contract.py
       - name: Verify existing UI interaction contracts
