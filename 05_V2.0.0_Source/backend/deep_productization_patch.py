@@ -192,15 +192,44 @@ def sync_accounts_from_control():
     return social
 
 
-def _human_action_center(data, social):
+def _current_mission_videos(data):
+    """Return only the foreground production chain for the active Mission.
+
+    Historic failed video attempts must remain auditable, but once the same
+    Mission has a newer production task that is progressing normally they must
+    not keep the owner badge in a permanent red state. The content factory now
+    allows only one active video per campaign, so the newest timestamp is the
+    authoritative foreground task for legacy data that predates that rule.
+    """
     videos = data.get("videos") or []
+    active = _active_id(data)
+    if not active:
+        return []
+    scoped = [item for item in videos if item.get("campaign_id") == active]
+    if not scoped:
+        return []
+
+    def _stamp(item):
+        return str(
+            item.get("runtime_updated_at")
+            or item.get("plan_received_at")
+            or item.get("requested_at")
+            or item.get("created_at")
+            or ""
+        )
+
+    return [max(scoped, key=_stamp)]
+
+
+def _human_action_center(data, social):
+    videos = _current_mission_videos(data)
     items = []
     waiting_review = [x for x in videos if x.get("status") == "等待人工审核"]
     if waiting_review:
         items.append({
             "id": "final_review", "kind": "human", "page": "content", "action": "去审核",
             "title": f"{len(waiting_review)} 条最终成片等待确认",
-            "detail": "只有最终成片需要老板决定：通过并发布、退回重做或暂不发布。",
+            "detail": "只有当前 Mission 的最终成片需要老板决定：通过并发布、退回重做或暂不发布。",
         })
     social_accounts = social.get("accounts") or []
     needs_human = [
@@ -218,8 +247,8 @@ def _human_action_center(data, social):
     if abnormal:
         items.append({
             "id": "production_exception", "kind": "human", "page": "content", "action": "查看异常",
-            "title": f"{len(abnormal)} 个生产任务自动恢复失败",
-            "detail": "已达到自动重试/降级上限，需要人工确认后续处理。",
+            "title": f"{len(abnormal)} 个当前生产任务自动恢复失败",
+            "detail": "当前 Mission 的前台生产任务已达到自动重试/降级上限，需要人工确认后续处理；历史失败不会继续占用待办红点。",
         })
     awaiting_execution = any(x.get("status") in {"已授权发布", "等待账号", "等待最佳时间", "发布执行中"} for x in videos)
     online = any(
@@ -229,10 +258,18 @@ def _human_action_center(data, social):
     if awaiting_execution and not online:
         items.append({
             "id": "device_required", "kind": "human", "page": "device", "action": "检查终端",
-            "title": "有待发布任务，但真实手机未在线",
+            "title": "当前 Mission 有待发布任务，但真实手机未在线",
             "detail": "只有发布链实际需要终端时，设备离线才计入“待我处理”。",
         })
-    return {"human_count": len(items), "human_items": items, "updated_at": now_iso()}
+    current_video = videos[0] if videos else None
+    return {
+        "human_count": len(items),
+        "human_items": items,
+        "scope": "active_mission",
+        "active_campaign_id": _active_id(data) or None,
+        "current_video_id": current_video.get("id") if current_video else None,
+        "updated_at": now_iso(),
+    }
 
 
 def dashboard():
