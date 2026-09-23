@@ -38,6 +38,17 @@ $('save-memory').addEventListener('click', async () => {
     script.dataset.r810Workbench = '1';
     document.body.appendChild(script);
   }
+  // Final owner-facing truth convergence. This deliberately loads as a thin
+  // presentation layer over the same backend truth: current Mission only,
+  // dynamic closed-loop maturity, daily-routine vs Mission progress, and
+  // publish authorization wording that never pretends a real platform receipt.
+  if (!document.querySelector('script[data-r810-truth-convergence]')) {
+    const truth = document.createElement('script');
+    truth.src = '/r8_10_truth_convergence.js';
+    truth.defer = true;
+    truth.dataset.r810TruthConvergence = '1';
+    document.body.appendChild(truth);
+  }
   // Optional same-PC real-time helper. Site Tools/WebMCP may call localhost when
   // available, but normal autonomous operation no longer depends on it.
   if (!document.querySelector('script[data-kz-site-tools]')) {
