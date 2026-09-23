@@ -12,6 +12,7 @@ on:
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
@@ -30,6 +31,7 @@ on:
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
@@ -71,6 +73,7 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
           python -m py_compile 05_V2.0.0_Source/run.py
           node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
+          node --check 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js
       - name: Verify no paid third-party token dependency and owner visibility
         run: |
           $registry = Get-Content 05_V2.0.0_Source/integrations/channel_registry.py -Raw
@@ -89,6 +92,11 @@ jobs:
           @('全渠道连接中心','无需付费第三方 Token','MISSION LEDGER','/api/r8-11/mission-ledger') | ForEach-Object {
             if (-not $ui.Contains($_)) { throw "Missing R8-11 owner visibility: $_" }
           }
+          $execution = Get-Content 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js -Raw
+          @('/operational.html?embedded=1','changeOperationalPage','dashboard','content','search','accounts','device','conversion','health') | ForEach-Object {
+            if (-not $execution.Contains($_)) { throw "Missing R8-11 execution routing contract: $_" }
+          }
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
           if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
+          if (-not $loader.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing hotfix loader is missing' }
           Write-Host 'R8-11 backbone uses the existing private Control Bus and requires no paid third-party token service.'
