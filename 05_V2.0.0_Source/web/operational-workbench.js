@@ -3,6 +3,61 @@
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const statusTone=value=>value==='已验证可发布'||value==='通过'?'ok':String(value||'').includes('人工')||String(value||'').includes('登录')?'human':'wait';
 
+  function isLegacyOperationalPage(){
+    return /(?:^|\/)operational\.html$/i.test(window.location.pathname||'');
+  }
+
+  // R8-10 has one owner-facing shell only. operational.html is retained as an
+  // internal execution surface for compatibility, never as a second top-level app.
+  if(window.top===window.self&&isLegacyOperationalPage()){
+    window.location.replace('/index.html');
+    return;
+  }
+
+  function installEmbeddedExecutionMode(){
+    if(window.top===window.self)return;
+    const apply=()=>{
+      if(!document.body)return;
+      document.body.classList.add('r810-embedded-operational');
+      document.documentElement.classList.add('r810-embedded-operational');
+      if(!byId('r810-embedded-operational-style')){
+        const style=document.createElement('style');
+        style.id='r810-embedded-operational-style';
+        style.textContent=`
+          html.r810-embedded-operational,body.r810-embedded-operational{height:auto!important;min-height:0!important;overflow:visible!important;background:transparent!important}
+          body.r810-embedded-operational .app-shell{display:block!important;min-height:0!important;background:transparent!important}
+          body.r810-embedded-operational .sidebar,body.r810-embedded-operational main>header{display:none!important}
+          body.r810-embedded-operational main{width:100%!important;max-width:none!important;min-width:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:transparent!important}
+          body.r810-embedded-operational main>.page{padding:0 0 10px!important;min-height:0!important}
+          body.r810-embedded-operational .feedback{margin-top:0!important}
+        `;
+        document.head.appendChild(style);
+      }
+      syncParentFrameHeight();
+    };
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
+  }
+
+  function syncParentFrameHeight(){
+    if(window.top===window.self)return;
+    const frame=window.frameElement;
+    if(!frame)return;
+    const active=document.querySelector('.page.active');
+    const contentHeight=Math.max(
+      720,
+      Math.ceil(active?.scrollHeight||0)+28,
+      Math.ceil(document.body?.scrollHeight||0)+28
+    );
+    frame.setAttribute('scrolling','no');
+    frame.style.overflow='hidden';
+    frame.style.width='100%';
+    frame.style.height=`${contentHeight}px`;
+    frame.style.minHeight='720px';
+    frame.style.border='0';
+  }
+
+  installEmbeddedExecutionMode();
+
   function renderAccountWorkbench(){
     const box=byId('account-list');
     if(!box)return;
@@ -38,7 +93,7 @@
   function ensureSearchSummary(){
     const page=byId('search');if(!page)return;
     let summary=byId('search-summary');
-    if(!summary){summary=document.createElement('section');summary.id='search-summary';summary.className='search-summary';const intro=page.querySelector('.page-intro');intro?.insertAdjacentElement('afterend',summary)}
+    if(!summary){summary=document.createElement('section');summary.id='search-summary';summary.className='search-summary';page.appendChild(summary)}
     const data=window.state?.search||{};
     const packs=Array.isArray(data.packs)?data.packs:[];
     const audit=data.latest_audit;
@@ -47,10 +102,16 @@
     summary.innerHTML=`<article><small>内容包</small><b>${packs.length}</b><span>已绑定增长ID</span></article><article><small>官网技术底座</small><b class="${audit?.result==='ready'?'good':'warn'}">${audit?.result==='ready'?'通过':'待处理'}</b><span>${audit?`堵点 ${audit.blockers?.length||0} 项`:'尚未检查'}</span></article><article><small>已标记部署</small><b>${deployed}</b><span>仅统计明确部署状态</span></article><article><small>已标记收录</small><b>${indexed}</b><span>只记录真实观察结果</span></article>`;
   }
 
-  function refresh(){renderAccountWorkbench();ensureConversionWorkbench();ensureSearchSummary()}
+  function refresh(){renderAccountWorkbench();ensureConversionWorkbench();ensureSearchSummary();syncParentFrameHeight()}
   window.addEventListener('operational:refreshed',refresh);
   window.addEventListener('operational:search-updated',ensureSearchSummary);
   window.addEventListener('operational:device-status',refresh);
+  window.addEventListener('resize',syncParentFrameHeight);
+  if(window.ResizeObserver&&document.body){
+    const observer=new ResizeObserver(()=>syncParentFrameHeight());
+    observer.observe(document.body);
+  }
   refresh();
   window.setTimeout(refresh,500);
+  window.setTimeout(syncParentFrameHeight,900);
 })();
