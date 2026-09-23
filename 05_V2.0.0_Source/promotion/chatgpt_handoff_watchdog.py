@@ -5,7 +5,9 @@ continue routine non-financial content planning locally without requiring a
 permanently-open chat window or an OpenAI API key.  Tasks that are not covered
 by that Mission authorization still use the bounded ChatGPT handoff path below.
 No state here fabricates a ChatGPT acknowledgement or an external promotion
-result.
+result. A writable sync folder is not the same thing as a ChatGPT receipt: the
+transport can be available while ChatGPT has not yet returned any validated
+production plan or QC decision.
 """
 
 from __future__ import annotations
