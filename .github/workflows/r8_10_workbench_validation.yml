@@ -20,6 +20,7 @@ on:
       - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
       - '05_V2.0.0_Source/promotion/local_mission_planner.py'
       - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
       - '06_Cloud_Relay/**'
       - '04_Build/v2/test_r8_10_workbench.py'
       - '04_Build/v2/test_r8_10_chatgpt_control.py'
@@ -53,6 +54,7 @@ on:
       - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
       - '05_V2.0.0_Source/promotion/local_mission_planner.py'
       - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
       - '06_Cloud_Relay/**'
       - '04_Build/v2/test_r8_10_workbench.py'
       - '04_Build/v2/test_r8_10_chatgpt_control.py'
@@ -83,6 +85,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install runtime dependencies required by regression tests
+        run: |
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime dependency installation failed' }
       - name: Verify R8-10 workbench contract
         run: python 04_Build/v2/test_r8_10_workbench.py
       - name: Verify ChatGPT control connection truth
