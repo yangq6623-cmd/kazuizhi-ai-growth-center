@@ -8,7 +8,9 @@ on:
       - '05_V2.0.0_Source/integrations/channel_registry.py'
       - '05_V2.0.0_Source/integrations/channel_router.py'
       - '05_V2.0.0_Source/integrations/social_session_probe.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
@@ -19,6 +21,7 @@ on:
       - '05_V2.0.0_Source/requirements.txt'
       - '04_Build/v2/test_r8_11_backbone.py'
       - '04_Build/v2/test_r8_11_social_session_probe.py'
+      - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '.github/workflows/r8_11_backbone_validation.yml'
@@ -29,7 +32,9 @@ on:
       - '05_V2.0.0_Source/integrations/channel_registry.py'
       - '05_V2.0.0_Source/integrations/channel_router.py'
       - '05_V2.0.0_Source/integrations/social_session_probe.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
@@ -40,6 +45,7 @@ on:
       - '05_V2.0.0_Source/requirements.txt'
       - '04_Build/v2/test_r8_11_backbone.py'
       - '04_Build/v2/test_r8_11_social_session_probe.py'
+      - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '.github/workflows/r8_11_backbone_validation.yml'
@@ -71,12 +77,16 @@ jobs:
         run: python 04_Build/v2/test_r8_11_backbone.py
       - name: Verify real-device social session bridge
         run: python 04_Build/v2/test_r8_11_social_session_probe.py
+      - name: Verify approved publish becomes truthful real-device dry run
+        run: python 04_Build/v2/test_r8_11_publish_dry_run_queue.py
       - name: Compile R8-11 modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/mission_ledger.py
           python -m py_compile 05_V2.0.0_Source/integrations/channel_registry.py
           python -m py_compile 05_V2.0.0_Source/integrations/channel_router.py
           python -m py_compile 05_V2.0.0_Source/integrations/social_session_probe.py
+          python -m py_compile 05_V2.0.0_Source/integrations/publish_dry_run_queue.py
+          python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
           python -m py_compile 05_V2.0.0_Source/run.py
           node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
@@ -94,6 +104,10 @@ jobs:
           $probe = Get-Content 05_V2.0.0_Source/integrations/social_session_probe.py -Raw
           @('com.ss.android.ugc.aweme','device_probe','uiautomator','publishes_content','needs_human') | ForEach-Object {
             if (-not $probe.Contains($_)) { throw "Missing truthful social session probe contract: $_" }
+          }
+          $dryrun = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
+          @('douyin_publish_dry_run','final_publish_allowed','publishes_content','Content ID + URL') | ForEach-Object {
+            if (-not $dryrun.Contains($_)) { throw "Missing truthful dry-run contract: $_" }
           }
           $ledger = Get-Content 05_V2.0.0_Source/core/mission_ledger.py -Raw
           @('state/mission_ledger.json','state/channel_registry.json','platform_content_id','verified_publications') | ForEach-Object {
@@ -114,4 +128,4 @@ jobs:
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
           if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
           if (-not $loader.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing hotfix loader is missing' }
-          Write-Host 'R8-11 backbone uses real-device session evidence and requires no paid third-party token service.'
+          Write-Host 'R8-11 backbone uses real-device session evidence, dry-run truth gates and requires no paid third-party token service.'
