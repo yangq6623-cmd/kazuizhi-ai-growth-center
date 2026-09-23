@@ -58,7 +58,7 @@ STATE_LABELS = {
 def _default_state() -> dict:
     return {
         "connection_state": DISCONNECTED,
-        "status": "unverified",  # legacy UI compatibility
+        "status": "unverified",
         "status_label": STATE_LABELS[DISCONNECTED],
         "verified": False,
         "connector_id": None,
@@ -106,22 +106,38 @@ def _find(items: list[dict], key: str, value: str):
 
 
 def _proof_is_valid(state: dict) -> bool:
-    required = ("connector_id", "proof_source", "challenge_id", "last_command_id", "last_receipt_id", "verified_at")
+    """Validate the durable verification handshake, not the latest business command.
+
+    last_command_id/last_receipt_id are operational pointers and legitimately
+    change while an owner command is waiting for a new receipt. Verification
+    must therefore be anchored to the earlier verification challenge ledger.
+    """
+    required = ("connector_id", "proof_source", "challenge_id", "verified_at")
     if not all(state.get(key) for key in required):
         return False
     if state.get("proof_source") not in ALLOWED_PROOF_SOURCES:
         return False
-    command = _find(_load_list(COMMANDS_FILE), "command_id", state.get("last_command_id"))
-    receipt = _find(_load_list(RECEIPTS_FILE), "receipt_id", state.get("last_receipt_id"))
-    if not command or not receipt:
-        return False
-    return (
-        str(receipt.get("command_id") or "") == str(command.get("command_id") or "")
-        and str(command.get("connector_id") or "") == str(state.get("connector_id") or "")
-        and str(receipt.get("connector_id") or "") == str(state.get("connector_id") or "")
-        and str(command.get("challenge_id") or "") == str(state.get("challenge_id") or "")
-        and str(receipt.get("challenge_id") or "") == str(state.get("challenge_id") or "")
-    )
+
+    connector_id = str(state.get("connector_id") or "")
+    challenge_id = str(state.get("challenge_id") or "")
+    commands = _load_list(COMMANDS_FILE)
+    receipts = _load_list(RECEIPTS_FILE)
+    for receipt in reversed(receipts):
+        if receipt.get("kind") != "verification_receipt":
+            continue
+        if str(receipt.get("connector_id") or "") != connector_id:
+            continue
+        if str(receipt.get("challenge_id") or "") != challenge_id:
+            continue
+        command = _find(commands, "command_id", receipt.get("command_id"))
+        if not command or command.get("kind") != "verification_challenge":
+            continue
+        if str(command.get("connector_id") or "") != connector_id:
+            continue
+        if str(command.get("challenge_id") or "") != challenge_id:
+            continue
+        return True
+    return False
 
 
 def _legacy_status(connection_state: str, verified: bool) -> str:
