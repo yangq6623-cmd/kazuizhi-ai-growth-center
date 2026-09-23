@@ -7,6 +7,7 @@ CSS = (WEB / "r8_10_workbench.css").read_text(encoding="utf-8")
 INDEX = (WEB / "index.html").read_text(encoding="utf-8")
 APP = (WEB / "app.js").read_text(encoding="utf-8")
 OPERATIONAL = (WEB / "operational.html").read_text(encoding="utf-8")
+OPERATIONAL_JS = (WEB / "operational.js").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -50,6 +51,14 @@ def main() -> None:
         require(OPERATIONAL, f'id="{target}"', f"embedded execution page {target}")
     require(JS, "changeOperationalPage?.(page)", "embedded execution click bridge")
     require(JS, "data-execution-page", "execution button target attribute")
+
+    # Publish review wording must be truthful at the source, not dependent on a
+    # late presentation patch. Approval authorizes queue entry only; it does not
+    # claim that an external platform publication has happened.
+    require(OPERATIONAL_JS, "审核通过，进入发布队列", "truthful publish authorization button")
+    require(OPERATIONAL_JS, "没有真实平台 URL / Post ID / Receipt 不算发布成功", "real publication receipt truth gate")
+    if ">通过并发布</button>" in OPERATIONAL_JS:
+        raise AssertionError("misleading source button still says 通过并发布")
 
     # Owner command is intentionally gated by verified ChatGPT control state.
     # Disabled must be visibly disabled and must explain why.
