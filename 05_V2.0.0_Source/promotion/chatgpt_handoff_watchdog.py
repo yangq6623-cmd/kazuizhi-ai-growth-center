@@ -14,11 +14,20 @@ from core.decision_bridge import export_decision_handoff
 from core.decision_center import decision_snapshot
 from core.storage import now_iso
 from integrations.bridge import bridge_status
+from integrations.chatgpt_control import (
+    CONNECTED_VERIFIED,
+    DEGRADED,
+    HUMAN_ACTION_REQUIRED,
+    WAITING_RESPONSE,
+    control_status,
+    set_runtime_state,
+)
 from promotion import content_factory as cf
 
 RETRY_AFTER_SECONDS = 300
 MAX_RETRIES = 3
 PENDING_STATES = {"等待ChatGPT策划", "退回重做", "等待ChatGPT质检"}
+CONTROL_ISSUE_PREFIX = "[content-handoff] "
 
 
 def _parse(value):
@@ -51,6 +60,36 @@ def _phase_for(video):
     if video.get("status") in {"等待ChatGPT策划", "退回重做"}:
         return "waiting_plan_return"
     return "local_execution"
+
+
+def _set_control_truth(state_name, message):
+    """Update the canonical control state only after real connector proof exists.
+
+    The legacy filesystem bridge is allowed to be a transport/fallback, but it
+    is never allowed to turn an unverified ChatGPT connection into a verified
+    one. This helper therefore becomes a no-op until control_status() contains
+    durable verification proof.
+    """
+    try:
+        current = control_status()
+        if not current.get("verified"):
+            return current
+        return set_runtime_state(state_name, issue=f"{CONTROL_ISSUE_PREFIX}{message}" if message else None)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _clear_own_control_issue_if_resolved():
+    try:
+        current = control_status()
+        issue = str(current.get("runtime_issue") or "")
+        if current.get("verified") and issue.startswith(CONTROL_ISSUE_PREFIX) and current.get("connection_state") in {
+            WAITING_RESPONSE, DEGRADED, HUMAN_ACTION_REQUIRED,
+        }:
+            return set_runtime_state(CONNECTED_VERIFIED, issue=None)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    return None
 
 
 def _mark_nonpending_truth(data):
@@ -89,6 +128,7 @@ def sync_chatgpt_handoffs(force=False):
     if not pending:
         if changed:
             cf._save(data)
+        _clear_own_control_issue_if_resolved()
         return {"pending": 0, "exported": False, "reason": "no_pending_chatgpt_handoff"}
 
     bridge = bridge_status()
@@ -105,9 +145,10 @@ def sync_chatgpt_handoffs(force=False):
         if not connected:
             handoff["phase"] = "bridge_unavailable"
             handoff["bridge_status"] = bridge.get("status") or "not_connected"
-            handoff["message"] = "双向同步桥未连接；请求尚未证明已发送给ChatGPT。"
-            video["bottleneck"] = "ChatGPT同步桥未连接，生产请求尚未发送"
-            video["auto_action"] = "系统持续检查同步桥；恢复后自动发送，无需重复创建任务"
+            handoff["message"] = "备用同步桥未连接；请求尚未证明已发送给 ChatGPT。"
+            video["bottleneck"] = "ChatGPT 内容交接传输不可用，生产请求尚未证明送达"
+            video["auto_action"] = "系统持续检查传输通道；恢复后自动发送。备用文件桥在线状态不等于 ChatGPT 已连接。"
+            _set_control_truth(DEGRADED, "内容生产/QC 传输通道不可用；本地已批准任务继续运行，新的 ChatGPT 交接暂缓。")
             changed = True
             continue
 
@@ -126,12 +167,14 @@ def sync_chatgpt_handoffs(force=False):
             video["status"] = "异常待处理"
             video["retry_count"] = max(int(video.get("retry_count") or 0), MAX_RETRIES)
             video["bottleneck"] = "ChatGPT生产/QC请求连续重发仍未返回"
-            video["auto_action"] = "已停止无限等待；请检查ChatGPT侧桥接/自动化是否在线，恢复后可自动继续"
+            video["auto_action"] = "已停止无限等待；请检查 ChatGPT 总控连接/传输适配器。恢复后可自动继续；未通过 QC 的成片不会自动发布。"
+            _set_control_truth(HUMAN_ACTION_REQUIRED, f"内容生产/QC 已重试 {MAX_RETRIES} 次仍无返回，已停止无限等待。")
             changed = True
         else:
             handoff["phase"] = "waiting_response"
             handoff["bridge_status"] = "connected"
-            handoff["message"] = "请求已写入同步桥；正在等待ChatGPT返回结构化结果。"
+            handoff["message"] = "请求已写入备用传输通道；正在等待 ChatGPT 返回结构化结果。"
+            _set_control_truth(WAITING_RESPONSE, "内容生产/QC 请求已发送，正在等待结构化返回。")
             changed = True
 
     if changed:
@@ -155,13 +198,14 @@ def sync_chatgpt_handoffs(force=False):
                 handoff["last_exported_at"] = now_iso()
                 handoff["phase"] = "waiting_response"
                 handoff["bridge_status"] = "connected"
-                handoff["message"] = "请求已写入同步桥；等待ChatGPT返回结构化结果。"
-                video["bottleneck"] = "等待ChatGPT返回结构化生产/QC结果"
+                handoff["message"] = "请求已写入备用传输通道；等待 ChatGPT 返回结构化结果。"
+                video["bottleneck"] = "等待 ChatGPT 返回结构化生产/QC结果"
                 video["auto_action"] = (
-                    f"已写入同步桥；若 {RETRY_AFTER_SECONDS // 60} 分钟无返回将自动重发，"
-                    f"最多 {MAX_RETRIES} 次"
+                    f"已发送；若 {RETRY_AFTER_SECONDS // 60} 分钟无返回将自动重发，"
+                    f"最多 {MAX_RETRIES} 次。达到上限后停止等待并进入待我处理。"
                 )
             cf._save(data)
+            _set_control_truth(WAITING_RESPONSE, "内容生产/QC 请求已发送，正在等待结构化返回。")
 
     return {
         "pending": len(pending),
