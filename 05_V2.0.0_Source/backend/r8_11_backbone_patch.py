@@ -10,8 +10,18 @@ from backend import async_control_bus_patch as _async_control_bus_patch  # noqa:
 from core.mission_ledger import snapshot as mission_ledger_snapshot, sync_backbone
 from integrations.channel_registry import snapshot as channel_registry_snapshot
 from integrations.channel_router import build_routes as channel_routes_snapshot
+from integrations.social_session_probe import verify_pending_accounts
 
 _INSTALLED = False
+
+
+def _origin_allowed(handler):
+    origin = handler.headers.get("Origin")
+    allowed = {
+        f"http://127.0.0.1:{handler.server.server_port}",
+        f"http://localhost:{handler.server.server_port}",
+    }
+    return not origin or origin in allowed
 
 
 def install():
@@ -45,6 +55,14 @@ def install():
                     "truth_rule": ledger.get("truth_rule"),
                 })
                 return
+            # Account/device pages already refresh these endpoints. Use that
+            # existing cadence to run a throttled read-only ADB session probe.
+            # Probe failure must never break the owner dashboard.
+            if path in {"/api/r8/social", "/api/content-factory"}:
+                try:
+                    verify_pending_accounts(force=False)
+                except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+                    pass
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             handler._json_error(500, error)
             return
@@ -53,12 +71,21 @@ def install():
     def do_post(handler):
         path = urlsplit(handler.path).path
         if path == "/api/r8-11/backbone/sync":
-            origin = handler.headers.get("Origin")
-            allowed = {f"http://127.0.0.1:{handler.server.server_port}", f"http://localhost:{handler.server.server_port}"}
-            if origin and origin not in allowed:
+            if not _origin_allowed(handler):
                 handler._json_error(403, "Cross-origin changes are not allowed")
                 return
             result = sync_backbone()
+            handler._json_ok(result, code=200)
+            return
+        if path == "/api/r8-11/social/verify":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                result = verify_pending_accounts(force=True)
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                handler._json_error(400, error)
+                return
             handler._json_ok(result, code=200)
             return
         return original_post(handler)
@@ -66,6 +93,7 @@ def install():
     server.DashboardHandler.do_GET = do_get
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_11_backbone_patched = True
+    server.DashboardHandler._kz_r8_11_social_session_probe = True
     _INSTALLED = True
 
 
