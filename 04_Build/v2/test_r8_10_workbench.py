@@ -22,12 +22,14 @@ def main() -> None:
     js = read("r8_10_workbench.js")
     css = read("r8_10_workbench.css")
     memory = read("memory.js")
+    truth = read("r8_10_truth_convergence.js")
     operational_workbench = read("operational-workbench.js")
     product = read("main-productization.js")
 
     # The workbench is an overlay over the proven #397 runtime, not a second app.
     require(memory, "/r8_10_workbench.css", "R8-10 stylesheet loader")
     require(memory, "/r8_10_workbench.js", "R8-10 script loader")
+    require(memory, "/r8_10_truth_convergence.js", "owner truth convergence loader")
     require(js, "基于 #397 稳定底座", "rollback baseline copy")
 
     # Exactly the six owner-facing primary destinations agreed for R8-10.
@@ -94,6 +96,16 @@ def main() -> None:
     require(js, "创建开发任务", "DEV-MISSION control")
     require(js, "disabled title=", "disabled DEV-MISSION reason")
 
+    # Four field-acceptance truth fixes must be continuously enforced on the owner UI.
+    require(truth, "action_center?.human_items", "single current-Mission owner attention source")
+    require(truth, "自治闭环成熟度", "dynamic closed-loop maturity label")
+    require(truth, "当前首要阻塞", "dynamic current blocker")
+    require(truth, "今日例行任务完成度", "daily routine progress label")
+    require(truth, "例行任务 100% 不代表当前 Mission 已完成", "Mission progress separation")
+    require(truth, "审核通过，进入发布队列", "truthful publish authorization label")
+    require(truth, "URL / Post ID / Receipt 不算发布成功", "real publish receipt gate")
+    require(truth, "patchEmbeddedExecution", "embedded execution truth convergence")
+
     # Business visualization must explicitly keep missing dimensions empty rather than fabricate scores.
     require(js, "经营转化漏斗", "business funnel")
     require(js, "服务经营雷达", "service radar")
@@ -106,7 +118,7 @@ def main() -> None:
     require(css, "button:disabled", "disabled visual state")
     require(css, "@media(max-width:760px)", "responsive shell")
 
-    print("PASS: R8-10 single-shell navigation lock, identity truth, owner connection summary and UI gating verified.")
+    print("PASS: R8-10 single-shell, four owner truth fixes, identity truth and UI gating verified.")
 
 
 if __name__ == "__main__":
