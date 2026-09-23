@@ -50,7 +50,7 @@ def pack(command_id="CMD-BUS-001", decision_pack_id="DP-BUS-001"):
         },
         "autonomy": {
             "allowed": ["content_production", "asset_routing", "technical_qc", "seo_content", "business_monitoring"],
-            "human_gates": ["final_video_review", "captcha", "face", "money"],
+            "human_gates": ["final_video_review", "manual_verification", "money"],
         },
     }
 
