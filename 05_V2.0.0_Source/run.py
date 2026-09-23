@@ -27,11 +27,11 @@ from backend import growth_chain_patch as _growth_chain_patch  # noqa: F401,E402
 # ChatGPT production handoffs and exposes the shared world-state API.
 from core import decision_center_mission_patch as _decision_center_mission_patch  # noqa: F401,E402
 from backend import autonomous_ops_patch as _autonomous_ops_patch  # noqa: F401,E402
-# Direct ChatGPT gateway is local-only and stores its credential with Windows
-# DPAPI. The filesystem bridge remains an offline/fallback transport.
+# Direct OpenAI API remains optional/advanced. The normal ChatGPT control path
+# uses the signed Connector contract and canonical Command/Receipt state.
 from backend import ai_gateway_patch as _ai_gateway_patch  # noqa: F401,E402
-# Extend the same bridge with a narrow, validated mission_decision contract so
-# ChatGPT can continue/stop/create the next non-financial Mission after R7 review.
+from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: F401,E402
+# Extend the fallback bridge with a narrow mission_decision contract.
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
@@ -71,8 +71,8 @@ def start_scheduler():
                     # task automatically; owner review/publish truth gates remain.
                     sync_autonomous_ops(autostart=True)
                     # Accept any returned fallback-bridge decisions first, then
-                    # prefer the direct AI Gateway. Only still-pending work is
-                    # exported/retried through the filesystem bridge watchdog.
+                    # prefer the optional direct AI Gateway. Only still-pending
+                    # work is exported/retried through the bridge watchdog.
                     sync_content_plans()
                     run_ai_gateway(limit=2)
                     sync_chatgpt_handoffs()
