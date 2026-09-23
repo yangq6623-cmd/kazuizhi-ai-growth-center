@@ -1,6 +1,7 @@
 """R8-11 HTTP endpoints for Mission ledger, channel registry and backbone sync."""
 from __future__ import annotations
 
+import json
 from urllib.parse import urlsplit
 
 from backend import server
@@ -10,7 +11,7 @@ from backend import async_control_bus_patch as _async_control_bus_patch  # noqa:
 from core.mission_ledger import snapshot as mission_ledger_snapshot, sync_backbone
 from integrations.channel_registry import snapshot as channel_registry_snapshot
 from integrations.channel_router import build_routes as channel_routes_snapshot
-from integrations.social_session_probe import verify_pending_accounts
+from integrations.social_session_probe import confirm_owner_login, verify_pending_accounts
 
 _INSTALLED = False
 
@@ -22,6 +23,15 @@ def _origin_allowed(handler):
         f"http://localhost:{handler.server.server_port}",
     }
     return not origin or origin in allowed
+
+
+def _read_json_body(handler):
+    length = int(handler.headers.get("Content-Length", "0") or 0)
+    if length < 0 or length > 64 * 1024:
+        raise ValueError("请求内容过大")
+    if not length:
+        return {}
+    return json.loads(handler.rfile.read(length) or b"{}")
 
 
 def install():
@@ -84,6 +94,18 @@ def install():
             try:
                 result = verify_pending_accounts(force=True)
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                handler._json_error(400, error)
+                return
+            handler._json_ok(result, code=200)
+            return
+        if path == "/api/r8-11/social/confirm-login":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json_body(handler)
+                result = confirm_owner_login(payload.get("account_id"))
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
                 return
             handler._json_ok(result, code=200)
