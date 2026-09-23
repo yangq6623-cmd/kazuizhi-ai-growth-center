@@ -13,11 +13,17 @@ def require(text: str, needle: str, label: str) -> None:
         raise AssertionError(f"missing {label}: {needle}")
 
 
+def forbid(text: str, needle: str, label: str) -> None:
+    if needle in text:
+        raise AssertionError(f"forbidden {label}: {needle}")
+
+
 def main() -> None:
     js = read("r8_10_workbench.js")
     css = read("r8_10_workbench.css")
     memory = read("memory.js")
     operational_workbench = read("operational-workbench.js")
+    product = read("main-productization.js")
 
     # The workbench is an overlay over the proven #397 runtime, not a second app.
     require(memory, "/r8_10_workbench.css", "R8-10 stylesheet loader")
@@ -44,12 +50,38 @@ def main() -> None:
     require(operational_workbench, "ResizeObserver", "embedded workbench auto-height contract")
     require(operational_workbench, "scrolling','no", "no nested execution scrollbar")
 
+    # #398 field cleanup: no old first-level menu may reappear after legacy scripts mutate the DOM.
+    require(product, "lockSingleShell", "single-shell nav lock")
+    require(product, "button.nav,.nav-group,details.nav-more,.operational-entry", "legacy nav catch-all")
+    require(product, "MutationObserver", "late legacy-navigation mutation guard")
+    require(product, "r810-legacy-route", "legacy navigation hidden class")
+    forbid(product, "function addOperationalEntry", "legacy second-workbench entry creator")
+    forbid(product, "function simplifyNavigation", "legacy nav-more rebuild")
+
+    # Old 'AI brain one-time config' is not allowed in owner-facing navigation anymore.
+    require(product, "hideLegacyBrainEntry", "legacy AI brain entry cleanup")
+    require(product, "AI大脑", "legacy AI brain text detector")
+    require(product, "一次配置", "legacy one-time config text detector")
+    require(product, "r810-legacy-brain-entry", "legacy AI brain hidden marker")
+
+    # Mission identity truth: KZ growth IDs are not mislabeled as Mission IDs.
+    require(product, "normalizeMissionIdentity", "mission/growth identity normalization")
+    require(product, "Growth ID / 当前增长任务", "growth ID label")
+    require(product, "当前 Mission", "Mission label")
+
     # Connection truth: no writable bridge/API state is allowed to impersonate ChatGPT control.
     require(js, "/api/chatgpt-control/status", "explicit ChatGPT control status contract")
     require(js, "文件夹可写、运营桥在线或备用 API 已配置，都不能单独证明 ChatGPT 已连接", "connection truth warning")
     require(js, "未验证连接", "unverified default state")
     require(js, "备用 AI 接口（可选）", "optional backup AI copy")
     require(js, "默认关闭", "backup AI default-off policy")
+
+    # Owner connection page now defaults to a simple four-life-line summary; technical details are opt-in.
+    require(product, "ensureConnectionOwnerSummary", "owner connection summary")
+    for label in ("ChatGPT 总控", "本地自治执行", "经营数据", "当前异常"):
+        require(product, label, f"owner connection summary {label}")
+    require(product, "查看高级技术详情", "technical detail opt-in")
+    require(product, "data-r810-technical", "technical detail gating")
 
     # Boss command remains safely unavailable until a verified round-trip connector exists.
     require(js, "r810-send-command", "owner command control")
@@ -74,7 +106,7 @@ def main() -> None:
     require(css, "button:disabled", "disabled visual state")
     require(css, "@media(max-width:760px)", "responsive shell")
 
-    print("PASS: R8-10 single-shell workbench navigation, embedded execution, UI truth and connection gating verified.")
+    print("PASS: R8-10 single-shell navigation lock, identity truth, owner connection summary and UI gating verified.")
 
 
 if __name__ == "__main__":
