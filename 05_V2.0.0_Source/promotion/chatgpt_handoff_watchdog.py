@@ -1,9 +1,11 @@
-"""Truthful retry/watchdog layer for R8 ChatGPT content handoffs.
+"""Truthful retry/watchdog layer for R8 content handoffs.
 
-A writable sync folder is not the same thing as ChatGPT receiving a request.
-This module records only states the local runtime can prove: bridge unavailable,
-request exported, waiting for a returned production/QC decision, returned, or
-retry exhausted. It never fabricates an acknowledgement from ChatGPT.
+Normal ChatGPT is the strategic owner brain.  A validated ChatGPT Mission may
+continue routine non-financial content planning locally without requiring a
+permanently-open chat window or an OpenAI API key.  Tasks that are not covered
+by that Mission authorization still use the bounded ChatGPT handoff path below.
+No state here fabricates a ChatGPT acknowledgement or an external promotion
+result.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ RETRY_AFTER_SECONDS = 300
 MAX_RETRIES = 3
 PENDING_STATES = {"等待ChatGPT策划", "退回重做", "等待ChatGPT质检"}
 CONTROL_ISSUE_PREFIX = "[content-handoff] "
+MISSION_SOURCE = "ChatGPT自治经营决策"
 
 
 def _parse(value):
@@ -63,13 +66,7 @@ def _phase_for(video):
 
 
 def _set_control_truth(state_name, message):
-    """Update the canonical control state only after real connector proof exists.
-
-    The legacy filesystem bridge is allowed to be a transport/fallback, but it
-    is never allowed to turn an unverified ChatGPT connection into a verified
-    one. This helper therefore becomes a no-op until control_status() contains
-    durable verification proof.
-    """
+    """Update the canonical control state only after real connector proof exists."""
     try:
         current = control_status()
         if not current.get("verified"):
@@ -98,9 +95,6 @@ def _mark_nonpending_truth(data):
         handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else None
         if handoff is None:
             continue
-        # A retry-exhausted exception remains truthful until a real plan/QC
-        # response changes the task state. Do not silently turn it back into a
-        # generic local-execution state on the next scheduler tick.
         if video.get("status") == "异常待处理" and handoff.get("phase") == "retry_exhausted":
             continue
         phase = _phase_for(video)
@@ -112,15 +106,54 @@ def _mark_nonpending_truth(data):
     return changed
 
 
-def sync_chatgpt_handoffs(force=False):
-    """Export pending ChatGPT requests, retry with bounds, and expose truthful state.
+def _recover_authorized_local_plans():
+    """Recover routine production when ChatGPT already approved the parent Mission.
 
-    The first export is immediate. A request is re-exported at most three times,
-    spaced by RETRY_AFTER_SECONDS. After the final retry window expires the task
-    becomes an explicit human-visible exception instead of waiting forever.
-    A later valid ChatGPT response is still accepted by the normal orchestrator
-    and will recover the task automatically.
+    This does not apply to post-render QC or arbitrary locally-created campaigns.
+    It only converts content-production tasks whose campaign source proves that a
+    validated ChatGPT Decision Pack created the Mission.
     """
+    data = cf._load()
+    campaign_by_id = {x.get("id"): x for x in data.get("campaigns", []) if isinstance(x, dict)}
+    candidate_ids = []
+    for video in data.get("videos", []):
+        if video.get("production_plan"):
+            continue
+        if video.get("status") not in {"等待ChatGPT策划", "退回重做", "异常待处理"}:
+            continue
+        campaign = campaign_by_id.get(video.get("campaign_id"))
+        if str((campaign or {}).get("source_type") or "").strip() != MISSION_SOURCE:
+            continue
+        handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else {}
+        if video.get("status") == "异常待处理" and handoff.get("kind") not in {None, "content_production"}:
+            continue
+        candidate_ids.append(video.get("id"))
+
+    if not candidate_ids:
+        return []
+
+    from promotion.local_mission_planner import recover_video
+
+    recovered = []
+    for video_id in candidate_ids:
+        try:
+            result = recover_video(video_id)
+            if result:
+                recovered.append(result)
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            recovered.append({"video_id": video_id, "status": "failed", "error": str(error)[:300]})
+    return recovered
+
+
+def sync_chatgpt_handoffs(force=False):
+    """Keep content work moving while preserving truthful ChatGPT boundaries.
+
+    First, a routine production request may be recovered locally when its parent
+    Mission was already created by a validated ChatGPT Decision Pack.  Remaining
+    requests use the legacy bounded handoff path: immediate export, at most three
+    retries, then a visible exception instead of infinite waiting.
+    """
+    local_recovered = _recover_authorized_local_plans()
     data = cf._load()
     now = datetime.now().astimezone()
     changed = _mark_nonpending_truth(data)
@@ -129,7 +162,12 @@ def sync_chatgpt_handoffs(force=False):
         if changed:
             cf._save(data)
         _clear_own_control_issue_if_resolved()
-        return {"pending": 0, "exported": False, "reason": "no_pending_chatgpt_handoff"}
+        return {
+            "pending": 0,
+            "exported": False,
+            "reason": "no_pending_chatgpt_handoff",
+            "local_recovered": local_recovered,
+        }
 
     bridge = bridge_status()
     connected = bridge.get("status") == "connected" and bool(bridge.get("bridge_root"))
@@ -215,4 +253,5 @@ def sync_chatgpt_handoffs(force=False):
         "retry_after_seconds": RETRY_AFTER_SECONDS,
         "max_retries": MAX_RETRIES,
         "handoff": exported,
+        "local_recovered": local_recovered,
     }
