@@ -18,7 +18,7 @@
     box.id = 'kz-local-transport-summary';
     box.className = 'r810-local-transport-summary';
     box.innerHTML = `
-      <div><small>主连接方式</small><b id="kz-local-main-label">本机直连</b><span id="kz-local-main-state">检查中</span></div>
+      <div><small>实时辅助</small><b id="kz-local-main-label">Site Tools 本机直连</b><span id="kz-local-main-state">检查中</span></div>
       <div><small>远程备用</small><b>安全 Relay</b><span>默认不启用</span></div>
     `;
     card.appendChild(box);
@@ -26,24 +26,13 @@
 
   function apply(status) {
     ensureTransportSummary();
-    const copy = document.getElementById('r810-connector-copy');
     const label = document.getElementById('kz-local-main-state');
     const siteTools = document.documentElement.dataset.kzSiteTools;
     const verified = Boolean(status?.verified);
 
     if (label) {
-      label.textContent = verified ? '已验证' : (siteTools === 'available' ? '已就绪，等待首次调用' : '等待桌面 Site Tools');
+      label.textContent = verified ? '已验证实时连接' : (siteTools === 'available' ? '已就绪，等待首次调用' : '当前离线，不影响本地自治');
       label.className = verified ? 'ok' : 'waiting';
-    }
-
-    if (copy) {
-      if (verified) {
-        copy.textContent = '本机直连已验证：ChatGPT 可通过当前电脑上的 Site Tools 直接读取状态、创建 Mission、启动内容执行并读取 Receipt；不经过业务服务器。';
-      } else if (siteTools === 'available') {
-        copy.textContent = '本机直连已就绪：当前页面已经向 ChatGPT 桌面端暴露 Site Tools，等待第一次真实工具调用完成验证。';
-      } else {
-        copy.textContent = '本机控制接口已就绪。请在 ChatGPT 桌面应用的内置浏览器打开本页；账号支持 Site Tools 时，ChatGPT 可直接调用本机工具，无需公网服务器。';
-      }
     }
   }
 
@@ -55,7 +44,7 @@
     const page = document.getElementById('connections');
     if (!page) return;
     const title = page.querySelector('.page-title p');
-    if (title) title.textContent = '默认使用 ChatGPT 桌面端本机直连；只有需要远程无人值守时才启用安全 Relay。所有状态都必须有真实回执。';
+    if (title) title.textContent = '日常主控使用普通 ChatGPT + 私有异步控制总线；Site Tools 只用于同机实时辅助，Relay 只用于远程备用。';
   }
 
   const style = document.createElement('style');
@@ -63,7 +52,7 @@
     .r810-local-transport-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px;width:100%}
     .r810-local-transport-summary>div{border:1px solid rgba(148,163,184,.22);border-radius:10px;padding:10px 12px;display:grid;gap:3px;background:rgba(15,23,42,.03)}
     .r810-local-transport-summary small{font-size:11px;color:#64748b}.r810-local-transport-summary b{font-size:14px}.r810-local-transport-summary span{font-size:12px;color:#64748b}
-    .r810-local-transport-summary span.ok{color:#15803d}.r810-local-transport-summary span.waiting{color:#b45309}
+    .r810-local-transport-summary span.ok{color:#15803d}.r810-local-transport-summary span.waiting{color:#64748b}
     @media(max-width:760px){.r810-local-transport-summary{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);

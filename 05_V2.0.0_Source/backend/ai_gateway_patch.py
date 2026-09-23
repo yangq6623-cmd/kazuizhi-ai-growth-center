@@ -73,7 +73,10 @@ install()
 # truthful ChatGPT-subscription control status. The legacy OpenAI API gateway
 # remains an optional advanced fallback and cannot set this state to verified.
 from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: E402,F401
-# Preferred normal transport: the ChatGPT desktop app built-in browser may use
-# WebMCP Site Tools against this localhost runtime. Cloud Relay remains optional
-# for remote/unattended use and is not required for same-PC operation.
+# Optional same-PC real-time helper: ChatGPT desktop Site Tools/WebMCP may call
+# this localhost runtime directly. It is no longer required for normal autonomy.
 from backend import kz_local_control_patch as _kz_local_control_patch  # noqa: E402,F401
+# Primary day-to-day owner channel: normal ChatGPT writes Decision Packs to a
+# dedicated PRIVATE GitHub control-bus repository. The local agent keeps Mission
+# execution running without Work/Codex or a permanent Site Tools session.
+from backend import async_control_bus_patch as _async_control_bus_patch  # noqa: E402,F401

@@ -1,18 +1,10 @@
-"""R8-10 HTTP contract for the ChatGPT control connector.
-
-Owner-facing UI reads the canonical connector state, Command/Receipt audit trail
-and the single primary blocker. External control is accepted only through the
-signed Connector envelope contract; normal browser/API configuration can never
-mark ChatGPT verified or fabricate receipts.
-"""
+"""R8-10 HTTP contract for the ChatGPT control connector."""
 from __future__ import annotations
 
 import json
 from urllib.parse import urlsplit
 
 from backend import server
-# Install after deep_productization_patch: a scheduler/UI race creating the same
-# Mission video reuses the existing active job instead of surfacing HTTP 400.
 from backend import r8_10_idempotency_patch as _r8_10_idempotency_patch  # noqa: F401,E402
 from integrations.chatgpt_control import (
     control_status,
@@ -45,6 +37,23 @@ def _read_json(handler, *, max_bytes=16 * 1024):
     return json.loads(handler.rfile.read(length) or b"{}")
 
 
+def _owner_primary_blocker() -> dict:
+    """Realtime ChatGPT offline is advisory, not a global autonomy failure."""
+    item = primary_blocker()
+    if item.get("code") == "chatgpt_not_verified":
+        return {
+            "code": "none",
+            "severity": 0,
+            "blocking": False,
+            "title": "无总控阻塞",
+            "detail": "实时 ChatGPT 当前未验证连接，但已批准 Mission 可继续本地自治。需要新高层决策时使用异步控制总线或实时辅助通道。",
+            "advisory": item,
+        }
+    result = dict(item)
+    result.setdefault("blocking", result.get("code") != "none")
+    return result
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -65,14 +74,12 @@ def install():
                 handler._json_ok({"items": recent_receipts(50)})
                 return
             if path == "/api/chatgpt-control/blocker":
-                handler._json_ok(primary_blocker())
+                handler._json_ok(_owner_primary_blocker())
                 return
             if path == "/api/chatgpt-connector/status":
                 handler._json_ok(adapter_status())
                 return
             if path == "/api/chatgpt-connector/audit":
-                # Local owner/audit view only. Secrets/signatures are never stored
-                # in this ledger, so the response is safe for the local UI.
                 handler._json_ok({"items": connector_audit(50)})
                 return
         except (OSError, ValueError, RuntimeError, TypeError) as error:
@@ -90,17 +97,10 @@ def install():
                 result = create_owner_command(_read_json(handler))
                 handler._json_ok(result, code=202)
             except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
-                # A non-verified connector is a business precondition failure,
-                # not a pretend success or an internal server failure.
                 handler._json_error(409, error)
             return
 
         if path == "/api/chatgpt-connector/envelope":
-            # Do not trust browser Origin here: future supported transports may
-            # be a Plugin/App/relay process rather than the local dashboard.
-            # Authentication is the HMAC signature + timestamp + one-time nonce
-            # enforced by process_envelope(). The runtime currently binds to
-            # localhost; a cloud relay still needs its own supported transport.
             try:
                 envelope = _read_json(handler, max_bytes=64 * 1024)
                 result = process_envelope(envelope)

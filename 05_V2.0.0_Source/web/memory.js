@@ -38,9 +38,8 @@ $('save-memory').addEventListener('click', async () => {
     script.dataset.r810Workbench = '1';
     document.body.appendChild(script);
   }
-  // Local-first ChatGPT control: when this page is opened in the ChatGPT
-  // desktop app built-in browser, WebMCP Site Tools can call the localhost
-  // runtime directly. No business server or public port is required.
+  // Optional same-PC real-time helper. Site Tools/WebMCP may call localhost when
+  // available, but normal autonomous operation no longer depends on it.
   if (!document.querySelector('script[data-kz-site-tools]')) {
     const siteTools = document.createElement('script');
     siteTools.src = '/kz_site_tools.js';
@@ -54,5 +53,15 @@ $('save-memory').addEventListener('click', async () => {
     localUi.defer = true;
     localUi.dataset.kzLocalDirectUi = '1';
     document.body.appendChild(localUi);
+  }
+  // Primary day-to-day owner architecture: normal ChatGPT -> private async
+  // control bus -> local Mission -> truthful Receipt. This UI layer makes the
+  // distinction between continuous local autonomy and optional realtime AI.
+  if (!document.querySelector('script[data-kz-async-control-ui]')) {
+    const busUi = document.createElement('script');
+    busUi.src = '/kz_async_control_ui.js';
+    busUi.defer = true;
+    busUi.dataset.kzAsyncControlUi = '1';
+    document.body.appendChild(busUi);
   }
 })();
