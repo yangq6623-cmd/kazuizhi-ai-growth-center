@@ -1,0 +1,76 @@
+name: Validate R8-11 Mission Backbone
+
+on:
+  push:
+    branches: ['r8-11-*']
+    paths:
+      - '05_V2.0.0_Source/core/mission_ledger.py'
+      - '05_V2.0.0_Source/integrations/channel_registry.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/core/autonomous_ops.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '04_Build/v2/test_r8_11_backbone.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '.github/workflows/r8_11_backbone_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/mission_ledger.py'
+      - '05_V2.0.0_Source/integrations/channel_registry.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/core/autonomous_ops.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '04_Build/v2/test_r8_11_backbone.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '.github/workflows/r8_11_backbone_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-backbone:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime dependency installation failed' }
+      - name: Verify existing private async owner control
+        run: python 04_Build/v2/test_r8_10_async_control_bus.py
+      - name: Verify concurrent Mission video idempotency
+        run: python 04_Build/v2/test_r8_10_video_idempotency.py
+      - name: Verify R8-11 Mission ledger and channel backflow
+        run: python 04_Build/v2/test_r8_11_backbone.py
+      - name: Compile R8-11 modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/mission_ledger.py
+          python -m py_compile 05_V2.0.0_Source/integrations/channel_registry.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+      - name: Verify no paid third-party token dependency
+        run: |
+          $registry = Get-Content 05_V2.0.0_Source/integrations/channel_registry.py -Raw
+          @('no_paid_third_party_token_required','paid_token_required','真实安卓','human_login') | ForEach-Object {
+            if (-not $registry.Contains($_)) { throw "Missing R8-11 channel policy: $_" }
+          }
+          $ledger = Get-Content 05_V2.0.0_Source/core/mission_ledger.py -Raw
+          @('state/mission_ledger.json','state/channel_registry.json','platform_content_id','verified_publications') | ForEach-Object {
+            if (-not $ledger.Contains($_)) { throw "Missing R8-11 ledger contract: $_" }
+          }
+          Write-Host 'R8-11 backbone uses the existing private Control Bus and requires no paid third-party token service.'
