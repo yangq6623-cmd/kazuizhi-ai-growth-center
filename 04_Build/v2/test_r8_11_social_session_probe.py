@@ -76,6 +76,7 @@ def main():
                 assert acc["risk_level"] == "normal"
                 assert acc["login_verified_at"]
                 assert acc["last_login_probe_source"] == "device_probe"
+                assert acc["last_login_probe_method"] == "automatic_device_probe"
                 assert acc["last_login_probe_result"] == "authorized"
                 assert acc["automation_paused"] is False
 
@@ -88,6 +89,44 @@ def main():
                 assert acc["automation_paused"] is True
                 assert acc["risk_level"] == "attention"
                 assert result["results"][0]["status"] == "needs_human"
+
+                # Field fallback: Douyin may render the visible account page while
+                # UIAutomator exposes too little text. The owner may provide the
+                # missing identity evidence, but only with the real ADB phone online
+                # and Douyin actually foreground. This still never publishes.
+                r8_control.update_account_status({"account_id": account_id, "login_status": "not_verified", "automation_paused": False, "risk_level": "unknown", "last_error": ""})
+                probe._ui_xml = lambda device_id: '<hierarchy rotation="0"><node text="" content-desc=""/></hierarchy>'
+                machine = probe.verify_pending_accounts(force=True)
+                assert machine["results"][0]["status"] == "inconclusive"
+                assert account_state(account_id)["login_status"] == "not_verified"
+
+                confirmed = probe.confirm_owner_login(account_id)
+                assert confirmed["status"] == "authorized"
+                assert confirmed["reason"] == "owner_real_device_confirmation"
+                assert confirmed["publishes_content"] is False
+                acc = account_state(account_id)
+                assert acc["login_status"] == "authorized"
+                assert acc["risk_level"] == "normal"
+                assert acc["automation_paused"] is False
+                assert acc["last_login_probe_source"] == "device_probe"
+                assert acc["last_login_probe_method"] == "owner_real_device_confirmation"
+                assert acc["owner_confirmed_login_at"]
+
+                # Owner confirmation may not override an actual login/risk challenge.
+                r8_control.update_account_status({"account_id": account_id, "login_status": "not_verified", "automation_paused": False, "risk_level": "unknown"})
+                probe._ui_xml = lambda device_id: '<node text="安全验证"/><node text="人脸验证"/>'
+                blocked_confirm = probe.confirm_owner_login(account_id)
+                assert blocked_confirm["status"] == "needs_human"
+                acc = account_state(account_id)
+                assert acc["login_status"] == "needs_human"
+                assert acc["automation_paused"] is True
+
+                # Owner confirmation also cannot authorize when Douyin is not foreground.
+                r8_control.update_account_status({"account_id": account_id, "login_status": "not_verified", "automation_paused": False, "risk_level": "unknown"})
+                probe._foreground = lambda device_id: "mCurrentFocus=com.android.launcher/.Launcher"
+                no_foreground = probe.confirm_owner_login(account_id)
+                assert no_foreground["status"] == "inconclusive"
+                assert account_state(account_id)["login_status"] == "not_verified"
             finally:
                 probe._package_installed, probe._foreground, probe._ui_xml = old_installed, old_foreground, old_xml
         finally:
@@ -100,7 +139,8 @@ def main():
     assert "requests" not in source
     assert "bypass" in source
     assert "publishes_content" in source
-    print("PASS: R8-11 real-device Douyin verifier authorizes only strong bound-profile evidence and stops for human verification without paid token services.")
+    assert "owner_real_device_confirmation" in source
+    print("PASS: R8-11 real-device Douyin verifier supports strong automatic evidence and a guarded owner-confirmed fallback without paid token services or publish bypass.")
 
 
 if __name__ == "__main__":
