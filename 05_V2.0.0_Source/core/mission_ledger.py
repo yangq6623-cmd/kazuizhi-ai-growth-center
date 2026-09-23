@@ -2,18 +2,23 @@
 
 This module joins Command/Decision Pack, Mission, Growth, content/video,
 publish-plan, real platform Receipt and verified business context into one
-read-only operating ledger.  It is deliberately derived from existing truthful
-stores instead of introducing a second competing state machine.
+operating ledger.  It is deliberately derived from existing truthful stores
+instead of introducing a second competing state machine.
 
-The ledger can also publish sanitized state snapshots to the existing PRIVATE
-GitHub Control Bus.  It does not require a paid third-party token service and it
-does not claim external success without a real platform receipt.
+R8-11 also keeps one last-known-good Mission recovery snapshot.  This is not a
+second source of business truth: it is only used when an upgrade/restart leaves
+the local Mission/content indexes empty while the previous verified Mission
+identity still exists.  Recovery never invents a publication or candidate file.
 """
 from __future__ import annotations
 
-from core.storage import now_iso, write_json
+from pathlib import Path
+
+from core.storage import data_root, now_iso, read_json, write_json
 
 LEDGER_FILE = "r8_11/mission_ledger.json"
+RECOVERY_FILE = "r8_11/last_nonempty_mission.json"
+REMOTE_RECOVERY_FILE = "state/recovery/last_nonempty_mission.json"
 SCHEMA = "kz.mission-ledger.v1"
 
 
@@ -195,7 +200,199 @@ def _mission_row(mission: dict, factory: dict, bus_receipts: list[dict], channel
     }
 
 
+def _valid_recovery(active: dict) -> bool:
+    return bool(
+        isinstance(active, dict)
+        and str(active.get("mission_id") or "").startswith("MISSION-")
+        and str(active.get("growth_id") or "").startswith("KZ-")
+    )
+
+
+def _save_recovery(active: dict) -> None:
+    if not _valid_recovery(active):
+        return
+    write_json(RECOVERY_FILE, {
+        "schema": "kz.mission-recovery.v1",
+        "saved_at": now_iso(),
+        "active_mission": active,
+        "truth_rule": "仅用于升级/重启后恢复已存在的 Mission 身份与本地成片索引；不得生成外部发布成功。",
+    })
+
+
+def _recovery_active(payload: dict | None) -> dict | None:
+    if not isinstance(payload, dict):
+        return None
+    active = payload.get("active_mission") if isinstance(payload.get("active_mission"), dict) else payload
+    return active if _valid_recovery(active) else None
+
+
+def _restore_runtime(active: dict) -> dict:
+    """Restore lost local indexes from a previously exported truthful Mission.
+
+    The candidate is restored only when its deterministic FINAL.mp4 still
+    exists under LocalAppData.  Missing media therefore becomes a real
+    exception instead of a fabricated reviewable video.
+    """
+    from promotion import content_factory as cf
+
+    growth_id = str(active.get("growth_id") or "").strip()
+    mission_id = str(active.get("mission_id") or "").strip()
+    video_summary = active.get("active_video") if isinstance(active.get("active_video"), dict) else {}
+    video_id = str(video_summary.get("video_id") or "").strip()
+    if not growth_id or not mission_id:
+        return {"restored": False, "reason": "invalid_recovery_identity"}
+
+    factory = cf._load()
+    campaigns = factory.setdefault("campaigns", [])
+    videos = factory.setdefault("videos", [])
+    campaign = next((x for x in campaigns if x.get("id") == growth_id), None)
+    if campaign is None:
+        campaign = {
+            "id": growth_id,
+            "created_at": active.get("updated_at") or now_iso(),
+            "region": active.get("region") or "",
+            "service": active.get("service") or "",
+            "title": active.get("title") or "恢复的经营任务",
+            "evidence": "来自 R8-11 最近一次非空 Mission Ledger 的升级恢复证据",
+            "goal": active.get("goal") or "",
+            "source_type": "R8-11升级恢复",
+            "status": "视频生产中" if video_id else "可开始AI生产",
+            "owner_note": "升级后从最近一次真实 Mission Ledger 恢复；未创建新业务事实。",
+            "material_pool_updated_at": None,
+        }
+        campaigns.insert(0, campaign)
+
+    restored_media = False
+    if video_id and not any(x.get("id") == video_id for x in videos):
+        candidate_summary = video_summary.get("candidate") if isinstance(video_summary.get("candidate"), dict) else {}
+        final_path = data_root() / "r8" / "video_output" / growth_id / video_id / "FINAL.mp4"
+        restored_media = bool(candidate_summary and final_path.is_file())
+        historical_status = str(video_summary.get("status") or "等待ChatGPT策划")
+        status = historical_status if (not candidate_summary or restored_media) else "异常待处理"
+        candidate = None
+        if restored_media:
+            candidate = {
+                "id": candidate_summary.get("candidate_id") or f"RECOVERED-{video_id}",
+                "created_at": active.get("updated_at") or now_iso(),
+                "local_path": str(final_path),
+                "exists": True,
+                "duration_seconds": candidate_summary.get("duration_seconds"),
+                "quality_notes": "从最近一次真实 Mission Ledger 恢复本地成片索引",
+                "ai_score": None,
+                "technical_qc": {"passed": bool(candidate_summary.get("technical_qc_passed"))},
+                "source_summary": ["r8_11_last_nonempty_mission_recovery"],
+            }
+        video = {
+            "id": video_id,
+            "campaign_id": growth_id,
+            "created_at": active.get("updated_at") or now_iso(),
+            "requested_at": active.get("updated_at") or now_iso(),
+            "script": "",
+            "duration_target": int((candidate_summary or {}).get("duration_seconds") or 30),
+            "caption_direction": "",
+            "cta": "通过小程序提交需求，等待师傅报价",
+            "asset_ids": [],
+            "candidates": [candidate] if candidate else [],
+            "status": status,
+            "review": video_summary.get("review"),
+            "approved_at": None,
+            "production_plan": None,
+            "plan_version": int(video_summary.get("plan_version") or 0),
+            "plan_source": video_summary.get("plan_source"),
+            "shot_tasks": [],
+            "target_platforms": [],
+            "bottleneck": None if status != "异常待处理" else "历史 FINAL.MP4 本地文件不存在，不能伪造待审核成片",
+            "auto_action": video_summary.get("auto_action") if status != "异常待处理" else "等待重新生成真实本地成片",
+            "last_error": None,
+            "retry_count": 0,
+            "technical_qc": {"passed": True} if restored_media and candidate_summary.get("technical_qc_passed") else None,
+            "chatgpt_qc": None,
+            "local_qc": candidate_summary.get("local_qc") if isinstance(candidate_summary.get("local_qc"), dict) else {},
+            "material_policy": {"local_material_optional": True, "quality_first": True, "missing_material_must_not_block": True},
+            "recovered_from": "r8_11_last_nonempty_mission",
+        }
+        videos.insert(0, video)
+
+    factory["active_campaign_id"] = growth_id
+    cf._save(factory)
+
+    ops = read_json("ops/autonomous_ops.json", {})
+    ops = ops if isinstance(ops, dict) else {}
+    ops.setdefault("schema", 1)
+    ops.setdefault("owner_goal", None)
+    ops.setdefault("missions", [])
+    ops.setdefault("events", [])
+    mission = next((x for x in ops["missions"] if x.get("mission_id") == mission_id or x.get("growth_id") == growth_id), None)
+    if mission is None:
+        mission = {
+            "mission_id": mission_id,
+            "growth_id": growth_id,
+            "created_at": active.get("updated_at") or now_iso(),
+            "updated_at": now_iso(),
+            "source": "r8_11_upgrade_recovery",
+            "title": active.get("title") or "经营任务",
+            "region": active.get("region") or "",
+            "service": active.get("service") or "",
+            "goal": active.get("goal") or "",
+            "priority": "P1",
+            "autonomy_level": "L4_key_gates_human",
+            "state": "active",
+            "stage": active.get("stage") or "待自动立项",
+            "user_state": active.get("user_state") or "自动处理中",
+            "r7_context": {},
+            "children": active.get("children") or {"video_ids": [], "publish_plan_ids": [], "receipt_ids": []},
+            "verified_publications": int(active.get("verified_publications") or 0),
+            "last_result": None,
+        }
+        ops["missions"].insert(0, mission)
+    mission.update({
+        "title": active.get("title") or mission.get("title"),
+        "region": active.get("region") or mission.get("region"),
+        "service": active.get("service") or mission.get("service"),
+        "goal": active.get("goal") or mission.get("goal"),
+        "active_video_id": video_id or mission.get("active_video_id"),
+        "stage": active.get("stage") or mission.get("stage"),
+        "user_state": active.get("user_state") or mission.get("user_state"),
+        "updated_at": now_iso(),
+        "recovered_from": "r8_11_last_nonempty_mission",
+    })
+    ops["active_mission_id"] = mission_id
+    ops["updated_at"] = now_iso()
+    write_json("ops/autonomous_ops.json", ops)
+    return {"restored": True, "mission_id": mission_id, "growth_id": growth_id, "video_id": video_id or None, "media_restored": restored_media}
+
+
+def recover_if_empty(client=None) -> dict:
+    """Recover a lost foreground Mission only when both local indexes are empty."""
+    factory = _safe_factory()
+    ops_raw = read_json("ops/autonomous_ops.json", {})
+    local_has_campaign = bool(factory.get("campaigns"))
+    local_has_mission = bool((ops_raw or {}).get("missions")) if isinstance(ops_raw, dict) else False
+    if local_has_campaign or local_has_mission:
+        return {"restored": False, "reason": "local_runtime_not_empty"}
+
+    active = _recovery_active(read_json(RECOVERY_FILE, {}))
+    source = "local_recovery"
+    if active is None and client is not None:
+        try:
+            active = _recovery_active(client.read_json(REMOTE_RECOVERY_FILE))
+            source = "private_control_bus_recovery"
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError):
+            active = None
+    if active is None:
+        return {"restored": False, "reason": "no_trusted_recovery_snapshot"}
+
+    result = _restore_runtime(active)
+    if result.get("restored"):
+        _save_recovery(active)
+        result["source"] = source
+    return result
+
+
 def snapshot() -> dict:
+    # Local backup recovery is intentionally attempted before the derived
+    # runtime sync.  It never reaches the network from normal UI reads.
+    recover_if_empty(client=None)
     ops = _safe_ops()
     factory = _safe_factory()
     bus_receipts = _safe_bus_receipts()
@@ -225,27 +422,43 @@ def snapshot() -> dict:
         "truth_rule": "Command→Mission→执行→发布→经营结果必须逐层有真实证据；任何缺失环节保持待验证，不补造成功。",
     }
     write_json(LEDGER_FILE, payload)
+    if active:
+        _save_recovery(active)
     return payload
 
 
 def export_to_control_bus(client=None) -> dict:
     """Write Mission/channel state to the existing private Control Bus.
 
-    A caller may pass a fake/test client.  When no configured bus is available,
-    the local ledger is still refreshed and returned truthfully.
+    A non-empty Mission is also stored as last-known-good recovery evidence.
+    Blank local state never overwrites that recovery file.
     """
-    ledger = snapshot()
     try:
         if client is None:
             from integrations.async_control_bus import _client_from_config
             client = _client_from_config()
+        if client is not None:
+            recover_if_empty(client=client)
+    except (OSError, RuntimeError, TypeError, ValueError, KeyError):
+        pass
+
+    ledger = snapshot()
+    try:
         if client is None:
             return {"exported": False, "reason": "control_bus_not_configured", "ledger": ledger}
         client.ensure_private_repo()
+        active = ledger.get("active_mission") or {}
+        if _valid_recovery(active):
+            recovery = {
+                "schema": "kz.mission-recovery.v1",
+                "saved_at": ledger.get("generated_at"),
+                "active_mission": active,
+                "truth_rule": "仅用于升级/重启恢复已存在 Mission；不得据此宣称外部发布成功。",
+            }
+            client.write_json(REMOTE_RECOVERY_FILE, recovery, "R8-11 last non-empty Mission recovery snapshot")
         client.write_json("state/mission_ledger.json", ledger, "R8-11 Mission ledger sync")
         client.write_json("state/channel_registry.json", ledger.get("channel_registry") or {}, "R8-11 channel registry sync")
         client.write_json("state/channel_routes.json", ledger.get("channel_routes") or {}, "R8-11 channel routes sync")
-        active = ledger.get("active_mission") or {}
         mission_id = str(active.get("mission_id") or "").strip()
         if mission_id:
             client.write_json(f"state/missions/{mission_id}.json", active, f"R8-11 {mission_id} state sync")
