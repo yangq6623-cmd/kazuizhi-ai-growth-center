@@ -76,8 +76,7 @@ KZ_CONTROL_BUS_ENABLED=true
     ],
     "human_gates": [
       "final_video_review",
-      "captcha",
-      "face",
+      "manual_verification",
       "money"
     ]
   }

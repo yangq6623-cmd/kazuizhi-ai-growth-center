@@ -93,7 +93,8 @@ def main() -> None:
             assert initial["work_codex_role"] == "engineering_only"
             assert control.control_status()["verified"] is False
 
-            created = bus.process_decision_pack(pack(), source_path="commands/CMD-BUS-001.json")
+            first_pack = pack()
+            created = bus.process_decision_pack(first_pack, source_path="commands/CMD-BUS-001.json")
             assert created["idempotent"] is False
             receipt = created["receipt"]
             assert receipt["status"] == "completed"
@@ -102,11 +103,12 @@ def main() -> None:
             assert receipt["result"]["active_mission"]["region"] == "涟水县"
             assert control.control_status()["verified"] is False, "async bus must not fabricate realtime ChatGPT verification"
 
-            duplicate = bus.process_decision_pack(pack(), source_path="commands/CMD-BUS-001.json")
+            duplicate = bus.process_decision_pack(first_pack, source_path="commands/CMD-BUS-001.json")
             assert duplicate["idempotent"] is True
             assert duplicate["receipt"]["receipt_id"] == receipt["receipt_id"]
 
-            changed = pack()
+            changed = dict(first_pack)
+            changed["decision"] = dict(first_pack["decision"])
             changed["decision"]["goal"] = "篡改后的目标"
             try:
                 bus.process_decision_pack(changed, source_path="commands/CMD-BUS-001.json")
