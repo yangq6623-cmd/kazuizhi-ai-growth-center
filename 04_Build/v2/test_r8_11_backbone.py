@@ -11,6 +11,8 @@ sys.path.insert(0, str(SOURCE))
 from integrations import async_control_bus as bus
 from integrations import channel_registry, channel_router
 from core import mission_ledger
+from core.storage import data_root, write_json
+from promotion import content_factory
 
 
 class FakePrivateBus:
@@ -23,6 +25,12 @@ class FakePrivateBus:
     def write_json(self, path, payload, message):
         self.writes[path] = {"payload": payload, "message": message}
         return {"ok": True}
+
+    def read_json(self, path):
+        row = self.writes.get(path)
+        if not row:
+            raise RuntimeError(f"missing fake bus file: {path}")
+        return row["payload"]
 
 
 def decision_pack():
@@ -102,12 +110,48 @@ def main():
             assert backflow["exported"] is True
             assert "state/mission_ledger.json" in fake.writes
             assert "state/channel_registry.json" in fake.writes
+            assert mission_ledger.REMOTE_RECOVERY_FILE in fake.writes
             mission_path = f"state/missions/{receipt['mission_id']}.json"
             assert mission_path in fake.writes
             exported = fake.writes[mission_path]["payload"]
             assert exported["command"]["command_id"] == "CMD-R811-BACKBONE-001"
             assert exported["verified_publications"] == 0
             assert exported["next_action"]
+
+            # Simulate the field failure seen after an installer/restart: account
+            # state may survive while campaign/video and Mission indexes become
+            # empty.  The last non-empty private Control Bus evidence must be
+            # able to restore the same IDs instead of silently creating a new
+            # Mission or exporting a destructive empty ledger.
+            expected_mission = active["mission_id"]
+            expected_growth = active["growth_id"]
+            expected_video = active["active_video"]["video_id"]
+            factory = content_factory._load()
+            factory["campaigns"] = []
+            factory["videos"] = []
+            factory["active_campaign_id"] = None
+            content_factory._save(factory)
+            write_json("ops/autonomous_ops.json", {
+                "schema": 1, "owner_goal": None, "active_mission_id": None,
+                "missions": [], "events": [], "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            })
+            local_recovery = data_root() / mission_ledger.RECOVERY_FILE
+            if local_recovery.exists():
+                local_recovery.unlink()
+
+            recovered = mission_ledger.recover_if_empty(client=fake)
+            assert recovered["restored"] is True
+            assert recovered["source"] == "private_control_bus_recovery"
+            assert recovered["mission_id"] == expected_mission
+            assert recovered["growth_id"] == expected_growth
+            assert recovered["video_id"] == expected_video
+
+            restored = mission_ledger.snapshot()
+            assert restored["active_mission_id"] == expected_mission
+            assert restored["active_mission"]["growth_id"] == expected_growth
+            assert restored["active_mission"]["active_video"]["video_id"] == expected_video
+            assert restored["active_mission"]["verified_publications"] == 0
+            assert restored["active_mission"]["latest_platform_receipt"] is None
         finally:
             if old_local is None:
                 os.environ.pop("LOCALAPPDATA", None)
@@ -119,7 +163,7 @@ def main():
                 else:
                     os.environ[name] = value
 
-    print("PASS: R8-11 Command -> Mission ledger -> channel registry/router -> private Control Bus backflow works without paid third-party tokens.")
+    print("PASS: R8-11 backbone and last-known-good Mission recovery work without paid third-party tokens or fabricated publication.")
 
 
 if __name__ == "__main__":
