@@ -9,6 +9,7 @@ from backend import server
 from backend import async_control_bus_patch as _async_control_bus_patch  # noqa: F401,E402
 from core.mission_ledger import snapshot as mission_ledger_snapshot, sync_backbone
 from integrations.channel_registry import snapshot as channel_registry_snapshot
+from integrations.channel_router import build_routes as channel_routes_snapshot
 
 _INSTALLED = False
 
@@ -29,12 +30,17 @@ def install():
             if path == "/api/r8-11/channels":
                 handler._json_ok(channel_registry_snapshot())
                 return
+            if path == "/api/r8-11/channel-routes":
+                handler._json_ok(channel_routes_snapshot())
+                return
             if path == "/api/r8-11/backbone":
                 ledger = mission_ledger_snapshot()
+                routes = channel_routes_snapshot(ledger.get("active_mission") or {})
                 handler._json_ok({
                     "status": "available",
                     "active_mission": ledger.get("active_mission"),
                     "channel_summary": (ledger.get("channel_registry") or {}).get("summary") or {},
+                    "route_summary": routes.get("summary") or {},
                     "control_bus": ledger.get("control_bus") or {},
                     "truth_rule": ledger.get("truth_rule"),
                 })
