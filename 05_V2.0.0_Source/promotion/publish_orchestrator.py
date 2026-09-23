@@ -1,16 +1,18 @@
 """Automatic publication planning after the owner's final approval.
 
-This module never logs into an account and never claims a platform publication.
-It only converts an already owner-approved FINAL.MP4 plus ChatGPT platform
-adaptation into safe per-platform plans for accounts that have already been
-verified by the local control plane. Real execution still requires the existing
-connector/real-device path and a real receipt.
+This module never claims a platform publication.  It converts an already
+owner-approved FINAL.MP4 plus ChatGPT platform adaptation into safe per-platform
+plans for accounts already verified by the local control plane.  For the Douyin
+pilot it also queues a truthful real-device dry-run task; that task must stop
+before the platform's final publish control.  Real publication still requires a
+real Content ID + URL receipt.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 
+from integrations import publish_dry_run_queue
 from promotion import content_factory
 
 
@@ -43,8 +45,6 @@ def _matching_accounts(accounts, campaign, platform):
         if service and service != str(campaign.get("service") or ""):
             continue
         candidates.append(account)
-    # Prefer the account with the largest configured daily allowance. The hard
-    # rule layer still checks the actual remaining allowance atomically.
     candidates.sort(key=lambda x: int(x.get("daily_limit") or 1), reverse=True)
     return candidates
 
@@ -58,11 +58,47 @@ def _existing_by_platform(plans, video_id):
     return mapping
 
 
-def run_publish_planning(limit=10):
-    """Create missing per-platform plans for approved videos.
+def _publish_fields(video, campaign, platform):
+    production = video.get("production_plan") if isinstance(video.get("production_plan"), dict) else {}
+    adaptation_map = production.get("platform_adaptation") if isinstance(production.get("platform_adaptation"), dict) else {}
+    adaptation = adaptation_map.get(platform) or adaptation_map.get("通用") or {}
+    if not isinstance(adaptation, dict):
+        adaptation = {}
+    titles = production.get("titles") if isinstance(production.get("titles"), list) else []
+    title = str(
+        adaptation.get("title")
+        or (titles[0] if titles else "")
+        or production.get("topic")
+        or campaign.get("title")
+        or f"{campaign.get('region') or '本地'}{campaign.get('service') or '服务'}"
+    ).strip()[:50]
+    caption = str(
+        adaptation.get("caption")
+        or video.get("caption_direction")
+        or video.get("cta")
+        or campaign.get("goal")
+        or title
+    ).strip()[:900]
+    scheduled_for = str(
+        adaptation.get("schedule_hint")
+        or "真机干跑通过后由系统按账号状态与真实效果编排"
+    ).strip()[:60]
+    return {"title": title, "caption": caption, "scheduled_for": scheduled_for}
 
-    The function is idempotent. Account/login gaps are surfaced as bottlenecks
-    but do not invalidate an already-created plan for another platform.
+
+def _queue_douyin_plan(plan, account, video):
+    try:
+        return publish_dry_run_queue.queue_plan(plan, account, video)
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        return {"queued": False, "reason": str(error)[:300], "publishes_content": False}
+
+
+def run_publish_planning(limit=10):
+    """Create missing per-platform plans and queue the Douyin real-device dry run.
+
+    The function is idempotent.  Account/login/device gaps are surfaced as
+    bottlenecks.  No path here clicks the platform's final publish control and no
+    plan is counted as published without a real receipt.
     """
     data = content_factory._load()
     campaigns = {x.get("id"): x for x in data.get("campaigns", [])}
@@ -92,23 +128,38 @@ def run_publish_planning(limit=10):
         created = []
         waiting = []
         errors = []
+        dry_runs = []
         for platform in targets:
-            if existing.get(platform):
-                continue
             candidates = _matching_accounts(accounts, campaign, platform)
             if not candidates:
                 waiting.append(f"{platform}：缺少区域/服务匹配且已验证可发布的账号")
                 continue
+
+            existing_plans = existing.get(platform) or []
+            if existing_plans:
+                plan = existing_plans[0]
+                account = next((x for x in candidates if x.get("id") == plan.get("account_id")), candidates[0])
+                queue_result = _queue_douyin_plan(plan, account, video)
+                if platform == "抖音":
+                    dry_runs.append(queue_result)
+                continue
+
             planned = None
             for account in candidates:
                 try:
+                    fields = _publish_fields(video, campaign, platform)
                     planned = content_factory.create_publish_plan({
                         "video_id": video["id"],
                         "account_id": account["id"],
+                        **fields,
                     })
+                    queue_result = _queue_douyin_plan(planned, account, video)
+                    if platform == "抖音":
+                        dry_runs.append(queue_result)
                     created.append({
                         "plan_id": planned.get("id"), "platform": platform,
                         "account_id": account.get("id"),
+                        "dry_run": queue_result if platform == "抖音" else None,
                     })
                     break
                 except ValueError as error:
@@ -121,13 +172,14 @@ def run_publish_planning(limit=10):
         plans_now = _existing_by_platform(latest.get("publication_plans", []), video["id"])
         covered = [platform for platform in targets if plans_now.get(platform)]
         missing = [platform for platform in targets if platform not in covered]
+        douyin_queue = next((x for x in reversed(dry_runs) if isinstance(x, dict)), None)
         if covered:
             latest_video["status"] = "等待最佳时间"
             latest_video["bottleneck"] = ("尚有平台等待账号：" + "、".join(missing)) if missing else None
             latest_video["auto_action"] = (
+                "已建立发布计划并排入抖音真机干跑；最终发布按钮仍需老板现场确认，真实发布后必须回收平台内容ID和URL"
+                if douyin_queue and douyin_queue.get("queued") else
                 "已按ChatGPT平台策略自动建立发布计划；真实连接器/真机执行后必须回收平台内容ID和URL"
-                if not missing else
-                "已完成可用平台编排；缺少账号的平台会在账号验证后自动补齐"
             )
         else:
             latest_video["status"] = "等待账号"
@@ -139,10 +191,12 @@ def run_publish_planning(limit=10):
             "missing": missing,
             "last_created": created,
             "last_errors": errors[-10:],
+            "douyin_dry_run": douyin_queue,
+            "truth_rule": "真机干跑不等于发布；只有真实 Content ID + URL / Receipt 才能标记已验证发布。",
         }
         content_factory._save(latest)
         processed.append({
             "video_id": video["id"], "created": len(created), "created_plans": created,
-            "covered": covered, "waiting": waiting, "errors": errors,
+            "covered": covered, "waiting": waiting, "errors": errors, "dry_runs": dry_runs,
         })
     return {"processed": len(processed), "items": processed}
