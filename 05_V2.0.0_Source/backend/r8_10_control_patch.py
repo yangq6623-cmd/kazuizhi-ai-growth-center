@@ -11,6 +11,9 @@ import json
 from urllib.parse import urlsplit
 
 from backend import server
+# Install after deep_productization_patch: a scheduler/UI race creating the same
+# Mission video reuses the existing active job instead of surfacing HTTP 400.
+from backend import r8_10_idempotency_patch as _r8_10_idempotency_patch  # noqa: F401,E402
 from integrations.chatgpt_control import (
     control_status,
     create_owner_command,
