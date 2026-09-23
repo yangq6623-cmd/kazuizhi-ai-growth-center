@@ -49,6 +49,16 @@ $('save-memory').addEventListener('click', async () => {
     truth.dataset.r810TruthConvergence = '1';
     document.body.appendChild(truth);
   }
+  // R8-11 primary backbone visibility: Command/Mission/Video/Publish/Receipt
+  // ledger plus the unified acquisition-channel registry. This requires no
+  // paid third-party token service and does not change external truth gates.
+  if (!document.querySelector('script[data-r811-backbone]')) {
+    const backbone = document.createElement('script');
+    backbone.src = '/r8_11_backbone_ui.js';
+    backbone.defer = true;
+    backbone.dataset.r811Backbone = '1';
+    document.body.appendChild(backbone);
+  }
   // Optional same-PC real-time helper. Site Tools/WebMCP may call localhost when
   // available, but normal autonomous operation no longer depends on it.
   if (!document.querySelector('script[data-kz-site-tools]')) {
