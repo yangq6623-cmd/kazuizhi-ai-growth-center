@@ -19,9 +19,9 @@ def _active_mission() -> dict:
         return {}
 
 
-def build_routes() -> dict:
+def build_routes(mission=None) -> dict:
     registry = registry_snapshot()
-    mission = _active_mission()
+    mission = mission if isinstance(mission, dict) else _active_mission()
     video = mission.get("active_video") or {}
     candidate = video.get("candidate") or {}
     owner_approved = str(video.get("status") or "") in {"已授权发布", "等待账号", "等待最佳时间", "发布执行中", "已验证发布"}
