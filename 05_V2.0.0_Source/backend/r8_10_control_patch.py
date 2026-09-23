@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from backend import server
 from backend import r8_10_idempotency_patch as _r8_10_idempotency_patch  # noqa: F401,E402
+from backend import r8_10_state_convergence_patch as _r8_10_state_convergence_patch  # noqa: F401,E402
 from integrations.chatgpt_control import (
     control_status,
     create_owner_command,
