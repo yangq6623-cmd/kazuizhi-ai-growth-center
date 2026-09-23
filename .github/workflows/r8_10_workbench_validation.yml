@@ -7,10 +7,12 @@ on:
       - '05_V2.0.0_Source/web/**'
       - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
       - '05_V2.0.0_Source/backend/r8_10_idempotency_patch.py'
+      - '05_V2.0.0_Source/backend/kz_local_control_patch.py'
       - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
       - '05_V2.0.0_Source/integrations/chatgpt_control.py'
       - '05_V2.0.0_Source/integrations/chatgpt_connector_adapter.py'
       - '05_V2.0.0_Source/integrations/chatgpt_relay_agent.py'
+      - '05_V2.0.0_Source/integrations/kz_local_control.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/run.py'
       - '06_Cloud_Relay/**'
@@ -20,6 +22,7 @@ on:
       - '04_Build/v2/test_r8_10_chatgpt_relay_agent.py'
       - '04_Build/v2/test_r8_10_cloud_relay.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
   pull_request:
@@ -28,10 +31,12 @@ on:
       - '05_V2.0.0_Source/web/**'
       - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
       - '05_V2.0.0_Source/backend/r8_10_idempotency_patch.py'
+      - '05_V2.0.0_Source/backend/kz_local_control_patch.py'
       - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
       - '05_V2.0.0_Source/integrations/chatgpt_control.py'
       - '05_V2.0.0_Source/integrations/chatgpt_connector_adapter.py'
       - '05_V2.0.0_Source/integrations/chatgpt_relay_agent.py'
+      - '05_V2.0.0_Source/integrations/kz_local_control.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/run.py'
       - '06_Cloud_Relay/**'
@@ -41,6 +46,7 @@ on:
       - '04_Build/v2/test_r8_10_chatgpt_relay_agent.py'
       - '04_Build/v2/test_r8_10_cloud_relay.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
       - '.github/workflows/r8_10_workbench_validation.yml'
 
@@ -71,6 +77,8 @@ jobs:
         run: python 04_Build/v2/test_r8_10_cloud_relay.py
       - name: Verify concurrent Mission video idempotency
         run: python 04_Build/v2/test_r8_10_video_idempotency.py
+      - name: Verify ChatGPT desktop WebMCP localhost control
+        run: python 04_Build/v2/test_r8_10_local_webmcp_control.py
       - name: Verify owner-facing buttons and navigation
         run: python 04_Build/v2/test_r8_10_button_contract.py
       - name: Verify existing UI interaction contracts
@@ -90,4 +98,8 @@ jobs:
           @('未验证连接','备用 AI 接口（可选）','待我处理','不会虚构软件缺陷','不会用估算数字代替') | ForEach-Object {
             if (-not $text.Contains($_)) { throw "Missing R8-10 truth rule: $_" }
           }
-          Write-Host 'R8-10 owner-facing truth rules verified.'
+          $local = Get-Content 05_V2.0.0_Source/web/kz_site_tools.js -Raw
+          @('document.modelContext','kazuizhi_create_mission','/api/kz-local-control/tool') | ForEach-Object {
+            if (-not $local.Contains($_)) { throw "Missing local-first Site Tools contract: $_" }
+          }
+          Write-Host 'R8-10 owner-facing truth rules and local-first Site Tools verified.'
