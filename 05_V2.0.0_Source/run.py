@@ -42,6 +42,8 @@ from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
 from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
+from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
+from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
 from promotion.material_library import scan_material_inbox
@@ -88,6 +90,25 @@ def start_scheduler():
             tick += 1
             stop.wait(15)
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
+    thread.start()
+    return stop
+
+
+def start_chatgpt_relay_worker():
+    """Use outbound HTTPS only; never expose the local dashboard port publicly."""
+    stop = threading.Event()
+    config = relay_config_status()
+    if not config.get("configured"):
+        return stop
+
+    def loop():
+        while not stop.is_set():
+            result = relay_poll_once()
+            if not result.get("ok") and not result.get("skipped"):
+                print(f"ChatGPT Relay deferred: {result.get('reason')}", flush=True)
+            stop.wait(relay_poll_seconds())
+
+    thread = threading.Thread(target=loop, name="chatgpt-control-relay-worker", daemon=True)
     thread.start()
     return stop
 
@@ -142,6 +163,7 @@ def main():
         except (OSError, ValueError):
             pass
         scheduler_stop = start_scheduler()
+        relay_stop = start_chatgpt_relay_worker()
         video_worker_stop = start_video_production_worker()
         AIEngine().start()
         url = f"http://127.0.0.1:{server.server_port}/?build={BUILD_ID}"
@@ -153,6 +175,7 @@ def main():
             server.serve_forever()
         finally:
             scheduler_stop.set()
+            relay_stop.set()
             video_worker_stop.set()
 
 
