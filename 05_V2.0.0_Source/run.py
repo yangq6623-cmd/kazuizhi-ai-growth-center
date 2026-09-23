@@ -34,10 +34,14 @@ from backend import autonomous_ops_patch as _autonomous_ops_patch  # noqa: F401,
 # uses the signed Connector contract and canonical Command/Receipt state.
 from backend import ai_gateway_patch as _ai_gateway_patch  # noqa: F401,E402
 from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: F401,E402
+# R8-11 joins Command -> Mission -> execution -> platform Receipt -> business
+# context into one ledger and exposes a unified no-paid-token channel registry.
+from backend import r8_11_backbone_patch as _r8_11_backbone_patch  # noqa: F401,E402
 # Extend the fallback bridge with a narrow mission_decision contract.
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
+from core.mission_ledger import sync_backbone as sync_mission_backbone
 from core.daily_workforce import ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
@@ -90,6 +94,11 @@ def start_scheduler():
                     # a verified connector/device receipt.
                     run_publish_planning(limit=10)
                     sync_autonomous_ops(autostart=False)
+                    # Publish one truthful R8-11 Mission ledger + channel registry
+                    # snapshot to the existing PRIVATE Control Bus. This is the
+                    # reverse path that lets normal ChatGPT inspect execution
+                    # progress without any paid third-party token service.
+                    sync_mission_backbone()
                 except (OSError, ValueError) as error:
                     print(f"R7 AI/bridge/material/publish planning deferred: {error}", flush=True)
             tick += 1
@@ -166,6 +175,7 @@ def main():
             sync_chatgpt_handoffs(force=True)
             run_publish_planning(limit=10)
             sync_autonomous_ops(autostart=False)
+            sync_mission_backbone()
         except (OSError, ValueError):
             pass
         scheduler_stop = start_scheduler()
