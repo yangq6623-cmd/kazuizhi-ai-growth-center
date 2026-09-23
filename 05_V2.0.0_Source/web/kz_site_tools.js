@@ -16,6 +16,7 @@
   };
 
   async function request(path, options={}) {
+    const isWrite = String(options.method || 'GET').toUpperCase() !== 'GET';
     const response = await fetch(path, {
       credentials: 'same-origin',
       cache: 'no-store',
@@ -23,6 +24,7 @@
       headers: {
         'Accept': 'application/json',
         ...(options.body ? {'Content-Type': 'application/json'} : {}),
+        ...(isWrite ? {'X-KZ-Site-Tools': 'webmcp-local'} : {}),
         ...(options.headers || {}),
       },
     });
