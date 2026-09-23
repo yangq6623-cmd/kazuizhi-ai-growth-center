@@ -1,8 +1,10 @@
 """R8-10 local HTTP contract for the ChatGPT control connector.
 
-The UI may read status locally, but there is intentionally no HTTP endpoint that
-can mark the connector verified. Only an authorized connector adapter may call
-record_verified_roundtrip() after a real external round trip.
+Owner-facing UI can read the canonical connector state, Command/Receipt audit
+trail and the single primary blocker. There is intentionally no normal local UI
+endpoint that can mark ChatGPT verified or fabricate receipts. Only an
+authorized connector adapter may call the internal integration hooks after a
+real external round trip.
 """
 from __future__ import annotations
 
@@ -10,7 +12,13 @@ import json
 from urllib.parse import urlsplit
 
 from backend import server
-from integrations.chatgpt_control import control_status, create_owner_command
+from integrations.chatgpt_control import (
+    control_status,
+    create_owner_command,
+    primary_blocker,
+    recent_commands,
+    recent_receipts,
+)
 
 _INSTALLED = False
 
@@ -39,11 +47,21 @@ def install():
 
     def do_get(handler):
         path = urlsplit(handler.path).path
-        if path == "/api/chatgpt-control/status":
-            try:
+        try:
+            if path == "/api/chatgpt-control/status":
                 handler._json_ok(control_status())
-            except (OSError, ValueError, RuntimeError, TypeError) as error:
-                handler._json_error(500, error)
+                return
+            if path == "/api/chatgpt-control/commands":
+                handler._json_ok({"items": recent_commands(50)})
+                return
+            if path == "/api/chatgpt-control/receipts":
+                handler._json_ok({"items": recent_receipts(50)})
+                return
+            if path == "/api/chatgpt-control/blocker":
+                handler._json_ok(primary_blocker())
+                return
+        except (OSError, ValueError, RuntimeError, TypeError) as error:
+            handler._json_error(500, error)
             return
         return original_get(handler)
 
