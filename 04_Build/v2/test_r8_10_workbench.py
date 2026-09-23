@@ -17,6 +17,7 @@ def main() -> None:
     js = read("r8_10_workbench.js")
     css = read("r8_10_workbench.css")
     memory = read("memory.js")
+    operational_workbench = read("operational-workbench.js")
 
     # The workbench is an overlay over the proven #397 runtime, not a second app.
     require(memory, "/r8_10_workbench.css", "R8-10 stylesheet loader")
@@ -33,6 +34,15 @@ def main() -> None:
     require(js, "不再出现第二套工作台", "single-workbench product copy")
     require(js, "switchExecutionPage", "embedded R8 execution navigation")
     require(css, "#operational-open-window{display:none", "hide second-workbench window action")
+
+    # Legacy operational.html must never become a second top-level workbench.
+    require(operational_workbench, "window.top===window.self&&isLegacyOperationalPage()", "standalone legacy shell guard")
+    require(operational_workbench, "window.location.replace('/index.html')", "legacy shell redirect to unified workbench")
+    require(operational_workbench, "r810-embedded-operational", "embedded execution mode")
+    require(operational_workbench, ".sidebar,body.r810-embedded-operational main>header", "hide legacy sidebar and header inside execution center")
+    require(operational_workbench, "window.frameElement", "single-shell iframe sizing contract")
+    require(operational_workbench, "ResizeObserver", "embedded workbench auto-height contract")
+    require(operational_workbench, "scrolling','no", "no nested execution scrollbar")
 
     # Connection truth: no writable bridge/API state is allowed to impersonate ChatGPT control.
     require(js, "/api/chatgpt-control/status", "explicit ChatGPT control status contract")
@@ -64,7 +74,7 @@ def main() -> None:
     require(css, "button:disabled", "disabled visual state")
     require(css, "@media(max-width:760px)", "responsive shell")
 
-    print("PASS: R8-10 unified workbench navigation, UI truth, connection gating and visual shell verified.")
+    print("PASS: R8-10 single-shell workbench navigation, embedded execution, UI truth and connection gating verified.")
 
 
 if __name__ == "__main__":
