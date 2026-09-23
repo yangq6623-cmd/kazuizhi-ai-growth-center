@@ -127,15 +127,24 @@
 
   function patchAttentionTruth(data){
     const items = Array.isArray(data?.action_center?.human_items) ? data.action_center.human_items : [];
+    const count = items.length;
     const set = (id,value) => { const node=document.getElementById(id); if(node) node.textContent=String(value); };
-    set('r810-human-total', items.length);
+    set('r810-human-total', count);
     set('r810-video-review', countFromItem(items,'final_review'));
     set('r810-login-human', countFromItem(items,'account_human'));
     set('r810-hard-errors', countFromItem(items,'production_exception'));
     const badge = document.getElementById('r810-attention-badge');
-    if(badge){ badge.textContent=String(items.length); badge.hidden=!items.length; }
+    if(badge){ badge.textContent=String(count); badge.hidden=!count; }
     const top = document.getElementById('r810-human-state');
-    if(top) top.textContent=`待我处理：${items.length}`;
+    if(top) top.textContent=`待我处理：${count}`;
+
+    // Older product layers may still render their own owner badge. Keep every
+    // owner-facing badge bound to the same current-Mission action_center truth.
+    leafNodes(document).forEach(node => {
+      const value = text(node);
+      if(/^待我处理\s*[:：]?\s*\d+$/.test(value)) node.textContent = `待我处理：${count}`;
+      else if(/^待处理\s*\d+$/.test(value)) node.textContent = `待处理 ${count}`;
+    });
   }
 
   function patchReviewLabels(root){
@@ -153,6 +162,12 @@
 
   function patchEmbeddedExecution(){
     const frame = document.getElementById('operational-frame');
+    if(frame && !frame.dataset.r810TruthListener){
+      frame.dataset.r810TruthListener = '1';
+      frame.addEventListener('load', () => {
+        try{ patchReviewLabels(frame.contentDocument); }catch(error){}
+      });
+    }
     try{
       const doc = frame?.contentDocument;
       if(doc) patchReviewLabels(doc);
