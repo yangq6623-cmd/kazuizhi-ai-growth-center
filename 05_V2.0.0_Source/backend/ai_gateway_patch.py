@@ -73,3 +73,7 @@ install()
 # truthful ChatGPT-subscription control status. The legacy OpenAI API gateway
 # remains an optional advanced fallback and cannot set this state to verified.
 from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: E402,F401
+# Preferred normal transport: the ChatGPT desktop app built-in browser may use
+# WebMCP Site Tools against this localhost runtime. Cloud Relay remains optional
+# for remote/unattended use and is not required for same-PC operation.
+from backend import kz_local_control_patch as _kz_local_control_patch  # noqa: E402,F401
