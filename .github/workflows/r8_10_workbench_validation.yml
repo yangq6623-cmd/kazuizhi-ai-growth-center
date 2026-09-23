@@ -19,6 +19,7 @@ on:
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
       - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
       - '06_Cloud_Relay/**'
@@ -31,6 +32,7 @@ on:
       - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
+      - '04_Build/v2/test_r8_10_local_mission_qc.py'
       - '04_Build/v2/test_r8_10_state_convergence.py'
       - '04_Build/v2/test_r8_10_primary_control_ui.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
@@ -53,6 +55,7 @@ on:
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
       - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
       - '06_Cloud_Relay/**'
@@ -65,6 +68,7 @@ on:
       - '04_Build/v2/test_r8_10_local_webmcp_control.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
+      - '04_Build/v2/test_r8_10_local_mission_qc.py'
       - '04_Build/v2/test_r8_10_state_convergence.py'
       - '04_Build/v2/test_r8_10_primary_control_ui.py'
       - '04_Build/v2/test_r8_10_button_contract.py'
@@ -107,6 +111,8 @@ jobs:
         run: python 04_Build/v2/test_r8_10_async_control_bus.py
       - name: Verify ChatGPT Mission local content autonomy fallback
         run: python 04_Build/v2/test_r8_10_local_mission_content_autonomy.py
+      - name: Verify ChatGPT Mission local autonomous content QC
+        run: python 04_Build/v2/test_r8_10_local_mission_qc.py
       - name: Verify current Mission state convergence
         run: python 04_Build/v2/test_r8_10_state_convergence.py
       - name: Verify async Control Bus is the primary owner control UI
