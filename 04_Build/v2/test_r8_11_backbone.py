@@ -9,7 +9,7 @@ SOURCE = ROOT / "05_V2.0.0_Source"
 sys.path.insert(0, str(SOURCE))
 
 from integrations import async_control_bus as bus
-from integrations import channel_registry
+from integrations import channel_registry, channel_router
 from core import mission_ledger
 
 
@@ -87,6 +87,16 @@ def main():
             assert douyin["execution"] == "ADB real-device serial execution"
             assert douyin["external_verified"] is False, "software routing must not impersonate real account/device verification"
 
+            routes = channel_router.build_routes(active)
+            assert routes["mission_id"] == receipt["mission_id"]
+            assert routes["summary"]["paid_token_required"] == 0
+            assert len(routes["routes"]) == registry["summary"]["registered"]
+            douyin_route = next(row for row in routes["routes"] if row["channel_id"] == "douyin")
+            assert douyin_route["route_state"] in {"waiting_content", "waiting_owner_approval", "waiting_external_validation", "ready_for_dry_run"}
+            assert douyin_route["paid_token_required"] is False
+            search_route = next(row for row in routes["routes"] if row["channel_id"] == "baidu_search")
+            assert search_route["route_state"] == "ready_for_content_route"
+
             fake = FakePrivateBus()
             backflow = mission_ledger.export_to_control_bus(client=fake)
             assert backflow["exported"] is True
@@ -109,7 +119,7 @@ def main():
                 else:
                     os.environ[name] = value
 
-    print("PASS: R8-11 Command -> Mission ledger -> channel registry -> private Control Bus backflow works without paid third-party tokens.")
+    print("PASS: R8-11 Command -> Mission ledger -> channel registry/router -> private Control Bus backflow works without paid third-party tokens.")
 
 
 if __name__ == "__main__":
