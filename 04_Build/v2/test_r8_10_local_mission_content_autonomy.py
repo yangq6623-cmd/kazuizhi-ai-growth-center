@@ -38,7 +38,10 @@ def main() -> None:
             recovered = recover_video(video["id"])
             assert recovered is not None
             assert recovered["status"] == "等待生产"
-            assert recovered["plan_source"] == "local_autonomy_under_chatgpt_mission"
+            assert recovered["plan_source"] in {
+                "local_autonomy_under_chatgpt_mission",
+                "local_autonomy_under_active_mission",
+            }
 
             current = cf._load()
             stored = next(x for x in current["videos"] if x["id"] == video["id"])
@@ -56,14 +59,14 @@ def main() -> None:
                 "source_type": "本地需求信号",
             })
             local_video = cf.create_video({"campaign_id": local_campaign["id"]})
-            assert recover_video(local_video["id"]) is None, "non-ChatGPT Mission must not gain implicit strategic authorization"
+            assert recover_video(local_video["id"]) is None, "non-Mission local draft must not gain implicit strategic authorization"
         finally:
             if old_local is None:
                 os.environ.pop("LOCALAPPDATA", None)
             else:
                 os.environ["LOCALAPPDATA"] = old_local
 
-    print("PASS: validated ChatGPT Mission can continue routine local content planning without API or a permanent chat window.")
+    print("PASS: authorized Mission can continue routine local content planning without API or a permanent chat window.")
 
 
 if __name__ == "__main__":
