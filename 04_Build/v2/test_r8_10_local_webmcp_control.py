@@ -149,16 +149,21 @@ def main() -> None:
             backend = (SOURCE / "backend" / "kz_local_control_patch.py").read_text(encoding="utf-8")
             assert "is_loopback" in backend
             assert "Cross-origin" not in backend or "localhost" in backend
+
+            # R8-12.1 sequences optional same-PC helpers through the single
+            # startup coordinator instead of racing independent memory.js loaders.
             loader = (SOURCE / "web" / "memory.js").read_text(encoding="utf-8")
-            assert "/kz_site_tools.js" in loader
-            assert "/kz_local_direct_ui.js" in loader
+            startup = (SOURCE / "web" / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+            assert "/r8_12_startup_coordinator.js" in loader
+            assert "/kz_site_tools.js" in startup
+            assert "/kz_local_direct_ui.js" in startup
         finally:
             if previous is None:
                 os.environ.pop("LOCALAPPDATA", None)
             else:
                 os.environ["LOCALAPPDATA"] = previous
 
-    print("PASS: ChatGPT desktop WebMCP localhost -> Command -> Mission -> Receipt -> readback verified without business server.")
+    print("PASS: ChatGPT desktop WebMCP localhost -> Command -> Mission -> Receipt -> readback verified without business server, under coordinated startup.")
 
 
 if __name__ == "__main__":
