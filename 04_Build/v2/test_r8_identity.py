@@ -10,7 +10,8 @@ from core import version  # noqa: E402
 
 EXPECTED_DISPLAY = "V2.2.2 自治运营核心"
 EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
-EXPECTED_PHASE = "R8-09"
+EXPECTED_CORE_PHASE = "R8-09"
+EXPECTED_WEB_PHASE = "R8-15"
 EXPECTED_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
 EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core"
 
@@ -19,8 +20,8 @@ if status.get("display_version") != EXPECTED_DISPLAY:
     raise AssertionError("R8 display version missing")
 if status.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 runtime build missing")
-if status.get("r8_phase") != EXPECTED_PHASE:
-    raise AssertionError("R8 phase missing")
+if status.get("r8_phase") != EXPECTED_CORE_PHASE:
+    raise AssertionError("R8 core phase missing")
 if status.get("product") != EXPECTED_PRODUCT:
     raise AssertionError("R8 product identity missing")
 
@@ -28,8 +29,8 @@ manifest = json.loads((SRC / "version" / "manifest.json").read_text(encoding="ut
 preview = manifest.get("r8_final") or {}
 if preview.get("display_version") != EXPECTED_DISPLAY or preview.get("runtime_build") != EXPECTED_RUNTIME:
     raise AssertionError("R8 manifest identity mismatch")
-if preview.get("phase") != EXPECTED_PHASE:
-    raise AssertionError("R8 manifest phase mismatch")
+if preview.get("phase") != EXPECTED_CORE_PHASE:
+    raise AssertionError("R8 manifest core phase mismatch")
 
 web_version = (SRC / "web" / "WEB_VERSION.txt").read_text(encoding="utf-8")
 identity = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
@@ -38,11 +39,13 @@ forms = (SRC / "web" / "forms.js").read_text(encoding="utf-8")
 final_center = (SRC / "web" / "r8_final_center.js").read_text(encoding="utf-8")
 final_style = (SRC / "web" / "r8_final.css").read_text(encoding="utf-8")
 social_center = (SRC / "web" / "social_media_center.js").read_text(encoding="utf-8")
-for value in ("V2.2.2 Autonomous Mission Core", EXPECTED_RUNTIME, EXPECTED_PHASE):
+for value in ("V2.2.2 Autonomous Mission Core", EXPECTED_RUNTIME, EXPECTED_WEB_PHASE):
     if value not in web_version:
         raise AssertionError(f"WEB_VERSION missing {value}")
-if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity or EXPECTED_PHASE not in identity:
-    raise AssertionError("R8 visible identity patch mismatch")
+if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity or EXPECTED_CORE_PHASE not in identity:
+    raise AssertionError("R8 core visible identity patch mismatch")
+if EXPECTED_WEB_PHASE not in build_info:
+    raise AssertionError("R8 current web phase missing from build provenance")
 if "build_info.js" not in forms or "r8_identity.js" not in forms:
     raise AssertionError("R8 visible identity scripts are not loaded")
 if "runNumber" not in build_info or "commit" not in build_info:
@@ -73,4 +76,4 @@ if "2.2.2.22" not in windows_version or EXPECTED_PRODUCT not in windows_version:
 if EXPECTED_INSTALLER not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: V2.2.2 Autonomous Mission Core package, visible identity, R8-09 phase and R7 compatibility are traceable")
+print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-15 web phase and R7 compatibility are traceable")
