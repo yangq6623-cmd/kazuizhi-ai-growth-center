@@ -1,17 +1,17 @@
-"""R8-14 SEO/GEO autonomy controller.
+"""R8-14/R8-15 SEO/GEO autonomy controller.
 
-This layer turns the R8-13 truthful SEO/GEO ledger into a durable autonomous
-work loop without relaxing evidence gates.  It controls what the system may do
-without the owner and what must pause for authorization, risk review or a real
-external receipt.
+Local discovery, planning, generation and deterministic QC can run autonomously.
+R8-15 additionally allows guarded public deployment only when a real deployment
+connector is ready.  External stages still require observable evidence.
 """
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
 
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
+from integrations.seo_public_deployer import deploy_pending as deploy_public_pages
+from integrations.seo_public_deployer import status as public_deploy_status
 
 STORE = "r8_14/seo_geo_autonomy.json"
 SCHEMA = "kz.seo-geo-autonomy.v1"
@@ -127,7 +127,7 @@ def _local_qc_generated_assets(limit=20):
         if reasons:
             failed.append({"asset_id": asset.get("id"), "reasons": reasons})
             continue
-        record_asset_stage(asset.get("id"), "QC_PASSED", {"local_qc": "R8-14 deterministic SEO page QC", "checked_at": now_iso()})
+        record_asset_stage(asset.get("id"), "QC_PASSED", {"local_qc": "R8 deterministic SEO page QC", "checked_at": now_iso()})
         passed.append(asset.get("id"))
     return {"passed": passed, "failed": failed}
 
@@ -138,11 +138,13 @@ def _external_readiness(snapshot):
     public_site = tech.get("public_site") or {}
     configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
     public_reachable = bool(public_site.get("reachable") or public_site.get("ok") or public_site.get("status") in {"ok", "healthy"})
+    deploy = public_deploy_status()
     return {
         "configured_search_connectors": configured_search,
         "public_site_reachable": public_reachable,
-        "publish_connector_ready": False,
-        "publish_connector_reason": "R8-14 公网部署连接器尚未绑定；本地生成/QC可自治，公网发布不得伪造。",
+        "publish_connector_ready": bool(deploy.get("ready")),
+        "publish_connector_reason": deploy.get("reason") or "",
+        "publish_connector": deploy,
     }
 
 
@@ -159,6 +161,7 @@ def run_once(force=False):
     ensure_baseline()
     local = {"skipped": True, "reason": "observe_mode"}
     qc = {"passed": [], "failed": []}
+    public_deploy = {"skipped": True, "reason": "mode_or_policy_gate"}
 
     if mode in {"assisted", "autonomous"}:
         local = run_daily_cycle(force=bool(force))
@@ -168,19 +171,33 @@ def run_once(force=False):
     snap = dashboard()
     readiness = _external_readiness(snap)
 
-    # The absence of a deployment connector is a configuration task, not a fake failure.
     if mode == "autonomous" and data["policy"].get("auto_publish_when_connector_ready", True):
         if readiness["publish_connector_ready"]:
             _close_human_item(data, "seo_public_deploy_connector")
+            public_deploy = deploy_public_pages(limit=20)
+            failures = list(public_deploy.get("failed") or [])
+            if failures:
+                _add_human_item(
+                    data,
+                    "seo_public_deploy_verification",
+                    "SEO公网发布验证未全部通过",
+                    f"本轮有 {len(failures)} 个页面未通过公网HTTP/内容验证，系统没有把它们标记为已发布。",
+                    "检查 IIS /seo/ 映射、HTTPS公网访问和页面内容；验证通过后系统会自动续跑。",
+                )
+            else:
+                _close_human_item(data, "seo_public_deploy_verification")
         else:
             _add_human_item(
                 data,
                 "seo_public_deploy_connector",
                 "配置SEO公网部署连接器",
-                readiness["publish_connector_reason"],
-                "绑定 kazuizhi.com 的真实部署目标后，系统才能把 QC_PASSED 页面自动发布并记录真实公网URL。",
+                readiness["publish_connector_reason"] or "公网部署连接器尚未就绪。",
+                "只需配置真实网站目录；连接器仅写 <site_root>/seo/，不会碰 Web.config、App_Data、uploads、数据库或现有业务目录。",
             )
 
+    # Refresh after deployment so owner-facing counts use the same truth ledger.
+    snap = dashboard()
+    readiness = _external_readiness(snap)
     configured = readiness["configured_search_connectors"]
     if mode == "autonomous" and data["policy"].get("auto_submit_when_connector_ready", True):
         if configured:
@@ -200,17 +217,25 @@ def run_once(force=False):
         "mode": mode,
         "local_cycle": local,
         "local_qc": qc,
+        "public_deploy": public_deploy,
         "external_readiness": readiness,
         "counts": {
             "public_pages": summary.get("public_pages", 0),
             "submitted_urls": summary.get("submitted_urls", 0),
             "indexed_urls": summary.get("indexed_urls", 0),
         },
-        "truth": "自治模式只自动执行已具备真实权限和回执能力的步骤；缺少授权/部署连接器时暂停在待我处理，不伪造成功。",
+        "truth": "自治模式只自动执行已具备真实权限和回执能力的步骤；写入服务器文件仍不算发布，必须通过公网HTTP内容验证。",
     }
     data["last_run_at"] = now_iso()
     data["last_result"] = result
-    data["audit"].insert(0, {"at": now_iso(), "kind": "autonomy_run", "mode": mode, "qc_passed": len(qc["passed"]), "qc_failed": len(qc["failed"])})
+    data["audit"].insert(0, {
+        "at": now_iso(),
+        "kind": "autonomy_run",
+        "mode": mode,
+        "qc_passed": len(qc["passed"]),
+        "qc_failed": len(qc["failed"]),
+        "published": len(public_deploy.get("published") or []),
+    })
     _save(data)
     return result
 
@@ -227,6 +252,7 @@ def status():
         "last_result": deepcopy(data.get("last_result") or {}),
         "human_items": deepcopy(open_items),
         "human_item_count": len(open_items),
+        "public_deploy": public_deploy_status(),
         "today": {
             "opportunities": (snap.get("summary") or {}).get("today_opportunities", 0),
             "public_pages": (snap.get("summary") or {}).get("public_pages", 0),
@@ -236,6 +262,6 @@ def status():
         "mode_labels": {
             "observe": "观察模式：只分析和监控，不自动生成/发布",
             "assisted": "半自动模式：自动规划、生成、QC，公网发布需老板确认/连接器",
-            "autonomous": "自治模式：满足真实权限和安全门槛的步骤自动执行；授权/风控/缺连接器才找老板",
+            "autonomous": "自治模式：连接器就绪后自动部署并做公网验证；授权/风控/缺连接器才找老板",
         },
     }
