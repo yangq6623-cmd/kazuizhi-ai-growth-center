@@ -11,6 +11,7 @@ on:
       - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
       - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
@@ -22,6 +23,7 @@ on:
       - '04_Build/v2/test_r8_11_backbone.py'
       - '04_Build/v2/test_r8_11_social_session_probe.py'
       - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
+      - '04_Build/v2/test_r8_11_runtime_convergence_patch.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '.github/workflows/r8_11_backbone_validation.yml'
@@ -35,6 +37,7 @@ on:
       - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/async_control_bus.py'
       - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/core/autonomous_ops.py'
       - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
@@ -46,6 +49,7 @@ on:
       - '04_Build/v2/test_r8_11_backbone.py'
       - '04_Build/v2/test_r8_11_social_session_probe.py'
       - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
+      - '04_Build/v2/test_r8_11_runtime_convergence_patch.py'
       - '04_Build/v2/test_r8_10_async_control_bus.py'
       - '04_Build/v2/test_r8_10_video_idempotency.py'
       - '.github/workflows/r8_11_backbone_validation.yml'
@@ -79,6 +83,8 @@ jobs:
         run: python 04_Build/v2/test_r8_11_social_session_probe.py
       - name: Verify approved publish becomes truthful real-device dry run
         run: python 04_Build/v2/test_r8_11_publish_dry_run_queue.py
+      - name: Verify restored Mission convergence and publish resume
+        run: python 04_Build/v2/test_r8_11_runtime_convergence_patch.py
       - name: Compile R8-11 modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/mission_ledger.py
@@ -87,6 +93,7 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/integrations/social_session_probe.py
           python -m py_compile 05_V2.0.0_Source/integrations/publish_dry_run_queue.py
           python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
+          python -m py_compile 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
           python -m py_compile 05_V2.0.0_Source/run.py
           node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
@@ -109,6 +116,10 @@ jobs:
           @('douyin_publish_dry_run','final_publish_allowed','publishes_content','Content ID + URL') | ForEach-Object {
             if (-not $dryrun.Contains($_)) { throw "Missing truthful dry-run contract: $_" }
           }
+          $convergence = Get-Content 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py -Raw
+          @('can_resume_publish','等待账号','recover_if_empty','不重复生产','Content ID + URL') | ForEach-Object {
+            if (-not $convergence.Contains($_)) { throw "Missing R8-11 convergence contract: $_" }
+          }
           $ledger = Get-Content 05_V2.0.0_Source/core/mission_ledger.py -Raw
           @('state/mission_ledger.json','state/channel_registry.json','platform_content_id','verified_publications') | ForEach-Object {
             if (-not $ledger.Contains($_)) { throw "Missing R8-11 ledger contract: $_" }
@@ -122,10 +133,10 @@ jobs:
             if (-not $execution.Contains($_)) { throw "Missing R8-11 execution routing contract: $_" }
           }
           $backbone = Get-Content 05_V2.0.0_Source/backend/r8_11_backbone_patch.py -Raw
-          @('/api/r8-11/social/verify','verify_pending_accounts','/api/r8/social','/api/content-factory') | ForEach-Object {
-            if (-not $backbone.Contains($_)) { throw "Missing R8-11 social verification bridge: $_" }
+          @('/api/r8-11/social/verify','verify_pending_accounts','/api/r8/social','/api/content-factory','r8_11_runtime_convergence_patch') | ForEach-Object {
+            if (-not $backbone.Contains($_)) { throw "Missing R8-11 social/convergence bridge: $_" }
           }
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
           if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
           if (-not $loader.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing hotfix loader is missing' }
-          Write-Host 'R8-11 backbone uses real-device session evidence, dry-run truth gates and requires no paid third-party token service.'
+          Write-Host 'R8-11 backbone uses real-device session evidence, recovery convergence, dry-run truth gates and requires no paid third-party token service.'
