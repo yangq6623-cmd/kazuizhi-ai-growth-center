@@ -25,6 +25,7 @@ from backend import ai_gateway_patch as _ai_gateway_patch  # noqa: F401,E402
 from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: F401,E402
 from backend import r8_11_backbone_patch as _r8_11_backbone_patch  # noqa: F401,E402
 from backend import r8_12_account_center_patch as _r8_12_account_center_patch  # noqa: F401,E402
+from backend import r8_12_auth_broker_patch as _r8_12_auth_broker_patch  # noqa: F401,E402
 from backend import r8_13_seo_geo_patch as _r8_13_seo_geo_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
