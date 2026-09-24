@@ -52,10 +52,14 @@ def main() -> None:
     require(operational_workbench, "ResizeObserver", "embedded workbench auto-height contract")
     require(operational_workbench, "scrolling','no", "no nested execution scrollbar")
 
-    # #398 field cleanup: no old first-level menu may reappear after legacy scripts mutate the DOM.
+    # R8-12 keeps the #398 single-shell cleanup but replaces the old page-wide
+    # mutation watcher with finite startup convergence + explicit product events.
     require(product, "lockSingleShell", "single-shell nav lock")
     require(product, "button.nav,.nav-group,details.nav-more,.operational-entry", "legacy nav catch-all")
-    require(product, "MutationObserver", "late legacy-navigation mutation guard")
+    require(product, "setInterval", "finite late-navigation convergence")
+    require(product, "operational:refreshed", "explicit operational refresh event")
+    require(product, "r810:workbench-ready", "explicit workbench ready event")
+    forbid(product, "MutationObserver", "unbounded page-wide mutation watcher")
     require(product, "r810-legacy-route", "legacy navigation hidden class")
     forbid(product, "function addOperationalEntry", "legacy second-workbench entry creator")
     forbid(product, "function simplifyNavigation", "legacy nav-more rebuild")
