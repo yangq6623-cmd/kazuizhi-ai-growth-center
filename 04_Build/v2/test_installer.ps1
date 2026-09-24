@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
 $baseTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $baseTemp = (Resolve-Path $baseTemp).Path.TrimEnd('\')
 $testRoot = Join-Path $baseTemp ('KazuizhiV2InstallerTest-' + [guid]::NewGuid().ToString('N'))
@@ -16,7 +16,7 @@ function Verify-Runtime([string]$Exe) {
     & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $Exe
     if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 runtime verification failed' }
     & $Python (Join-Path $PSScriptRoot 'verify_r8_operational.py') --exe $Exe
-    if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational runtime verification failed' }
+    if ($LASTEXITCODE -ne 0) { throw 'V2.2 autonomous runtime verification failed' }
 }
 function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     foreach ($relative in $Expected.Keys) {
@@ -32,7 +32,7 @@ try {
     Install-R8
     $exe = Join-Path $testRoot $name
     $version = (Get-Item -LiteralPath $exe).VersionInfo
-    if ($version.FileVersion -ne '2.2.0.20' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.0 R8 Operational') { throw 'Windows EXE version mismatch' }
+    if ($version.FileVersion -ne '2.2.2.22' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core') { throw 'Windows EXE version mismatch' }
     Verify-Runtime $exe
 
     $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
@@ -78,7 +78,7 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data' }
     Assert-PersistentFiles $persistentFiles $false
-    Write-Host 'PASS: V2.2 R8 install, both runtime verifiers, clean and active-runtime upgrade, data preservation and uninstall preservation'
+    Write-Host 'PASS: V2.2.2 autonomous install, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
     $env:LOCALAPPDATA = $oldLocalAppData
     if (Test-Path -LiteralPath $testRoot) {
