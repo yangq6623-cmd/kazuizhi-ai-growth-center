@@ -1,7 +1,9 @@
 """Kazuizhi AI Enterprise V2.2.2 Autonomous Mission Core entry point."""
 import argparse
 import ctypes
+import json
 import os
+import sys
 import tempfile
 import threading
 import traceback
@@ -132,11 +134,32 @@ def start_video_production_worker():
     return stop
 
 
+def _run_r8_15_server_bootstrap(args):
+    from core.r8_15_server_bootstrap import execute
+
+    report = execute(args.site_root, args.public_base_url)
+    payload = json.dumps(report, ensure_ascii=False, indent=2)
+    if args.result_file:
+        destination = Path(args.result_file).expanduser()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(payload, encoding="utf-8")
+    if sys.stdout is not None:
+        print(payload, flush=True)
+    raise SystemExit(int(report.get("exit_code", 1)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=PRODUCT_NAME)
     parser.add_argument("--port", type=int, default=8876)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--r8-15-server-bootstrap", action="store_true")
+    parser.add_argument("--site-root", default=r"C:\inetpub\kazuizhi")
+    parser.add_argument("--public-base-url", default="https://kazuizhi.com/")
+    parser.add_argument("--result-file", default="")
     args = parser.parse_args()
+    if args.r8_15_server_bootstrap:
+        _run_r8_15_server_bootstrap(args)
+
     try:
         server = create_server(args.port)
     except OSError:
