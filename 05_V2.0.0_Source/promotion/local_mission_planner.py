@@ -1,30 +1,72 @@
-"""Local routine content planner for ChatGPT-authorized Missions.
+"""Local-first routine content planner for active Kazuizhi Missions.
 
-Normal ChatGPT remains the strategic owner brain.  Once a Mission has been
-created from a validated ChatGPT Decision Pack, routine non-financial content
-planning must not block on a permanently-open chat window or an OpenAI API key.
-This module creates a conservative executable production plan from the approved
-Mission context and the existing local content rules.  It never publishes,
-performs finance, or invents real customers/orders/cases.
+Normal ChatGPT remains the strategic owner brain. Once a Mission exists in the
+local Mission ledger, routine non-financial content planning must continue on
+the local machine even when realtime ChatGPT / API / relay transport is absent.
+
+This module never publishes, never touches finance/account verification and
+never invents real customers, orders, rankings or cases. It only turns an
+already-authorized Mission into an executable local production contract.
 """
 from __future__ import annotations
 
-from core.storage import now_iso
+from core.storage import now_iso, read_json
 from promotion.production_contract import normalize_contract
 from promotion import content_factory as cf
 
 MISSION_SOURCE = "ChatGPT自治经营决策"
+TRUSTED_RECOVERY_SOURCES = {"r8_11_upgrade_recovery", "r8_11_last_nonempty_mission"}
 RECOVERABLE_STATES = {"等待ChatGPT策划", "退回重做", "异常待处理"}
 
 
+def mission_authorization(campaign: dict) -> dict:
+    """Return truthful local-execution authorization for one campaign.
+
+    The durable source of truth is the Mission ledger, not a fragile campaign
+    source string. This lets upgraded/recovered Missions keep working after
+    restart without turning arbitrary local campaigns into autonomous work.
+    """
+    if not isinstance(campaign, dict):
+        return {"authorized": False, "reason": "missing_campaign"}
+    growth_id = str(campaign.get("id") or "").strip()
+    if not growth_id:
+        return {"authorized": False, "reason": "missing_growth_id"}
+
+    if str(campaign.get("source_type") or "").strip() == MISSION_SOURCE:
+        return {"authorized": True, "reason": "chatgpt_decision_pack_campaign", "growth_id": growth_id}
+
+    ops = read_json("ops/autonomous_ops.json", {})
+    missions = (ops or {}).get("missions") if isinstance(ops, dict) else []
+    active_id = str((ops or {}).get("active_mission_id") or "").strip() if isinstance(ops, dict) else ""
+    for mission in missions or []:
+        if not isinstance(mission, dict) or str(mission.get("growth_id") or "").strip() != growth_id:
+            continue
+        if str(mission.get("state") or "active").strip().lower() in {"paused", "stopped", "closed"}:
+            return {"authorized": False, "reason": "mission_paused", "growth_id": growth_id}
+        source = str(mission.get("source") or "").strip()
+        recovered_from = str(mission.get("recovered_from") or "").strip()
+        decision = mission.get("last_chatgpt_decision") if isinstance(mission.get("last_chatgpt_decision"), dict) else {}
+        action = str(decision.get("action") or "").strip()
+        mission_id = str(mission.get("mission_id") or "").strip()
+        if mission_id == active_id or action in {"create_mission", "continue"} or source in TRUSTED_RECOVERY_SOURCES or recovered_from in TRUSTED_RECOVERY_SOURCES:
+            return {
+                "authorized": True,
+                "reason": "active_or_recovered_mission",
+                "growth_id": growth_id,
+                "mission_id": mission_id,
+            }
+    return {"authorized": False, "reason": "no_authorized_mission", "growth_id": growth_id}
+
+
 def mission_allows_local_content(campaign: dict) -> bool:
-    return isinstance(campaign, dict) and str(campaign.get("source_type") or "").strip() == MISSION_SOURCE
+    return bool(mission_authorization(campaign).get("authorized"))
 
 
 def build_local_mission_plan(campaign: dict) -> dict:
     """Build one safe 30s production plan from an already-approved Mission."""
-    if not mission_allows_local_content(campaign):
-        raise ValueError("只有经ChatGPT Decision Pack创建的Mission才能启用本地自治策划")
+    auth = mission_authorization(campaign)
+    if not auth.get("authorized"):
+        raise ValueError("只有当前已授权Mission才能启用本地自治策划")
 
     region = str(campaign.get("region") or "本地").strip()
     service = str(campaign.get("service") or "本地维修服务").strip()
@@ -126,18 +168,42 @@ def recover_video(video_id: str) -> dict | None:
     """Move one stuck production task into the local execution queue truthfully."""
     data = cf._load()
     video = next((x for x in data.get("videos", []) if x.get("id") == video_id), None)
-    if not video or video.get("production_plan"):
-        return None
-    if video.get("status") not in RECOVERABLE_STATES:
+    if not video or video.get("status") not in RECOVERABLE_STATES:
         return None
 
     campaign = next((x for x in data.get("campaigns", []) if x.get("id") == video.get("campaign_id")), None)
-    if not mission_allows_local_content(campaign):
+    auth = mission_authorization(campaign)
+    if not auth.get("authorized"):
         return None
 
     handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else {}
     if video.get("status") == "异常待处理" and handoff.get("kind") not in {None, "content_production"}:
         return None
+
+    # If a valid local production contract already exists, an exhausted realtime
+    # handoff must not throw it away. Resume the same video idempotently.
+    if isinstance(video.get("production_plan"), dict) and video.get("production_plan"):
+        if video.get("candidates"):
+            return None
+        video.update({
+            "status": "等待生产",
+            "bottleneck": None,
+            "auto_action": "实时ChatGPT未返回，但当前Mission已授权且本地生产合同存在；继续原视频本地生产，不重复创建任务。",
+            "last_error": None,
+            "retry_count": 0,
+        })
+        handoff.update({
+            "kind": "content_production",
+            "phase": "local_autonomy_resume",
+            "message": "实时ChatGPT不可用不阻塞例行生产；继续既有本地生产合同。",
+            "response_at": now_iso(),
+            "updated_at": now_iso(),
+            "retry_count": 0,
+        })
+        video["chatgpt_handoff"] = handoff
+        campaign["status"] = "视频生产中"
+        cf._save(data)
+        return {"video_id": video["id"], "campaign_id": campaign["id"], "status": video["status"], "plan_source": video.get("plan_source") or "existing_local_plan"}
 
     plan = build_local_mission_plan(campaign)
     if not cf._claims_safe(plan.get("script"), plan.get("titles"), plan.get("cta")):
@@ -152,22 +218,23 @@ def recover_video(video_id: str) -> dict | None:
         "status": "等待生产",
         "production_plan": plan,
         "plan_version": plan["version"],
-        "plan_source": "local_autonomy_under_chatgpt_mission",
+        "plan_source": "local_autonomy_under_active_mission",
         "shot_tasks": list(plan["storyboard"]),
         "target_platforms": list(plan["target_platforms"]),
         "bottleneck": None,
-        "auto_action": "ChatGPT已批准经营Mission；日常内容策划由本地自治员工继续执行，不等待API或常驻聊天窗口。",
+        "auto_action": "经营Mission已授权；日常内容策划由本地自治员工继续执行，不等待API或常驻聊天窗口。",
         "last_error": None,
         "retry_count": 0,
         "technical_qc": None,
-        "chatgpt_qc": {"status": "planned", "plan_version": plan["version"], "source": "strategic_mission_guardrail"},
+        "chatgpt_qc": {"status": "not_required_for_authorized_mission", "plan_version": plan["version"], "source": "strategic_mission_guardrail"},
         "material_policy": plan["material_policy"],
         "plan_received_at": now_iso(),
+        "local_autonomy_authorization": auth,
     })
     handoff.update({
         "kind": "content_production",
         "phase": "local_autonomy_plan",
-        "message": "ChatGPT战略Mission已授权，本地自治策划器已生成安全生产合同。",
+        "message": "战略Mission已授权，本地自治策划器已生成安全生产合同；无需实时ChatGPT返回。",
         "response_at": now_iso(),
         "updated_at": now_iso(),
         "retry_count": 0,
