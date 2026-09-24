@@ -6,22 +6,34 @@ on:
     paths:
       - '05_V2.0.0_Source/core/seo_geo_growth.py'
       - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py'
+      - '05_V2.0.0_Source/integrations/platform_auth_catalog.py'
+      - '05_V2.0.0_Source/integrations/oauth_adapters.py'
       - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
       - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '05_V2.0.0_Source/web/r8_12_multi_account_auth_ui.js'
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_13_seo_geo_growth.py'
+      - '04_Build/v2/test_r8_13_multi_account_auth.py'
       - '.github/workflows/r8_13_seo_geo_validation.yml'
   pull_request:
     branches: [main]
     paths:
       - '05_V2.0.0_Source/core/seo_geo_growth.py'
       - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py'
+      - '05_V2.0.0_Source/integrations/platform_auth_catalog.py'
+      - '05_V2.0.0_Source/integrations/oauth_adapters.py'
       - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
       - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '05_V2.0.0_Source/web/r8_12_multi_account_auth_ui.js'
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_13_seo_geo_growth.py'
+      - '04_Build/v2/test_r8_13_multi_account_auth.py'
       - '.github/workflows/r8_13_seo_geo_validation.yml'
 
 permissions:
@@ -43,14 +55,20 @@ jobs:
         run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
       - name: Verify truthful SEO GEO growth ledger and UI
         run: python 04_Build/v2/test_r8_13_seo_geo_growth.py
+      - name: Verify safe multi-account official authorization launcher
+        run: python 04_Build/v2/test_r8_13_multi_account_auth.py
       - name: Compile R8-13 backend modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/seo_geo_growth.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py
+          python -m py_compile 05_V2.0.0_Source/integrations/platform_auth_catalog.py
+          python -m py_compile 05_V2.0.0_Source/integrations/oauth_adapters.py
           python -m py_compile 05_V2.0.0_Source/run.py
       - name: Check R8-13 browser scripts
         run: |
           node --check 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js
+          node --check 05_V2.0.0_Source/web/r8_12_multi_account_auth_ui.js
           node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
       - name: Verify SEO GEO truth contract
         run: |
@@ -65,4 +83,8 @@ jobs:
           $bridge = Get-Content 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js -Raw
           if (-not $bridge.Contains('SEO/GEO增长')) { throw 'SEO/GEO primary navigation entry missing' }
           if (-not $bridge.Contains('/r8_13_seo_geo.html?embed=1')) { throw 'SEO/GEO embedded owner page missing' }
-          Write-Host 'R8-13 validates local-first SEO/GEO planning, truthful external-state gates and the dedicated owner growth center.'
+          $auth = Get-Content 05_V2.0.0_Source/integrations/platform_auth_catalog.py -Raw
+          @('stable_environment_per_account','proxy_rotation','fingerprint_spoofing','credential_capture','google_search_console','bing_webmaster','baidu_search_resource','douyin','kuaishou') | ForEach-Object {
+            if (-not $auth.Contains($_)) { throw "Missing multi-account safety/auth contract: $_" }
+          }
+          Write-Host 'R8-13 validates local-first SEO/GEO planning, truthful external-state gates, dedicated owner growth center and safe multi-account official authorization entry points.'
