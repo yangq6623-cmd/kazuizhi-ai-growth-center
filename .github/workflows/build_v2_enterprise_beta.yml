@@ -1,9 +1,9 @@
-name: Build Kazuizhi AI Enterprise V2.2 R8 Operational
+name: Build Kazuizhi AI Enterprise V2.2.2 R8 Autonomous
 on:
   workflow_dispatch:
   push:
     branches: [main, 'codex/v2-*']
-    tags: ['v2.2.0-r8-operational*']
+    tags: ['v2.2.2-r8-autonomous*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -14,6 +14,7 @@ on:
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
+      - 'docs/R8_OPERATIONAL_*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -44,15 +45,18 @@ jobs:
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
       - name: Install pinned build and video dependencies
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
           python 04_Build/v2/test_r7_block_a.py
           python 04_Build/v2/test_r7_block_b.py
-      - name: Verify inherited R8 final control plane and growth loop
+      - name: Verify inherited R8 final control plane and autonomous Mission loop
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_daily_workforce.py
           python 04_Build/v2/test_decision_center.py
           python 04_Build/v2/test_region_strategy.py
@@ -66,11 +70,34 @@ jobs:
           python 04_Build/v2/test_live_business_source.py
           python 04_Build/v2/test_ui_interactions.py
           python 04_Build/v2/test_v221_productization.py
+          python 04_Build/v2/test_r8_ui_final.py
+          python 04_Build/v2/test_autonomous_ops.py
+          python 04_Build/v2/test_ai_gateway.py
           python 04_Build/v2/test_r8_realtime_mirror.py
+      - name: Verify release-gate R8-10 R8-11 R8-12 regressions
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_10_video_idempotency.py
+          python 04_Build/v2/test_r8_11_backbone.py
+          python 04_Build/v2/test_r8_11_social_session_probe.py
+          python 04_Build/v2/test_r8_11_publish_dry_run_queue.py
+          python 04_Build/v2/test_r8_11_runtime_convergence_patch.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_12_account_publish_runtime.py
+          python 04_Build/v2/test_r8_12_local_first_closed_loop.py
+      - name: Verify release-gate R8-13 R8-14 R8-15 SEO autonomy and guarded public deployment
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_13_multi_account_auth.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_15_server_bootstrap.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
-      - name: Verify V2.2 R8 Operational source closed loop
+      - name: Verify V2.2 R8 Autonomous source closed loop
         run: python 04_Build/v2/verify_r8_operational.py --source
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1
@@ -88,15 +115,15 @@ jobs:
           endpoint: ${{ vars.KZ_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.KZ_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.KZ_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe
+          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: 卡嘴子 AI 自动化运行平台
+          description: 卡嘴子 AI 自治运营核心
           description-url: https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center
       - name: Verify final installer signature
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $signature = Get-AuthenticodeSignature -LiteralPath $setup
           if ('${{ vars.KZ_ARTIFACT_SIGNING_ENABLED }}' -eq 'true' -and $signature.Status -ne 'Valid') {
             throw "Artifact Signing was enabled but the installer signature is not valid: $($signature.Status)"
@@ -108,43 +135,43 @@ jobs:
         run: ./04_Build/v2/test_installer.ps1
       - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.0 R8 Operational'
-            build = 'KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920'
+            version = '2.2.2 R8 Autonomous Mission Core'
+            build = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'platform adaptation', 'production audit events', 'licensed-media safe adapter', 'AI-shot adapter', 'local TTS/subtitle adapter', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'V2.2.1 productization regression contract', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated gates passed; real social account login/captcha and live platform publication remain owner-authorized field acceptance'
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'independent device pool', 'truthful publication planning', 'idempotent Douyin dry-run queue', 'real FINAL.MP4 device staging', 'Douyin app launch without final publish click', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated release gates passed. Real OAuth/login/captcha, selector-safe Douyin composer navigation, RTX3060 field stability and live platform publication remain field acceptance; SEO PUBLISHED additionally requires a real public URL that passes HTTP/content/canonical/Schema/robots verification.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
       - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational_Portable
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Publish final installer to GitHub Releases
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.0-r8-operational')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.2-r8-autonomous')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.0-r8-operational' }
+          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.2-r8-autonomous' }
           gh release view $tag --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag installer_output_v2/* --clobber
           } else {
-            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.2 R8 Autonomous Mission Core' --generate-notes
           }

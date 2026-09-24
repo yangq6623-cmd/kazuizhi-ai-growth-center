@@ -1,0 +1,93 @@
+name: Validate R8-15 SEO Public Deploy
+
+on:
+  push:
+    branches: ['r8-15-*']
+    paths:
+      - '05_V2.0.0_Source/integrations/seo_public_deployer.py'
+      - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/core/r8_15_server_bootstrap.py'
+      - '05_V2.0.0_Source/web/build_info.js'
+      - '05_V2.0.0_Source/web/WEB_VERSION.txt'
+      - '05_V2.0.0_Source/web/r8_10_truth_convergence.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_15_ui_truth_patch.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_15_seo_public_deploy.py'
+      - '04_Build/v2/test_r8_15_server_bootstrap.py'
+      - '04_Build/v2/test_r8_15_ui_truth.py'
+      - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1'
+      - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd'
+      - '04_Build/build_v2_windows.ps1'
+      - '.github/workflows/r8_15_seo_public_deploy_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/integrations/seo_public_deployer.py'
+      - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/core/r8_15_server_bootstrap.py'
+      - '05_V2.0.0_Source/web/build_info.js'
+      - '05_V2.0.0_Source/web/WEB_VERSION.txt'
+      - '05_V2.0.0_Source/web/r8_10_truth_convergence.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_15_ui_truth_patch.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_15_seo_public_deploy.py'
+      - '04_Build/v2/test_r8_15_server_bootstrap.py'
+      - '04_Build/v2/test_r8_15_ui_truth.py'
+      - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1'
+      - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd'
+      - '04_Build/build_v2_windows.ps1'
+      - '.github/workflows/r8_15_seo_public_deploy_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-public-deploy:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify guarded SEO public deployment
+        run: |
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_15_server_bootstrap.py
+          python 04_Build/v2/test_r8_15_ui_truth.py
+      - name: Compile R8-15 runtime modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/integrations/seo_public_deployer.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py
+          python -m py_compile 05_V2.0.0_Source/core/seo_geo_autonomy.py
+          python -m py_compile 05_V2.0.0_Source/core/r8_15_server_bootstrap.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+      - name: Verify public deploy safety contract
+        run: |
+          $deploy = Get-Content 05_V2.0.0_Source/integrations/seo_public_deployer.py -Raw
+          @('writes_only_below','touches_web_config','touches_app_data','touches_uploads','touches_database','public_http_verification_required','PUBLISHED') | ForEach-Object {
+            if (-not $deploy.Contains($_)) { throw "Missing R8-15 deploy safety contract: $_" }
+          }
+          if (-not $deploy.Contains('return root / "seo"')) { throw 'SEO connector must remain scoped to <site_root>/seo/' }
+          if (-not $deploy.Contains('public_http_verification_failed')) { throw 'Public HTTP verification failure gate missing from deployer' }
+          $autonomy = Get-Content 05_V2.0.0_Source/core/seo_geo_autonomy.py -Raw
+          if (-not $autonomy.Contains('deploy_public_pages')) { throw 'SEO autonomy is not connected to verified public deployment' }
+          if (-not $autonomy.Contains('public_deploy.get("failed")')) { throw 'SEO autonomy does not surface failed public verification results' }
+          $bootstrap = Get-Content 05_V2.0.0_Source/core/r8_15_server_bootstrap.py -Raw
+          if (-not $bootstrap.Contains('C:\inetpub\kazuizhi')) { throw 'R8-15 server bootstrap default IIS path missing' }
+          if (-not $bootstrap.Contains('https://kazuizhi.com/')) { throw 'R8-15 public base URL missing' }
+          $entry = Get-Content 05_V2.0.0_Source/run.py -Raw
+          if (-not $entry.Contains('--r8-15-server-bootstrap')) { throw 'Packaged runtime R8-15 bootstrap CLI missing' }
+          if (-not $entry.Contains('--result-file')) { throw 'Packaged runtime deployment report output missing' }
+          if (-not (Test-Path 04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1)) { throw 'R8-15 server PowerShell wrapper missing' }
+          if (-not (Test-Path 04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd)) { throw 'R8-15 server CMD wrapper missing' }
+          Write-Host 'R8-15 only records PUBLISHED after guarded filesystem deployment and full public verification; one-click IIS bootstrap is packaged for field acceptance.'
