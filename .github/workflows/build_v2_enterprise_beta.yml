@@ -85,6 +85,7 @@ jobs:
           python 04_Build/v2/test_r8_11_runtime_convergence_patch.py
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_12_account_publish_runtime.py
+          python 04_Build/v2/test_r8_12_local_first_closed_loop.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -135,8 +136,8 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'direct OpenAI ChatGPT AI Gateway contract', 'Windows DPAPI local credential storage path', 'retry-exhausted ChatGPT task recovery', 'R7 decision context into ChatGPT handoff', 'R8 execution feedback into R7 review', 'Mission timeline and world state', 'automatic first production handoff', 'owner-only critical gates', 'unified boss/execution shell', 'operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'zero-local-material production', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'production audit events', 'owner video approval gate', 'R8-12 durable account registry', 'independent device pool', 'truthful publication planning', 'R8-12 partial recovery', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated release gates passed. Real social OAuth/login/captcha, real Android field behavior, RTX3060 field stability and live platform publication remain field acceptance; publication success still requires a real external receipt.'
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'independent device pool', 'truthful publication planning', 'idempotent Douyin dry-run queue', 'real FINAL.MP4 device staging', 'Douyin app launch without final publish click', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt truth gate', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated release gates passed. Real OAuth/login/captcha, selector-safe Douyin composer navigation, RTX3060 field stability and live platform publication remain field acceptance; publication success still requires a real external Post ID + URL / Receipt.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
