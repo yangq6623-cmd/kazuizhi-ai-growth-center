@@ -2,12 +2,14 @@
   'use strict';
 
   const ALLOWED_SHELL_CHILDREN = new Set(['r810-nav-title','r810-primary-nav','r810-secondary-nav']);
+  const OWNER_WORKBENCH_LABEL = '真实运营工作台';
+  const MORE_TOOLS_LABEL = '更多运营工具';
 
   function businessCopy(){
-    document.title='卡嘴子 AI 自治运营工作台 · R8-10';
+    document.title=`卡嘴子 AI ${OWNER_WORKBENCH_LABEL} · R8-12`;
     const baseline=document.querySelector('.baseline');
     if(baseline&&!document.body.classList.contains('r810-workbench')){
-      baseline.innerHTML='<b>R8-10 · #398 开发版</b><br><span>单工作台 · 真实执行 · 真实回执</span><code>基于 #397 稳定底座</code>';
+      baseline.innerHTML='<b>R8-12 · 统一账号资产中心</b><br><span>单工作台 · 真实执行 · 真实回执</span><code>永久账号 · 独立设备池 · 自动路由</code>';
     }
     const badge=document.querySelector('#dashboard .welcome-badge');
     if(badge&&!badge.textContent.includes('老板总控'))badge.textContent='卡嘴子 AI · 今日运营总控';
@@ -15,6 +17,8 @@
     if(heading&&!document.body.classList.contains('r810-workbench'))heading.textContent='从今天要完成的结果出发，统一管理任务、内容、终端和经营反馈。';
     const workflowLabel=document.querySelector('#workflow .page-title small');
     if(workflowLabel&&!document.body.classList.contains('r810-workbench'))workflowLabel.textContent='稳定运营底座';
+    const secondary=document.querySelector('aside nav .r810-secondary-nav');
+    if(secondary){secondary.setAttribute('aria-label',MORE_TOOLS_LABEL);secondary.title=MORE_TOOLS_LABEL;}
   }
 
   function injectSingleShellStyle(){
@@ -191,21 +195,19 @@
     ensureSourceMeta();
   }
 
+  // Finite startup convergence plus explicit product events. This avoids an
+  // unbounded page-wide observer while still handling scripts that initialize
+  // asynchronously during the first few seconds after launch.
   let attempts=0;
   const timer=setInterval(()=>{attempts+=1;refreshEnhancements();if(attempts>=30)clearInterval(timer)},250);
-  const observer=new MutationObserver(()=>{
-    clearTimeout(observer._timer);
-    observer._timer=setTimeout(()=>{
-      lockSingleShell();
-      hideLegacyBrainEntry();
-      normalizeMissionIdentity();
-      ensureConnectionOwnerSummary();
-      syncConnectionSummary();
-    },80);
-  });
-  observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+  const scheduleRefresh=()=>window.setTimeout(refreshEnhancements,80);
+  document.addEventListener('operational:refreshed',scheduleRefresh);
+  document.addEventListener('r810:workbench-ready',scheduleRefresh);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleRefresh();});
+  window.addEventListener('load',scheduleRefresh,{once:true});
 
   document.addEventListener('click',event=>{
+    if(event.target.closest('[data-r8-final-tab],.nav[data-page="r8-final-center"],#r8-final-refresh,.r810-nav-button,.r810-execution-tabs button'))scheduleRefresh();
     if(event.target.closest('[data-r8-final-tab],.nav[data-page="r8-final-center"],#r8-final-refresh'))setTimeout(()=>{foldGatePanel();ensureSourceMeta()},80);
   },true);
   refreshEnhancements();
