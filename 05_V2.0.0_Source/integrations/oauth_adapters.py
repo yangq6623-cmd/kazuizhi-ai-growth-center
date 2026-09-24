@@ -23,6 +23,9 @@ def provider_status(platform: str) -> dict:
     result["owner_status"] = "可授权" if result.get("configured") else (
         "官方入口可用" if mode.startswith("official_portal") else "未配置官方应用"
     )
+    # Backward-compatible machine marker consumed by the R8-12 release gate.
+    # Owner UI can use the more precise owner_status above.
+    result["legacy_owner_status"] = "可授权" if result.get("configured") else "未配置官方授权"
     result["supports_qr_authorization"] = platform in {"douyin", "kuaishou", "wechat_channels"}
     result["publish_scope_requires_platform_approval"] = platform in {"douyin", "kuaishou", "xiaohongshu", "wechat_channels"}
     result["truth"] = (
