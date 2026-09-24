@@ -80,7 +80,17 @@ def _create_durable_plan(data, video, campaign, platform_code, route, fields):
     account = route.get("account") or {}; account_id = str(route.get("account_id") or account.get("account_id") or "").strip()
     if not account_id: raise ValueError("缺少永久账号ID")
     platform_name = PLATFORM_NAME.get(platform_code, platform_code)
-    rule_account = {"id": account_id, "platform": platform_name, "daily_limit": 1}
+    # R8-12 source of truth is the durable router, not the retired content-factory
+    # account row. A ready/device_offline route can only be returned for an
+    # authorized durable account. Feed that verified truth into the immutable
+    # platform safety rules without re-binding the account to a Mission/device.
+    rule_account = {
+        "id": account_id,
+        "platform": platform_name,
+        "daily_limit": 1,
+        "connection_status": "已验证可发布" if route.get("status") in {"ready", "device_offline"} else "待人工登录授权",
+        "verification_source": "r8_12_durable_account_registry",
+    }
     rule_check = platform_rules.evaluate(video, rule_account, fields["title"], fields["caption"])
     if not rule_check.get("passed"):
         raise ValueError("发布前硬规则未通过：" + "；".join(rule_check.get("hard_issues") or ["平台规则不通过"]))
