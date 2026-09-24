@@ -134,10 +134,75 @@
     }
   }
 
+  function resolvedBuildValue(value, fallback = '') {
+    const text = String(value || '').trim();
+    return !text || /^__.+__$/.test(text) ? fallback : text;
+  }
+
+  function applyReleaseIdentity() {
+    const build = window.KZ_BUILD_INFO || {};
+    const phase = resolvedBuildValue(build.phase, 'R8-15');
+    const runNumber = resolvedBuildValue(build.runNumber);
+    const commit = resolvedBuildValue(build.commit);
+    const branch = resolvedBuildValue(build.branch);
+    const displayVersion = resolvedBuildValue(build.displayVersion, 'V2.2.2 Autonomous Mission Core');
+    const runtimeBuild = resolvedBuildValue(build.runtimeBuild, 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922');
+    const runLabel = runNumber ? `#${runNumber}` : '本地源码';
+
+    const baseline = document.querySelector('.baseline');
+    if (baseline) {
+      baseline.replaceChildren();
+      const title = document.createElement('b');
+      title.textContent = `${phase} · ${runLabel}`;
+      const br = document.createElement('br');
+      const subtitle = document.createElement('span');
+      subtitle.textContent = '自治运营 · 真实执行 · 真实回执';
+      const code = document.createElement('code');
+      code.textContent = `${displayVersion}${commit ? ` · ${commit}` : ''}`;
+      baseline.append(title, br, subtitle, code);
+      baseline.title = [runtimeBuild, branch ? `branch: ${branch}` : '', commit ? `commit: ${commit}` : ''].filter(Boolean).join('\n');
+    }
+
+    document.title = `卡嘴子 AI 自治运营工作台 · ${phase}${runNumber ? ` · #${runNumber}` : ''}`;
+    const meta = document.querySelector('meta[name="kazuizhi-build"]');
+    if (meta) meta.setAttribute('content', runtimeBuild);
+    document.documentElement.dataset.kzReleasePhase = phase;
+    document.documentElement.dataset.kzReleaseRun = runNumber || 'local';
+  }
+
+  function refreshTodayLabel() {
+    const label = document.getElementById('today-label');
+    if (!label) return;
+    label.textContent = new Intl.DateTimeFormat('zh-CN', {
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+    }).format(new Date());
+  }
+
+  function convergeVisibleReleaseTruth() {
+    applyReleaseIdentity();
+    refreshTodayLabel();
+  }
+
+  function installReleaseTruthRefresh() {
+    if (window.__KZ_R815_RELEASE_TRUTH_REFRESH__) return;
+    window.__KZ_R815_RELEASE_TRUTH_REFRESH__ = true;
+    convergeVisibleReleaseTruth();
+    window.setInterval(convergeVisibleReleaseTruth, 60000);
+    window.addEventListener('focus', convergeVisibleReleaseTruth);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) convergeVisibleReleaseTruth();
+    });
+    document.addEventListener('r810:workbench-ready', convergeVisibleReleaseTruth);
+    document.addEventListener('kz:app-ready', convergeVisibleReleaseTruth);
+  }
+
   async function boot() {
     state.phase = 'waiting_base';
     await waitForWindowLoad();
     await waitForBaseShell();
+    installReleaseTruthRefresh();
     emit('kz:startup-base-ready');
 
     const restoreObserverPolicy = installFiniteStartupObserverPolicy();
@@ -147,6 +212,7 @@
         await loadScript(src, key);
         await wait(40);
         dedupeGeneratedSingletons();
+        convergeVisibleReleaseTruth();
         if (src === '/r8_10_workbench.js') {
           await wait(180);
           emit('r810:workbench-ready');
@@ -155,6 +221,7 @@
       await wait(180);
       dedupeGeneratedSingletons();
       forceInitialDashboardOnce();
+      convergeVisibleReleaseTruth();
       state.phase = 'ready';
       state.ready_at = new Date().toISOString();
       emit('kz:app-ready', {loaded: state.loaded.slice()});
