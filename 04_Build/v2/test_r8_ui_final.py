@@ -158,9 +158,11 @@ def main():
         "retry_exhausted",
         "export_decision_handoff",
         "异常待处理",
+        "optional quality enhancer",
+        "本地Mission自治继续运行",
     ], "ChatGPT handoff watchdog", failures)
-    if "writable sync folder is not the same thing" not in watchdog.lower():
-        failures.append("watchdog must explicitly separate bridge availability from ChatGPT receipt")
+    if "optional quality enhancer" not in watchdog.lower() or "本地mission自治继续运行" not in watchdog.lower():
+        failures.append("watchdog must explicitly separate optional realtime ChatGPT transport from local Mission execution")
     require(runtime, [
         "from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs",
         "sync_chatgpt_handoffs()",
