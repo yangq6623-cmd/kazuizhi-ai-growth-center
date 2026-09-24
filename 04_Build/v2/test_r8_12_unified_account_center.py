@@ -11,6 +11,19 @@ from integrations.oauth_adapters import provider_status
 from integrations.credential_vault import status as vault_status
 
 
+def check_owner_runtime_contract():
+    run_text = (ROOT / "run.py").read_text(encoding="utf-8")
+    assert "r8_12_account_center_patch" in run_text, "R8-12 backend patch is not installed by the real runtime entry point"
+
+    bridge = (ROOT / "web" / "r8_12_account_center_bridge.js").read_text(encoding="utf-8")
+    hotfix = (ROOT / "web" / "r8_11_execution_tab_hotfix.js").read_text(encoding="utf-8")
+    assert "window.addEventListener('click'" in bridge, "R8-12 account route must capture on window before the R8-11 document capture handler"
+    assert "data-execution-page==='accounts'" in bridge
+    assert "/r8_12_account_center.html?embed=1" in bridge
+    assert "stopImmediatePropagation" in bridge
+    assert "document.addEventListener('click'" in hotfix, "test contract changed: R8-11 execution router is expected to capture on document"
+
+
 def main():
     store = {}
 
@@ -76,6 +89,7 @@ def main():
     assert vault["secrets_in_registry"] is False
     assert vault["secrets_in_github"] is False
 
+    check_owner_runtime_contract()
     print("R8-12 unified account center regression passed")
 
 
