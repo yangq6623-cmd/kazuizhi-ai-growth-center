@@ -4,11 +4,8 @@ R8-12 adds a monotonic runtime integrity checkpoint before autonomous work:
 partial degradation (lost video/plan/receipt indexes or same-Growth Mission-ID
 drift) is repaired without waiting for the whole runtime to become empty.
 
-Existing convergence rules remain:
-1. owner-approved ``等待账号`` content may resume after the same real account
-   becomes usable;
-2. duplicate recovery-race production tasks are paused;
-3. the foreground video prefers the approved publish chain.
+R8-12.2 additionally makes Mission content local-first: a recovered/active
+Mission may resume routine production without realtime ChatGPT transport.
 
 No recovery function invents media or external publication truth.
 """
@@ -28,7 +25,6 @@ _ORIGINAL = {}
 
 
 def can_resume_publish(video: dict) -> bool:
-    """Return True only for a previously owner-approved waiting-account video."""
     if not isinstance(video, dict) or video.get("status") != "等待账号":
         return False
     review = video.get("review") if isinstance(video.get("review"), dict) else {}
@@ -36,7 +32,6 @@ def can_resume_publish(video: dict) -> bool:
 
 
 def select_foreground_video(videos, growth_id):
-    """Prefer the already-approved publish chain over accidental newer work."""
     items = [x for x in (videos or []) if isinstance(x, dict) and x.get("campaign_id") == growth_id]
     if not items:
         return None
@@ -68,7 +63,6 @@ def _trusted_recovered_growth_ids() -> set[str]:
 
 
 def _pause_recovery_race_duplicates() -> int:
-    """Pause only unapproved duplicates when the same Growth already has approval."""
     data = cf._load()
     changed = 0
     by_campaign = {}
@@ -101,11 +95,7 @@ def _pause_recovery_race_duplicates() -> int:
 
 
 def create_publish_plan(payload):
-    """Legacy compatibility: resume a truthful owner-approved waiting-account video.
-
-    R8-12 normal publication routing no longer depends on this legacy account
-    lookup; it is kept for older UI/API requests during migration.
-    """
+    """Legacy compatibility only; R8-12 durable routing is authoritative."""
     data = cf._load()
     video_id = str((payload or {}).get("video_id") or "").strip()
     video = next((x for x in data.get("videos", []) if x.get("id") == video_id), None)
@@ -119,15 +109,12 @@ def create_publish_plan(payload):
 
 
 def sync_from_runtime(*, autostart=True):
-    """Repair the active lineage before autonomous work, then checkpoint it."""
     if autostart:
         try:
             recover_runtime_if_degraded()
         except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
             pass
         try:
-            # Older R8-11 fallback remains useful only when no R8-12 checkpoint
-            # exists yet and both legacy local indexes really are empty.
             from core.mission_ledger import recover_if_empty
             recover_if_empty(client=None)
         except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
@@ -142,9 +129,10 @@ def sync_from_runtime(*, autostart=True):
 
 
 def _recover_authorized_local_plans():
-    """Allow trusted recovered Missions to use the existing local planner."""
+    """Resume active/recovered Mission production through the local planner."""
+    from promotion.local_mission_planner import mission_allows_local_content, recover_video
+
     data = cf._load()
-    trusted_growths = _trusted_recovered_growth_ids()
     campaign_by_id = {x.get("id"): x for x in data.get("campaigns", []) if isinstance(x, dict)}
     publish_growths = {
         x.get("campaign_id") for x in data.get("videos", [])
@@ -153,7 +141,7 @@ def _recover_authorized_local_plans():
     }
     candidate_ids = []
     for video in data.get("videos", []):
-        if not isinstance(video, dict) or video.get("production_plan"):
+        if not isinstance(video, dict):
             continue
         if video.get("status") not in {"等待ChatGPT策划", "退回重做", "异常待处理"}:
             continue
@@ -161,17 +149,13 @@ def _recover_authorized_local_plans():
         if growth_id in publish_growths:
             continue
         campaign = campaign_by_id.get(growth_id) or {}
-        source = str(campaign.get("source_type") or "").strip()
-        if source != watchdog.MISSION_SOURCE and growth_id not in trusted_growths:
+        if not mission_allows_local_content(campaign):
             continue
         handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else {}
         if video.get("status") == "异常待处理" and handoff.get("kind") not in {None, "content_production"}:
             continue
         candidate_ids.append(video.get("id"))
 
-    if not candidate_ids:
-        return []
-    from promotion.local_mission_planner import recover_video
     recovered = []
     for video_id in candidate_ids:
         try:
