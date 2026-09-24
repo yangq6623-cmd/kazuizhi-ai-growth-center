@@ -5,25 +5,41 @@ on:
     branches: ['r8-12-*']
     paths:
       - '05_V2.0.0_Source/core/account_registry.py'
+      - '05_V2.0.0_Source/core/runtime_integrity.py'
       - '05_V2.0.0_Source/integrations/account_router.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/credential_vault.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
+      - '05_V2.0.0_Source/web/memory.js'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
+      - '04_Build/v2/test_r8_12_account_publish_runtime.py'
+      - 'docs/R8_12_ACCOUNT_PUBLISH_0_TO_10_STANDARD.md'
       - '.github/workflows/r8_12_account_center_validation.yml'
   pull_request:
     branches: [main]
     paths:
       - '05_V2.0.0_Source/core/account_registry.py'
+      - '05_V2.0.0_Source/core/runtime_integrity.py'
       - '05_V2.0.0_Source/integrations/account_router.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
       - '05_V2.0.0_Source/integrations/credential_vault.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
+      - '05_V2.0.0_Source/web/memory.js'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
+      - '04_Build/v2/test_r8_12_account_publish_runtime.py'
+      - 'docs/R8_12_ACCOUNT_PUBLISH_0_TO_10_STANDARD.md'
       - '.github/workflows/r8_12_account_center_validation.yml'
 
 permissions:
@@ -32,7 +48,7 @@ permissions:
 jobs:
   validate-account-center:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     defaults:
       run:
         shell: pwsh
@@ -45,18 +61,47 @@ jobs:
         run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
       - name: Verify durable account migration, device pool and routing
         run: python 04_Build/v2/test_r8_12_unified_account_center.py
-      - name: Compile R8-12 modules
+      - name: Verify account route publish dry-run and partial recovery
+        run: python 04_Build/v2/test_r8_12_account_publish_runtime.py
+      - name: Compile R8-12 runtime modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/account_registry.py
+          python -m py_compile 05_V2.0.0_Source/core/runtime_integrity.py
           python -m py_compile 05_V2.0.0_Source/integrations/account_router.py
+          python -m py_compile 05_V2.0.0_Source/integrations/publish_dry_run_queue.py
           python -m py_compile 05_V2.0.0_Source/integrations/credential_vault.py
           python -m py_compile 05_V2.0.0_Source/integrations/oauth_adapters.py
+          python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
+          python -m py_compile 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_12_account_center_patch.py
-      - name: Verify R8-12 truth and security contracts
+      - name: Verify durable routing is the publication source of truth
+        run: |
+          $planner = Get-Content 05_V2.0.0_Source/promotion/publish_orchestrator.py -Raw
+          @('route_account','r8_12_durable_account_registry','account_asset_id','route_kind','没有真实平台 Receipt') | ForEach-Object {
+            if (-not $planner.Contains($_)) { throw "Missing durable publish-routing contract: $_" }
+          }
+          if ($planner.Contains('_matching_accounts')) { throw 'Legacy region/service account matcher is still active in R8-12 publication planning.' }
+          $dryrun = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
+          @('device_asset_id','adb_device_id','final_publish_allowed','publishes_content') | ForEach-Object {
+            if (-not $dryrun.Contains($_)) { throw "Missing durable dry-run contract: $_" }
+          }
+      - name: Verify owner UI routes platform accounts to R8-12
+        run: |
+          $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
+          if (-not $loader.Contains('/r8_12_account_center_bridge.js')) { throw 'Owner shell does not load R8-12 account center bridge.' }
+          $bridge = Get-Content 05_V2.0.0_Source/web/r8_12_account_center_bridge.js -Raw
+          @('data-execution-page="accounts"','/r8_12_account_center.html?embed=1','stopImmediatePropagation') | ForEach-Object {
+            if (-not $bridge.Contains($_)) { throw "Missing owner account-route contract: $_" }
+          }
+      - name: Verify recovery, truth and security contracts
         run: |
           $registry = Get-Content 05_V2.0.0_Source/core/account_registry.py -Raw
-          @('ACC-','all_local_services','preferred_device_id','legacy_account_ids','没有真实平台回执不得记为已发布') | ForEach-Object {
+          @('ACC-','all_local_services','preferred_device_id','legacy_account_ids','account_assets_last_good','禁止静默换号','没有真实平台回执不得记为已发布') | ForEach-Object {
             if (-not $registry.Contains($_)) { throw "Missing account registry contract: $_" }
+          }
+          $integrity = Get-Content 05_V2.0.0_Source/core/runtime_integrity.py -Raw
+          @('runtime_last_good','same_growth_snapshot_is_less_complete','partial_runtime_recovery','different_active_growth') | ForEach-Object {
+            if (-not $integrity.Contains($_)) { throw "Missing runtime recovery contract: $_" }
           }
           $vault = Get-Content 05_V2.0.0_Source/integrations/credential_vault.py -Raw
           @('CryptProtectData','CryptUnprotectData','secrets_in_github','secrets_in_registry') | ForEach-Object {
@@ -70,4 +115,8 @@ jobs:
           @('统一账号资产中心','已连接','需授权','设备离线','平台限制','重新授权') | ForEach-Object {
             if (-not $ui.Contains($_)) { throw "Missing owner UX contract: $_" }
           }
-          Write-Host 'R8-12 account identity is durable; authorization and devices are replaceable; external publication truth remains receipt-gated.'
+          $standard = Get-Content docs/R8_12_ACCOUNT_PUBLISH_0_TO_10_STANDARD.md -Raw
+          @('0→10 成熟度','最低发布门槛：7.5','故障注入测试矩阵','Receipt') | ForEach-Object {
+            if (-not $standard.Contains($_)) { throw "Missing 0-to-10 acceptance standard: $_" }
+          }
+          Write-Host 'R8-12 validates durable account identity, decoupled devices, owner UI routing, truthful publication planning and monotonic partial recovery.'
