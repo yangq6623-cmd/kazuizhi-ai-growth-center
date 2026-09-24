@@ -17,6 +17,10 @@ from integrations.account_router import normalize_platform, route_account
 from promotion import content_factory, platform_rules
 
 ACTIVE_PLAN_STATES = {"等待最佳时间", "等待执行设备", "发布执行中", "已验证发布"}
+# During the first real closed-loop rollout we intentionally keep one automatic
+# publication plan per account/day. Platform ceilings are policy ceilings, not
+# permission for Kazuizhi to increase operational frequency on its own.
+DEFAULT_OPERATIONAL_DAILY_CAP = 1
 PLATFORM_NAME = {
     "douyin": "抖音", "kuaishou": "快手", "xiaohongshu": "小红书",
     "wechat_channels": "视频号", "weibo": "微博", "bilibili": "B站",
@@ -66,12 +70,21 @@ def _publish_fields(video, campaign, platform_code):
 
 def _daily_cap(data, account_id, platform_name):
     internal = platform_rules.INTERNAL_CAPS.get(platform_name, platform_rules.INTERNAL_CAPS.get("通用", {"daily_publish": 1}))
-    cap = max(1, int(internal.get("daily_publish") or 1))
+    platform_ceiling = max(1, int(internal.get("daily_publish") or 1))
+    operational_limit = DEFAULT_OPERATIONAL_DAILY_CAP
+    cap = min(platform_ceiling, operational_limit)
     today = datetime.now().astimezone().date().isoformat()
     used = sum(1 for plan in data.get("publication_plans", []) if plan.get("account_id") == account_id and str(plan.get("created_at") or "")[:10] == today and plan.get("status") in ACTIVE_PLAN_STATES)
     if used >= cap:
-        raise ValueError(f"发布前硬规则未通过：该账号今天已达到内部发布上限 {cap} 条")
-    return {"limit": cap, "used_before_this_plan": used, "date": today}
+        raise ValueError(f"发布前硬规则未通过：该账号今天已达到卡嘴子运营安全上限 {cap} 条")
+    return {
+        "limit": cap,
+        "operational_limit": operational_limit,
+        "platform_ceiling": platform_ceiling,
+        "used_before_this_plan": used,
+        "date": today,
+        "source": "kazuizhi_conservative_rollout_cap",
+    }
 
 
 def _create_durable_plan(data, video, campaign, platform_code, route, fields):
@@ -87,7 +100,7 @@ def _create_durable_plan(data, video, campaign, platform_code, route, fields):
     rule_account = {
         "id": account_id,
         "platform": platform_name,
-        "daily_limit": 1,
+        "daily_limit": DEFAULT_OPERATIONAL_DAILY_CAP,
         "connection_status": "已验证可发布" if route.get("status") in {"ready", "device_offline"} else "待人工登录授权",
         "verification_source": "r8_12_durable_account_registry",
     }
