@@ -18,6 +18,7 @@
     ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
     ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
+    ['/r8_15_ui_truth_patch.js', 'r815UiTruth'],
     ['/kz_site_tools.js', 'kzSiteTools'],
     ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
     ['/kz_async_control_ui.js', 'kzAsyncControlUi'],
