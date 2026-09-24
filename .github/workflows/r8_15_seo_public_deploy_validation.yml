@@ -1,0 +1,58 @@
+name: Validate R8-15 SEO Public Deploy
+
+on:
+  push:
+    branches: ['r8-15-*']
+    paths:
+      - '05_V2.0.0_Source/integrations/seo_public_deployer.py'
+      - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_15_seo_public_deploy.py'
+      - '.github/workflows/r8_15_seo_public_deploy_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/integrations/seo_public_deployer.py'
+      - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_15_seo_public_deploy.py'
+      - '.github/workflows/r8_15_seo_public_deploy_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-public-deploy:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify guarded SEO public deployment
+        run: python 04_Build/v2/test_r8_15_seo_public_deploy.py
+      - name: Compile R8-15 runtime modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/integrations/seo_public_deployer.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py
+          python -m py_compile 05_V2.0.0_Source/core/seo_geo_autonomy.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+      - name: Verify public deploy safety contract
+        run: |
+          $deploy = Get-Content 05_V2.0.0_Source/integrations/seo_public_deployer.py -Raw
+          @('writes_only_below','touches_web_config','touches_app_data','touches_uploads','touches_database','public_http_verification_required','PUBLISHED') | ForEach-Object {
+            if (-not $deploy.Contains($_)) { throw "Missing R8-15 deploy safety contract: $_" }
+          }
+          if (-not $deploy.Contains('site_root / "seo"')) { throw 'SEO connector must remain scoped to <site_root>/seo/' }
+          $autonomy = Get-Content 05_V2.0.0_Source/core/seo_geo_autonomy.py -Raw
+          if (-not $autonomy.Contains('deploy_public_pages')) { throw 'SEO autonomy is not connected to verified public deployment' }
+          if (-not $autonomy.Contains('public_http_verification_failed')) { throw 'Public verification failure gate missing' }
+          Write-Host 'R8-15 only records PUBLISHED after guarded filesystem deployment and public HTTP content verification.'
