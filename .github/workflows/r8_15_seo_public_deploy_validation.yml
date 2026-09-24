@@ -51,7 +51,7 @@ jobs:
           @('writes_only_below','touches_web_config','touches_app_data','touches_uploads','touches_database','public_http_verification_required','PUBLISHED') | ForEach-Object {
             if (-not $deploy.Contains($_)) { throw "Missing R8-15 deploy safety contract: $_" }
           }
-          if (-not $deploy.Contains('site_root / "seo"')) { throw 'SEO connector must remain scoped to <site_root>/seo/' }
+          if (-not $deploy.Contains('return root / "seo"')) { throw 'SEO connector must remain scoped to <site_root>/seo/' }
           $autonomy = Get-Content 05_V2.0.0_Source/core/seo_geo_autonomy.py -Raw
           if (-not $autonomy.Contains('deploy_public_pages')) { throw 'SEO autonomy is not connected to verified public deployment' }
           if (-not $autonomy.Contains('public_http_verification_failed')) { throw 'Public verification failure gate missing' }
