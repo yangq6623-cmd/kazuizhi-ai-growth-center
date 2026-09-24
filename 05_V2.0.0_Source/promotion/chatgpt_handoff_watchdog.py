@@ -1,15 +1,12 @@
-"""Truthful retry/watchdog layer for R8 content handoffs.
+"""Truthful optional-ChatGPT handoff watchdog for R8 content work.
 
-Normal ChatGPT is the strategic owner brain.  A validated ChatGPT Mission may
-continue routine non-financial content planning locally without requiring a
-permanently-open chat window or an OpenAI API key.  Tasks that are not covered
-by that Mission authorization still use the bounded ChatGPT handoff path below.
-No state here fabricates a ChatGPT acknowledgement or an external promotion
-result. A writable sync folder is not the same thing as a ChatGPT receipt: the
-transport can be available while ChatGPT has not yet returned any validated
-production plan or QC decision.
+Local-first rule:
+- an active/authorized Mission is executed locally for routine planning + QC;
+- realtime ChatGPT / relay / API is an optional quality enhancer, never a hard
+  production dependency;
+- tasks outside a Mission authorization may still use the bounded handoff path;
+- no branch fabricates ChatGPT acknowledgement, publication, customers or orders.
 """
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -32,7 +29,6 @@ RETRY_AFTER_SECONDS = 300
 MAX_RETRIES = 3
 PENDING_STATES = {"等待ChatGPT策划", "退回重做", "等待ChatGPT质检"}
 CONTROL_ISSUE_PREFIX = "[content-handoff] "
-MISSION_SOURCE = "ChatGPT自治经营决策"
 
 
 def _parse(value):
@@ -58,7 +54,7 @@ def _phase_for(video):
     if video.get("plan_received_at") or video.get("production_plan"):
         return "production_contract_received"
     qc = video.get("chatgpt_qc") if isinstance(video.get("chatgpt_qc"), dict) else {}
-    if qc.get("status") in {"passed", "rework"}:
+    if qc.get("status") in {"passed", "rework", "not_required_for_authorized_mission"}:
         return "qc_returned"
     if video.get("status") == "等待ChatGPT质检":
         return "waiting_qc_return"
@@ -68,7 +64,6 @@ def _phase_for(video):
 
 
 def _set_control_truth(state_name, message):
-    """Update the canonical control state only after real connector proof exists."""
     try:
         current = control_status()
         if not current.get("verified"):
@@ -97,8 +92,6 @@ def _mark_nonpending_truth(data):
         handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else None
         if handoff is None:
             continue
-        if video.get("status") == "异常待处理" and handoff.get("phase") == "retry_exhausted":
-            continue
         phase = _phase_for(video)
         if video.get("status") not in PENDING_STATES and phase != handoff.get("phase"):
             handoff["phase"] = phase
@@ -109,35 +102,25 @@ def _mark_nonpending_truth(data):
 
 
 def _recover_authorized_local_plans():
-    """Recover routine production when ChatGPT already approved the parent Mission.
+    """Recover every Mission-authorized routine production task locally."""
+    from promotion.local_mission_planner import mission_allows_local_content, recover_video
 
-    This does not apply to post-render QC or arbitrary locally-created campaigns.
-    It only converts content-production tasks whose campaign source proves that a
-    validated ChatGPT Decision Pack created the Mission.
-    """
     data = cf._load()
     campaign_by_id = {x.get("id"): x for x in data.get("campaigns", []) if isinstance(x, dict)}
-    candidate_ids = []
+    ids = []
     for video in data.get("videos", []):
-        if video.get("production_plan"):
-            continue
         if video.get("status") not in {"等待ChatGPT策划", "退回重做", "异常待处理"}:
             continue
         campaign = campaign_by_id.get(video.get("campaign_id"))
-        if str((campaign or {}).get("source_type") or "").strip() != MISSION_SOURCE:
+        if not mission_allows_local_content(campaign):
             continue
         handoff = video.get("chatgpt_handoff") if isinstance(video.get("chatgpt_handoff"), dict) else {}
         if video.get("status") == "异常待处理" and handoff.get("kind") not in {None, "content_production"}:
             continue
-        candidate_ids.append(video.get("id"))
-
-    if not candidate_ids:
-        return []
-
-    from promotion.local_mission_planner import recover_video
+        ids.append(video.get("id"))
 
     recovered = []
-    for video_id in candidate_ids:
+    for video_id in ids:
         try:
             result = recover_video(video_id)
             if result:
@@ -147,35 +130,72 @@ def _recover_authorized_local_plans():
     return recovered
 
 
-def sync_chatgpt_handoffs(force=False):
-    """Keep content work moving while preserving truthful ChatGPT boundaries.
+def _recover_authorized_local_qc():
+    try:
+        from promotion.local_mission_qc_patch import recover_authorized_qc
+        return recover_authorized_qc(limit=20)
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        return {"processed": 0, "items": [], "error": str(error)[:300]}
 
-    First, a routine production request may be recovered locally when its parent
-    Mission was already created by a validated ChatGPT Decision Pack.  Remaining
-    requests use the legacy bounded handoff path: immediate export, at most three
-    retries, then a visible exception instead of infinite waiting.
-    """
+
+def _authorized_pending(video, campaigns):
+    try:
+        from promotion.local_mission_planner import mission_allows_local_content
+        return mission_allows_local_content(campaigns.get(video.get("campaign_id")))
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return False
+
+
+def sync_chatgpt_handoffs(force=False):
+    """Keep Mission work moving locally; use ChatGPT transport only when optional."""
     local_recovered = _recover_authorized_local_plans()
+    local_qc = _recover_authorized_local_qc()
     data = cf._load()
     now = datetime.now().astimezone()
     changed = _mark_nonpending_truth(data)
-    pending = [video for video in data.get("videos", []) if video.get("status") in PENDING_STATES]
-    if not pending:
+    campaigns = {x.get("id"): x for x in data.get("campaigns", []) if isinstance(x, dict)}
+
+    # A Mission-authorized item must never be converted into a ChatGPT-transport
+    # alarm. If a local step could not advance yet, keep it as a local retry and
+    # let the scheduler/video worker continue; only genuine QC risk escalates.
+    local_pending = []
+    remote_pending = []
+    for video in data.get("videos", []):
+        if video.get("status") not in PENDING_STATES:
+            continue
+        if _authorized_pending(video, campaigns):
+            handoff = video.setdefault("chatgpt_handoff", {})
+            handoff.update({
+                "phase": "local_autonomy_retry",
+                "message": "实时ChatGPT为可选增强；当前Mission继续由本地自治流水线重试。",
+                "updated_at": now_iso(),
+                "retry_count": 0,
+            })
+            video["bottleneck"] = "本地自治流水线正在继续处理"
+            video["auto_action"] = "不等待实时ChatGPT；本地策划/生产/QC自动继续。"
+            local_pending.append(video)
+            changed = True
+        else:
+            remote_pending.append(video)
+
+    if not remote_pending:
         if changed:
             cf._save(data)
         _clear_own_control_issue_if_resolved()
         return {
-            "pending": 0,
+            "pending": len(local_pending),
+            "remote_pending": 0,
             "exported": False,
-            "reason": "no_pending_chatgpt_handoff",
+            "reason": "authorized_mission_runs_local_first",
             "local_recovered": local_recovered,
+            "local_qc": local_qc,
         }
 
     bridge = bridge_status()
     connected = bridge.get("status") == "connected" and bool(bridge.get("bridge_root"))
     due = []
 
-    for video in pending:
+    for video in remote_pending:
         handoff = video.setdefault("chatgpt_handoff", {})
         handoff.setdefault("kind", "content_qc" if video.get("status") == "等待ChatGPT质检" else "content_production")
         handoff.setdefault("retry_count", 0)
@@ -185,17 +205,16 @@ def sync_chatgpt_handoffs(force=False):
         if not connected:
             handoff["phase"] = "bridge_unavailable"
             handoff["bridge_status"] = bridge.get("status") or "not_connected"
-            handoff["message"] = "备用同步桥未连接；请求尚未证明已发送给 ChatGPT。"
-            video["bottleneck"] = "ChatGPT 内容交接传输不可用，生产请求尚未证明送达"
-            video["auto_action"] = "系统持续检查传输通道；恢复后自动发送。备用文件桥在线状态不等于 ChatGPT 已连接。"
-            _set_control_truth(DEGRADED, "内容生产/QC 传输通道不可用；本地已批准任务继续运行，新的 ChatGPT 交接暂缓。")
+            handoff["message"] = "可选ChatGPT传输未连接；此非Mission授权任务暂缓。"
+            video["bottleneck"] = "可选ChatGPT交接不可用"
+            video["auto_action"] = "系统继续检查传输通道；Mission授权任务不受此状态影响。"
+            _set_control_truth(DEGRADED, "可选内容交接通道不可用；本地Mission自治继续运行。")
             changed = True
             continue
 
         last_sent = handoff.get("last_exported_at")
         age = _age_seconds(last_sent, now)
         retries = int(handoff.get("retry_count") or 0)
-
         if not last_sent or force:
             due.append((video, handoff, False))
         elif age is not None and age >= RETRY_AFTER_SECONDS and retries < MAX_RETRIES:
@@ -206,15 +225,15 @@ def sync_chatgpt_handoffs(force=False):
             handoff["exhausted_at"] = now_iso()
             video["status"] = "异常待处理"
             video["retry_count"] = max(int(video.get("retry_count") or 0), MAX_RETRIES)
-            video["bottleneck"] = "ChatGPT生产/QC请求连续重发仍未返回"
-            video["auto_action"] = "已停止无限等待；请检查 ChatGPT 总控连接/传输适配器。恢复后可自动继续；未通过 QC 的成片不会自动发布。"
-            _set_control_truth(HUMAN_ACTION_REQUIRED, f"内容生产/QC 已重试 {MAX_RETRIES} 次仍无返回，已停止无限等待。")
+            video["bottleneck"] = "非Mission授权任务的ChatGPT请求连续重发仍未返回"
+            video["auto_action"] = "已停止无限等待；此任务需要人工确认是否继续。Mission自治任务不会走到这里。"
+            _set_control_truth(HUMAN_ACTION_REQUIRED, f"非Mission授权内容任务已重试 {MAX_RETRIES} 次仍无返回。")
             changed = True
         else:
             handoff["phase"] = "waiting_response"
             handoff["bridge_status"] = "connected"
-            handoff["message"] = "请求已写入备用传输通道；正在等待 ChatGPT 返回结构化结果。"
-            _set_control_truth(WAITING_RESPONSE, "内容生产/QC 请求已发送，正在等待结构化返回。")
+            handoff["message"] = "可选请求已发送，等待结构化结果。"
+            _set_control_truth(WAITING_RESPONSE, "可选内容请求已发送；本地Mission自治不受影响。")
             changed = True
 
     if changed:
@@ -238,17 +257,15 @@ def sync_chatgpt_handoffs(force=False):
                 handoff["last_exported_at"] = now_iso()
                 handoff["phase"] = "waiting_response"
                 handoff["bridge_status"] = "connected"
-                handoff["message"] = "请求已写入备用传输通道；等待 ChatGPT 返回结构化结果。"
-                video["bottleneck"] = "等待 ChatGPT 返回结构化生产/QC结果"
-                video["auto_action"] = (
-                    f"已发送；若 {RETRY_AFTER_SECONDS // 60} 分钟无返回将自动重发，"
-                    f"最多 {MAX_RETRIES} 次。达到上限后停止等待并进入待我处理。"
-                )
+                handoff["message"] = "可选请求已发送；等待结构化结果。"
+                video["bottleneck"] = "等待可选ChatGPT返回"
+                video["auto_action"] = f"若 {RETRY_AFTER_SECONDS // 60} 分钟无返回将自动重发，最多 {MAX_RETRIES} 次。"
             cf._save(data)
-            _set_control_truth(WAITING_RESPONSE, "内容生产/QC 请求已发送，正在等待结构化返回。")
+            _set_control_truth(WAITING_RESPONSE, "可选内容请求已发送；本地Mission自治不受影响。")
 
     return {
-        "pending": len(pending),
+        "pending": len(local_pending) + len(remote_pending),
+        "remote_pending": len(remote_pending),
         "bridge_status": bridge.get("status"),
         "due": len(due),
         "exported": bool(exported and exported.get("exported")),
@@ -256,4 +273,5 @@ def sync_chatgpt_handoffs(force=False):
         "max_retries": MAX_RETRIES,
         "handoff": exported,
         "local_recovered": local_recovered,
+        "local_qc": local_qc,
     }
