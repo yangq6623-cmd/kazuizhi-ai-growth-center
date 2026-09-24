@@ -22,14 +22,21 @@ def main() -> None:
     js = read("r8_10_workbench.js")
     css = read("r8_10_workbench.css")
     memory = read("memory.js")
+    startup = read("r8_12_startup_coordinator.js")
     truth = read("r8_10_truth_convergence.js")
     operational_workbench = read("operational-workbench.js")
     product = read("main-productization.js")
 
-    # The workbench is an overlay over the proven #397 runtime, not a second app.
+    # The workbench remains an overlay over the proven #397 runtime, but R8-12.1
+    # now sequences all owner overlays through one deterministic startup owner.
     require(memory, "/r8_10_workbench.css", "R8-10 stylesheet loader")
-    require(memory, "/r8_10_workbench.js", "R8-10 script loader")
-    require(memory, "/r8_10_truth_convergence.js", "owner truth convergence loader")
+    require(memory, "/r8_12_startup_coordinator.js", "R8-12.1 startup coordinator loader")
+    require(startup, "/r8_10_workbench.js", "R8-10 coordinated script loader")
+    require(startup, "/r8_10_truth_convergence.js", "coordinated truth convergence loader")
+    require(startup, "r810:workbench-ready", "explicit workbench-ready dispatch")
+    require(startup, "kz:app-ready", "single app-ready dispatch")
+    require(startup, "forceInitialDashboardOnce", "deterministic initial owner route")
+    require(startup, "dedupeGeneratedSingletons", "generated UI singleton guard")
     require(js, "基于 #397 稳定底座", "rollback baseline copy")
 
     # Exactly the six owner-facing primary destinations agreed for R8-10.
@@ -52,14 +59,16 @@ def main() -> None:
     require(operational_workbench, "ResizeObserver", "embedded workbench auto-height contract")
     require(operational_workbench, "scrolling','no", "no nested execution scrollbar")
 
-    # R8-12 keeps the #398 single-shell cleanup but replaces the old page-wide
-    # mutation watcher with finite startup convergence + explicit product events.
+    # #398 shell cleanup remains finite/event-driven. During cold start the new
+    # coordinator temporarily bounds legacy MutationObservers instead of letting
+    # independent global observers race and duplicate owner cards.
     require(product, "lockSingleShell", "single-shell nav lock")
     require(product, "button.nav,.nav-group,details.nav-more,.operational-entry", "legacy nav catch-all")
     require(product, "setInterval", "finite late-navigation convergence")
     require(product, "operational:refreshed", "explicit operational refresh event")
     require(product, "r810:workbench-ready", "explicit workbench ready event")
-    forbid(product, "MutationObserver", "unbounded page-wide mutation watcher")
+    forbid(product, "MutationObserver", "unbounded productization mutation watcher")
+    require(startup, "FiniteStartupObserver", "bounded legacy observer startup policy")
     require(product, "r810-legacy-route", "legacy navigation hidden class")
     forbid(product, "function addOperationalEntry", "legacy second-workbench entry creator")
     forbid(product, "function simplifyNavigation", "legacy nav-more rebuild")
@@ -122,7 +131,7 @@ def main() -> None:
     require(css, "button:disabled", "disabled visual state")
     require(css, "@media(max-width:760px)", "responsive shell")
 
-    print("PASS: R8-10 single-shell, four owner truth fixes, identity truth and UI gating verified.")
+    print("PASS: R8-10 single-shell and R8-12.1 deterministic startup contracts verified.")
 
 
 if __name__ == "__main__":
