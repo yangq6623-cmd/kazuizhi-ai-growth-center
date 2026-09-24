@@ -25,6 +25,7 @@ from backend import ai_gateway_patch as _ai_gateway_patch  # noqa: F401,E402
 from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: F401,E402
 from backend import r8_11_backbone_patch as _r8_11_backbone_patch  # noqa: F401,E402
 from backend import r8_12_account_center_patch as _r8_12_account_center_patch  # noqa: F401,E402
+from backend import r8_13_seo_geo_patch as _r8_13_seo_geo_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
@@ -34,6 +35,7 @@ from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
+from core.seo_geo_growth import run_daily_cycle as run_seo_geo_cycle
 from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
@@ -60,8 +62,12 @@ def start_scheduler():
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
+                    # SEO/GEO is its own durable growth lane.  It can plan and
+                    # generate staging pages locally without waiting for realtime
+                    # ChatGPT, but it never fabricates public deployment/indexing.
+                    run_seo_geo_cycle(force=False)
             except (OSError, ValueError) as error:
-                print(f"R7 scheduler check failed: {error}", flush=True)
+                print(f"R7/R8-13 scheduler check failed: {error}", flush=True)
 
             if tick % 4 == 0:
                 try:
@@ -165,6 +171,7 @@ def main():
             run_pending_douyin_dry_runs(limit=1)
             sync_autonomous_ops(autostart=False)
             sync_mission_backbone()
+            run_seo_geo_cycle(force=False)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"Initial local-first convergence deferred: {error}", flush=True)
 
