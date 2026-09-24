@@ -8,7 +8,7 @@ $('save-memory').addEventListener('click', async () => {
   try {
     await api('/api/memory', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify({category: '老板确认', statement, evidence: '老板在本地运营中心手动录入'}),
     });
     input.value = '';
@@ -68,6 +68,17 @@ $('save-memory').addEventListener('click', async () => {
     executionTabs.defer = true;
     executionTabs.dataset.r811ExecutionTabHotfix = '1';
     document.body.appendChild(executionTabs);
+  }
+  // R8-12 replaces the old Mission/service/device re-binding screen with the
+  // durable account asset center.  It loads after the R8-11 tab hotfix and
+  // captures only the owner-facing “平台账号” route; legacy APIs remain for
+  // migration compatibility but are no longer the normal operating surface.
+  if (!document.querySelector('script[data-r812-account-center]')) {
+    const accountCenter = document.createElement('script');
+    accountCenter.src = '/r8_12_account_center_bridge.js';
+    accountCenter.defer = true;
+    accountCenter.dataset.r812AccountCenter = '1';
+    document.body.appendChild(accountCenter);
   }
   // Optional same-PC real-time helper. Site Tools/WebMCP may call localhost when
   // available, but normal autonomous operation no longer depends on it.
