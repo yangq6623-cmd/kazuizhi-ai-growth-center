@@ -21,6 +21,24 @@ def main():
     generated = generate_staging(limit=1)
     assert generated["count"] == 1, generated
     asset = next(x for x in dashboard()["assets"] if x["stage"] == "GENERATED")
+
+    # The generated public page itself must already contain the technical SEO
+    # elements R8-15 later verifies on the real public URL.
+    staged_html = Path(asset["staging_path"]).read_text(encoding="utf-8")
+    inspected = deployer._inspect_public_html(staged_html, asset["title"], asset["canonical"])
+    assert inspected["content_match"] is True, inspected
+    assert inspected["canonical_match"] is True, inspected
+    assert inspected["schema_valid"] is True, inspected
+    assert inspected["page_indexable"] is True, inspected
+
+    broken_canonical = staged_html.replace(asset["canonical"], "https://wrong.example/", 1)
+    broken = deployer._inspect_public_html(broken_canonical, asset["title"], asset["canonical"])
+    assert broken["canonical_match"] is False, broken
+
+    noindex_html = staged_html.replace("</head>", '<meta name="robots" content="noindex"></head>')
+    noindex = deployer._inspect_public_html(noindex_html, asset["title"], asset["canonical"])
+    assert noindex["page_indexable"] is False, noindex
+
     record_asset_stage(asset["id"], "QC_PASSED", {"local_qc": "test"})
 
     site_root = Path(tempfile.mkdtemp(prefix="kz-r815-site-")) / "kazuizhi-site"
@@ -41,12 +59,19 @@ def main():
     assert state["safety"]["writes_only_below"] == "<site_root>/seo/"
     assert state["safety"]["touches_web_config"] is False
     assert state["safety"]["touches_database"] is False
+    assert state["safety"]["canonical_verification_required"] is True
+    assert state["safety"]["schema_verification_required"] is True
+    assert state["safety"]["robots_verification_required"] is True
 
     original_verify = deployer._verify_public_url
-    deployer._verify_public_url = lambda url, expected, timeout: {
+    deployer._verify_public_url = lambda url, expected, expected_canonical, timeout: {
         "ok": True,
         "status": 200,
         "content_match": True,
+        "canonical_match": True,
+        "schema_valid": True,
+        "page_indexable": True,
+        "robots": {"allowed": True},
         "checked_at": "test",
     }
     try:
@@ -67,12 +92,21 @@ def main():
     assert published_asset["stage"] == "PUBLISHED"
     assert published_asset["public_url"] == public["public_url"]
 
-    # Truth gate: a failed HTTP verification must not mark the next page PUBLISHED.
+    # Truth gate: a failed public verification must not mark the next page PUBLISHED.
     plan_today(limit=1)
     generate_staging(limit=1)
     second = next(x for x in dashboard()["assets"] if x["stage"] == "GENERATED")
     record_asset_stage(second["id"], "QC_PASSED", {"local_qc": "test"})
-    deployer._verify_public_url = lambda url, expected, timeout: {"ok": False, "status": 503, "checked_at": "test"}
+    deployer._verify_public_url = lambda url, expected, expected_canonical, timeout: {
+        "ok": False,
+        "status": 200,
+        "content_match": True,
+        "canonical_match": False,
+        "schema_valid": True,
+        "page_indexable": True,
+        "robots": {"allowed": True},
+        "checked_at": "test",
+    }
     try:
         failed = deployer.deploy_pending(limit=5)
     finally:
@@ -81,7 +115,7 @@ def main():
     second_after = next(x for x in dashboard()["assets"] if x["id"] == second["id"])
     assert second_after["stage"] == "QC_PASSED", second_after
 
-    print("R8-15 guarded public deployment truth/safety checks passed")
+    print("R8-15 guarded public deployment truth/safety/SEO verification checks passed")
 
 
 if __name__ == "__main__":
