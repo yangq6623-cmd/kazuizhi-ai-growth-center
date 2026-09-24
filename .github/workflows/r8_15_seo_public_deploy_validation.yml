@@ -8,9 +8,15 @@ on:
       - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
       - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
       - '05_V2.0.0_Source/core/r8_15_server_bootstrap.py'
+      - '05_V2.0.0_Source/web/build_info.js'
+      - '05_V2.0.0_Source/web/WEB_VERSION.txt'
+      - '05_V2.0.0_Source/web/r8_10_truth_convergence.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_15_ui_truth_patch.js'
       - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_15_seo_public_deploy.py'
       - '04_Build/v2/test_r8_15_server_bootstrap.py'
+      - '04_Build/v2/test_r8_15_ui_truth.py'
       - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1'
       - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd'
       - '04_Build/build_v2_windows.ps1'
@@ -22,9 +28,15 @@ on:
       - '05_V2.0.0_Source/backend/r8_15_seo_public_deploy_patch.py'
       - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
       - '05_V2.0.0_Source/core/r8_15_server_bootstrap.py'
+      - '05_V2.0.0_Source/web/build_info.js'
+      - '05_V2.0.0_Source/web/WEB_VERSION.txt'
+      - '05_V2.0.0_Source/web/r8_10_truth_convergence.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_15_ui_truth_patch.js'
       - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_15_seo_public_deploy.py'
       - '04_Build/v2/test_r8_15_server_bootstrap.py'
+      - '04_Build/v2/test_r8_15_ui_truth.py'
       - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1'
       - '04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd'
       - '04_Build/build_v2_windows.ps1'
@@ -51,6 +63,7 @@ jobs:
         run: |
           python 04_Build/v2/test_r8_15_seo_public_deploy.py
           python 04_Build/v2/test_r8_15_server_bootstrap.py
+          python 04_Build/v2/test_r8_15_ui_truth.py
       - name: Compile R8-15 runtime modules
         run: |
           python -m py_compile 05_V2.0.0_Source/integrations/seo_public_deployer.py
