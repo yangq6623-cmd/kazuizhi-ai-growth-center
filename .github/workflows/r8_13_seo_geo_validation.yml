@@ -6,9 +6,14 @@ on:
     paths:
       - '05_V2.0.0_Source/core/seo_geo_growth.py'
       - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py'
       - '05_V2.0.0_Source/integrations/platform_auth_catalog.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/integrations/oauth_token_broker.py'
+      - '05_V2.0.0_Source/integrations/official_account_assets.py'
+      - '05_V2.0.0_Source/integrations/account_environment.py'
+      - '05_V2.0.0_Source/integrations/account_router.py'
       - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
       - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
@@ -23,9 +28,14 @@ on:
     paths:
       - '05_V2.0.0_Source/core/seo_geo_growth.py'
       - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py'
       - '05_V2.0.0_Source/integrations/platform_auth_catalog.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/integrations/oauth_token_broker.py'
+      - '05_V2.0.0_Source/integrations/official_account_assets.py'
+      - '05_V2.0.0_Source/integrations/account_environment.py'
+      - '05_V2.0.0_Source/integrations/account_router.py'
       - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
       - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
@@ -55,22 +65,27 @@ jobs:
         run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
       - name: Verify truthful SEO GEO growth ledger and UI
         run: python 04_Build/v2/test_r8_13_seo_geo_growth.py
-      - name: Verify safe multi-account official authorization launcher
+      - name: Verify stable multi-account identity and official authorization safety
         run: python 04_Build/v2/test_r8_13_multi_account_auth.py
       - name: Compile R8-13 backend modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/seo_geo_growth.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_12_account_center_patch.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_12_auth_broker_patch.py
           python -m py_compile 05_V2.0.0_Source/integrations/platform_auth_catalog.py
           python -m py_compile 05_V2.0.0_Source/integrations/oauth_adapters.py
+          python -m py_compile 05_V2.0.0_Source/integrations/oauth_token_broker.py
+          python -m py_compile 05_V2.0.0_Source/integrations/official_account_assets.py
+          python -m py_compile 05_V2.0.0_Source/integrations/account_environment.py
+          python -m py_compile 05_V2.0.0_Source/integrations/account_router.py
           python -m py_compile 05_V2.0.0_Source/run.py
       - name: Check R8-13 browser scripts
         run: |
           node --check 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js
           node --check 05_V2.0.0_Source/web/r8_12_multi_account_auth_ui.js
           node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
-      - name: Verify SEO GEO truth contract
+      - name: Verify SEO GEO and account-safety truth contracts
         run: |
           $core = Get-Content 05_V2.0.0_Source/core/seo_geo_growth.py -Raw
           @('GENERATED', 'PUBLISHED', 'SUBMITTED', 'CRAWLED', 'INDEXED', 'RANKED', 'MENTIONED', 'CITED', 'CONVERTED', 'PUBLISHED 必须提供真实可验证的公网URL', 'SUBMITTED 必须提供搜索引擎与真实提交回执') | ForEach-Object {
@@ -84,7 +99,21 @@ jobs:
           if (-not $bridge.Contains('SEO/GEO增长')) { throw 'SEO/GEO primary navigation entry missing' }
           if (-not $bridge.Contains('/r8_13_seo_geo.html?embed=1')) { throw 'SEO/GEO embedded owner page missing' }
           $auth = Get-Content 05_V2.0.0_Source/integrations/platform_auth_catalog.py -Raw
-          @('stable_environment_per_account','proxy_rotation','fingerprint_spoofing','credential_capture','google_search_console','bing_webmaster','baidu_search_resource','douyin','kuaishou') | ForEach-Object {
+          @('stable_environment_per_account','"proxy_rotation": False','"fingerprint_spoofing": False','"credential_capture": False','google_search_console','bing_webmaster','baidu_search_resource','douyin','kuaishou','slot_id') | ForEach-Object {
             if (-not $auth.Contains($_)) { throw "Missing multi-account safety/auth contract: $_" }
           }
-          Write-Host 'R8-13 validates local-first SEO/GEO planning, truthful external-state gates, dedicated owner growth center and safe multi-account official authorization entry points.'
+          $environment = Get-Content 05_V2.0.0_Source/integrations/account_environment.py -Raw
+          @('"auto_failover_on_risk": False','risk_prompt','owner_confirmed','account_environment_profiles.json') | ForEach-Object {
+            if (-not $environment.Contains($_)) { throw "Missing environment safety contract: $_" }
+          }
+          $router = Get-Content 05_V2.0.0_Source/integrations/account_router.py -Raw
+          @('sticky_no_risk_failover','risk_pause','preferred_account_id','task_key') | ForEach-Object {
+            if (-not $router.Contains($_)) { throw "Missing sticky safe routing contract: $_" }
+          }
+          $broker = Get-Content 05_V2.0.0_Source/integrations/oauth_token_broker.py -Raw
+          @('MAX_REQUEST_AGE','credential_vault','https://','access_token','refresh_token') | ForEach-Object {
+            if (-not $broker.Contains($_)) { throw "Missing OAuth broker security contract: $_" }
+          }
+          $vault = Get-Content 05_V2.0.0_Source/integrations/credential_vault.py -Raw
+          if (-not $vault.Contains('windows_dpapi')) { throw 'DPAPI credential vault contract missing' }
+          Write-Host 'R8-13 validates SEO/GEO truth, official multi-account authorization, DPAPI secrets, stable environments and risk-aware sticky routing.'
