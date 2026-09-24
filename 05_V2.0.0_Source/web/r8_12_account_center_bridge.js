@@ -54,9 +54,11 @@
     wrap?.classList.remove('active');
   }
 
-  // Capture before the legacy execution-tab handler so “平台账号” never opens
-  // the old Region + Service + bind-phone form in the normal owner workflow.
-  document.addEventListener('click',event=>{
+  // R8-11 still owns all other execution tabs with a document-capture listener.
+  // Register the R8-12 owner account route on WINDOW capture, which is earlier
+  // in the event path than document capture, so “平台账号” deterministically opens
+  // the durable account center instead of the retired Region+Service+bind-phone form.
+  window.addEventListener('click',event=>{
     const button=event.target?.closest?.('.r810-execution-tabs button[data-execution-page]');
     if(!button) return;
     if(button.dataset.executionPage==='accounts'){
@@ -69,7 +71,8 @@
   },true);
 
   // Also retire direct links/buttons that point to the legacy account page from
-  // the parent owner shell.  Technical compatibility APIs remain available.
+  // the parent owner shell. Technical compatibility APIs remain available only
+  // as migration inputs; they are not the owner's normal operating surface.
   document.addEventListener('click',event=>{
     const button=event.target?.closest?.('[data-r812-account-center]');
     if(!button) return;
