@@ -17,6 +17,7 @@ on:
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
       - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
@@ -43,6 +44,7 @@ on:
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
       - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '05_V2.0.0_Source/run.py'
       - '05_V2.0.0_Source/requirements.txt'
@@ -98,6 +100,7 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/run.py
           node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
           node --check 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js
+          node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
       - name: Verify no paid third-party token dependency and owner visibility
         run: |
           $registry = Get-Content 05_V2.0.0_Source/integrations/channel_registry.py -Raw
@@ -137,6 +140,8 @@ jobs:
             if (-not $backbone.Contains($_)) { throw "Missing R8-11 social/convergence bridge: $_" }
           }
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
-          if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
-          if (-not $loader.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing hotfix loader is missing' }
-          Write-Host 'R8-11 backbone uses real-device session evidence, recovery convergence, dry-run truth gates and requires no paid third-party token service.'
+          if (-not $loader.Contains('/r8_12_startup_coordinator.js')) { throw 'R8-12.1 startup coordinator loader is missing' }
+          $startup = Get-Content 05_V2.0.0_Source/web/r8_12_startup_coordinator.js -Raw
+          if (-not $startup.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI is missing from coordinated startup' }
+          if (-not $startup.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing is missing from coordinated startup' }
+          Write-Host 'R8-11 backbone uses real-device session evidence, coordinated startup, recovery convergence, dry-run truth gates and requires no paid third-party token service.'
