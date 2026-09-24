@@ -16,8 +16,10 @@ def main():
         try:
             import core.storage as storage
             import core.seo_geo_growth as growth
+            import backend.r8_13_seo_geo_patch as seo_patch
             importlib.reload(storage)
             importlib.reload(growth)
+            importlib.reload(seo_patch)
 
             seeded = growth.ensure_baseline()
             assert seeded["questions"] == 50
@@ -39,6 +41,18 @@ def main():
             assert staged["technical"]["staging"]["robots_generated"] is True
             assert staged["technical"]["staging"]["sitemap_generated"] is True
             assert all(Path(x["staging_path"]).is_file() for x in staged["assets"] if x.get("staging_path"))
+
+            enriched = seo_patch._dashboard_payload()
+            evidence = enriched["evidence_summary"]
+            assert evidence["asset_total"] == 3
+            assert evidence["staged_files"] == 3
+            assert evidence["canonical_files"] == 3
+            assert evidence["schema_files"] == 3
+            assert evidence["title_files"] == 3
+            assert evidence["description_files"] == 3
+            assert evidence["today_generated"] == 3
+            assert enriched["geo"]["measurement_state"] == "not_started"
+            assert "只代表本地证据" in evidence["truth"]
 
             asset_id = staged["assets"][0]["id"]
             try:
@@ -62,8 +76,6 @@ def main():
             submitted = growth.record_asset_stage(asset_id, "SUBMITTED", {"engine": "Bing", "receipt": "INDEXNOW-TEST-001"})
             assert submitted["stage"] == "SUBMITTED"
 
-            question_id = growth.dashboard()["opportunities"][0]["id"]
-            # GEO questions have their own IDs; use persisted state through the module.
             data = growth._load()
             geo_question_id = data["geo_questions"][0]["id"]
             try:
@@ -83,9 +95,11 @@ def main():
             after_geo = growth.dashboard()
             assert after_geo["geo"]["tested_questions"] == 1
             assert after_geo["geo"]["mentioned"] == 0
+            measured = seo_patch._dashboard_payload()
+            assert measured["geo"]["measurement_state"] == "measured"
 
             ui = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
-            for token in ("SEO/GEO增长中心", "关键词机会池", "索引与收录漏斗", "GEO / AI 50问验证", "技术SEO健康检查", "内容与页面工厂", "今日自动作业流水线", "转化与归因"):
+            for token in ("SEO/GEO增长中心", "关键词机会池", "索引与收录漏斗", "GEO / AI 50问验证", "技术SEO健康检查", "内容与页面工厂", "今日自动作业流水线", "转化与归因", "今日增量", "累计真值", "本周公开页面目标", "性能测速"):
                 assert token in ui
             assert "[object Object]" not in ui
 
@@ -96,10 +110,6 @@ def main():
             assert "/r8_13_seo_geo_bridge.js" in startup
             runpy = (SOURCE / "run.py").read_text(encoding="utf-8")
             assert "r8_13_seo_geo_patch" in runpy
-            # R8-14 replaced the legacy one-shot R8-13 scheduler entry with the
-            # durable autonomy controller. The R8-13 regression should verify
-            # that its growth center remains wired into the current scheduler,
-            # not require the removed legacy function name.
             assert "r8_14_seo_geo_autonomy_patch" in runpy
             assert "run_seo_geo_autonomy" in runpy
 
@@ -111,7 +121,7 @@ def main():
             else:
                 os.environ["LOCALAPPDATA"] = previous
 
-    print("PASS: R8-13 truthful SEO/GEO growth center, staging pipeline, evidence gates and owner UI verified under R8-14 autonomy scheduler.")
+    print("PASS: R8-13 truthful SEO/GEO growth center, daily-vs-total evidence summary, staging pipeline, evidence gates and owner UI verified.")
 
 
 if __name__ == "__main__":
