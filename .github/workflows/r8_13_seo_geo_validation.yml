@@ -1,0 +1,68 @@
+name: Validate R8-13 SEO GEO Growth Center
+
+on:
+  push:
+    branches: ['r8-13-*']
+    paths:
+      - '05_V2.0.0_Source/core/seo_geo_growth.py'
+      - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_13_seo_geo_growth.py'
+      - '.github/workflows/r8_13_seo_geo_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/seo_geo_growth.py'
+      - '05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo.html'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_13_seo_geo_growth.py'
+      - '.github/workflows/r8_13_seo_geo_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-seo-geo:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify truthful SEO GEO growth ledger and UI
+        run: python 04_Build/v2/test_r8_13_seo_geo_growth.py
+      - name: Compile R8-13 backend modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/seo_geo_growth.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_13_seo_geo_patch.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+      - name: Check R8-13 browser scripts
+        run: |
+          node --check 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js
+          node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
+      - name: Verify SEO GEO truth contract
+        run: |
+          $core = Get-Content 05_V2.0.0_Source/core/seo_geo_growth.py -Raw
+          @('GENERATED', 'PUBLISHED', 'SUBMITTED', 'CRAWLED', 'INDEXED', 'RANKED', 'MENTIONED', 'CITED', 'CONVERTED', 'PUBLISHED 必须提供真实可验证的公网URL', 'SUBMITTED 必须提供搜索引擎与真实提交回执') | ForEach-Object {
+            if (-not $core.Contains($_)) { throw "Missing SEO/GEO truth contract: $_" }
+          }
+          $ui = Get-Content 05_V2.0.0_Source/web/r8_13_seo_geo.html -Raw
+          @('SEO/GEO增长中心','关键词机会池','索引与收录漏斗','GEO / AI 50问验证','技术SEO健康检查','内容与页面工厂','今日自动作业流水线','转化与归因') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing owner SEO/GEO UI contract: $_" }
+          }
+          $bridge = Get-Content 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js -Raw
+          if (-not $bridge.Contains('SEO/GEO增长')) { throw 'SEO/GEO primary navigation entry missing' }
+          if (-not $bridge.Contains('/r8_13_seo_geo.html?embed=1')) { throw 'SEO/GEO embedded owner page missing' }
+          Write-Host 'R8-13 validates local-first SEO/GEO planning, truthful external-state gates and the dedicated owner growth center.'
