@@ -122,7 +122,7 @@ def checkpoint_runtime(reason="scheduler"):
             "growth_id": current.get("growth_id"),
             "stable_mission_id": previous.get("mission_id"),
             "rejected_mission_id": current.get("mission_id"),
-            "reason": str(reason or "scheduler")[:120],
+            "checkpoint_reason": str(reason or "scheduler")[:120],
         }
         _append_audit("mission_identity_drift_blocked", detail)
         return {"saved": False, "reason": "same_growth_mission_identity_drift", **detail}
