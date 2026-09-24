@@ -24,7 +24,6 @@ def check_local_first_video_recovery():
         "campaigns": [{
             "id": "KZ-LOCAL-001", "region": "涟水县", "service": "水电安装维修",
             "title": "涟水水电维修本地验证", "goal": "真实咨询",
-            # Simulate an upgraded legacy campaign whose fragile source_type was lost.
             "source_type": "legacy_upgrade",
         }],
         "videos": [{
@@ -65,8 +64,6 @@ def check_local_first_video_recovery():
         assert video["bottleneck"] is None
         assert video["chatgpt_handoff"]["phase"] == "local_autonomy_plan"
 
-        # Same video with an existing plan must resume idempotently instead of
-        # creating/replacing the Mission/video lineage.
         video["status"] = "异常待处理"
         video["candidates"] = []
         video["chatgpt_handoff"] = {"kind": "content_production", "phase": "retry_exhausted"}
@@ -86,12 +83,10 @@ def check_optional_chatgpt_contract():
         "authorized_mission_runs_local_first",
         "local_autonomy_retry",
         "实时ChatGPT为可选增强",
-        "Mission授权任务不会走到这里",
+        "Mission自治任务不会走到这里",
         "_recover_authorized_local_qc",
     ):
         assert token in source, f"missing local-first watchdog contract: {token}"
-    # The old global rule that every exhausted Mission handoff becomes owner
-    # attention must not be the Mission path anymore.
     assert "非Mission授权任务的ChatGPT请求连续重发仍未返回" in source
 
 
@@ -152,8 +147,6 @@ def check_safe_douyin_device_staging():
             assert any("push" in command for command in commands)
             assert any("com.ss.android.ugc.aweme" in command for command in commands)
 
-            # A staged task is terminal for this safe executor: another tick must
-            # not push again or create a second task.
             command_count = len(commands)
             second = executor.run_pending(limit=1)
             assert second["processed"] == 0
