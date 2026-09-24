@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from backend import server
@@ -39,9 +41,68 @@ def _read_json_body(handler):
     return json.loads(handler.rfile.read(length) or b"{}")
 
 
+def _staging_evidence(payload):
+    """Derive owner-facing local evidence without claiming public success."""
+    assets = list(payload.get("assets") or [])
+    today = datetime.now().astimezone().date().isoformat()
+    generated_today = 0
+    qc_today = 0
+    published_today = 0
+    staged_files = 0
+    canonical_files = 0
+    schema_files = 0
+    title_files = 0
+    description_files = 0
+
+    for asset in assets:
+        if str(asset.get("generated_at") or "").startswith(today):
+            generated_today += 1
+        if str(asset.get("qc_passed_at") or "").startswith(today):
+            qc_today += 1
+        if str(asset.get("published_at") or "").startswith(today):
+            published_today += 1
+        path = Path(str(asset.get("staging_path") or ""))
+        if not path.is_file():
+            continue
+        staged_files += 1
+        try:
+            html = path.read_text(encoding="utf-8", errors="replace")[:1024 * 1024]
+        except OSError:
+            continue
+        lower = html.lower()
+        if "rel=\"canonical\"" in lower or "rel='canonical'" in lower:
+            canonical_files += 1
+        if "application/ld+json" in lower:
+            schema_files += 1
+        if "<title>" in lower and "</title>" in lower:
+            title_files += 1
+        if "name=\"description\"" in lower or "name='description'" in lower:
+            description_files += 1
+
+    qc_total = sum(1 for asset in assets if str(asset.get("stage") or "") in {
+        "QC_PASSED", "PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"
+    })
+    return {
+        "today_generated": generated_today,
+        "today_qc_passed": qc_today,
+        "today_published": published_today,
+        "asset_total": len(assets),
+        "qc_passed_total": qc_total,
+        "staged_files": staged_files,
+        "canonical_files": canonical_files,
+        "schema_files": schema_files,
+        "title_files": title_files,
+        "description_files": description_files,
+        "truth": "本地文件、Title、Description、Canonical、Schema 只代表本地证据；公网状态仍必须由真实URL验证。",
+    }
+
+
 def _dashboard_payload():
     payload = dashboard()
     payload.setdefault("technical", {})["public_site"] = search_growth_status()
+    payload["evidence_summary"] = _staging_evidence(payload)
+    geo = payload.setdefault("geo", {})
+    geo["measurement_state"] = "measured" if int(geo.get("observations") or 0) > 0 else "not_started"
     return payload
 
 
