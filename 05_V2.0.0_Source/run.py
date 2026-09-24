@@ -37,6 +37,10 @@ from backend import r8_10_control_patch as _r8_10_control_patch  # noqa: F401,E4
 # R8-11 joins Command -> Mission -> execution -> platform Receipt -> business
 # context into one ledger and exposes a unified no-paid-token channel registry.
 from backend import r8_11_backbone_patch as _r8_11_backbone_patch  # noqa: F401,E402
+# R8-12 replaces temporary Mission/service/device account binding with a durable
+# Account Registry + independent Device Pool. Importing this patch installs the
+# owner API surface and performs monotonic legacy migration/recovery at startup.
+from backend import r8_12_account_center_patch as _r8_12_account_center_patch  # noqa: F401,E402
 # Extend the fallback bridge with a narrow mission_decision contract.
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
@@ -88,10 +92,10 @@ def start_scheduler():
                     run_ai_gateway(limit=2)
                     sync_chatgpt_handoffs()
                     bridge_sync_once()
-                    # Owner-approved content is automatically routed to every
-                    # matching verified target-platform account. This creates
-                    # publication plans only; real platform execution still needs
-                    # a verified connector/device receipt.
+                    # Owner-approved content is automatically routed through the
+                    # durable Account Registry. Publication plans are idempotent;
+                    # real platform execution still requires an approved API path
+                    # or verified device and a real external receipt.
                     run_publish_planning(limit=10)
                     sync_autonomous_ops(autostart=False)
                     # Publish one truthful R8-11 Mission ledger + channel registry
