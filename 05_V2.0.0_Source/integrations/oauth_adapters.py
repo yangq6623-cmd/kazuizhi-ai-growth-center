@@ -25,7 +25,10 @@ def provider_status(platform: str) -> dict:
     )
     result["supports_qr_authorization"] = platform in {"douyin", "kuaishou", "wechat_channels"}
     result["publish_scope_requires_platform_approval"] = platform in {"douyin", "kuaishou", "xiaohongshu", "wechat_channels"}
-    result["truth"] = "官方登录由平台页面完成；未完成回调/token/身份验证前不会标记账号为已连接。"
+    result["truth"] = (
+        "未申请或未配置官方应用凭据时，只显示未配置；不会伪造扫码登录或发布权限。"
+        "官方登录由平台页面完成；未完成回调/token/身份验证前不会标记账号为已连接。"
+    )
     return result
 
 
