@@ -16,6 +16,7 @@ from core.seo_geo_growth import (
     run_daily_cycle,
     technical_snapshot,
 )
+from promotion.search_growth import audit as audit_search_site, status as search_growth_status
 
 _INSTALLED = False
 
@@ -38,6 +39,12 @@ def _read_json_body(handler):
     return json.loads(handler.rfile.read(length) or b"{}")
 
 
+def _dashboard_payload():
+    payload = dashboard()
+    payload.setdefault("technical", {})["public_site"] = search_growth_status()
+    return payload
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -50,10 +57,12 @@ def install():
         path = urlsplit(handler.path).path
         try:
             if path == "/api/r8-13/seo-geo":
-                handler._json_ok(dashboard())
+                handler._json_ok(_dashboard_payload())
                 return
             if path == "/api/r8-13/seo-geo/technical":
-                handler._json_ok(technical_snapshot())
+                result = technical_snapshot()
+                result["public_site"] = search_growth_status()
+                handler._json_ok(result)
                 return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             handler._json_error(400, error)
@@ -67,6 +76,7 @@ def install():
             "/api/r8-13/seo-geo/plan",
             "/api/r8-13/seo-geo/generate",
             "/api/r8-13/seo-geo/run",
+            "/api/r8-13/seo-geo/audit-site",
             "/api/r8-13/seo-geo/asset-stage",
             "/api/r8-13/seo-geo/geo-observation",
         }
@@ -78,16 +88,21 @@ def install():
         try:
             payload = _read_json_body(handler)
             if path == "/api/r8-13/seo-geo/config":
-                handler._json_ok({"config": configure(payload), "dashboard": dashboard()})
+                handler._json_ok({"config": configure(payload), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/plan":
-                handler._json_ok({"result": plan_today(payload.get("limit")), "dashboard": dashboard()})
+                handler._json_ok({"result": plan_today(payload.get("limit")), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/generate":
-                handler._json_ok({"result": generate_staging(payload.get("limit") or 6), "dashboard": dashboard()})
+                handler._json_ok({"result": generate_staging(payload.get("limit") or 6), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/run":
-                handler._json_ok({"result": run_daily_cycle(force=bool(payload.get("force"))), "dashboard": dashboard()})
+                handler._json_ok({"result": run_daily_cycle(force=bool(payload.get("force"))), "dashboard": _dashboard_payload()})
+                return
+            if path == "/api/r8-13/seo-geo/audit-site":
+                site = str(payload.get("site") or dashboard().get("config", {}).get("site_base_url") or "").strip()
+                result = audit_search_site({"site": site})
+                handler._json_ok({"audit": result, "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/asset-stage":
                 asset_id = str(payload.get("asset_id") or "").strip()
@@ -95,10 +110,10 @@ def install():
                 if not asset_id or not stage:
                     raise ValueError("asset_id 和 stage 不能为空")
                 evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
-                handler._json_ok({"asset": record_asset_stage(asset_id, stage, evidence), "dashboard": dashboard()})
+                handler._json_ok({"asset": record_asset_stage(asset_id, stage, evidence), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/geo-observation":
-                handler._json_ok({"observation": record_geo_observation(payload), "dashboard": dashboard()})
+                handler._json_ok({"observation": record_geo_observation(payload), "dashboard": _dashboard_payload()})
                 return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
