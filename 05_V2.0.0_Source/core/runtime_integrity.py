@@ -116,7 +116,17 @@ def checkpoint_runtime(reason="scheduler"):
     if current is None: return {"saved": False, "reason": "no_active_mission"}
     previous = read_json(CHECKPOINT_PATH, {})
     previous = previous if isinstance(previous, dict) and previous.get("schema") == SCHEMA else None
-    if previous and previous.get("growth_id") == current.get("growth_id") and _quality(current) < _quality(previous):
+    same_growth = bool(previous and previous.get("growth_id") == current.get("growth_id"))
+    if same_growth and str(previous.get("mission_id") or "") != str(current.get("mission_id") or ""):
+        detail = {
+            "growth_id": current.get("growth_id"),
+            "stable_mission_id": previous.get("mission_id"),
+            "rejected_mission_id": current.get("mission_id"),
+            "reason": str(reason or "scheduler")[:120],
+        }
+        _append_audit("mission_identity_drift_blocked", detail)
+        return {"saved": False, "reason": "same_growth_mission_identity_drift", **detail}
+    if same_growth and _quality(current) < _quality(previous):
         return {"saved": False, "reason": "same_growth_snapshot_is_less_complete", "current_quality": _quality(current), "checkpoint_quality": _quality(previous)}
     current["reason"] = str(reason or "scheduler")[:120]
     write_json(CHECKPOINT_PATH, current)
@@ -132,6 +142,25 @@ def _merge_by_id(current, fallback, id_field="id"):
         if not identifier or identifier in existing: continue
         current.append(deepcopy(candidate)); existing[identifier] = current[-1]; restored += 1
     return restored
+
+
+def _canonicalize_same_growth_missions(ops, growth_id, mission_id, checkpoint_mission):
+    missions = [x for x in (ops.get("missions") or []) if isinstance(x, dict)]
+    same_growth = [x for x in missions if str(x.get("growth_id") or "") == growth_id]
+    canonical = deepcopy(same_growth[0] if same_growth else checkpoint_mission or {})
+    created = 0 if same_growth else 1
+    repaired = False
+    if str(canonical.get("mission_id") or "") != mission_id:
+        canonical["mission_id"] = mission_id
+        repaired = True
+    canonical["growth_id"] = growth_id
+    for field, value in (checkpoint_mission or {}).items():
+        if _missing(canonical.get(field)) and not _missing(value):
+            canonical[field] = deepcopy(value)
+    others = [x for x in missions if str(x.get("growth_id") or "") != growth_id]
+    deduped = max(0, len(same_growth) - 1)
+    ops["missions"] = [canonical] + others
+    return canonical, created, repaired, deduped
 
 
 def recover_runtime_if_degraded():
@@ -160,22 +189,26 @@ def recover_runtime_if_degraded():
     from promotion import content_factory as cf
     cf._save(factory)
 
-    missions = ops.setdefault("missions", [])
-    by_growth = next((x for x in missions if isinstance(x, dict) and x.get("growth_id") == growth_id), None)
     old = deepcopy(checkpoint.get("mission") or {})
-    rm, repaired = 0, False
-    if by_growth is None:
-        missions.insert(0, old); rm = 1
-    else:
-        if str(by_growth.get("mission_id") or "") != mission_id:
-            by_growth["mission_id"] = mission_id; repaired = True
-        for field, value in old.items():
-            if _missing(by_growth.get(field)) and not _missing(value): by_growth[field] = deepcopy(value)
-    ops["active_mission_id"] = mission_id; ops["updated_at"] = now_iso(); write_json("ops/autonomous_ops.json", ops)
+    canonical, rm, repaired, deduped = _canonicalize_same_growth_missions(ops, growth_id, mission_id, old)
+    ops["active_mission_id"] = mission_id
+    if isinstance(ops.get("active_mission"), dict): ops["active_mission"] = deepcopy(canonical)
+    ops["updated_at"] = now_iso()
+    write_json("ops/autonomous_ops.json", ops)
 
-    changed = any((rc, rv, rp, rr, rm, repaired))
+    changed = any((rc, rv, rp, rr, rm, repaired, deduped))
     if changed:
-        detail = {"mission_id": mission_id, "growth_id": growth_id, "campaigns": rc, "videos": rv, "plans": rp, "receipts": rr, "mission": rm, "mission_identity_repaired": repaired}
+        detail = {
+            "mission_id": mission_id,
+            "growth_id": growth_id,
+            "campaigns": rc,
+            "videos": rv,
+            "plans": rp,
+            "receipts": rr,
+            "mission": rm,
+            "mission_identity_repaired": repaired,
+            "deduped_same_growth_missions": deduped,
+        }
         _append_audit("partial_runtime_recovery", detail)
         return {"restored": True, **detail}
     return {"restored": False, "reason": "degraded_but_nothing_safe_to_restore"}
