@@ -17,11 +17,12 @@
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
+    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
     ['/kz_site_tools.js', 'kzSiteTools'],
     ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
     ['/kz_async_control_ui.js', 'kzAsyncControlUi'],
   ];
-  const GENERATED_ID_PREFIXES = ['r8-', 'r810-', 'r811-', 'r812-', 'kz-'];
+  const GENERATED_ID_PREFIXES = ['r8-', 'r810-', 'r811-', 'r812-', 'r813-', 'kz-'];
 
   function emit(name, detail = {}) {
     window.dispatchEvent(new CustomEvent(name, {detail}));
