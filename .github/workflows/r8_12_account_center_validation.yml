@@ -8,8 +8,12 @@ on:
       - '05_V2.0.0_Source/core/runtime_integrity.py'
       - '05_V2.0.0_Source/integrations/account_router.py'
       - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
+      - '05_V2.0.0_Source/integrations/douyin_dry_run_executor.py'
       - '05_V2.0.0_Source/integrations/credential_vault.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
       - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
       - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
@@ -17,9 +21,12 @@ on:
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
       - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
       - '05_V2.0.0_Source/web/memory.js'
+      - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
       - '04_Build/v2/test_r8_12_account_publish_runtime.py'
+      - '04_Build/v2/test_r8_12_local_first_closed_loop.py'
       - 'docs/R8_12_ACCOUNT_PUBLISH_0_TO_10_STANDARD.md'
       - '.github/workflows/r8_12_account_center_validation.yml'
   pull_request:
@@ -29,8 +36,12 @@ on:
       - '05_V2.0.0_Source/core/runtime_integrity.py'
       - '05_V2.0.0_Source/integrations/account_router.py'
       - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
+      - '05_V2.0.0_Source/integrations/douyin_dry_run_executor.py'
       - '05_V2.0.0_Source/integrations/credential_vault.py'
       - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
       - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
       - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
       - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
@@ -38,9 +49,12 @@ on:
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
       - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
       - '05_V2.0.0_Source/web/memory.js'
+      - '05_V2.0.0_Source/run.py'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
       - '04_Build/v2/test_r8_12_account_publish_runtime.py'
+      - '04_Build/v2/test_r8_12_local_first_closed_loop.py'
       - 'docs/R8_12_ACCOUNT_PUBLISH_0_TO_10_STANDARD.md'
       - '.github/workflows/r8_12_account_center_validation.yml'
 
@@ -65,30 +79,56 @@ jobs:
         run: python 04_Build/v2/test_r8_12_unified_account_center.py
       - name: Verify account route publish dry-run and partial recovery
         run: python 04_Build/v2/test_r8_12_account_publish_runtime.py
+      - name: Verify local-first Mission closed loop and safe real-device staging
+        run: python 04_Build/v2/test_r8_12_local_first_closed_loop.py
       - name: Compile R8-12 runtime modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/account_registry.py
           python -m py_compile 05_V2.0.0_Source/core/runtime_integrity.py
           python -m py_compile 05_V2.0.0_Source/integrations/account_router.py
           python -m py_compile 05_V2.0.0_Source/integrations/publish_dry_run_queue.py
+          python -m py_compile 05_V2.0.0_Source/integrations/douyin_dry_run_executor.py
           python -m py_compile 05_V2.0.0_Source/integrations/credential_vault.py
           python -m py_compile 05_V2.0.0_Source/integrations/oauth_adapters.py
+          python -m py_compile 05_V2.0.0_Source/promotion/local_mission_planner.py
+          python -m py_compile 05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py
           python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
           python -m py_compile 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_12_account_center_patch.py
+          python -m py_compile 05_V2.0.0_Source/run.py
           node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
-      - name: Verify durable routing is the publication source of truth
+          node --check 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js
+      - name: Verify durable routing and safe dry-run are publication source of truth
         run: |
           $planner = Get-Content 05_V2.0.0_Source/promotion/publish_orchestrator.py -Raw
           @('route_account','r8_12_durable_account_registry','account_asset_id','route_kind','没有真实平台 Receipt') | ForEach-Object {
             if (-not $planner.Contains($_)) { throw "Missing durable publish-routing contract: $_" }
           }
           if ($planner.Contains('_matching_accounts')) { throw 'Legacy region/service account matcher is still active in R8-12 publication planning.' }
-          $dryrun = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
-          @('device_asset_id','adb_device_id','final_publish_allowed','publishes_content') | ForEach-Object {
-            if (-not $dryrun.Contains($_)) { throw "Missing durable dry-run contract: $_" }
+          $queue = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
+          @('device_asset_id','adb_device_id','ready_for_composer','final_publish_allowed','publishes_content') | ForEach-Object {
+            if (-not $queue.Contains($_)) { throw "Missing durable dry-run queue contract: $_" }
           }
-      - name: Verify owner UI routes platform accounts through coordinated R8-12 startup
+          $executor = Get-Content 05_V2.0.0_Source/integrations/douyin_dry_run_executor.py -Raw
+          @('ready_for_composer','com.ss.android.ugc.aweme','final_publish_allowed','publishes_content','Content/Post ID + URL / Receipt') | ForEach-Object {
+            if (-not $executor.Contains($_)) { throw "Missing safe real-device staging contract: $_" }
+          }
+          if ($executor.Contains('input tap')) { throw 'Safe staging executor contains direct tap automation and could cross the publication safety boundary.' }
+      - name: Verify local-first Mission production and QC contract
+        run: |
+          $local = Get-Content 05_V2.0.0_Source/promotion/local_mission_planner.py -Raw
+          @('mission_authorization','local_autonomy_under_active_mission','实时ChatGPT未返回','不重复创建任务') | ForEach-Object {
+            if (-not $local.Contains($_)) { throw "Missing local-first planner contract: $_" }
+          }
+          $watchdog = Get-Content 05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py -Raw
+          @('authorized_mission_runs_local_first','local_autonomy_retry','实时ChatGPT为可选增强','_recover_authorized_local_qc') | ForEach-Object {
+            if (-not $watchdog.Contains($_)) { throw "Missing optional-ChatGPT fallback contract: $_" }
+          }
+          $runtime = Get-Content 05_V2.0.0_Source/run.py -Raw
+          @('run_pending_douyin_dry_runs','sync_chatgpt_handoffs','recover_authorized_qc') | ForEach-Object {
+            if (-not $runtime.Contains($_)) { throw "Missing local-first runtime wiring: $_" }
+          }
+      - name: Verify owner UI uses only unified account center
         run: |
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
           if (-not $loader.Contains('/r8_12_startup_coordinator.js')) { throw 'Owner shell does not load the R8-12.1 startup coordinator.' }
@@ -100,6 +140,11 @@ jobs:
           @('data-execution-page="accounts"','/r8_12_account_center.html?embed=1','stopImmediatePropagation') | ForEach-Object {
             if (-not $bridge.Contains($_)) { throw "Missing owner account-route contract: $_" }
           }
+          $hotfix = Get-Content 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js -Raw
+          @('retireLegacyAccountSurface','#account-form','KZR812AccountCenter') | ForEach-Object {
+            if (-not $hotfix.Contains($_)) { throw "Missing legacy-account retirement contract: $_" }
+          }
+          if ($hotfix.Contains("const PAGES = new Set(['dashboard','content','search','accounts'")) { throw 'Legacy accounts page is still a normal R8-11 owner route.' }
       - name: Verify recovery, truth and security contracts
         run: |
           $registry = Get-Content 05_V2.0.0_Source/core/account_registry.py -Raw
@@ -126,4 +171,4 @@ jobs:
           @('0→10 成熟度','最低发布门槛：7.5','故障注入测试矩阵','Receipt') | ForEach-Object {
             if (-not $standard.Contains($_)) { throw "Missing 0-to-10 acceptance standard: $_" }
           }
-          Write-Host 'R8-12 validates durable account identity, coordinated cold start, Mission identity lock, truthful publication planning and monotonic partial recovery.'
+          Write-Host 'R8-12.2 validates permanent identity, single account UI, local-first Mission content, safe real-device staging and truthful publication boundaries.'
