@@ -41,18 +41,25 @@
       detail: item.detail || '请打开对应执行环节查看。',
       action: item.action || '去处理',
       page: item.page || 'dashboard',
+      target: '',
     }));
   }
 
   function seoHumanItems(seo) {
-    return (seo?.human_items || []).map(item => ({
-      source: 'seo',
-      id: String(item.key || ''),
-      title: item.title || 'SEO/GEO 需要授权或配置',
-      detail: [item.reason, item.action ? `下一步：${item.action}` : ''].filter(Boolean).join(' '),
-      action: '去 SEO/GEO 处理',
-      page: 'r813-seo-geo',
-    }));
+    return (seo?.human_items || []).map(item => {
+      const key = String(item.key || '');
+      const search = key.includes('search_connector');
+      const deploy = key.includes('public_deploy');
+      return {
+        source: 'seo',
+        id: key,
+        title: item.title || 'SEO/GEO 需要授权或配置',
+        detail: [item.reason, item.action ? `下一步：${item.action}` : ''].filter(Boolean).join(' '),
+        action: search ? '授权搜索平台' : deploy ? '配置公网部署' : '去 SEO/GEO 处理',
+        page: 'r813-seo-geo',
+        target: search ? 'connectors-section' : deploy ? 'technical' : 'pipeline-section',
+      };
+    });
   }
 
   function combinedAttention(factory, seo) {
@@ -64,6 +71,15 @@
       seen.add(key);
       return true;
     });
+  }
+
+  function openSeoTarget(target) {
+    document.querySelector('.r810-nav-button[data-target="r813-seo-geo"]')?.click();
+    if (!target) return;
+    window.setTimeout(() => {
+      const frame = $('r813-seo-geo-frame');
+      try { frame?.contentDocument?.getElementById(target)?.scrollIntoView({behavior:'smooth', block:'start'}); } catch {}
+    }, 350);
   }
 
   function renderGlobalAttention(factory, seo) {
@@ -106,12 +122,12 @@
       <div class="r810-attention-item">
         <div class="r810-attention-icon">${index + 1}</div>
         <div><b>${esc(item.title)}</b><span>${esc(item.detail)}</span></div>
-        <button class="r810-action primary" data-r815-attention-page="${esc(item.page)}">${esc(item.action)}</button>
+        <button class="r810-action primary" data-r815-attention-page="${esc(item.page)}" data-r815-seo-target="${esc(item.target || '')}">${esc(item.action)}</button>
       </div>`).join('');
     list.querySelectorAll('[data-r815-attention-page]').forEach(button => button.addEventListener('click', () => {
       const page = button.dataset.r815AttentionPage;
       if (page === 'r813-seo-geo') {
-        document.querySelector('.r810-nav-button[data-target="r813-seo-geo"]')?.click();
+        openSeoTarget(button.dataset.r815SeoTarget || '');
         return;
       }
       if (typeof window.openPage === 'function') window.openPage(page);
@@ -163,30 +179,37 @@
     let doc;
     try { doc = frame?.contentDocument; } catch { return; }
     if (!doc) return;
-    doc.querySelectorAll('.health-item').forEach(item => {
-      const name = item.querySelector('b')?.textContent?.trim() || '';
-      const sub = item.querySelector('.sub');
-      const badge = item.querySelector('.tag');
-      if (!sub || !badge) return;
-      const positive = /正常|已有|通过|200/.test(badge.textContent || '');
-      if (['robots.txt','sitemap.xml','canonical / Schema'].includes(name)) {
-        sub.textContent = positive ? '本地生成/配置证据已存在；不等于公网已发布' : '待本地生成或配置';
-        badge.textContent = positive ? '本地已就绪' : '待配置';
-        badge.className = `tag ${positive ? 'wait' : 'warn'}`;
-      } else if (name === '公网技术审计') {
-        sub.textContent = positive ? '已取得真实公网技术审计证据' : '待真实公网 URL 上线后验证';
-        badge.textContent = positive ? '公网已审计' : '待公网验证';
-        badge.className = `tag ${positive ? 'ok' : 'warn'}`;
-      } else if (name === '移动端/速度') {
-        sub.textContent = positive ? '真实公网首页已返回 HTTP 200，可继续测速' : '待真实公网 URL 后验证';
-        badge.textContent = positive ? '公网可访问' : '待公网验证';
-        badge.className = `tag ${positive ? 'ok' : 'warn'}`;
-      } else if (name === '内链结构') {
-        sub.textContent = '待页面真实公开后做可抓取内链验证';
-        badge.textContent = '待公网验证';
-        badge.className = 'tag warn';
-      }
-    });
+
+    // R8-15.1 SEO/GEO UI owns its detailed evidence semantics itself. Do not
+    // overwrite its local/public/performance distinctions with the older
+    // compatibility labels below.
+    const ownsDetailedTruth = Boolean(doc.getElementById('today-metrics') && doc.getElementById('truth-metrics'));
+    if (!ownsDetailedTruth) {
+      doc.querySelectorAll('.health-item').forEach(item => {
+        const name = item.querySelector('b')?.textContent?.trim() || '';
+        const sub = item.querySelector('.sub');
+        const badge = item.querySelector('.tag');
+        if (!sub || !badge) return;
+        const positive = /正常|已有|通过|200/.test(badge.textContent || '');
+        if (['robots.txt','sitemap.xml','canonical / Schema'].includes(name)) {
+          sub.textContent = positive ? '本地生成/配置证据已存在；不等于公网已发布' : '待本地生成或配置';
+          badge.textContent = positive ? '本地已就绪' : '待配置';
+          badge.className = `tag ${positive ? 'wait' : 'warn'}`;
+        } else if (name === '公网技术审计') {
+          sub.textContent = positive ? '已取得真实公网技术审计证据' : '待真实公网 URL 上线后验证';
+          badge.textContent = positive ? '公网已审计' : '待公网验证';
+          badge.className = `tag ${positive ? 'ok' : 'warn'}`;
+        } else if (name === '移动端/速度') {
+          sub.textContent = positive ? '真实公网首页已返回 HTTP 200，可继续测速' : '待真实公网 URL 后验证';
+          badge.textContent = positive ? '公网可访问' : '待公网验证';
+          badge.className = `tag ${positive ? 'ok' : 'warn'}`;
+        } else if (name === '内链结构') {
+          sub.textContent = '待页面真实公开后做可抓取内链验证';
+          badge.textContent = '待公网验证';
+          badge.className = 'tag warn';
+        }
+      });
+    }
 
     const humanCount = doc.getElementById('r814-human-count');
     const humanCard = humanCount?.closest('.r814-stat');
