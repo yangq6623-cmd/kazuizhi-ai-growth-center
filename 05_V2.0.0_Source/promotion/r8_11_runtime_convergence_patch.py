@@ -1,19 +1,21 @@
-"""R8-11 runtime convergence fixes for restored Missions.
+"""R8-11/R8-12 runtime convergence for truthful restored Missions.
 
-This patch closes three upgrade/restart gaps without inventing external truth:
-1. an owner-approved video that previously fell into ``等待账号`` can resume
-   publication planning after the same real account becomes verified;
-2. restored Mission state is recovered before autonomous autostart, preventing
-   a second video from being created while the prior execution chain exists;
-3. the foreground video prefers an already owner-approved publish chain over a
-   newer accidental planning duplicate.
+R8-12 adds a monotonic runtime integrity checkpoint before autonomous work:
+partial degradation (lost video/plan/receipt indexes or same-Growth Mission-ID
+drift) is repaired without waiting for the whole runtime to become empty.
 
-A duplicate planning task created during a recovery race is safely paused. Real
-publication is still impossible without a real platform Content ID + URL receipt.
+Existing convergence rules remain:
+1. owner-approved ``等待账号`` content may resume after the same real account
+   becomes usable;
+2. duplicate recovery-race production tasks are paused;
+3. the foreground video prefers the approved publish chain.
+
+No recovery function invents media or external publication truth.
 """
 from __future__ import annotations
 
 from core import autonomous_ops
+from core.runtime_integrity import checkpoint_runtime, recover_runtime_if_degraded
 from core.storage import now_iso, read_json
 from promotion import content_factory as cf
 from promotion import chatgpt_handoff_watchdog as watchdog
@@ -74,7 +76,11 @@ def _pause_recovery_race_duplicates() -> int:
         if isinstance(video, dict):
             by_campaign.setdefault(video.get("campaign_id"), []).append(video)
     for growth_id, videos in by_campaign.items():
-        approved = [x for x in videos if x.get("approved_at") and (x.get("review") or {}).get("decision") == "确认发布" and x.get("status") in PUBLISH_CHAIN_STATES]
+        approved = [
+            x for x in videos
+            if x.get("approved_at") and (x.get("review") or {}).get("decision") == "确认发布"
+            and x.get("status") in PUBLISH_CHAIN_STATES
+        ]
         if not approved:
             continue
         owner_video = select_foreground_video(approved, growth_id)
@@ -95,7 +101,11 @@ def _pause_recovery_race_duplicates() -> int:
 
 
 def create_publish_plan(payload):
-    """Resume a truthful owner-approved waiting-account video after verification."""
+    """Legacy compatibility: resume a truthful owner-approved waiting-account video.
+
+    R8-12 normal publication routing no longer depends on this legacy account
+    lookup; it is kept for older UI/API requests during migration.
+    """
     data = cf._load()
     video_id = str((payload or {}).get("video_id") or "").strip()
     video = next((x for x in data.get("videos", []) if x.get("id") == video_id), None)
@@ -109,19 +119,30 @@ def create_publish_plan(payload):
 
 
 def sync_from_runtime(*, autostart=True):
-    """Recover trusted Mission identity before any autonomous video autostart."""
+    """Repair the active lineage before autonomous work, then checkpoint it."""
     if autostart:
         try:
+            recover_runtime_if_degraded()
+        except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+            pass
+        try:
+            # Older R8-11 fallback remains useful only when no R8-12 checkpoint
+            # exists yet and both legacy local indexes really are empty.
             from core.mission_ledger import recover_if_empty
             recover_if_empty(client=None)
         except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
             pass
         _pause_recovery_race_duplicates()
-    return _ORIGINAL["sync_from_runtime"](autostart=autostart)
+    result = _ORIGINAL["sync_from_runtime"](autostart=autostart)
+    try:
+        checkpoint_runtime("autonomous_runtime_sync")
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        pass
+    return result
 
 
 def _recover_authorized_local_plans():
-    """Allow trusted R8-11 recovery Missions to use the existing local planner."""
+    """Allow trusted recovered Missions to use the existing local planner."""
     data = cf._load()
     trusted_growths = _trusted_recovered_growth_ids()
     campaign_by_id = {x.get("id"): x for x in data.get("campaigns", []) if isinstance(x, dict)}
