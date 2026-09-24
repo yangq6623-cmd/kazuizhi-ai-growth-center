@@ -5,6 +5,17 @@
 
   const PAGE_ID = 'r813-seo-geo';
 
+  function injectAutonomy(frame){
+    try{
+      const doc=frame.contentDocument;
+      if(!doc||doc.getElementById('r814-autonomy-script'))return;
+      const script=doc.createElement('script');
+      script.id='r814-autonomy-script';
+      script.src='/r8_14_seo_geo_autonomy_ui.js';
+      doc.body.appendChild(script);
+    }catch(error){console.warn('SEO/GEO autonomy UI inject deferred',error)}
+  }
+
   function ensurePage(){
     let page=document.getElementById(PAGE_ID);
     if(!page){
@@ -18,6 +29,7 @@
         try{
           const doc=frame.contentDocument;
           if(!doc)return;
+          injectAutonomy(frame);
           const resize=()=>{frame.style.height=`${Math.max(1300,doc.documentElement.scrollHeight,doc.body?.scrollHeight||0)+20}px`};
           resize();
           if(window.ResizeObserver){new ResizeObserver(resize).observe(doc.documentElement)}
