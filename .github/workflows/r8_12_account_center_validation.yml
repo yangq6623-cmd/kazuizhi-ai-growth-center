@@ -1,0 +1,73 @@
+name: Validate R8-12 Unified Account Center
+
+on:
+  push:
+    branches: ['r8-12-*']
+    paths:
+      - '05_V2.0.0_Source/core/account_registry.py'
+      - '05_V2.0.0_Source/integrations/account_router.py'
+      - '05_V2.0.0_Source/integrations/credential_vault.py'
+      - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '04_Build/v2/test_r8_12_unified_account_center.py'
+      - '.github/workflows/r8_12_account_center_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/account_registry.py'
+      - '05_V2.0.0_Source/integrations/account_router.py'
+      - '05_V2.0.0_Source/integrations/credential_vault.py'
+      - '05_V2.0.0_Source/integrations/oauth_adapters.py'
+      - '05_V2.0.0_Source/backend/r8_12_account_center_patch.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_12_account_center.html'
+      - '04_Build/v2/test_r8_12_unified_account_center.py'
+      - '.github/workflows/r8_12_account_center_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-account-center:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify durable account migration, device pool and routing
+        run: python 04_Build/v2/test_r8_12_unified_account_center.py
+      - name: Compile R8-12 modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/account_registry.py
+          python -m py_compile 05_V2.0.0_Source/integrations/account_router.py
+          python -m py_compile 05_V2.0.0_Source/integrations/credential_vault.py
+          python -m py_compile 05_V2.0.0_Source/integrations/oauth_adapters.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_12_account_center_patch.py
+      - name: Verify R8-12 truth and security contracts
+        run: |
+          $registry = Get-Content 05_V2.0.0_Source/core/account_registry.py -Raw
+          @('ACC-','all_local_services','preferred_device_id','legacy_account_ids','没有真实平台回执不得记为已发布') | ForEach-Object {
+            if (-not $registry.Contains($_)) { throw "Missing account registry contract: $_" }
+          }
+          $vault = Get-Content 05_V2.0.0_Source/integrations/credential_vault.py -Raw
+          @('CryptProtectData','CryptUnprotectData','secrets_in_github','secrets_in_registry') | ForEach-Object {
+            if (-not $vault.Contains($_)) { throw "Missing credential vault contract: $_" }
+          }
+          $oauth = Get-Content 05_V2.0.0_Source/integrations/oauth_adapters.py -Raw
+          @('未配置官方授权','publish_scope_requires_platform_approval','不会伪造扫码登录或发布权限') | ForEach-Object {
+            if (-not $oauth.Contains($_)) { throw "Missing OAuth truth contract: $_" }
+          }
+          $ui = Get-Content 05_V2.0.0_Source/web/r8_12_account_center.html -Raw
+          @('统一账号资产中心','已连接','需授权','设备离线','平台限制','重新授权') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing owner UX contract: $_" }
+          }
+          Write-Host 'R8-12 account identity is durable; authorization and devices are replaceable; external publication truth remains receipt-gated.'
