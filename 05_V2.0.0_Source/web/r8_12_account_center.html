@@ -11,7 +11,7 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <div><h1>统一账号资产中心</h1><p class="sub">账号只接入一次，Mission 只调用 account_id；重新授权不会重新创建账号。</p></div>
+    <div><h1>统一账号资产中心</h1><p class="sub">账号只接入一次，Mission 只调用 account_id；重新授权不会重新创建账号。同一平台可保存多个独立账号。</p></div>
     <div class="actions"><button class="ghost" id="migrate">迁移现有账号</button><button class="primary" id="refresh">刷新状态</button></div>
   </div>
   <div class="summary" id="summary"></div>
@@ -22,7 +22,7 @@
       <section class="panel" style="margin-top:18px"><b>官方授权能力</b><div id="oauth"></div></section>
     </aside>
   </div>
-  <div class="foot">真实发布标准不变：只有拿到真实平台 URL / Post ID / Receipt 才算发布成功。Token 不进入 GitHub、Mission JSON 或普通账号档案。</div>
+  <div class="foot">真实发布标准不变：只有拿到真实平台 URL / Post ID / Receipt 才算发布成功。Token 不进入 GitHub、Mission JSON 或普通账号档案；平台账号密码也不由卡嘴子保存。</div>
 </div>
 <script>
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
@@ -32,8 +32,9 @@ function ownerState(a,devices){if(a.auth_status==='needs_authorization')return [
 async function load(){const d=await api('/api/r8-12/account-center');const s=d.summary||{};summary.innerHTML=[['账号资产',s.accounts||0],['已连接',s.connected_accounts||0],['需授权',s.needs_authorization||0],['在线设备',s.online_devices||0]].map(x=>`<div class="metric"><span class="muted">${x[0]}</span><b>${x[1]}</b></div>`).join('');
  const devices=d.devices||[];accounts.innerHTML=(d.accounts||[]).map(a=>{const [state,kind]=ownerState(a,devices);const services=a.service_scope?.all_local_services?'全部本地服务':(a.service_scope?.services||[]).join('、')||'未设置';const regions=a.region_scope?.all_regions?'全部区域':(a.region_scope?.regions||[]).join('、')||'未设置';return `<div class="account"><div class="row"><div><b>${esc(a.platform_name)} · ${esc(a.display_name)}</b><div class="muted">${esc(a.account_id)}</div></div>${badge(state,kind)}</div><div class="tags">${badge('服务：'+services)}${badge('区域：'+regions)}${badge('设备：'+(a.preferred_device_id||'未指定'))}</div><div class="muted" style="margin-top:10px">以后授权过期只“重新授权”，不会重新创建账号，也不会改变历史发布归属。</div></div>`}).join('')||'<div class="empty">暂无账号资产</div>';
  devicesEl.innerHTML=devices.map(x=>`<div class="device"><div class="row"><b>${esc(x.label||x.device_id)}</b>${badge(x.connection==='connected'?'在线':'离线',x.connection==='connected'?'ok':'warn')}</div><div class="muted">${esc(x.device_id)} · ${esc(x.device_type||'')}</div></div>`).join('')||'<div class="empty">暂无设备</div>';
- oauth.innerHTML=(d.oauth?.providers||[]).map(x=>`<div class="oauth"><div class="row"><b>${esc(x.name||x.platform)}</b>${badge(x.configured?'可授权':'未配置',x.configured?'ok':'warn')}</div><div class="muted">${x.supports_qr_authorization?'支持扫码授权适配':'当前不声明扫码授权能力'}；发布权限仍以平台实际审批为准。</div></div>`).join('');}
+ oauth.innerHTML=(d.oauth?.providers||[]).map(x=>`<div class="oauth"><div class="row"><b>${esc(x.name||x.platform)}</b>${badge(x.configured?'可授权':(String(x.auth_mode||'').startsWith('official_portal')?'官方入口':'未配置'),x.configured?'ok':'warn')}</div><div class="muted">${x.supports_qr_authorization?'支持官方扫码/授权适配':'使用平台官方登录/授权入口'}；发布权限仍以平台实际审批为准。</div></div>`).join('');}
 const devicesEl=document.getElementById('devices');refresh.onclick=()=>load().catch(e=>alert(e.message));migrate.onclick=async()=>{await api('/api/r8-12/migrate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await load()};load().catch(e=>alert(e.message));
 </script>
+<script src="/r8_12_multi_account_auth_ui.js"></script>
 </body>
 </html>
