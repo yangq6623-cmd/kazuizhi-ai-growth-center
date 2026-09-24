@@ -96,7 +96,12 @@ def main():
             assert "/r8_13_seo_geo_bridge.js" in startup
             runpy = (SOURCE / "run.py").read_text(encoding="utf-8")
             assert "r8_13_seo_geo_patch" in runpy
-            assert "run_seo_geo_cycle" in runpy
+            # R8-14 replaced the legacy one-shot R8-13 scheduler entry with the
+            # durable autonomy controller. The R8-13 regression should verify
+            # that its growth center remains wired into the current scheduler,
+            # not require the removed legacy function name.
+            assert "r8_14_seo_geo_autonomy_patch" in runpy
+            assert "run_seo_geo_autonomy" in runpy
 
             connectors = growth.connector_status()
             assert all(item["secret_exposed"] is False for item in connectors.values())
@@ -106,7 +111,7 @@ def main():
             else:
                 os.environ["LOCALAPPDATA"] = previous
 
-    print("PASS: R8-13 truthful SEO/GEO growth center, staging pipeline, evidence gates and owner UI verified.")
+    print("PASS: R8-13 truthful SEO/GEO growth center, staging pipeline, evidence gates and owner UI verified under R8-14 autonomy scheduler.")
 
 
 if __name__ == "__main__":
