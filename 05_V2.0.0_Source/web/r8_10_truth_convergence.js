@@ -88,8 +88,9 @@
     const blocker = currentBlocker(data);
     leafNodes(dashboard).forEach(node => {
       const value = text(node);
-      if(/闭环得分\s*[\d.]+\s*\/\s*10/.test(value) || /自治闭环成熟度\s*[\d.]+\s*\/\s*10/.test(value)){
-        node.textContent = `自治闭环成熟度 ${score}/10`;
+      if(/闭环得分\s*[\d.]+\s*\/\s*10/.test(value) || /自治闭环成熟度\s*[\d.]+\s*\/\s*10/.test(value) || /自治闭环工程就绪度\s*[\d.]+\s*\/\s*10/.test(value)){
+        node.textContent = `自治闭环工程就绪度 ${score}/10（非业务KPI）`;
+        node.title = '工程就绪度依据当前 Mission 的生产、质检、账号、真实发布回执和归因链路计算；不代表订单、收入或推广效果。';
       }
       if(value.startsWith('当前首要阻塞')){
         node.textContent = `当前首要阻塞：${blocker}`;
