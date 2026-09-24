@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2] / "05_V2.0.0_Source"
 sys.path.insert(0, str(ROOT))
 
 from core import account_registry as registry
+from core import runtime_integrity as integrity
 from integrations import account_router
 from integrations.oauth_adapters import provider_status
 from integrations.credential_vault import status as vault_status
@@ -22,6 +23,77 @@ def check_owner_runtime_contract():
     assert "/r8_12_account_center.html?embed=1" in bridge
     assert "stopImmediatePropagation" in bridge
     assert "document.addEventListener('click'" in hotfix, "test contract changed: R8-11 execution router is expected to capture on document"
+
+    memory = (ROOT / "web" / "memory.js").read_text(encoding="utf-8")
+    coordinator = (ROOT / "web" / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+    assert "/r8_12_startup_coordinator.js" in memory, "owner overlays must load through the single R8-12.1 startup coordinator"
+    assert "/r8_10_workbench.js" not in memory, "memory.js must not race the coordinator with a direct R8-10 loader"
+    assert "/r8_10_truth_convergence.js" not in memory, "truth convergence must be sequenced by the coordinator"
+    for token in (
+        "SCRIPT_SEQUENCE",
+        "/r8_10_workbench.js",
+        "/r8_10_truth_convergence.js",
+        "/r8_11_backbone_ui.js",
+        "/r8_12_account_center_bridge.js",
+        "FiniteStartupObserver",
+        "dedupeGeneratedSingletons",
+        "forceInitialDashboardOnce",
+        "r810:workbench-ready",
+        "kz:app-ready",
+    ):
+        assert token in coordinator, f"startup convergence contract missing: {token}"
+
+
+def check_same_growth_mission_identity_guard():
+    identity_store = {
+        integrity.CHECKPOINT_PATH: {
+            "schema": integrity.SCHEMA,
+            "saved_at": "2026-09-24T12:00:00+08:00",
+            "mission_id": "MISSION-STABLE-001",
+            "growth_id": "KZ-STABLE-001",
+            "mission": {"mission_id": "MISSION-STABLE-001", "growth_id": "KZ-STABLE-001"},
+            "campaigns": [],
+            "videos": [],
+            "publication_plans": [],
+            "receipts": [],
+        }
+    }
+
+    def fake_read(path, default=None):
+        value = identity_store.get(path, default)
+        return json.loads(json.dumps(value, ensure_ascii=False)) if value is not None else None
+
+    def fake_write(path, value):
+        identity_store[path] = json.loads(json.dumps(value, ensure_ascii=False))
+        return value
+
+    original_read, original_write, original_bundle = integrity.read_json, integrity.write_json, integrity._bundle
+    try:
+        integrity.read_json = fake_read
+        integrity.write_json = fake_write
+        integrity._bundle = lambda: {
+            "schema": integrity.SCHEMA,
+            "saved_at": "2026-09-24T12:01:00+08:00",
+            "mission_id": "MISSION-DRIFT-999",
+            "growth_id": "KZ-STABLE-001",
+            "mission": {"mission_id": "MISSION-DRIFT-999", "growth_id": "KZ-STABLE-001"},
+            "campaigns": [],
+            "videos": [],
+            "publication_plans": [],
+            "receipts": [],
+        }
+        result = integrity.checkpoint_runtime("cold_start")
+        assert result["saved"] is False
+        assert result["reason"] == "same_growth_mission_identity_drift"
+        assert identity_store[integrity.CHECKPOINT_PATH]["mission_id"] == "MISSION-STABLE-001"
+        audit = identity_store.get(integrity.AUDIT_PATH, {})
+        assert audit.get("events", [])[0]["kind"] == "mission_identity_drift_blocked"
+    finally:
+        integrity.read_json, integrity.write_json, integrity._bundle = original_read, original_write, original_bundle
+
+    integrity_text = (ROOT / "core" / "runtime_integrity.py").read_text(encoding="utf-8")
+    assert "deduped_same_growth_missions" in integrity_text
+    assert "mission_identity_drift_blocked" in integrity_text
 
 
 def main():
@@ -90,7 +162,8 @@ def main():
     assert vault["secrets_in_github"] is False
 
     check_owner_runtime_contract()
-    print("R8-12 unified account center regression passed")
+    check_same_growth_mission_identity_guard()
+    print("R8-12 unified account center + startup convergence regression passed")
 
 
 if __name__ == "__main__":
