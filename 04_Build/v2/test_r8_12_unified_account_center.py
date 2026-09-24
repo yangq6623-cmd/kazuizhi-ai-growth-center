@@ -18,7 +18,7 @@ def check_owner_runtime_contract():
     bridge = (ROOT / "web" / "r8_12_account_center_bridge.js").read_text(encoding="utf-8")
     hotfix = (ROOT / "web" / "r8_11_execution_tab_hotfix.js").read_text(encoding="utf-8")
     assert "window.addEventListener('click'" in bridge, "R8-12 account route must capture on window before the R8-11 document capture handler"
-    assert "data-execution-page==='accounts'" in bridge
+    assert "button.dataset.executionPage==='accounts'" in bridge
     assert "/r8_12_account_center.html?embed=1" in bridge
     assert "stopImmediatePropagation" in bridge
     assert "document.addEventListener('click'" in hotfix, "test contract changed: R8-11 execution router is expected to capture on document"
