@@ -16,6 +16,7 @@ on:
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
       - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
       - '04_Build/v2/test_r8_12_account_publish_runtime.py'
@@ -36,6 +37,7 @@ on:
       - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
       - '05_V2.0.0_Source/web/r8_12_account_center.html'
       - '05_V2.0.0_Source/web/r8_12_account_center_bridge.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '05_V2.0.0_Source/web/memory.js'
       - '04_Build/v2/test_r8_12_unified_account_center.py'
       - '04_Build/v2/test_r8_12_account_publish_runtime.py'
@@ -74,6 +76,7 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
           python -m py_compile 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_12_account_center_patch.py
+          node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
       - name: Verify durable routing is the publication source of truth
         run: |
           $planner = Get-Content 05_V2.0.0_Source/promotion/publish_orchestrator.py -Raw
@@ -85,10 +88,14 @@ jobs:
           @('device_asset_id','adb_device_id','final_publish_allowed','publishes_content') | ForEach-Object {
             if (-not $dryrun.Contains($_)) { throw "Missing durable dry-run contract: $_" }
           }
-      - name: Verify owner UI routes platform accounts to R8-12
+      - name: Verify owner UI routes platform accounts through coordinated R8-12 startup
         run: |
           $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
-          if (-not $loader.Contains('/r8_12_account_center_bridge.js')) { throw 'Owner shell does not load R8-12 account center bridge.' }
+          if (-not $loader.Contains('/r8_12_startup_coordinator.js')) { throw 'Owner shell does not load the R8-12.1 startup coordinator.' }
+          $startup = Get-Content 05_V2.0.0_Source/web/r8_12_startup_coordinator.js -Raw
+          @('/r8_10_workbench.js','/r8_10_truth_convergence.js','/r8_11_backbone_ui.js','/r8_11_execution_tab_hotfix.js','/r8_12_account_center_bridge.js','forceInitialDashboardOnce','dedupeGeneratedSingletons','kz:app-ready') | ForEach-Object {
+            if (-not $startup.Contains($_)) { throw "Missing coordinated startup contract: $_" }
+          }
           $bridge = Get-Content 05_V2.0.0_Source/web/r8_12_account_center_bridge.js -Raw
           @('data-execution-page="accounts"','/r8_12_account_center.html?embed=1','stopImmediatePropagation') | ForEach-Object {
             if (-not $bridge.Contains($_)) { throw "Missing owner account-route contract: $_" }
@@ -100,7 +107,7 @@ jobs:
             if (-not $registry.Contains($_)) { throw "Missing account registry contract: $_" }
           }
           $integrity = Get-Content 05_V2.0.0_Source/core/runtime_integrity.py -Raw
-          @('runtime_last_good','same_growth_snapshot_is_less_complete','partial_runtime_recovery','different_active_growth') | ForEach-Object {
+          @('runtime_last_good','same_growth_snapshot_is_less_complete','same_growth_mission_identity_drift','mission_identity_drift_blocked','deduped_same_growth_missions','partial_runtime_recovery','different_active_growth') | ForEach-Object {
             if (-not $integrity.Contains($_)) { throw "Missing runtime recovery contract: $_" }
           }
           $vault = Get-Content 05_V2.0.0_Source/integrations/credential_vault.py -Raw
@@ -119,4 +126,4 @@ jobs:
           @('0→10 成熟度','最低发布门槛：7.5','故障注入测试矩阵','Receipt') | ForEach-Object {
             if (-not $standard.Contains($_)) { throw "Missing 0-to-10 acceptance standard: $_" }
           }
-          Write-Host 'R8-12 validates durable account identity, decoupled devices, owner UI routing, truthful publication planning and monotonic partial recovery.'
+          Write-Host 'R8-12 validates durable account identity, coordinated cold start, Mission identity lock, truthful publication planning and monotonic partial recovery.'
