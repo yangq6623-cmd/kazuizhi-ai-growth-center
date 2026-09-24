@@ -52,7 +52,8 @@ jobs:
             if (-not $deploy.Contains($_)) { throw "Missing R8-15 deploy safety contract: $_" }
           }
           if (-not $deploy.Contains('return root / "seo"')) { throw 'SEO connector must remain scoped to <site_root>/seo/' }
+          if (-not $deploy.Contains('public_http_verification_failed')) { throw 'Public HTTP verification failure gate missing from deployer' }
           $autonomy = Get-Content 05_V2.0.0_Source/core/seo_geo_autonomy.py -Raw
           if (-not $autonomy.Contains('deploy_public_pages')) { throw 'SEO autonomy is not connected to verified public deployment' }
-          if (-not $autonomy.Contains('public_http_verification_failed')) { throw 'Public verification failure gate missing' }
+          if (-not $autonomy.Contains('public_deploy.get("failed")')) { throw 'SEO autonomy does not surface failed public verification results' }
           Write-Host 'R8-15 only records PUBLISHED after guarded filesystem deployment and public HTTP content verification.'
