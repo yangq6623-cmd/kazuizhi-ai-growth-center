@@ -113,11 +113,11 @@ jobs:
             if (-not $probe.Contains($_)) { throw "Missing truthful social session probe contract: $_" }
           }
           $dryrun = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
-          @('douyin_publish_dry_run','final_publish_allowed','publishes_content','Content ID + URL') | ForEach-Object {
+          @('douyin_publish_dry_run','final_publish_allowed','publishes_content','Content/Post ID + URL') | ForEach-Object {
             if (-not $dryrun.Contains($_)) { throw "Missing truthful dry-run contract: $_" }
           }
           $convergence = Get-Content 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py -Raw
-          @('can_resume_publish','等待账号','recover_if_empty','不重复生产','Content ID + URL') | ForEach-Object {
+          @('can_resume_publish','等待账号','recover_if_empty','不重复生产','external publication truth') | ForEach-Object {
             if (-not $convergence.Contains($_)) { throw "Missing R8-11 convergence contract: $_" }
           }
           $ledger = Get-Content 05_V2.0.0_Source/core/mission_ledger.py -Raw
