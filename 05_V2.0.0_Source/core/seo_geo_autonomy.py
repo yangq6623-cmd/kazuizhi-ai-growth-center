@@ -1,8 +1,9 @@
-"""R8-14/R8-15 SEO/GEO autonomy controller.
+"""R8-14/R8-16 SEO/GEO autonomy controller.
 
 Local discovery, planning, generation and deterministic QC can run autonomously.
-R8-15 additionally allows guarded public deployment only when a real deployment
-connector is ready.  External stages still require observable evidence.
+R8-15 allows guarded public deployment only when a real deployment connector is
+ready. R8-16 adds real search submission: a page only reaches SUBMITTED after an
+external search endpoint returns an observable acceptance receipt.
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
+from integrations.search_engine_submitter import status as search_submit_status
+from integrations.search_engine_submitter import submit_pending as submit_search_urls
 from integrations.seo_public_deployer import deploy_pending as deploy_public_pages
 from integrations.seo_public_deployer import status as public_deploy_status
 
@@ -133,18 +136,21 @@ def _local_qc_generated_assets(limit=20):
 
 
 def _external_readiness(snapshot):
-    tech = snapshot.get("technical") or {}
-    connectors = tech.get("connectors") or {}
-    public_site = tech.get("public_site") or {}
-    configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
+    public_site = (snapshot.get("technical") or {}).get("public_site") or {}
     public_reachable = bool(public_site.get("reachable") or public_site.get("ok") or public_site.get("status") in {"ok", "healthy"})
     deploy = public_deploy_status()
+    search = search_submit_status()
+    connectors = search.get("connectors") or {}
+    configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
+    ready_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("ready")]
     return {
         "configured_search_connectors": configured_search,
+        "ready_search_connectors": ready_search,
         "public_site_reachable": public_reachable,
         "publish_connector_ready": bool(deploy.get("ready")),
         "publish_connector_reason": deploy.get("reason") or "",
         "publish_connector": deploy,
+        "search_submitter": search,
     }
 
 
@@ -162,6 +168,7 @@ def run_once(force=False):
     local = {"skipped": True, "reason": "observe_mode"}
     qc = {"passed": [], "failed": []}
     public_deploy = {"skipped": True, "reason": "mode_or_policy_gate"}
+    search_submit = {"skipped": True, "reason": "mode_or_policy_gate"}
 
     if mode in {"assisted", "autonomous"}:
         local = run_daily_cycle(force=bool(force))
@@ -195,22 +202,49 @@ def run_once(force=False):
                 "只需配置真实网站目录；连接器仅写 <site_root>/seo/，不会碰 Web.config、App_Data、uploads、数据库或现有业务目录。",
             )
 
-    # Refresh after deployment so owner-facing counts use the same truth ledger.
+    # Refresh after deployment so search submission only sees pages that have real
+    # public verification receipts. A ready public connector is enough to attempt
+    # R8-16 because IndexNow can mint/host its own key inside managed /seo/.
     snap = dashboard()
     readiness = _external_readiness(snap)
-    configured = readiness["configured_search_connectors"]
     if mode == "autonomous" and data["policy"].get("auto_submit_when_connector_ready", True):
-        if configured:
-            _close_human_item(data, "seo_search_connector")
+        if readiness["publish_connector_ready"] or readiness["ready_search_connectors"]:
+            search_submit = submit_search_urls(limit=20)
+            refreshed_search = search_submit_status()
+            if refreshed_search.get("ready_engines"):
+                _close_human_item(data, "seo_search_connector")
+            else:
+                _add_human_item(
+                    data,
+                    "seo_search_connector",
+                    "授权至少一个搜索站长平台",
+                    "当前没有可用的真实搜索提交连接器；系统不会伪造提交回执。",
+                    "优先完成公网部署后由系统自动启用 IndexNow；百度/GSC 可继续在官方入口完成站点 token/OAuth 授权。",
+                )
+            submit_failures = list(search_submit.get("failed") or [])
+            if submit_failures:
+                _add_human_item(
+                    data,
+                    "seo_search_submission_error",
+                    "搜索平台提交未全部通过",
+                    f"本轮有 {len(submit_failures)} 个搜索提交动作没有取得成功接收回执。",
+                    "查看搜索连接器状态与回执；修复授权、站点验证或公网key文件后系统会自动重试。",
+                )
+            else:
+                _close_human_item(data, "seo_search_submission_error")
         else:
             _add_human_item(
                 data,
                 "seo_search_connector",
                 "授权至少一个搜索站长平台",
-                "百度/Bing/Google 当前没有可用真实授权，系统不会伪造提交回执。",
-                "在统一账号资产中心使用“+ 新增账号”完成官方登录/站点验证。",
+                "百度/Bing/Google 当前没有可用真实授权或公网部署条件，系统不会伪造提交回执。",
+                "先完成SEO公网部署；系统会自动建立 IndexNow。百度和Google仍通过统一账号/官方站长入口完成真实授权。",
             )
 
+    # Final refresh: owner-facing counts must use the exact same truth ledger after
+    # both public deployment and external submission.
+    snap = dashboard()
+    readiness = _external_readiness(snap)
     summary = snap.get("summary") or {}
     result = {
         "skipped": False,
@@ -218,13 +252,14 @@ def run_once(force=False):
         "local_cycle": local,
         "local_qc": qc,
         "public_deploy": public_deploy,
+        "search_submit": search_submit,
         "external_readiness": readiness,
         "counts": {
             "public_pages": summary.get("public_pages", 0),
             "submitted_urls": summary.get("submitted_urls", 0),
             "indexed_urls": summary.get("indexed_urls", 0),
         },
-        "truth": "自治模式只自动执行已具备真实权限和回执能力的步骤；写入服务器文件仍不算发布，必须通过公网HTTP内容验证。",
+        "truth": "自治模式只执行具备真实权限和回执能力的步骤；PUBLISHED 必须有公网验证，SUBMITTED 必须有搜索平台接收回执，抓取/收录/排名仍需后续外部证据。",
     }
     data["last_run_at"] = now_iso()
     data["last_result"] = result
@@ -235,6 +270,7 @@ def run_once(force=False):
         "qc_passed": len(qc["passed"]),
         "qc_failed": len(qc["failed"]),
         "published": len(public_deploy.get("published") or []),
+        "submitted": int(search_submit.get("submitted_count") or 0),
     })
     _save(data)
     return result
@@ -253,6 +289,7 @@ def status():
         "human_items": deepcopy(open_items),
         "human_item_count": len(open_items),
         "public_deploy": public_deploy_status(),
+        "search_submit": search_submit_status(),
         "today": {
             "opportunities": (snap.get("summary") or {}).get("today_opportunities", 0),
             "public_pages": (snap.get("summary") or {}).get("public_pages", 0),
@@ -262,6 +299,6 @@ def status():
         "mode_labels": {
             "observe": "观察模式：只分析和监控，不自动生成/发布",
             "assisted": "半自动模式：自动规划、生成、QC，公网发布需老板确认/连接器",
-            "autonomous": "自治模式：连接器就绪后自动部署并做公网验证；授权/风控/缺连接器才找老板",
+            "autonomous": "自治模式：连接器就绪后自动部署、验证并提交搜索平台；授权/风控/缺连接器才找老板",
         },
     }
