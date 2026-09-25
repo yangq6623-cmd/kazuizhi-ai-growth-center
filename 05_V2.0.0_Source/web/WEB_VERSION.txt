@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
 Version: V2.2.2 Autonomous Mission Core
-R8 Phase: R8-15
+R8 Phase: R8-17
 Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
 Dashboard: FULL_ENTERPRISE_DASHBOARD
@@ -24,6 +24,8 @@ Modules:
 - R8-15 Guarded IIS SEO Public Deployment
 - Public URL HTTP / Content / Canonical / Schema / Robots Verification
 - R8-15 One-click Server Bootstrap Package
+- R8-17 Desktop Remote Agent Pairing and Remote Deployment Bridge
+- R8-17 Remote SEO Publish / IndexNow Key Hosting
 - Consultation / Order Attribution with Truthful Source Boundaries
 - Unified Boss / Execution Shell
 - Human Attention Only for Login, Verification, Owner Approval, Finance and True Exceptions
