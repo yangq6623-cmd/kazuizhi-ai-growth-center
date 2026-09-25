@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from backend import server
 from integrations import remote_agent
 from integrations.r8_17_remote_deployer_patch import activate_remote_mode_if_ready
+from integrations import r8_17_direct_file_fallback as _r8_17_direct_file_fallback  # noqa: F401,E402
 
 _INSTALLED = False
 _BOOTSTRAP_RESULT = {}
