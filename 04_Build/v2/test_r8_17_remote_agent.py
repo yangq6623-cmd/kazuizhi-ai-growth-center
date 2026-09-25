@@ -121,10 +121,11 @@ def main():
             require(receipt["sha256"] == expected_sha, "commit receipt SHA mismatch")
             require(any(row[0] == "upload/chunk" for row in upload_calls), "chunk upload was not used")
 
-            # R8-17 patch must be the function captured by downstream R8-15/R8-16 imports.
+            # R8-17 patch must stay live dynamically for downstream search submission.
             require(deployer.status is remote_patch.status, "R8-17 deployer status patch not installed")
             require(deployer.deploy_pending is remote_patch.deploy_pending, "R8-17 deployer run patch not installed")
-            require(searcher.public_deploy_status is remote_patch.status, "R8-16 search submitter did not capture R8-17 deploy status")
+            require(searcher.seo_public_deployer is deployer, "R8-16 search submitter is not using the shared deployer module")
+            require(searcher.seo_public_deployer.status is remote_patch.status, "R8-16 search submitter did not resolve R8-17 deploy status dynamically")
             require(searcher._ensure_indexnow_key_file.__module__ == remote_patch.__name__, "IndexNow key hosting was not patched for Remote Agent")
 
             # Activate remote mode using a safe mocked live status.
