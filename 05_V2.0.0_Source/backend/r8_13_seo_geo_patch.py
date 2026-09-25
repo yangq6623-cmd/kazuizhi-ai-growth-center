@@ -1,4 +1,4 @@
-"""R8-13 SEO/GEO growth HTTP bridge."""
+"""R8-13/R8-16 SEO/GEO growth HTTP bridge."""
 from __future__ import annotations
 
 import json
@@ -18,6 +18,7 @@ from core.seo_geo_growth import (
     run_daily_cycle,
     technical_snapshot,
 )
+from integrations.search_engine_submitter import status as search_submit_status
 from promotion.search_growth import audit as audit_search_site, status as search_growth_status
 
 _INSTALLED = False
@@ -99,7 +100,11 @@ def _staging_evidence(payload):
 
 def _dashboard_payload():
     payload = dashboard()
-    payload.setdefault("technical", {})["public_site"] = search_growth_status()
+    technical = payload.setdefault("technical", {})
+    technical["public_site"] = search_growth_status()
+    search = search_submit_status()
+    technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
+    payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
     geo = payload.setdefault("geo", {})
     geo["measurement_state"] = "measured" if int(geo.get("observations") or 0) > 0 else "not_started"
@@ -123,6 +128,7 @@ def install():
             if path == "/api/r8-13/seo-geo/technical":
                 result = technical_snapshot()
                 result["public_site"] = search_growth_status()
+                result["connectors"] = (search_submit_status().get("connectors") or {})
                 handler._json_ok(result)
                 return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
