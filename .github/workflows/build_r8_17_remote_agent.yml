@@ -83,6 +83,7 @@ jobs:
           python 04_Build/v2/test_r8_15_server_bootstrap.py
           python 04_Build/v2/test_r8_16_search_submitters.py
           python 04_Build/v2/test_r8_17_remote_agent.py
+          python 04_Build/v2/test_r8_17_autonomy_remote_bridge.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -106,7 +107,7 @@ jobs:
             sha256 = $hash
             remote_agent_protocol = 'kz-remote-agent-v1 / token-v1'
             remote_agent_endpoint = 'https://kazuizhi.com/kz-remote-v1/agent.ashx/v1'
-            checks = @('full inherited R7/R8 regression gates', 'R8-17 pairing validation', 'Windows DPAPI secret path', 'Remote Agent upload protocol', 'remote SEO deploy patch', 'IndexNow remote key hosting', 'source closed loop', 'Microsoft Defender scan when available', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            checks = @('full inherited R7/R8 regression gates', 'R8-17 pairing validation', 'Windows DPAPI secret path', 'Remote Agent upload protocol', 'remote SEO deploy patch', 'R8-17 autonomy live deployer resolution', 'IndexNow remote key hosting', 'source closed loop', 'Microsoft Defender scan when available', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
             acceptance = 'Desktop build passed automated gates. Production PUBLISHED still requires real public HTTP/content/canonical/Schema/robots verification; SUBMITTED still requires a real search-platform acceptance receipt.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_17.json
       - name: Upload R8-17 Windows installer
