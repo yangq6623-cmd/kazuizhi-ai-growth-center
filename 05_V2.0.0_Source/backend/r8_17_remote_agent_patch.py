@@ -9,6 +9,7 @@ from integrations import remote_agent
 from integrations.r8_17_remote_deployer_patch import activate_remote_mode_if_ready
 
 _INSTALLED = False
+_BOOTSTRAP_RESULT = {}
 
 
 def _origin_allowed(handler):
@@ -37,8 +38,47 @@ def _safe_status(check_live=True):
     return state
 
 
+def _bootstrap_remote_agent():
+    """One-click startup bootstrap.
+
+    Existing users who already imported the pairing file only need the stored
+    Windows credential. New users can still drop the pairing JSON on Desktop or
+    Downloads. Startup never fails just because the public endpoint is offline;
+    the dashboard will expose the error and the user can retry later.
+    """
+    result = {
+        "ok": False,
+        "pairing": {},
+        "deploy_mode": {},
+        "status": {},
+        "error": "",
+    }
+    try:
+        pairing = remote_agent.auto_import_pairing()
+        result["pairing"] = pairing
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        result["pairing"] = {"ok": False, "reason": str(error)}
+
+    try:
+        activation = activate_remote_mode_if_ready(check_live=True)
+        result["deploy_mode"] = activation
+        result["status"] = _safe_status(check_live=False)
+        result["ok"] = bool(
+            result["status"].get("configured")
+            and result["status"].get("connected")
+            and activation.get("activated")
+        )
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        result["error"] = str(error)
+        try:
+            result["status"] = _safe_status(check_live=False)
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            result["status"] = {}
+    return result
+
+
 def install():
-    global _INSTALLED
+    global _INSTALLED, _BOOTSTRAP_RESULT
     if _INSTALLED:
         return
     original_get = server.DashboardHandler.do_GET
@@ -48,7 +88,9 @@ def install():
         path = urlsplit(handler.path).path
         if path == "/api/r8-17/remote-agent/status":
             try:
-                handler._json_ok(_safe_status(check_live=True))
+                payload = _safe_status(check_live=True)
+                payload["bootstrap"] = _BOOTSTRAP_RESULT
+                handler._json_ok(payload)
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
                 handler._json_error(400, error)
             return
@@ -98,6 +140,8 @@ def install():
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_17_remote_agent = True
     _INSTALLED = True
+    _BOOTSTRAP_RESULT = _bootstrap_remote_agent()
+    server.DashboardHandler._kz_r8_17_bootstrap = _BOOTSTRAP_RESULT
 
 
 install()
