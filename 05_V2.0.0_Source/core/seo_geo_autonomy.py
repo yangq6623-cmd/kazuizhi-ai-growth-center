@@ -1,9 +1,10 @@
-"""R8-14/R8-16 SEO/GEO autonomy controller.
+"""R8-14/R8-17 SEO/GEO autonomy controller.
 
 Local discovery, planning, generation and deterministic QC can run autonomously.
 R8-15 allows guarded public deployment only when a real deployment connector is
 ready. R8-16 adds real search submission: a page only reaches SUBMITTED after an
-external search endpoint returns an observable acceptance receipt.
+external search endpoint returns an observable acceptance receipt. R8-17 routes
+public deployment through the desktop Remote Agent when that connector is ready.
 """
 from __future__ import annotations
 
@@ -11,10 +12,8 @@ from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
-from integrations.search_engine_submitter import status as search_submit_status
-from integrations.search_engine_submitter import submit_pending as submit_search_urls
-from integrations.seo_public_deployer import deploy_pending as deploy_public_pages
-from integrations.seo_public_deployer import status as public_deploy_status
+from integrations import search_engine_submitter
+from integrations import seo_public_deployer
 
 STORE = "r8_14/seo_geo_autonomy.json"
 SCHEMA = "kz.seo-geo-autonomy.v1"
@@ -138,8 +137,11 @@ def _local_qc_generated_assets(limit=20):
 def _external_readiness(snapshot):
     public_site = (snapshot.get("technical") or {}).get("public_site") or {}
     public_reachable = bool(public_site.get("reachable") or public_site.get("ok") or public_site.get("status") in {"ok", "healthy"})
-    deploy = public_deploy_status()
-    search = search_submit_status()
+    # Resolve through the integration modules at call time. R8-17 patches these
+    # module attributes during startup; importing function objects by value would
+    # leave this autonomy controller stuck on the old R8-15 local-IIS connector.
+    deploy = seo_public_deployer.status()
+    search = search_engine_submitter.status()
     connectors = search.get("connectors") or {}
     configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
     ready_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("ready")]
@@ -181,7 +183,7 @@ def run_once(force=False):
     if mode == "autonomous" and data["policy"].get("auto_publish_when_connector_ready", True):
         if readiness["publish_connector_ready"]:
             _close_human_item(data, "seo_public_deploy_connector")
-            public_deploy = deploy_public_pages(limit=20)
+            public_deploy = seo_public_deployer.deploy_pending(limit=20)
             failures = list(public_deploy.get("failed") or [])
             if failures:
                 _add_human_item(
@@ -209,8 +211,8 @@ def run_once(force=False):
     readiness = _external_readiness(snap)
     if mode == "autonomous" and data["policy"].get("auto_submit_when_connector_ready", True):
         if readiness["publish_connector_ready"] or readiness["ready_search_connectors"]:
-            search_submit = submit_search_urls(limit=20)
-            refreshed_search = search_submit_status()
+            search_submit = search_engine_submitter.submit_pending(limit=20)
+            refreshed_search = search_engine_submitter.status()
             if refreshed_search.get("ready_engines"):
                 _close_human_item(data, "seo_search_connector")
             else:
@@ -288,8 +290,8 @@ def status():
         "last_result": deepcopy(data.get("last_result") or {}),
         "human_items": deepcopy(open_items),
         "human_item_count": len(open_items),
-        "public_deploy": public_deploy_status(),
-        "search_submit": search_submit_status(),
+        "public_deploy": seo_public_deployer.status(),
+        "search_submit": search_engine_submitter.status(),
         "today": {
             "opportunities": (snap.get("summary") or {}).get("today_opportunities", 0),
             "public_pages": (snap.get("summary") or {}).get("public_pages", 0),
