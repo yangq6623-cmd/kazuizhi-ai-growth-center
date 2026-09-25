@@ -43,13 +43,21 @@
     }catch(error){console.warn('SEO/GEO auth UI inject deferred',error)}
   }
 
+  function ensureUiStyle(doc){
+    if(doc.getElementById('kz-seo-action-style'))return;
+    const style=doc.createElement('style');
+    style.id='kz-seo-action-style';
+    style.textContent=`
+      .kz-seo-action-toast{position:fixed;right:22px;bottom:22px;z-index:2147483646;max-width:min(520px,calc(100vw - 44px));padding:13px 16px;border-radius:12px;background:#173f91;color:#fff;box-shadow:0 14px 42px rgba(14,42,91,.28);font:600 13px/1.55 Inter,"Microsoft YaHei",sans-serif;opacity:0;transform:translateY(10px);pointer-events:none;transition:.16s ease}.kz-seo-action-toast.show{opacity:1;transform:none}.kz-seo-action-toast.ok{background:#16734f}.kz-seo-action-toast.error{background:#b42318}
+      .kz-seo-modal-backdrop{position:fixed;inset:0;z-index:2147483645;background:rgba(10,25,50,.42);display:flex;align-items:center;justify-content:center;padding:18px}.kz-seo-modal{width:min(720px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;border:1px solid #dfe6f2;box-shadow:0 24px 70px rgba(9,27,61,.28);padding:22px}.kz-seo-modal h2{margin:0 0 6px;font-size:22px}.kz-seo-modal p{margin:6px 0;color:#66748a}.kz-seo-field{display:grid;gap:6px;margin-top:14px}.kz-seo-field label{font-weight:700;color:#243b61}.kz-seo-field input{width:100%;padding:11px 12px;border:1px solid #ced9e9;border-radius:10px;font:inherit}.kz-seo-hint{margin-top:12px;padding:11px 12px;border-radius:10px;background:#eef5ff;color:#355176;font-size:12px;line-height:1.7}.kz-seo-modal-actions{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}.kz-seo-modal-actions button{border:1px solid #cbd7ea;background:#fff;color:#2457bd;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer}.kz-seo-modal-actions button.primary{background:#2563eb;color:#fff;border-color:#2563eb}.kz-seo-modal-msg{min-height:20px;margin-top:10px;font-size:12px;color:#355176}.kz-seo-modal-msg.error{color:#b42318}
+    `;
+    doc.head.appendChild(style);
+  }
+
   function ensureToast(doc){
+    ensureUiStyle(doc);
     let node=doc.getElementById('kz-seo-action-toast');
     if(node)return node;
-    const style=doc.createElement('style');
-    style.id='kz-seo-action-toast-style';
-    style.textContent='.kz-seo-action-toast{position:fixed;right:22px;bottom:22px;z-index:2147483646;max-width:min(520px,calc(100vw - 44px));padding:13px 16px;border-radius:12px;background:#173f91;color:#fff;box-shadow:0 14px 42px rgba(14,42,91,.28);font:600 13px/1.55 Inter,"Microsoft YaHei",sans-serif;opacity:0;transform:translateY(10px);pointer-events:none;transition:.16s ease}.kz-seo-action-toast.show{opacity:1;transform:none}.kz-seo-action-toast.ok{background:#16734f}.kz-seo-action-toast.error{background:#b42318}';
-    doc.head.appendChild(style);
     node=doc.createElement('div');
     node.id='kz-seo-action-toast';
     node.className='kz-seo-action-toast';
@@ -98,11 +106,102 @@
     }catch(error){console.warn('SEO/GEO refresh deferred',error)}
   }
 
+  function baseModal(frame,html){
+    const doc=frame.contentDocument;
+    ensureUiStyle(doc);
+    const backdrop=doc.createElement('div');
+    backdrop.className='kz-seo-modal-backdrop';
+    backdrop.innerHTML=`<div class="kz-seo-modal">${html}</div>`;
+    doc.body.appendChild(backdrop);
+    backdrop.addEventListener('click',event=>{if(event.target===backdrop)backdrop.remove()});
+    return backdrop;
+  }
+
+  async function ensureGoogleAppCredentials(frame){
+    const status=await jsonApi('/api/r8-12/auth/app-credentials/status?platform=google_search_console');
+    if(status.configured)return true;
+    return new Promise(resolve=>{
+      const callback=status.redirect_uri || 'http://127.0.0.1:8876/api/r8-12/oauth/callback/google_search_console';
+      const modal=baseModal(frame,`
+        <h2>配置 Google Search Console</h2>
+        <p>只需配置一次 Google OAuth Web 应用。Client Secret 会写入当前 Windows 用户的 DPAPI 加密凭据库，不进入 GitHub、日志或普通配置文件。</p>
+        <div class="kz-seo-field"><label>Google OAuth Client ID</label><input id="kz-google-client-id" autocomplete="off" spellcheck="false" placeholder="...apps.googleusercontent.com"></div>
+        <div class="kz-seo-field"><label>Google OAuth Client Secret</label><input id="kz-google-client-secret" type="password" autocomplete="new-password" spellcheck="false" placeholder="输入后本页不会回显"></div>
+        <div class="kz-seo-field"><label>Google Cloud 中必须登记的重定向 URI</label><input value="${callback.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" readonly></div>
+        <div class="kz-seo-hint">Google Cloud：启用 Search Console API → 创建 OAuth 2.0 Client（Web application）→ Authorized redirect URIs 添加上面这一整行。测试阶段可先把你自己的 Google 账号加入 OAuth 测试用户。</div>
+        <div class="kz-seo-modal-msg" id="kz-google-msg"></div>
+        <div class="kz-seo-modal-actions"><button id="kz-google-console">打开 Google Cloud</button><button id="kz-google-cancel">取消</button><button class="primary" id="kz-google-save">保存并继续授权</button></div>
+      `);
+      const msg=modal.querySelector('#kz-google-msg');
+      modal.querySelector('#kz-google-console').onclick=()=>window.open('https://console.cloud.google.com/apis/credentials','_blank','noopener,noreferrer');
+      modal.querySelector('#kz-google-cancel').onclick=()=>{modal.remove();resolve(false)};
+      modal.querySelector('#kz-google-save').onclick=async()=>{
+        const save=modal.querySelector('#kz-google-save');
+        const clientId=modal.querySelector('#kz-google-client-id').value.trim();
+        const clientSecret=modal.querySelector('#kz-google-client-secret').value.trim();
+        if(!clientId||!clientSecret){msg.textContent='Client ID 和 Client Secret 都必须填写。';msg.className='kz-seo-modal-msg error';return}
+        setBusy(save,true,'保存中…');
+        msg.textContent='正在写入 Windows DPAPI 安全凭据库…';msg.className='kz-seo-modal-msg';
+        try{
+          const saved=await post('/api/r8-12/auth/app-credentials',{platform:'google_search_console',client_id:clientId,client_secret:clientSecret});
+          if(!saved.configured)throw new Error('凭据保存后仍未进入就绪状态');
+          modal.remove();
+          toast(frame,'Google OAuth 应用凭据已安全保存，下一步进入 Google 官方授权。','ok',6000);
+          resolve(true);
+        }catch(error){msg.textContent=`保存失败：${error.message||String(error)}`;msg.className='kz-seo-modal-msg error';setBusy(save,false)}
+      };
+    });
+  }
+
+  async function configureBaidu(frame){
+    return new Promise(resolve=>{
+      const modal=baseModal(frame,`
+        <h2>配置百度搜索资源平台</h2>
+        <p>请在百度搜索资源平台打开“资源提交 → 普通收录 → API提交”，复制完整“接口调用地址”粘贴到下面。准入密钥只会保存到本机 Windows DPAPI。</p>
+        <div class="kz-seo-field"><label>百度完整 API 接口调用地址</label><input id="kz-baidu-endpoint" type="password" autocomplete="off" spellcheck="false" placeholder="http://data.zz.baidu.com/urls?site=...&token=..."></div>
+        <div class="kz-seo-hint">不要把准入密钥发到聊天、GitHub 或截图中。这里直接粘贴百度页面当前显示的完整接口地址，程序会自动提取 site 和 token。</div>
+        <div class="kz-seo-modal-msg" id="kz-baidu-msg"></div>
+        <div class="kz-seo-modal-actions"><button id="kz-baidu-console">打开百度平台</button><button id="kz-baidu-cancel">取消</button><button class="primary" id="kz-baidu-save">保存并真实提交</button></div>
+      `);
+      const msg=modal.querySelector('#kz-baidu-msg');
+      modal.querySelector('#kz-baidu-console').onclick=()=>window.open('https://ziyuan.baidu.com/site/index','_blank','noopener,noreferrer');
+      modal.querySelector('#kz-baidu-cancel').onclick=()=>{modal.remove();resolve(false)};
+      modal.querySelector('#kz-baidu-save').onclick=async()=>{
+        const button=modal.querySelector('#kz-baidu-save');
+        const raw=modal.querySelector('#kz-baidu-endpoint').value.trim();
+        let parsed;
+        try{parsed=new URL(raw)}catch(error){msg.textContent='接口地址格式不正确，请从百度后台完整复制。';msg.className='kz-seo-modal-msg error';return}
+        const site=(parsed.searchParams.get('site')||'').trim();
+        const token=(parsed.searchParams.get('token')||'').trim();
+        if(parsed.hostname!=='data.zz.baidu.com'||!site||!token){msg.textContent='没有识别到百度 API 的 site/token，请重新复制完整接口调用地址。';msg.className='kz-seo-modal-msg error';return}
+        setBusy(button,true,'配置中…');
+        msg.textContent='正在加密保存并执行一次真实提交验证…';msg.className='kz-seo-modal-msg';
+        try{
+          await post('/api/r8-16/search-submit/config',{baidu_site:site,baidu_token:token,allow_baidu_http_submission:true});
+          const result=await post('/api/r8-16/search-submit/run',{limit:20});
+          await refreshFrame(frame);
+          const count=Number(result?.submitted_count||result?.submitted?.length||0);
+          const failed=Number(result?.failed_count||result?.failed?.length||0);
+          modal.remove();
+          toast(frame,count>0?`百度 API 已连接，并取得 ${count} 个真实提交回执。`:`百度配置已保存；本轮提交 ${count} 个，失败 ${failed} 个。请按提示检查百度返回状态。`,count>0?'ok':'info',8000);
+          resolve(true);
+        }catch(error){msg.textContent=`百度配置/提交失败：${error.message||String(error)}`;msg.className='kz-seo-modal-msg error';setBusy(button,false)}
+      };
+    });
+  }
+
   async function openSearchAuth(frame,platform){
+    if(platform==='baidu_search_resource'){
+      return configureBaidu(frame);
+    }
+    if(platform==='google_search_console'){
+      const ready=await ensureGoogleAppCredentials(frame);
+      if(!ready)return false;
+    }
     const local=frame.contentWindow?.KZAuthUI;
     if(local?.open){
       await local.open({platform});
-      return;
+      return true;
     }
     const center=window.KZR812AccountCenter;
     if(center){
@@ -111,10 +210,11 @@
       const open=()=>accountFrame?.contentWindow?.KZAuthUI?.open({platform});
       if(accountFrame?.contentWindow?.KZAuthUI) await open();
       else accountFrame?.addEventListener('load',()=>open()?.catch?.(error=>console.warn('search authorization panel failed',error)),{once:true});
-      return;
+      return true;
     }
     const popup=window.open('/r8_12_account_center.html','_blank','noopener,noreferrer');
     if(!popup)throw new Error('浏览器阻止了授权窗口，请允许卡嘴子 AI 打开本地授权页面');
+    return true;
   }
 
   function installControlReliability(frame){
@@ -133,13 +233,13 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           const platform=String(auth.dataset.searchAuth||'').trim();
-          setBusy(auth,true,'正在打开…');
-          toast(frame,'正在打开官方授权配置。');
+          setBusy(auth,true,platform==='baidu_search_resource'?'配置中…':'正在打开…');
+          toast(frame,platform==='baidu_search_resource'?'正在打开百度 API 安全配置。':'正在准备 Google 官方授权。');
           try{
-            await openSearchAuth(frame,platform);
-            toast(frame,'授权入口已打开；请只在平台官方页面完成登录或授权。','ok',5200);
+            const opened=await openSearchAuth(frame,platform);
+            if(opened && platform!=='baidu_search_resource')toast(frame,'授权入口已打开；请只在 Google 官方页面完成登录和授权。','ok',5200);
           }catch(error){
-            toast(frame,`授权入口打开失败：${error.message||String(error)}`,'error',7000);
+            toast(frame,`搜索平台配置失败：${error.message||String(error)}`,'error',7000);
           }finally{setBusy(auth,false)}
           return;
         }
@@ -231,9 +331,8 @@
     if (event.origin !== location.origin || event.data?.type !== 'kz-r8-search-auth') return;
     const platform=String(event.data.platform||'google_search_console');
     const frame=document.getElementById(FRAME_ID);
-    openSearchAuth(frame,platform).catch(error=>{
-      if(frame)toast(frame,`授权入口打开失败：${error.message||String(error)}`,'error',7000);
-    });
+    if(!frame)return;
+    openSearchAuth(frame,platform).catch(error=>toast(frame,`搜索平台配置失败：${error.message||String(error)}`,'error',7000));
   });
 
   window.addEventListener('message', event => {
