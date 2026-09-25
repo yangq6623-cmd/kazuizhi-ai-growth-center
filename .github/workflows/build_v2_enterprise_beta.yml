@@ -86,7 +86,7 @@ jobs:
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_12_account_publish_runtime.py
           python 04_Build/v2/test_r8_12_local_first_closed_loop.py
-      - name: Verify release-gate R8-13 R8-14 R8-15 SEO autonomy and guarded public deployment
+      - name: Verify release-gate R8-13 R8-14 R8-15 R8-16 SEO autonomy, public deployment and search submission
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_13_multi_account_auth.py
@@ -94,6 +94,7 @@ jobs:
           python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
           python 04_Build/v2/test_r8_15_seo_public_deploy.py
           python 04_Build/v2/test_r8_15_server_bootstrap.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -144,8 +145,8 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'independent device pool', 'truthful publication planning', 'idempotent Douyin dry-run queue', 'real FINAL.MP4 device staging', 'Douyin app launch without final publish click', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated release gates passed. Real OAuth/login/captcha, selector-safe Douyin composer navigation, RTX3060 field stability and live platform publication remain field acceptance; SEO PUBLISHED additionally requires a real public URL that passes HTTP/content/canonical/Schema/robots verification.'
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'independent device pool', 'truthful publication planning', 'idempotent Douyin dry-run queue', 'real FINAL.MP4 device staging', 'Douyin app launch without final publish click', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated release gates passed. Real OAuth/login/captcha, selector-safe Douyin composer navigation, RTX3060 field stability and live platform publication remain field acceptance; SEO PUBLISHED additionally requires a real public URL that passes HTTP/content/canonical/Schema/robots verification, and SUBMITTED additionally requires a real search-platform acceptance receipt.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
