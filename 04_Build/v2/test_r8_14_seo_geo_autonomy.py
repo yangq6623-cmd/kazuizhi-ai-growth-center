@@ -45,6 +45,8 @@ def main():
     ui = (SOURCE / "web" / "r8_14_seo_geo_autonomy_ui.js").read_text(encoding="utf-8")
     for marker in ("观察模式", "半自动", "自治模式", "待人工处理", "/api/r8-14/seo-geo/autonomy"):
         assert marker in ui, marker
+    for marker in ("r814-feedback", "kz-r813-focus", "刷新失败：", "自治状态已刷新"):
+        assert marker in ui, marker
 
     print("PASS: R8-14 SEO/GEO autonomy modes, local-first execution and external truth gates verified.")
 

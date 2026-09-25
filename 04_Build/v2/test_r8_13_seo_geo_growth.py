@@ -103,6 +103,8 @@ def main():
                 assert token in ui
             for token in ("公开回执", "已有逐页公网回执", "当前官网探测", "等待自动初始化", "IndexNow 自动提交（无需登录）", "/api/r8-13/seo-geo/audit-site"):
                 assert token in ui
+            for token in ("action-status", "data-kpi-target", "kz-r813-focus", "操作已完成，页面已刷新为真实状态。"):
+                assert token in ui
             assert "[object Object]" not in ui
 
             patch_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
@@ -111,6 +113,7 @@ def main():
             bridge = (SOURCE / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
             assert "SEO/GEO增长" in bridge
             assert "/r8_13_seo_geo.html?embed=1" in bridge
+            assert "kz-r813-focus" in bridge
             startup = (SOURCE / "web" / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
             assert "/r8_13_seo_geo_bridge.js" in startup
             runpy = (SOURCE / "run.py").read_text(encoding="utf-8")

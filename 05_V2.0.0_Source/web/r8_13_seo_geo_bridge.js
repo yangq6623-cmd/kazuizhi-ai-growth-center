@@ -71,6 +71,20 @@
     if (frame?.contentWindow?.KZAuthUI) openAuth(); else frame?.addEventListener('load', openAuth, {once:true});
   });
 
+  // The SEO page is rendered in a tall iframe. Scrolling only inside that
+  // document is visually invisible in the owner shell, so relay an explicit
+  // focus request to the outer page as well.
+  window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.data?.type !== 'kz-r813-focus') return;
+    const targetId = String(event.data.target || '');
+    const frame = document.getElementById('r813-seo-geo-frame');
+    const target = frame?.contentDocument?.getElementById(targetId);
+    if (!frame || !target) return;
+    const frameRect = frame.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    window.scrollTo({top: window.scrollY + frameRect.top + targetRect.top - 84, behavior:'smooth'});
+  });
+
   function ensureNav(){
     const primary=document.querySelector('.r810-primary-nav');
     if(!primary||primary.querySelector('[data-target="r813-seo-geo"]'))return;
