@@ -49,14 +49,18 @@
 
   function blockerTarget(item) {
     const key = String(item?.key || '');
-    if (key.includes('search_connector')) return {id:'connectors-section', label:'去站长平台授权'};
+    if (key.includes('search_connector')) return {id:'connectors-section', label:'打开站长平台授权'};
     if (key.includes('public_deploy')) return {id:'technical', label:'查看公网部署条件'};
     return {id:'pipeline-section', label:'查看处理位置'};
   }
 
   function bindBlockerButtons(container) {
     container.querySelectorAll('[data-r814-target]').forEach(button => button.addEventListener('click', () => {
-      document.getElementById(button.dataset.r814Target)?.scrollIntoView({behavior:'smooth', block:'start'});
+      if (button.dataset.r814Target === 'connectors-section') {
+        window.parent?.postMessage({type:'kz-r8-search-auth', platform:'google_search_console'}, location.origin);
+      } else {
+        document.getElementById(button.dataset.r814Target)?.scrollIntoView({behavior:'smooth', block:'start'});
+      }
     }));
   }
 

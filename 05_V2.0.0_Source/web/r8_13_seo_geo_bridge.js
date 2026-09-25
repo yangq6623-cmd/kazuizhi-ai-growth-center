@@ -57,6 +57,20 @@
     document.querySelectorAll('.r810-nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.target===PAGE_ID));
   }
 
+  // The SEO iframe cannot directly control the owner-shell account iframe.
+  // Bridge its explicit authorization request to the durable account center and
+  // open the official-provider chooser for the requested platform.
+  window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.data?.type !== 'kz-r8-search-auth') return;
+    const platform = String(event.data.platform || 'google_search_console');
+    const center = window.KZR812AccountCenter;
+    if (!center) return;
+    center.open(document.querySelector('.r810-execution-tabs button[data-execution-page="accounts"]'));
+    const frame = document.getElementById('r812-account-center-frame');
+    const openAuth = () => frame?.contentWindow?.KZAuthUI?.open({platform}).catch(error => console.warn('search authorization panel failed', error));
+    if (frame?.contentWindow?.KZAuthUI) openAuth(); else frame?.addEventListener('load', openAuth, {once:true});
+  });
+
   function ensureNav(){
     const primary=document.querySelector('.r810-primary-nav');
     if(!primary||primary.querySelector('[data-target="r813-seo-geo"]'))return;

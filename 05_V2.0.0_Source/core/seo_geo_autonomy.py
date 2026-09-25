@@ -211,6 +211,11 @@ def run_once(force=False):
     readiness = _external_readiness(snap)
     if mode == "autonomous" and data["policy"].get("auto_submit_when_connector_ready", True):
         if readiness["publish_connector_ready"] or readiness["ready_search_connectors"]:
+            # Initialize IndexNow as soon as verified public deployment is
+            # available.  This persists a real key-file verification result;
+            # it does not claim a search-engine receipt by itself.
+            if readiness["publish_connector_ready"]:
+                search_engine_submitter.initialize_indexnow()
             search_submit = search_engine_submitter.submit_pending(limit=20)
             refreshed_search = search_engine_submitter.status()
             if refreshed_search.get("ready_engines"):

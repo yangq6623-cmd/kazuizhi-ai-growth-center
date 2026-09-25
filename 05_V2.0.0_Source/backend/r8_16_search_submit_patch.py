@@ -137,6 +137,7 @@ def install():
         path = urlsplit(handler.path).path
         if path not in {
             "/api/r8-16/search-submit/config",
+            "/api/r8-16/search-submit/initialize",
             "/api/r8-16/search-submit/run",
         }:
             return original_post(handler)
@@ -147,6 +148,8 @@ def install():
             payload = _read_json_body(handler)
             if path.endswith("/config"):
                 handler._json_ok(_configure(payload))
+            elif path.endswith("/initialize"):
+                handler._json_ok(search_submitter.initialize_indexnow())
             else:
                 handler._json_ok(search_submitter.submit_pending(limit=max(1, min(100, int(payload.get("limit") or 20)))))
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:

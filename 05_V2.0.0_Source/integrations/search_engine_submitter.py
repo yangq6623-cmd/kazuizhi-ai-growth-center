@@ -47,6 +47,7 @@ DEFAULT = {
     "updated_at": "",
     "last_run_at": "",
     "last_result": {},
+    "last_indexnow_initialization": {},
 }
 
 
@@ -193,6 +194,60 @@ def _ensure_indexnow_key_file(key: str, timeout: int = 8) -> dict:
         return {"ok": False, "error": str(error), "key_location": public_url, "checked_at": now_iso()}
 
 
+def initialize_indexnow() -> dict:
+    """Create and verify the managed IndexNow key before a submission attempt.
+
+    This is deliberately separate from ``status``: reading a dashboard must not
+    create secrets or write to a public site.  The autonomous worker calls this
+    once the guarded public deploy connector is ready, and persists only
+    non-secret verification metadata for the owner-facing status card.
+    """
+    data = _load()
+    deploy = public_deploy_status()
+    result = {
+        "ok": False,
+        "initialized": False,
+        "key_created": False,
+        "checked_at": now_iso(),
+    }
+    if not deploy.get("ready"):
+        result["reason"] = deploy.get("reason") or "public_deploy_not_ready"
+        data["last_indexnow_initialization"] = result
+        _save(data)
+        return result
+
+    key = _indexnow_key()
+    if not key:
+        try:
+            key = secrets.token_hex(16)
+            _vault_put("search.indexnow.key", key)
+            result["key_created"] = True
+        except (OSError, RuntimeError, ValueError) as error:
+            result["reason"] = "key_generation_failed"
+            result["error"] = str(error)
+            data["last_indexnow_initialization"] = result
+            _save(data)
+            return result
+    if not _valid_indexnow_key(key):
+        result["reason"] = "invalid_indexnow_key"
+        data["last_indexnow_initialization"] = result
+        _save(data)
+        return result
+
+    verification = _ensure_indexnow_key_file(key)
+    result.update({
+        "ok": bool(verification.get("ok")),
+        "initialized": True,
+        "key_location": verification.get("key_location"),
+        "verification": verification,
+    })
+    if not result["ok"]:
+        result["reason"] = "key_file_public_verification_failed"
+    data["last_indexnow_initialization"] = result
+    _save(data)
+    return result
+
+
 def _submit_indexnow(urls: list[str], key: str, key_location: str, endpoint: str, timeout: int = 15) -> dict:
     host = urlsplit(urls[0]).netloc
     payload = {"host": host, "key": key, "keyLocation": key_location, "urlList": urls[:10000]}
@@ -292,6 +347,8 @@ def status() -> dict:
     google_token = _google_access_token(google_account)
     baidu_token = _baidu_token()
     assets = _public_assets()
+    indexnow_init = deepcopy(data.get("last_indexnow_initialization") or {})
+    indexnow_ready = bool(index_key and deploy.get("ready") and indexnow_init.get("ok"))
     return {
         "site_url": data.get("site_url"),
         "public_pages": len(assets),
@@ -308,10 +365,14 @@ def status() -> dict:
             "bing": {
                 "label": "Bing / IndexNow",
                 "configured": bool(index_key),
-                "ready": bool(index_key and deploy.get("ready")),
+                "ready": indexnow_ready,
                 "mode": "IndexNow",
                 "requires_owner": False,
-                "reason": "" if index_key and deploy.get("ready") else (deploy.get("reason") or "IndexNow key 尚未生成"),
+                "initialization": indexnow_init,
+                "reason": "" if indexnow_ready else (
+                    deploy.get("reason") or
+                    ("等待自动初始化并验证 IndexNow key 文件" if index_key else "公网部署就绪后会自动生成并验证 IndexNow key")
+                ),
             },
             "google": {
                 "label": "Google Search Console",
@@ -325,7 +386,7 @@ def status() -> dict:
         },
         "ready_engines": [name for name, row in {
             "baidu": bool(baidu_token and data.get("allow_baidu_http_submission")),
-            "bing": bool(index_key and deploy.get("ready")),
+            "bing": indexnow_ready,
             "google": bool(google_account and google_token),
         }.items() if row],
         "truth": "配置/授权只代表连接器可用；只有搜索平台返回可审计接收响应后，页面才进入 SUBMITTED。SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
@@ -351,16 +412,10 @@ def submit_pending(limit: int = 20) -> dict:
 
     # IndexNow / Bing: key can be generated locally and hosted inside /seo/, so no
     # external account login is required. The key file must itself be reachable first.
+    initialization = initialize_indexnow()
     key = _indexnow_key()
-    if not key and deploy.get("ready"):
-        try:
-            key = secrets.token_hex(16)
-            _vault_put("search.indexnow.key", key)
-        except (OSError, RuntimeError, ValueError) as error:
-            failed.append({"engine": "indexnow", "reason": f"key_generation_failed: {error}"})
-            key = ""
-    if key and deploy.get("ready"):
-        verification = _ensure_indexnow_key_file(key)
+    if initialization.get("ok") and key and deploy.get("ready"):
+        verification = dict(initialization.get("verification") or {})
         pending = [x for x in assets if not _existing_engine_receipt(x, "indexnow")]
         if verification.get("ok") and pending:
             receipt = _submit_indexnow([x["public_url"] for x in pending], key, verification["key_location"], str(data.get("indexnow_endpoint") or DEFAULT["indexnow_endpoint"]))
@@ -374,6 +429,8 @@ def submit_pending(limit: int = 20) -> dict:
                 failed.append({"engine": "indexnow", "reason": "endpoint_rejected", "result": receipt})
         elif pending:
             failed.append({"engine": "indexnow", "reason": "key_file_public_verification_failed", "verification": verification})
+    elif deploy.get("ready"):
+        failed.append({"engine": "indexnow", "reason": initialization.get("reason") or "indexnow_initialization_failed", "initialization": initialization})
 
     # Google Search Console: submit the verified /seo/sitemap.xml through the
     # OAuth account already held by the unified account center.
@@ -415,6 +472,7 @@ def submit_pending(limit: int = 20) -> dict:
         "submitted_count": len(submitted),
         "failed": failed,
         "failed_count": len(failed),
+        "indexnow_initialization": initialization,
         "truth": "搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
     }
     data["last_result"] = result

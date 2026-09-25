@@ -52,6 +52,28 @@ def main():
     site_root = Path(tempfile.mkdtemp(prefix="kz-r816-site-")) / "kazuizhi-site"
     site_root.mkdir(parents=True)
 
+    # IndexNow must initialize itself after the public deploy connector is
+    # available.  This is only key-file verification, not a claimed search
+    # submission receipt.
+    memory = {}
+    original_vault_get = submitter._vault_get
+    original_vault_put = submitter._vault_put
+    original_public_status = submitter.public_deploy_status
+    original_key_verify = submitter._ensure_indexnow_key_file
+    submitter._vault_get = lambda key, env_name="": memory.get(key, "")
+    submitter._vault_put = lambda key, value: memory.__setitem__(key, value)
+    submitter.public_deploy_status = lambda: {"ready": True, "site_root": str(site_root), "public_base_url": "https://kazuizhi.example/"}
+    submitter._ensure_indexnow_key_file = lambda key, timeout=8: {"ok": True, "status": 200, "key_location": f"https://kazuizhi.example/seo/{key}.txt", "checked_at": "test"}
+    try:
+        initialized = submitter.initialize_indexnow()
+    finally:
+        submitter._vault_get = original_vault_get
+        submitter._vault_put = original_vault_put
+        submitter.public_deploy_status = original_public_status
+        submitter._ensure_indexnow_key_file = original_key_verify
+    assert initialized["ok"] is True and initialized["key_created"] is True, initialized
+    assert initialized["key_location"].startswith("https://kazuizhi.example/seo/"), initialized
+
     first = publish_one(site_root)
     assert first["stage"] == "PUBLISHED", first
 
@@ -111,6 +133,13 @@ def main():
     connector = submitter.status()
     assert connector["connectors"]["bing"]["configured"] is True, connector
     assert connector["truth"].find("SUBMITTED") >= 0
+
+    # Owner-facing controls must invoke a real initialization endpoint and route
+    # official authorization requests back to the durable account center.
+    page = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
+    bridge = (SOURCE / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
+    assert "/api/r8-16/search-submit/initialize" in page
+    assert "kz-r8-search-auth" in page and "KZAuthUI" in bridge
 
     print("R8-16 truthful IndexNow/search submission receipt gates passed")
 
