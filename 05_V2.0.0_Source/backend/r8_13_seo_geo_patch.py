@@ -19,6 +19,7 @@ from core.seo_geo_growth import (
     technical_snapshot,
 )
 from integrations.search_engine_submitter import status as search_submit_status
+from integrations import seo_public_deployer
 from promotion.search_growth import audit as audit_search_site, status as search_growth_status
 
 _INSTALLED = False
@@ -101,7 +102,11 @@ def _staging_evidence(payload):
 def _dashboard_payload():
     payload = dashboard()
     technical = payload.setdefault("technical", {})
+    # Keep the independent website audit and the deployment connector separate.
+    # The former is a current homepage/robots/sitemap observation; the latter
+    # owns the historical per-page verification receipt required for PUBLISHED.
     technical["public_site"] = search_growth_status()
+    technical["public_deploy"] = seo_public_deployer.status()
     search = search_submit_status()
     technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
     payload["search_submit"] = search
@@ -128,6 +133,7 @@ def install():
             if path == "/api/r8-13/seo-geo/technical":
                 result = technical_snapshot()
                 result["public_site"] = search_growth_status()
+                result["public_deploy"] = seo_public_deployer.status()
                 result["connectors"] = (search_submit_status().get("connectors") or {})
                 handler._json_ok(result)
                 return

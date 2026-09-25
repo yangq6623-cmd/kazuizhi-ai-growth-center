@@ -101,7 +101,12 @@ def main():
             ui = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
             for token in ("SEO/GEO增长中心", "关键词机会池", "索引与收录漏斗", "GEO / AI 50问验证", "技术SEO健康检查", "内容与页面工厂", "今日自动作业流水线", "转化与归因", "今日增量", "累计真值", "本周公开页面目标", "性能测速"):
                 assert token in ui
+            for token in ("公开回执", "已有逐页公网回执", "当前官网探测", "等待自动初始化", "IndexNow 自动提交（无需登录）", "/api/r8-13/seo-geo/audit-site"):
+                assert token in ui
             assert "[object Object]" not in ui
+
+            patch_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
+            assert "seo_public_deployer.status()" in patch_source
 
             bridge = (SOURCE / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
             assert "SEO/GEO增长" in bridge
