@@ -30,8 +30,11 @@ from backend import r8_12_account_center_patch as _r8_12_account_center_patch  #
 from backend import r8_12_auth_broker_patch as _r8_12_auth_broker_patch  # noqa: F401,E402
 from backend import r8_13_seo_geo_patch as _r8_13_seo_geo_patch  # noqa: F401,E402
 from backend import r8_14_seo_geo_autonomy_patch as _r8_14_seo_geo_autonomy_patch  # noqa: F401,E402
+# R8-17 must patch the deployer before R8-15/R8-16 capture function references.
+from integrations import r8_17_remote_deployer_patch as _r8_17_remote_deployer_patch  # noqa: F401,E402
 from backend import r8_15_seo_public_deploy_patch as _r8_15_seo_public_deploy_patch  # noqa: F401,E402
 from backend import r8_16_search_submit_patch as _r8_16_search_submit_patch  # noqa: F401,E402
+from backend import r8_17_remote_agent_patch as _r8_17_remote_agent_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
@@ -47,12 +50,28 @@ from integrations.bridge import sync_once as bridge_sync_once
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
 from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
 from integrations.douyin_dry_run_executor import run_pending as run_pending_douyin_dry_runs
+from integrations.remote_agent import auto_import_pairing
+from integrations.r8_17_remote_deployer_patch import activate_remote_mode_if_ready
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
 from promotion.local_mission_qc_patch import recover_authorized_qc
 from promotion.material_library import scan_material_inbox
 from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
+
+
+def _sync_r8_17_remote_agent():
+    """Import a local pairing file when present, then keep remote deploy mode live."""
+    try:
+        pairing = auto_import_pairing()
+        if pairing.get("ok") or pairing.get("reason") == "already_configured":
+            activation = activate_remote_mode_if_ready(check_live=True)
+            if activation.get("activated"):
+                return {"ok": True, "pairing": pairing, "activation": activation}
+            return {"ok": False, "pairing": pairing, "activation": activation}
+        return {"ok": False, "pairing": pairing, "activation": {}}
+    except (OSError, ValueError, RuntimeError) as error:
+        return {"ok": False, "reason": str(error)}
 
 
 def start_scheduler():
@@ -68,13 +87,14 @@ def start_scheduler():
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
-                    # R8-16: local SEO/GEO work remains autonomous. The R8-15 guarded
-                    # deployer only promotes pages after real public verification, and
-                    # R8-16 search connectors only promote them to SUBMITTED after an
-                    # external search endpoint returns an observable acceptance receipt.
+                    # R8-17: periodically discover a pairing file copied to this
+                    # PC and keep the lightweight server execution channel live.
+                    _sync_r8_17_remote_agent()
+                    # Local SEO/GEO work remains autonomous. PUBLISHED requires
+                    # public verification; SUBMITTED requires a search receipt.
                     run_seo_geo_autonomy(force=False)
             except (OSError, ValueError, RuntimeError) as error:
-                print(f"R7/R8-16 scheduler check failed: {error}", flush=True)
+                print(f"R7/R8-17 scheduler check failed: {error}", flush=True)
 
             if tick % 4 == 0:
                 try:
@@ -182,6 +202,9 @@ def main():
         migrate_to_v2_2()
         recover_interrupted()
         try:
+            remote_result = _sync_r8_17_remote_agent()
+            if remote_result.get("ok"):
+                print("R8-17 Remote Agent connected; remote deployment mode is active.", flush=True)
             scan_material_inbox()
             sync_autonomous_ops(autostart=True)
             sync_content_plans()
@@ -218,10 +241,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-    except Exception:
-        error = traceback.format_exc()
-        print(error, flush=True)
-        logs = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Kazuizhi_AI_Enterprise_V2.0.0_Beta" / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        (logs / "startup-error.log").write_text(error, encoding="utf-8")
-        raise
