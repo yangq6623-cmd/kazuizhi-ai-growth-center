@@ -41,6 +41,7 @@ def main():
     assert state["policy"]["never_fake_publication"] is True
     assert state["policy"]["never_fake_indexing"] is True
     assert state["policy"]["never_fake_geo_visibility"] is True
+    assert all("授权至少一个搜索站长平台" != x.get("title") for x in state["human_items"])
 
     ui = (SOURCE / "web" / "r8_14_seo_geo_autonomy_ui.js").read_text(encoding="utf-8")
     for marker in ("观察模式", "半自动", "自治模式", "待人工处理", "/api/r8-14/seo-geo/autonomy"):

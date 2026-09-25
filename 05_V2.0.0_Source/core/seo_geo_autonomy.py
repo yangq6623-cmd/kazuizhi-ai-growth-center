@@ -85,6 +85,7 @@ def configure(payload):
 def _add_human_item(data, key, title, reason, action):
     existing = next((x for x in data["human_items"] if x.get("key") == key and x.get("status") == "open"), None)
     if existing:
+        existing["title"] = title
         existing["reason"] = reason
         existing["action"] = action
         existing["updated_at"] = now_iso()
@@ -224,9 +225,9 @@ def run_once(force=False):
                 _add_human_item(
                     data,
                     "seo_search_connector",
-                    "授权至少一个搜索站长平台",
-                    "当前没有可用的真实搜索提交连接器；系统不会伪造提交回执。",
-                    "优先完成公网部署后由系统自动启用 IndexNow；百度/GSC 可继续在官方入口完成站点 token/OAuth 授权。",
+                    "等待公网部署或搜索连接器就绪",
+                    "当前没有可用的真实搜索提交连接器；系统不会伪造提交回执。IndexNow 不需要账号授权。",
+                    "优先完成公网部署后由系统自动启用 IndexNow；百度/GSC 仅在需要各自平台能力时，再通过官方入口完成站点 token/OAuth 授权。",
                 )
             submit_failures = list(search_submit.get("failed") or [])
             if submit_failures:
@@ -243,9 +244,9 @@ def run_once(force=False):
             _add_human_item(
                 data,
                 "seo_search_connector",
-                "授权至少一个搜索站长平台",
-                "百度/Bing/Google 当前没有可用真实授权或公网部署条件，系统不会伪造提交回执。",
-                "先完成SEO公网部署；系统会自动建立 IndexNow。百度和Google仍通过统一账号/官方站长入口完成真实授权。",
+                "等待SEO公网部署配置",
+                "当前缺少真实公网部署条件，因此 IndexNow 不能安全初始化；系统不会伪造提交回执。",
+                "先完成SEO公网部署；系统会自动建立并验证 IndexNow key。百度和Google仅在需要其平台功能时，才通过官方入口完成真实授权。",
             )
 
     # Final refresh: owner-facing counts must use the exact same truth ledger after

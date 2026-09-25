@@ -58,21 +58,25 @@ def main():
     memory = {}
     original_vault_get = submitter._vault_get
     original_vault_put = submitter._vault_put
-    original_public_status = submitter.public_deploy_status
+    original_public_status = deployer.status
     original_key_verify = submitter._ensure_indexnow_key_file
     submitter._vault_get = lambda key, env_name="": memory.get(key, "")
     submitter._vault_put = lambda key, value: memory.__setitem__(key, value)
-    submitter.public_deploy_status = lambda: {"ready": True, "site_root": str(site_root), "public_base_url": "https://kazuizhi.example/"}
+    deployer.status = lambda: {"ready": True, "site_root": str(site_root), "public_base_url": "https://kazuizhi.example/"}
     submitter._ensure_indexnow_key_file = lambda key, timeout=8: {"ok": True, "status": 200, "key_location": f"https://kazuizhi.example/seo/{key}.txt", "checked_at": "test"}
     try:
         initialized = submitter.initialize_indexnow()
     finally:
         submitter._vault_get = original_vault_get
         submitter._vault_put = original_vault_put
-        submitter.public_deploy_status = original_public_status
+        deployer.status = original_public_status
         submitter._ensure_indexnow_key_file = original_key_verify
     assert initialized["ok"] is True and initialized["key_created"] is True, initialized
     assert initialized["key_location"].startswith("https://kazuizhi.example/seo/"), initialized
+    # The submitter must read the deployment module dynamically.  R8-17
+    # replaces that module's status function for Remote Agent mode, so a stale
+    # imported function would incorrectly expose IndexNow initialization.
+    assert "from integrations import seo_public_deployer" in (SOURCE / "integrations" / "search_engine_submitter.py").read_text(encoding="utf-8")
 
     first = publish_one(site_root)
     assert first["stage"] == "PUBLISHED", first

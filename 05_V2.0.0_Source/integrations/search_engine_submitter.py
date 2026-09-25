@@ -31,7 +31,7 @@ from urllib.parse import urlsplit
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import STAGE_INDEX, dashboard, record_asset_stage
 from integrations.credential_vault import get_secret, put_secret
-from integrations.seo_public_deployer import status as public_deploy_status
+from integrations import seo_public_deployer
 
 STORE = "r8_16/search_submitter.json"
 RECEIPTS = "r8_16/search_submission_receipts.json"
@@ -172,7 +172,7 @@ def _atomic_text(path: Path, text: str) -> None:
 
 
 def _ensure_indexnow_key_file(key: str, timeout: int = 8) -> dict:
-    deploy = public_deploy_status()
+    deploy = seo_public_deployer.status()
     if not deploy.get("ready"):
         return {"ok": False, "reason": deploy.get("reason") or "public_deploy_not_ready"}
     root = Path(str(deploy.get("site_root") or ""))
@@ -203,7 +203,7 @@ def initialize_indexnow() -> dict:
     non-secret verification metadata for the owner-facing status card.
     """
     data = _load()
-    deploy = public_deploy_status()
+    deploy = seo_public_deployer.status()
     result = {
         "ok": False,
         "initialized": False,
@@ -341,7 +341,7 @@ def configure(payload: dict) -> dict:
 
 def status() -> dict:
     data = _load()
-    deploy = public_deploy_status()
+    deploy = seo_public_deployer.status()
     index_key = _indexnow_key()
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
@@ -408,7 +408,7 @@ def submit_pending(limit: int = 20) -> dict:
     submitted: list[dict] = []
     failed: list[dict] = []
     site_url = _https_url(data.get("site_url"), "site_url")
-    deploy = public_deploy_status()
+    deploy = seo_public_deployer.status()
 
     # IndexNow / Bing: key can be generated locally and hosted inside /seo/, so no
     # external account login is required. The key file must itself be reachable first.
