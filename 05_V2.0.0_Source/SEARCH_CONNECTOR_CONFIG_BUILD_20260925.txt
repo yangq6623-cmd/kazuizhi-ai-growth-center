@@ -1,0 +1,18 @@
+Kazuizhi R8-17 Search Connector Configuration Final
+
+Baidu Search Resource Platform:
+- verified site: https://kazuizhi.com
+- owner pastes the full official ordinary-indexing API endpoint locally
+- site/token are parsed locally
+- token is stored with Windows DPAPI
+- official HTTP submission remains explicit opt-in
+- a real external receipt is required before SUBMITTED
+
+Google Search Console:
+- owner configures an official Google OAuth Web client once
+- Client ID/Secret are stored with Windows DPAPI
+- OAuth callback is local to the Kazuizhi desktop service
+- access/refresh tokens are stored with Windows DPAPI
+- sitemap submission requires a real Google API response
+
+No plaintext platform credential is stored in GitHub or normal logs.
