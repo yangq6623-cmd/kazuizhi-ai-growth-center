@@ -1,20 +1,33 @@
 """Official authorization + environment safety bridge for durable Account Assets.
 
-The browser opens the provider's own login/consent UI.  Passwords never pass
+The browser opens the provider's own login/consent UI. Passwords never pass
 through Kazuizhi. OAuth callbacks validate state before token exchange; tokens
-are persisted only through Windows DPAPI.
+and locally configured OAuth app credentials are persisted only through Windows
+DPAPI and never written to GitHub or normal project JSON.
 """
 from __future__ import annotations
 
 import json
+import os
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from integrations.account_environment import clear_risk, mark_risk, observe, snapshot as environment_snapshot
+from integrations.credential_vault import get_secret, put_secret
 from integrations.oauth_token_broker import complete_authorization
 from integrations.platform_auth_catalog import catalog, pending_requests, start_authorization
 
 _INSTALLED = False
+
+_APP_CREDENTIALS = {
+    "google_search_console": {
+        "client_id_env": "KZ_GOOGLE_SEARCH_CLIENT_ID",
+        "client_secret_env": "KZ_GOOGLE_SEARCH_CLIENT_SECRET",
+        "client_id_key": "oauth.app.google_search_console.client_id",
+        "client_secret_key": "oauth.app.google_search_console.client_secret",
+        "redirect_uri": "http://127.0.0.1:8876/api/r8-12/oauth/callback/google_search_console",
+    },
+}
 
 
 def _origin_allowed(handler):
@@ -44,10 +57,63 @@ def _html(handler, title: str, body: str, *, ok=True):
     handler.end_headers(); handler.wfile.write(html)
 
 
+def _hydrate_app_credentials() -> None:
+    """Restore DPAPI-protected OAuth app credentials into this process only."""
+    for config in _APP_CREDENTIALS.values():
+        try:
+            client_id = str(get_secret(config["client_id_key"]) or "").strip()
+            client_secret = str(get_secret(config["client_secret_key"]) or "").strip()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if client_id:
+            os.environ[config["client_id_env"]] = client_id
+        if client_secret:
+            os.environ[config["client_secret_env"]] = client_secret
+
+
+def _credential_status(platform: str, port: int = 8876) -> dict:
+    config = _APP_CREDENTIALS.get(platform)
+    if not config:
+        raise ValueError("该平台不需要本地 OAuth 应用凭据配置")
+    client_id = str(os.environ.get(config["client_id_env"], "")).strip()
+    client_secret = str(os.environ.get(config["client_secret_env"], "")).strip()
+    redirect_uri = config["redirect_uri"].replace(":8876/", f":{int(port)}/")
+    return {
+        "platform": platform,
+        "configured": bool(client_id and client_secret),
+        "client_id_configured": bool(client_id),
+        "client_secret_configured": bool(client_secret),
+        "redirect_uri": redirect_uri,
+        "secret_exposed": False,
+        "storage": "Windows DPAPI / current user",
+    }
+
+
+def _save_app_credentials(payload: dict, port: int) -> dict:
+    platform = str(payload.get("platform") or "").strip()
+    config = _APP_CREDENTIALS.get(platform)
+    if not config:
+        raise ValueError("该平台不支持此配置入口")
+    client_id = str(payload.get("client_id") or "").strip()
+    client_secret = str(payload.get("client_secret") or "").strip()
+    if not client_id or not client_secret:
+        raise ValueError("Client ID 和 Client Secret 都不能为空")
+    if len(client_id) > 1024 or len(client_secret) > 4096:
+        raise ValueError("OAuth 应用凭据长度异常")
+    put_secret(config["client_id_key"], client_id)
+    put_secret(config["client_secret_key"], client_secret)
+    os.environ[config["client_id_env"]] = client_id
+    os.environ[config["client_secret_env"]] = client_secret
+    result = _credential_status(platform, port)
+    result["saved"] = True
+    return result
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
         return
+    _hydrate_app_credentials()
     original_get = server.DashboardHandler.do_GET
     original_post = server.DashboardHandler.do_POST
 
@@ -56,6 +122,10 @@ def install():
         try:
             if path == "/api/r8-12/auth/catalog":
                 payload = catalog(); payload["pending"] = pending_requests(); handler._json_ok(payload); return
+            if path == "/api/r8-12/auth/app-credentials/status":
+                query = parse_qs(parsed.query)
+                platform = str((query.get("platform") or ["google_search_console"])[0]).strip()
+                handler._json_ok(_credential_status(platform, handler.server.server_port)); return
             if path == "/api/r8-12/account-environments":
                 handler._json_ok(environment_snapshot()); return
             if path.startswith("/api/r8-12/oauth/callback/"):
@@ -81,6 +151,7 @@ def install():
         path = urlsplit(handler.path).path
         allowed = {
             "/api/r8-12/auth/start",
+            "/api/r8-12/auth/app-credentials",
             "/api/r8-12/account-environment/observe",
             "/api/r8-12/account-environment/risk",
             "/api/r8-12/account-environment/clear-risk",
@@ -91,6 +162,8 @@ def install():
             handler._json_error(403, "Cross-origin changes are not allowed"); return
         try:
             payload = _read_json_body(handler)
+            if path == "/api/r8-12/auth/app-credentials":
+                handler._json_ok(_save_app_credentials(payload, handler.server.server_port)); return
             if path == "/api/r8-12/auth/start":
                 platform = str(payload.get("platform") or "").strip()
                 if not platform: raise ValueError("platform 不能为空")
@@ -115,6 +188,7 @@ def install():
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_12_auth_broker = True
     server.DashboardHandler._kz_r8_12_safe_multi_account = True
+    server.DashboardHandler._kz_r8_12_dpapi_app_credentials = True
     _INSTALLED = True
 
 
