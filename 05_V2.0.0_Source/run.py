@@ -31,6 +31,7 @@ from backend import r8_12_auth_broker_patch as _r8_12_auth_broker_patch  # noqa:
 from backend import r8_13_seo_geo_patch as _r8_13_seo_geo_patch  # noqa: F401,E402
 from backend import r8_14_seo_geo_autonomy_patch as _r8_14_seo_geo_autonomy_patch  # noqa: F401,E402
 from backend import r8_15_seo_public_deploy_patch as _r8_15_seo_public_deploy_patch  # noqa: F401,E402
+from backend import r8_16_search_submit_patch as _r8_16_search_submit_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
@@ -67,13 +68,13 @@ def start_scheduler():
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
-                    # R8-15: local SEO/GEO work remains autonomous; when the guarded
-                    # public connector is truly ready, QC_PASSED pages may be copied
-                    # into the managed /seo/ tree and only become PUBLISHED after
-                    # public HTTP verification succeeds.
+                    # R8-16: local SEO/GEO work remains autonomous. The R8-15 guarded
+                    # deployer only promotes pages after real public verification, and
+                    # R8-16 search connectors only promote them to SUBMITTED after an
+                    # external search endpoint returns an observable acceptance receipt.
                     run_seo_geo_autonomy(force=False)
             except (OSError, ValueError, RuntimeError) as error:
-                print(f"R7/R8-15 scheduler check failed: {error}", flush=True)
+                print(f"R7/R8-16 scheduler check failed: {error}", flush=True)
 
             if tick % 4 == 0:
                 try:
