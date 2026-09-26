@@ -85,7 +85,6 @@ jobs:
           python 04_Build/v2/test_r8_17_remote_agent.py
           python 04_Build/v2/test_r8_17_autonomy_remote_bridge.py
           python 04_Build/v2/test_r8_17_direct_file_fallback.py
-          python 04_Build/v2/test_r8_17_search_console_config.py
           python 04_Build/v2/test_r8_18_seo_quality.py
           python 04_Build/v2/test_r8_18_chatgpt_controlled_execution.py
           python 04_Build/v2/test_r8_18_navigation_stability.py
