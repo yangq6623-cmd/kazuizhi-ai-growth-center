@@ -139,6 +139,11 @@ def main():
                 assert token in ui
             for token in ("AbortController", "本机服务正在就绪", "loadAttempts<5", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
                 assert token in ui
+            # Search Console authorization must start from the SEO page itself.
+            # The account-center iframe is optional and must not make the
+            # visible button silently do nothing when it has not loaded.
+            for token in ("beginSearchAuthorization", "/api/r8-12/auth/start", "正在生成 Google 官方授权链接", "window.open('about:blank','_blank')"):
+                assert token in ui
             assert "[object Object]" not in ui
 
             patch_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
