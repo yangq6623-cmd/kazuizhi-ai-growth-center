@@ -1,8 +1,8 @@
 window.KZ_BUILD_INFO = {
   runNumber: "__GITHUB_RUN_NUMBER__",
   commit: "__GITHUB_SHA__",
-  branch: "r8-17-remote-agent-oneclick-final-20260925",
-  phase: "R8-17",
-  displayVersion: "V2.2.2 R8-17 Remote One-Click",
-  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-17-REMOTE-ONECLICK-20260925"
+  branch: "r8-17-failed-fetch-repair-20260926",
+  phase: "R8-19",
+  displayVersion: "V2.2.2 R8-19 ChatGPT Control Loop",
+  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-19-CHATGPT-CONTROL-20260926"
 };

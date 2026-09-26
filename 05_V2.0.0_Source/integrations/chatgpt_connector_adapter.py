@@ -355,6 +355,7 @@ def _apply_decision(connector_id: str, data: dict) -> dict:
         "ai_employee_roles_available": len(roles),
         "employee_truth": "8个AI员工为统一ChatGPT总脑下的职责角色；这里只证明角色已注册，不伪造全部任务已执行。",
         "external_result_truth": "平台发布、SEO收录、咨询和订单必须等待各自真实回执/数据，当前 Receipt 不代表这些外部结果已经发生。",
+        "chatgpt_plan": decision_result.get("chatgpt_plan"),
     }
     receipt = control.record_command_receipt(command_id, receipt_result, mission_id=mission_id)
     _audit("command_completed", connector_id, {"command_id": command_id, "receipt_id": receipt.get("receipt_id"), "mission_id": mission_id})

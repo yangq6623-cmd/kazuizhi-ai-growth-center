@@ -18,38 +18,38 @@ def main():
     observe = configure({"mode": "observe", "enabled": True})
     assert observe["mode"] == "observe"
     result = run_once(force=True)
-    assert result["local_cycle"]["reason"] == "observe_mode"
+    assert result["skipped"] is True
+    assert result["reason"] == "chatgpt_not_verified"
 
     assisted = configure({"mode": "assisted"})
     assert assisted["mode"] == "assisted"
     result = run_once(force=True)
-    assert result["mode"] == "assisted"
+    assert result["reason"] == "chatgpt_not_verified"
     snap = dashboard()
-    assert len(snap.get("assets", [])) > 0
-    # Deterministic local QC may advance GENERATED pages but must not fabricate public success.
+    assert len(snap.get("assets", [])) == 0
+    # No local UI mode is allowed to bypass the verified ChatGPT command gate.
     assert all(a.get("stage") not in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"} for a in snap.get("assets", []))
 
     autonomous = configure({"mode": "autonomous"})
     assert autonomous["mode"] == "autonomous"
     result = run_once(force=True)
-    assert result["external_readiness"]["publish_connector_ready"] is False
+    assert result["reason"] == "chatgpt_not_verified"
     state = status()
     keys = {x.get("key") for x in state["human_items"]}
-    assert "seo_public_deploy_connector" in keys
-    assert "seo_search_connector" in keys
-    assert state["human_item_count"] >= 2
+    assert "chatgpt_seo_geo_daily_plan" in keys
+    assert state["chatgpt_control"]["gate"]["allowed"] is False
     assert state["policy"]["never_fake_publication"] is True
     assert state["policy"]["never_fake_indexing"] is True
     assert state["policy"]["never_fake_geo_visibility"] is True
     assert all("授权至少一个搜索站长平台" != x.get("title") for x in state["human_items"])
 
     ui = (SOURCE / "web" / "r8_14_seo_geo_autonomy_ui.js").read_text(encoding="utf-8")
-    for marker in ("观察模式", "半自动", "自治模式", "待人工处理", "/api/r8-14/seo-geo/autonomy"):
+    for marker in ("ChatGPT 总控", "等待 ChatGPT 总控计划", "SEO/GEO 待处理", "/api/r8-14/seo-geo/autonomy"):
         assert marker in ui, marker
-    for marker in ("r814-feedback", "kz-r813-focus", "刷新失败：", "自治状态已刷新"):
+    for marker in ("r814-feedback", "kz-r813-focus", "刷新失败：", "已完成总控计划核对"):
         assert marker in ui, marker
 
-    print("PASS: R8-14 SEO/GEO autonomy modes, local-first execution and external truth gates verified.")
+    print("PASS: R8-14 SEO/GEO execution is blocked until the verified ChatGPT daily plan gate opens.")
 
 
 if __name__ == "__main__":

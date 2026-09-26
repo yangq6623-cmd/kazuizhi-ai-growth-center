@@ -407,6 +407,18 @@ def record_command_receipt(command_id: str, result, *, mission_id: str | None = 
     receipts.append(receipt)
     _save_list(RECEIPTS_FILE, receipts)
 
+    # A dated SEO/GEO permit is written only after the verified connector has
+    # completed the normal Command -> Receipt sequence.  A local scheduler or
+    # a UI toggle cannot manufacture this permission.
+    if isinstance(result, dict) and isinstance(result.get("chatgpt_plan"), dict) and mission:
+        from core.chatgpt_execution_control import record_verified_plan
+        record_verified_plan(
+            command_id=item["command_id"],
+            receipt_id=receipt_id,
+            mission_id=mission,
+            plan=result["chatgpt_plan"],
+        )
+
     item["status"] = receipt["status"]
     item["completed_at"] = current
     item["receipt_id"] = receipt_id

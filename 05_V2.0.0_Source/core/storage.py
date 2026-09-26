@@ -11,15 +11,27 @@ from pathlib import Path
 def data_root():
     base = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
     root = base / "Kazuizhi_AI_Enterprise_V2.0.0_Beta" / "data"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        if os.access(root, os.R_OK | os.W_OK):
+            return root
+    except OSError:
+        pass
+
+    # A previous installation can leave a profile directory owned by another
+    # Windows account.  Falling back to the current process temp directory is
+    # safer than failing startup or blocking the dashboard; the normal user
+    # profile path is still used whenever it is accessible.
+    fallback = Path(tempfile.gettempdir()) / "Kazuizhi_AI_Enterprise_V2.0.0_Beta" / "data"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 
 def read_json(relative_path, default):
     path = data_root() / relative_path
-    if not path.exists():
-        return default
     try:
+        if not path.exists():
+            return default
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return default

@@ -37,6 +37,11 @@ def apply_chatgpt_mission_decision(payload):
     if action not in ALLOWED_ACTIONS:
         raise ValueError("mission_decision只允许continue、stop或create_mission")
     reason = _clean(payload.get("reason") or "ChatGPT根据R7/R8真实状态做出的自治经营决策", "reason", 500)
+    raw_plan = payload.get("execution_plan", payload.get("plan"))
+    chatgpt_plan = None
+    if raw_plan is not None:
+        from core.chatgpt_execution_control import normalize_plan
+        chatgpt_plan = normalize_plan(raw_plan)
 
     from promotion import content_factory as cf
 
@@ -67,7 +72,7 @@ def apply_chatgpt_mission_decision(payload):
         autonomous_ops._event(data, mission, "chatgpt_mission_stop", "ChatGPT已停止当前低收益/不再优先的经营任务", {"reason": reason})
         autonomous_ops._save(data)
         autonomous_ops.sync_from_runtime(autostart=False)
-        return {"action": action, "mission_id": mission.get("mission_id"), "state": "paused"}
+        return {"action": action, "mission_id": mission.get("mission_id"), "state": "paused", "chatgpt_plan": None}
 
     if action == "continue":
         if not mission:
@@ -88,7 +93,7 @@ def apply_chatgpt_mission_decision(payload):
         })
         autonomous_ops._save(data)
         autonomous_ops.sync_from_runtime(autostart=False)
-        return {"action": action, "mission_id": mission.get("mission_id"), "video_id": (started or active or {}).get("id")}
+        return {"action": action, "mission_id": mission.get("mission_id"), "video_id": (started or active or {}).get("id"), "chatgpt_plan": chatgpt_plan}
 
     # create_mission: only a structured, non-financial campaign may be created.
     region = _clean(payload.get("region"), "region", 40)
@@ -135,4 +140,5 @@ def apply_chatgpt_mission_decision(payload):
         "growth_id": campaign.get("id"),
         "video_id": (new_mission or {}).get("active_video_id"),
         "state": "active",
+        "chatgpt_plan": chatgpt_plan,
     }

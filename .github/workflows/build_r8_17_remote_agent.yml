@@ -73,7 +73,7 @@ jobs:
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_12_account_publish_runtime.py
           python 04_Build/v2/test_r8_12_local_first_closed_loop.py
-      - name: Verify R8-13 through R8-17 SEO remote closed loop
+      - name: Verify R8-13 through R8-19 ChatGPT-controlled SEO loop
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_13_multi_account_auth.py
@@ -85,6 +85,10 @@ jobs:
           python 04_Build/v2/test_r8_17_remote_agent.py
           python 04_Build/v2/test_r8_17_autonomy_remote_bridge.py
           python 04_Build/v2/test_r8_17_direct_file_fallback.py
+          python 04_Build/v2/test_r8_17_search_console_config.py
+          python 04_Build/v2/test_r8_18_seo_quality.py
+          python 04_Build/v2/test_r8_18_chatgpt_controlled_execution.py
+          python 04_Build/v2/test_r8_18_navigation_stability.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -96,32 +100,32 @@ jobs:
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install, launch, overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-17 artifact provenance
+      - name: Record R8-19 artifact provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-17 Desktop Remote Agent'
+            version = '2.2.2 R8-19 ChatGPT Control Loop'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
             remote_agent_protocol = 'kz-remote-agent-v1 / token-v1'
             remote_agent_endpoint = 'https://kazuizhi.com/kz-remote-v1/agent.ashx/v1'
-            checks = @('full inherited R7/R8 regression gates', 'R8-17 pairing validation', 'Windows DPAPI secret path', 'Remote Agent upload protocol', 'remote SEO deploy patch', 'R8-17 autonomy live deployer resolution', 'IIS index/default compatibility mirror', 'direct static HTML fallback', 'IndexNow remote key hosting', 'source closed loop', 'Microsoft Defender scan when available', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Desktop build passed automated gates. Production PUBLISHED still requires real public HTTP/content/canonical/Schema/robots verification; SUBMITTED still requires a real search-platform acceptance receipt.'
-          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_17.json
-      - name: Upload R8-17 Windows installer
+            checks = @('full inherited R7/R8 regression gates', 'R8-17 pairing validation', 'Windows DPAPI secret path', 'Remote Agent upload protocol', 'remote SEO deploy patch', 'R8-17 autonomy live deployer resolution', 'IIS index/default compatibility mirror', 'direct static HTML fallback', 'IndexNow remote key hosting', 'Google Search Console DPAPI app credentials', 'Baidu full API endpoint guided setup', 'Google URL Inspection evidence gate', 'Search Console ranking evidence gate', 'PageSpeed/Lighthouse independent performance evidence', 'public internal-link/orphan/broken-link audit', 'SEO iframe lazy-load navigation stability', 'finite bounded SEO iframe resize', 'source closed loop', 'Microsoft Defender scan when available', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Desktop build passed automated gates. PUBLISHED requires real public verification; SUBMITTED requires a search-platform receipt; CRAWLED/INDEXED/RANKED require independent provider evidence. HTTP 200 is not treated as performance proof.'
+          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_19.json
+      - name: Upload R8-19 Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_17_Desktop_Remote_Agent
+          name: Kazuizhi_AI_Enterprise_R8_19_ChatGPT_Control_Loop_Final
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload R8-17 portable application
+      - name: Upload R8-19 portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_17_Desktop_Remote_Agent_Portable
+          name: Kazuizhi_AI_Enterprise_R8_19_ChatGPT_Control_Loop_Final_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
