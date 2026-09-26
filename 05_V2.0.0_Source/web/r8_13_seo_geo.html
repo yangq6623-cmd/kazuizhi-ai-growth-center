@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+<style>
+  .toolbar{align-items:flex-start}.toolbar>div:first-child{min-width:0}.toolbar .btn{flex:0 0 auto;min-width:132px;min-height:42px;white-space:nowrap;line-height:1.2}
+  .health-item{align-items:center}.health-item .tag{align-self:center;justify-content:center;min-height:34px;line-height:1.25;text-align:center}
+  .btn,.connector-action{min-height:40px;line-height:1.2}.connector-action{white-space:nowrap}
+  @media(max-width:700px){.toolbar{flex-direction:column}.toolbar .btn{width:100%}.health-item{align-items:flex-start}.health-item .tag{flex:0 0 auto;margin-top:3px}}
+</style>
 <style>#asset-table{overflow-x:auto}#asset-table table{min-width:760px}#asset-table th,#asset-table td{white-space:normal;word-break:normal;min-width:76px}</style>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -122,6 +128,11 @@ function renderPipeline(){
  $('pipeline').innerHTML=steps.map(([n,title,sub,kind,note])=>`<div class="step ${kind}"><b>${n} ${title}</b><span>${sub}</span><small>${esc(note)}</small></div>`).join('');const runs=state.daily_runs||[];$('logs').innerHTML=runs.length?runs.slice(0,5).map(x=>`<div class="log"><b>${esc(x.date)}</b> · 今日增量：规划 ${x.planned||0} 页，生成 ${x.generated||0} 页，公开 ${x.published||0} 页，提交 ${x.submitted||0} 页 · ${esc(x.note||'')}</div>`).join(''):'<div class="empty">今天尚未运行 SEO/GEO 自动作业。</div>';$('truth-rule').textContent=(state.truth_rule||'')+' 今日作业记录只代表当日增量，历史存量不会重复记入今日。';
 }
 $('refresh-btn').textContent='执行技术审计';$('refresh-btn').onclick=()=>runButton($('refresh-btn'),'/api/r8-13/seo-geo/technical-audit',{},'正在检查公网响应和内链…');
+function markConnectorSubmissionFailures(){
+ const last=(state?.search_submit||{}).last_result||{},failed=last.failed||[],engines={'百度搜索资源平台':'baidu','Bing / IndexNow':'indexnow','Google Search Console':'google_search_console'};
+ document.querySelectorAll('#connectors .connector').forEach(row=>{const name=row.querySelector('b')?.textContent||'',engine=engines[name],failure=failed.find(item=>item.engine===engine);if(!failure)return;const badge=row.querySelector('.tag');if(badge){badge.textContent='提交待处理';badge.className='tag warn';badge.title='连接器已配置，但最近一次提交没有取得官方平台接收回执。'}});
+}
+const renderSeoPage=render;render=function(){renderSeoPage();markConnectorSubmissionFailures()};
 </script>
 </body>
 </html>
