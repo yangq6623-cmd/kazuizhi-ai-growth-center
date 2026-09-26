@@ -151,7 +151,7 @@ def seed_verified_chatgpt_execution_plan(temporary):
         check(mission, "Campaign did not create an active Mission for the ChatGPT execution plan")
         control.record_verified_roundtrip(
             connector_id="ci-r8-19-control",
-            proof_source="ci_control_plane",
+            proof_source="chatgpt_app",
             challenge_id="CI-R8-19-OPERATIONAL",
             command_id="CMD-CI-R8-19-VERIFY",
             receipt_id="RECEIPT-CI-R8-19-VERIFY",
