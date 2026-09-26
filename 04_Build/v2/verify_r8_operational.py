@@ -129,6 +129,57 @@ def seed_verified_social_control(temporary):
             os.environ["LOCALAPPDATA"] = old_local
 
 
+def seed_verified_chatgpt_execution_plan(temporary):
+    """Create the same verified daily permit required by the R8-19 runtime.
+
+    This acceptance test previously drove the video queue immediately after a
+    local content plan.  R8-19 deliberately blocks that path until ChatGPT has
+    issued a verified Command -> Receipt daily plan.  The CI fixture therefore
+    seeds that normal control-plane sequence; it does not bypass the gate or
+    claim a platform result.
+    """
+    source = ROOT / "05_V2.0.0_Source"
+    old_local = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = temporary
+    sys.path.insert(0, str(source))
+    try:
+        from core.autonomous_ops import snapshot
+        from core.chatgpt_execution_control import execution_gate
+        from integrations import chatgpt_control as control
+
+        mission = (snapshot(sync=True).get("active_mission") or {}).get("mission_id")
+        check(mission, "Campaign did not create an active Mission for the ChatGPT execution plan")
+        control.record_verified_roundtrip(
+            connector_id="ci-r8-19-control",
+            proof_source="ci_control_plane",
+            challenge_id="CI-R8-19-OPERATIONAL",
+            command_id="CMD-CI-R8-19-VERIFY",
+            receipt_id="RECEIPT-CI-R8-19-VERIFY",
+            permissions=["read_missions", "start_content_production"],
+        )
+        command = control.create_owner_command({"objective": "按已验证的 ChatGPT 当日计划执行本地内容生产与质检验收"})
+        control.acknowledge_command(command["command_id"], mission_id=mission)
+        receipt = control.record_command_receipt(command["command_id"], {
+            "chatgpt_plan": {
+                "focus": "CI 验证：在零素材真实边界下完成本地内容生产、技术质检与老板审核门槛。",
+                "actions": ["content_generate", "video_generate", "content_qc"],
+            }
+        }, mission_id=mission)
+        gate = execution_gate(mission)
+        check(gate.get("allowed") and "video_generate" in (gate.get("plan") or {}).get("actions", []),
+              "Verified ChatGPT Command -> Receipt did not unlock the video worker")
+        return {"mission_id": mission, "command_id": command["command_id"], "receipt_id": receipt["receipt_id"]}
+    finally:
+        try:
+            sys.path.remove(str(source))
+        except ValueError:
+            pass
+        if old_local is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = old_local
+
+
 def exercise(command):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -175,6 +226,12 @@ def exercise(command):
                 })
                 check(video["status"] == "等待ChatGPT策划", "No-asset request did not enter ChatGPT planning state")
                 check(video.get("asset_ids") == [], "No-asset request unexpectedly requires owner material")
+
+                # R8-19: no worker is allowed to generate merely because a
+                # local plan was posted.  A verified ChatGPT daily plan is the
+                # explicit operating permit for this Mission.
+                permit = seed_verified_chatgpt_execution_plan(temporary)
+                check(permit.get("mission_id"), "Verified ChatGPT execution permit did not bind to the active Mission")
 
                 plan = {
                     "schema": "kazuizhi-content-production/v1",
