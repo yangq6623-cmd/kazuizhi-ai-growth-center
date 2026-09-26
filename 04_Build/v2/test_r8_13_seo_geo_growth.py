@@ -54,6 +54,15 @@ def main():
             assert enriched["geo"]["measurement_state"] == "not_started"
             assert "只代表本地证据" in evidence["truth"]
 
+            # Optional connector checks must never take the whole SEO screen
+            # offline. This reproduces a damaged local connector store.
+            original_submit_status = seo_patch.search_submit_status
+            seo_patch.search_submit_status = lambda: (_ for _ in ()).throw(OSError("locked"))
+            degraded = seo_patch._dashboard_payload()
+            assert degraded["technical"]["connectors"]["baidu"]["ready"] is False
+            assert "暂时不可用" in degraded["search_submit"]["reason"]
+            seo_patch.search_submit_status = original_submit_status
+
             asset_id = staged["assets"][0]["id"]
             try:
                 growth.record_asset_stage(asset_id, "PUBLISHED", {})
@@ -104,6 +113,8 @@ def main():
             for token in ("公开回执", "已有逐页公网回执", "当前官网探测", "等待自动初始化", "IndexNow 自动提交（无需登录）", "/api/r8-13/seo-geo/audit-site"):
                 assert token in ui
             for token in ("action-status", "data-kpi-target", "kz-r813-focus", "操作已完成，页面已刷新为真实状态。"):
+                assert token in ui
+            for token in ("AbortController", "本机服务正在就绪", "loadAttempts<5"):
                 assert token in ui
             assert "[object Object]" not in ui
 

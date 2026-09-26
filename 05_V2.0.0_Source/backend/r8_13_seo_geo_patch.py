@@ -25,6 +25,49 @@ from promotion.search_growth import audit as audit_search_site, status as search
 _INSTALLED = False
 
 
+def _optional_status(label, reader, fallback):
+    """Read a non-essential connector without taking the SEO screen offline.
+
+    The desktop dashboard must still be usable when a locally stored account,
+    a deployment path, or an optional connector cannot be read during startup.
+    A connector's transient failure is shown as its own pending state rather
+    than aborting the single dashboard request and making the browser report
+    the unhelpful ``Failed to fetch`` message.
+    """
+    try:
+        result = reader()
+        return result if isinstance(result, dict) else dict(fallback)
+    except Exception as error:  # HTTP boundary: optional status must not break the page.
+        result = dict(fallback)
+        result["status"] = "unavailable"
+        result["reason"] = f"{label}暂时不可用：{type(error).__name__}"
+        return result
+
+
+def _connector_fallback():
+    return {
+        "connectors": {
+            "baidu": {
+                "label": "百度搜索资源平台", "configured": False, "ready": False,
+                "mode": "普通收录 API", "requires_owner": True,
+                "reason": "连接状态正在重新读取，请稍后刷新。",
+            },
+            "bing": {
+                "label": "Bing / IndexNow", "configured": False, "ready": False,
+                "mode": "IndexNow", "requires_owner": False,
+                "reason": "连接状态正在重新读取，请稍后刷新。",
+            },
+            "google": {
+                "label": "Google Search Console", "configured": False, "ready": False,
+                "mode": "Search Console Sitemap API", "requires_owner": True,
+                "reason": "连接状态正在重新读取，请稍后刷新。",
+            },
+        },
+        "ready_engines": [],
+        "truth": "连接器状态暂不可用；不会影响本地 SEO/GEO 数据和页面查看。",
+    }
+
+
 def _origin_allowed(handler):
     origin = handler.headers.get("Origin")
     allowed = {
@@ -105,9 +148,16 @@ def _dashboard_payload():
     # Keep the independent website audit and the deployment connector separate.
     # The former is a current homepage/robots/sitemap observation; the latter
     # owns the historical per-page verification receipt required for PUBLISHED.
-    technical["public_site"] = search_growth_status()
-    technical["public_deploy"] = seo_public_deployer.status()
-    search = search_submit_status()
+    technical["public_site"] = _optional_status(
+        "官网探测状态", search_growth_status,
+        {"status": "unavailable", "latest_audit": None, "packs": []},
+    )
+    technical["public_deploy"] = _optional_status(
+        "公网部署状态", seo_public_deployer.status,
+        {"configured": False, "enabled": False, "ready": False,
+         "reason": "公网部署状态正在重新读取。"},
+    )
+    search = _optional_status("搜索连接器状态", search_submit_status, _connector_fallback())
     technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
     payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
@@ -137,8 +187,8 @@ def install():
                 result["connectors"] = (search_submit_status().get("connectors") or {})
                 handler._json_ok(result)
                 return
-        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-            handler._json_error(400, error)
+        except Exception as error:  # Never close the local HTTP connection without JSON.
+            handler._json_error(503, f"SEO/GEO 状态暂时不可用：{type(error).__name__}")
             return
         return original_get(handler)
 
