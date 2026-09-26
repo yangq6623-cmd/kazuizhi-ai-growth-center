@@ -138,12 +138,16 @@ def main():
     assert connector["connectors"]["bing"]["configured"] is True, connector
     assert connector["truth"].find("SUBMITTED") >= 0
 
-    # Owner-facing controls must invoke a real initialization endpoint and route
-    # official authorization requests back to the durable account center.
+    # Owner-facing controls must invoke a real initialization endpoint.  The
+    # Search Console control must also be able to start official authorization
+    # directly: the optional account-center bridge cannot be a single point of
+    # failure for the visible button.
     page = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
     bridge = (SOURCE / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
     assert "/api/r8-16/search-submit/initialize" in page
-    assert "kz-r8-search-auth" in page and "KZAuthUI" in bridge
+    assert "/api/r8-12/auth/start" in page
+    assert "beginSearchAuthorization" in page
+    assert "KZAuthUI" in bridge
 
     print("R8-16 truthful IndexNow/search submission receipt gates passed")
 
