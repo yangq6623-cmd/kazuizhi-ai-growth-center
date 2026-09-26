@@ -73,6 +73,7 @@ jobs:
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_12_account_publish_runtime.py
           python 04_Build/v2/test_r8_12_local_first_closed_loop.py
+          python 04_Build/v2/test_r8_18_chatgpt_command_execution.py
       - name: Verify R8-13 through R8-17 SEO remote closed loop
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
