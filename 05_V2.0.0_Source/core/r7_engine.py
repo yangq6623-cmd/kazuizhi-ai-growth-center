@@ -260,14 +260,17 @@ def _run(job_id):
         learn_from_job(job)
 
 
-def run_due_jobs():
+def run_due_jobs(allowed_task_types=None):
     now = datetime.now().astimezone()
+    allowed = {str(item or "").strip() for item in (allowed_task_types or []) if str(item or "").strip()}
     with LOCK:
         if audit_history()["integrity"] != "verified":
             raise ValueError("审计记录校验失败，已暂停任务执行")
         due = []
         for job in _store()["items"]:
             if job["state"] != "queued" or job["mode"] != "local":
+                continue
+            if allowed and str(job.get("task_type") or "") not in allowed:
                 continue
             when = datetime.fromisoformat(job["due_at"]) if job["due_at"] else now
             if when.tzinfo is None:
@@ -276,7 +279,7 @@ def run_due_jobs():
                 due.append(job["id"])
     for job_id in due:
         _run(job_id)
-    return {"processed": len(due), "at": now_iso()}
+    return {"processed": len(due), "at": now_iso(), "allowed_task_types": sorted(allowed)}
 
 
 def recover_interrupted():

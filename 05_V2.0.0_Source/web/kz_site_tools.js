@@ -87,6 +87,17 @@
   }
 
   const emptySchema = {type:'object', properties:{}, additionalProperties:false};
+  const executionPlanSchema = {
+    type:'object',
+    description:'ChatGPT 当日批准的执行计划；没有此计划，平台只观察和整理证据，不执行内容、发布或提交。',
+    properties:{
+      date:{type:'string', description:'计划生效日期，YYYY-MM-DD；默认今天'},
+      focus:{type:'string', description:'当日经营重点与取舍理由'},
+      actions:{type:'array', minItems:1, uniqueItems:true, items:{type:'string', enum:['market_scan','seo_discovery','seo_plan','seo_generate','seo_qc','seo_publish','seo_submit','seo_monitor','geo_baseline','geo_observe','attribution_review','content_generate','content_qc','social_draft','video_generate','local_analysis','conversion_analysis','daily_review','publish_plan','publish_execute']}},
+    },
+    required:['focus','actions'],
+    additionalProperties:false,
+  };
   const tools = [
     tool(
       'kazuizhi_connect_local_control',
@@ -113,6 +124,14 @@
       async () => callLocal('get_current_mission'),
     ),
     tool(
+      'kazuizhi_get_execution_plan_status',
+      '读取 ChatGPT 当日执行计划状态',
+      '读取当前 Mission 是否拥有今日已回执的 ChatGPT 计划、允许哪些动作以及为什么被拦截。只读。',
+      emptySchema,
+      true,
+      async () => callLocal('get_execution_plan_status'),
+    ),
+    tool(
       'kazuizhi_create_mission',
       '创建经营 Mission',
       '根据老板经营目标创建一个非资金类 Mission，并生成可追溯 Command 和 Receipt。不会自动声称平台发布、SEO 收录、咨询或订单已经发生。',
@@ -126,6 +145,7 @@
           goal:{type:'string', description:'可验证经营目标'},
           reason:{type:'string', description:'ChatGPT 的决策理由'},
           objective:{type:'string', description:'老板原始经营目标，可选'},
+          execution_plan:executionPlanSchema,
         },
         required:['region','service','title','evidence','goal'],
         additionalProperties:false,
@@ -142,6 +162,7 @@
         properties:{
           mission_id:{type:'string'},
           reason:{type:'string'},
+          execution_plan:executionPlanSchema,
         },
         required:['mission_id'],
         additionalProperties:false,

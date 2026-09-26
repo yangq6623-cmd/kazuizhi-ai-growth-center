@@ -39,6 +39,7 @@ READ_TOOLS = {
     "read_receipts",
     "get_business_results",
     "get_human_attention",
+    "get_execution_plan_status",
 }
 WRITE_TOOLS = {
     "create_mission",
@@ -192,8 +193,11 @@ def _save_request(item: dict) -> None:
 
 def _system_status() -> dict:
     from core.autonomous_ops import snapshot
+    from core.chatgpt_execution_control import status as execution_status
+    mission = snapshot(sync=False).get("active_mission") or {}
     return {
         "local_control": status(),
+        "chatgpt_execution_plan": execution_status(mission.get("mission_id")),
         "chatgpt_control": control.control_status(),
         "primary_blocker": control.primary_blocker(),
         "operations": snapshot(sync=False),
@@ -255,6 +259,13 @@ def _human_attention() -> dict:
     from promotion import content_factory as cf
     factory = cf.dashboard()
     return factory.get("action_center") or {"human_count": 0, "human_items": []}
+
+
+def _execution_plan_status() -> dict:
+    from core.autonomous_ops import snapshot
+    from core.chatgpt_execution_control import status as execution_status
+    mission = snapshot(sync=False).get("active_mission") or {}
+    return execution_status(mission.get("mission_id"))
 
 
 def _canonical_business_command(objective: str) -> dict:
@@ -361,6 +372,8 @@ def execute_tool(name: str, args=None, *, request_id: str | None = None) -> dict
         result = _business_results()
     elif tool == "get_human_attention":
         result = _human_attention()
+    elif tool == "get_execution_plan_status":
+        result = _execution_plan_status()
     elif tool == "create_mission":
         result = _create_mission(values)
     elif tool == "set_primary_mission":
@@ -399,6 +412,7 @@ def tool_catalog() -> list[dict]:
         {"name": "read_receipts", "read_only": True},
         {"name": "get_business_results", "read_only": True},
         {"name": "get_human_attention", "read_only": True},
+        {"name": "get_execution_plan_status", "read_only": True},
         {"name": "create_mission", "read_only": False},
         {"name": "set_primary_mission", "read_only": False},
         {"name": "start_content_task", "read_only": False},

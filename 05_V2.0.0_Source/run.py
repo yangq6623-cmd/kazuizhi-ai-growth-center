@@ -38,14 +38,16 @@ from backend import r8_17_remote_agent_patch as _r8_17_remote_agent_patch  # noq
 from backend import r8_18_seo_quality_patch as _r8_18_seo_quality_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
+from core.autonomous_ops import snapshot as autonomous_snapshot
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
 from core.mission_ledger import sync_backbone as sync_mission_backbone
-from core.daily_workforce import ensure_daily_workforce
+from core.daily_workforce import TASK_ACTIONS, ensure_daily_workforce
 from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
 from core.seo_geo_autonomy import run_once as run_seo_geo_autonomy
+from core.chatgpt_execution_control import allows_action, execution_gate
 from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
@@ -75,6 +77,54 @@ def _sync_r8_17_remote_agent():
         return {"ok": False, "reason": str(error)}
 
 
+def _chatgpt_execution_context():
+    """One global permit for every scheduler worker with business side effects."""
+    active = autonomous_snapshot(sync=False).get("active_mission") or {}
+    gate = execution_gate(active.get("mission_id"))
+    actions = set((gate.get("plan") or {}).get("actions") or []) if gate.get("allowed") else set()
+    task_types = {
+        task_type for task_type, mapped in TASK_ACTIONS.items()
+        if mapped.intersection(actions)
+    }
+    return {"gate": gate, "actions": actions, "task_types": task_types}
+
+
+def _run_authorized_platform_work(context, *, full=False):
+    """Run only the workers explicitly approved in today's ChatGPT plan."""
+    gate, actions = context["gate"], context["actions"]
+    if not gate.get("allowed"):
+        # Daily review is evidence collection, not a business execution command.
+        ensure_daily_review()
+        run_due_jobs({"review", "diagnostics"})
+        return {"allowed": False, "reason": gate.get("code")}
+
+    plan = gate.get("plan") or {}
+    ensure_daily_workforce(actions, command_id=plan.get("command_id") or "")
+    # Existing queued work is filtered by the same action allow-list, so an old
+    # schedule cannot run merely because a new, unrelated Mission was approved.
+    run_due_jobs(context["task_types"] | {"review", "diagnostics"})
+    if not full:
+        return {"allowed": True, "actions": sorted(actions), "command_id": plan.get("command_id")}
+    scan_material_inbox()
+    if allows_action(gate, "content_generate", "social_draft", "video_generate"):
+        sync_autonomous_ops(autostart=True)
+        sync_content_plans()
+        run_ai_gateway(limit=2)
+    if allows_action(gate, "content_qc", "seo_qc"):
+        recover_authorized_qc(limit=10)
+    if allows_action(gate, "publish_plan"):
+        run_publish_planning(limit=10)
+    if allows_action(gate, "publish_execute"):
+        run_pending_douyin_dry_runs(limit=1)
+    # These functions only synchronize existing command/receipt state and do
+    # not convert an internal result into an external success claim.
+    sync_chatgpt_handoffs()
+    bridge_sync_once()
+    sync_autonomous_ops(autostart=False)
+    sync_mission_backbone()
+    return {"allowed": True, "actions": sorted(actions), "command_id": plan.get("command_id")}
+
+
 def start_scheduler():
     stop = threading.Event()
 
@@ -82,34 +132,22 @@ def start_scheduler():
         tick = 0
         while not stop.is_set():
             try:
-                ensure_daily_workforce()
-                ensure_daily_review()
-                run_due_jobs()
+                context = _chatgpt_execution_context()
+                _run_authorized_platform_work(context)
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
                     # R8-17: periodically discover a pairing file copied to this
                     # PC and keep the lightweight server execution channel live.
                     _sync_r8_17_remote_agent()
-                    # Local SEO/GEO work remains autonomous. PUBLISHED requires
-                    # public verification; SUBMITTED requires a search receipt.
+                    # SEO/GEO applies the same verified ChatGPT daily-plan gate.
                     run_seo_geo_autonomy(force=False)
             except (OSError, ValueError, RuntimeError) as error:
                 print(f"R7/R8-17 scheduler check failed: {error}", flush=True)
 
             if tick % 4 == 0:
                 try:
-                    scan_material_inbox()
-                    sync_autonomous_ops(autostart=True)
-                    sync_content_plans()
-                    recover_authorized_qc(limit=10)
-                    run_ai_gateway(limit=2)  # optional enhancer only
-                    sync_chatgpt_handoffs()
-                    bridge_sync_once()
-                    run_publish_planning(limit=10)
-                    run_pending_douyin_dry_runs(limit=1)
-                    sync_autonomous_ops(autostart=False)
-                    sync_mission_backbone()
+                    _run_authorized_platform_work(_chatgpt_execution_context(), full=True)
                 except (OSError, ValueError, RuntimeError) as error:
                     print(f"R7 AI/local-content/publish execution deferred: {error}", flush=True)
             tick += 1
@@ -146,7 +184,9 @@ def start_video_production_worker():
     def loop():
         while not stop.is_set():
             try:
-                run_pending_videos(limit=1)
+                context = _chatgpt_execution_context()
+                if allows_action(context["gate"], "video_generate"):
+                    run_pending_videos(limit=1)
             except (OSError, ValueError, RuntimeError) as error:
                 print(f"R8 video worker deferred: {error}", flush=True)
             stop.wait(15)
@@ -206,16 +246,7 @@ def main():
             remote_result = _sync_r8_17_remote_agent()
             if remote_result.get("ok"):
                 print("R8-17 Remote Agent connected; remote deployment mode is active.", flush=True)
-            scan_material_inbox()
-            sync_autonomous_ops(autostart=True)
-            sync_content_plans()
-            recover_authorized_qc(limit=10)
-            run_ai_gateway(limit=2)
-            sync_chatgpt_handoffs(force=True)
-            run_publish_planning(limit=10)
-            run_pending_douyin_dry_runs(limit=1)
-            sync_autonomous_ops(autostart=False)
-            sync_mission_backbone()
+            _run_authorized_platform_work(_chatgpt_execution_context(), full=True)
             run_seo_geo_autonomy(force=False)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"Initial local-first convergence deferred: {error}", flush=True)

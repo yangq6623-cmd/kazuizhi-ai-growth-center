@@ -57,6 +57,20 @@ REGION_FALLBACK = {
     "zhejiang_shanghai_reserve": {"name": "浙江 / 上海", "tier": "C", "role": "战略储备区", "mode": "reserve", "work_share_pct": 5},
 }
 
+# ChatGPT plans are expressed as business actions while the inherited R7 worker
+# queue uses role/task types.  Keep this translation in one place so a daily
+# plan cannot accidentally unlock unrelated staff work.
+TASK_ACTIONS = {
+    "market": {"market_scan"},
+    "seo": {"seo_discovery", "seo_plan", "seo_generate", "seo_qc", "seo_monitor"},
+    "geo": {"geo_baseline", "geo_observe"},
+    "content": {"content_generate", "social_draft"},
+    "video": {"video_generate"},
+    "local": {"local_analysis"},
+    "conversion": {"conversion_analysis", "attribution_review"},
+    "review": {"daily_review"},
+}
+
 
 def _due_at(day, hhmm):
     hour, minute = (int(part) for part in hhmm.split(":", 1))
@@ -120,7 +134,7 @@ def _apply_region_metadata(job, region):
     })
 
 
-def ensure_daily_workforce():
+def ensure_daily_workforce(allowed_actions=None, command_id=""):
     """Ensure today's complete, regional, time-spread workforce plan exists once.
 
     On upgrades during the same day, queued jobs with an existing schedule key are
@@ -133,8 +147,11 @@ def ensure_daily_workforce():
     now = datetime.now().astimezone()
     today = now.date()
     today_key = str(today)
+    allowed = {str(item or "").strip() for item in (allowed_actions or []) if str(item or "").strip()}
     base_template = list(DAILY_TEMPLATE)
     template = base_template + _adaptive_template(today)
+    if allowed:
+        template = [row for row in template if TASK_ACTIONS.get(row[3], set()).intersection(allowed)]
     regions = _region_rows()
 
     with r7_engine.LOCK:
@@ -197,6 +214,7 @@ def ensure_daily_workforce():
                 "created_at": stamp,
                 "updated_at": stamp,
                 "approved_by": "autonomy_policy",
+                "chatgpt_command_id": str(command_id or "").strip() or None,
                 "result": None,
                 "error": None,
                 "retry_count": 0,
@@ -233,9 +251,12 @@ def ensure_daily_workforce():
                     },
                 )
 
-    base_counts = {}
-    for *_, region_id in base_template:
-        base_counts[region_id] = base_counts.get(region_id, 0) + 1
+    # Report the plan that is actually eligible to run today.  Showing the
+    # full default template after ChatGPT has approved only a subset would be
+    # misleading in the control centre.
+    planned_counts = {}
+    for *_, region_id in template:
+        planned_counts[region_id] = planned_counts.get(region_id, 0) + 1
     state = read_json(SCHEDULE_STATE, {"dates": []})
     dates = [value for value in state.get("dates", []) if value != today_key]
     dates.append(today_key)
@@ -246,10 +267,10 @@ def ensure_daily_workforce():
         base_planned=len(base_template),
         created=len(created),
         reconciled=len(reconciled),
-        region_job_counts=base_counts,
+        region_job_counts=planned_counts,
         region_work_share_pct={key: int(value.get("work_share_pct", 0)) for key, value in REGION_FALLBACK.items()},
         updated_at=now_iso(),
-        policy="全天分时执行；基础任务按50/30/15/5区域作战分配；非资金自动执行；资金事项不进入自动排班",
+        policy=("仅执行 ChatGPT 当日计划明确授权的非资金任务；基础任务按50/30/15/5区域作战分配；资金事项不进入自动排班" if allowed else "全天分时执行；基础任务按50/30/15/5区域作战分配；非资金自动执行；资金事项不进入自动排班"),
         truth_rule="区域比例是AI非资金工作量，不是广告预算、市场份额或区域已开放证明",
     )
     write_json(SCHEDULE_STATE, state)
@@ -259,5 +280,6 @@ def ensure_daily_workforce():
         "base_planned": len(base_template),
         "created": len(created),
         "reconciled": len(reconciled),
-        "region_job_counts": base_counts,
+        "region_job_counts": planned_counts,
+        "allowed_actions": sorted(allowed),
     }

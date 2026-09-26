@@ -30,7 +30,8 @@ Modules:
 - R8-18 PageSpeed Mobile/Desktop Quality Evidence
 - R8-18 SEO Internal Link Audit
 - R8-19 ChatGPT Daily Plan -> Execution -> Receipt Control Gate
-- R8-19 SEO/GEO scheduler blocks side effects until the verified daily plan arrives
+- R8-19 All business schedulers block side effects until the verified daily plan arrives
+- R8-19 ChatGPT Site Tools expose current plan status and permitted actions
 - Consultation / Order Attribution with Truthful Source Boundaries
 - Unified Boss / Execution Shell
 - Human Attention Only for Login, Verification, Owner Approval, Finance and True Exceptions
