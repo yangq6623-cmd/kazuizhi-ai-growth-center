@@ -282,6 +282,7 @@ def _create_mission(args: dict) -> dict:
         "evidence": evidence,
         "goal": goal,
         "reason": reason,
+        "execution_plan": args.get("execution_plan"),
     })
     ops = snapshot(sync=False)
     mission_id = decision.get("mission_id") or (ops.get("active_mission") or {}).get("mission_id")
@@ -290,6 +291,7 @@ def _create_mission(args: dict) -> dict:
         "decision": decision,
         "mission": ops.get("active_mission"),
         "external_result_truth": "本回执只证明本地 Mission 已建立并进入执行链，不代表平台已发布、SEO已收录或已经产生咨询/订单。",
+        "chatgpt_plan": decision.get("chatgpt_plan"),
     }, mission_id=mission_id)
     return {"command": command, "receipt": receipt, "mission": ops.get("active_mission")}
 
@@ -319,6 +321,7 @@ def _start_content_task(args: dict) -> dict:
         "action": "continue",
         "mission_id": mission_id,
         "reason": reason,
+        "execution_plan": args.get("execution_plan"),
     })
     ops = snapshot(sync=False)
     receipt = control.record_command_receipt(command["command_id"], {
@@ -326,6 +329,7 @@ def _start_content_task(args: dict) -> dict:
         "decision": decision,
         "mission": ops.get("active_mission"),
         "truth_rule": "启动内容任务不等于最终成片已通过，更不等于已经发布。",
+        "chatgpt_plan": decision.get("chatgpt_plan"),
     }, mission_id=mission_id)
     return {"command": command, "receipt": receipt, "mission": ops.get("active_mission"), "decision": decision}
 

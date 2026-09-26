@@ -11,6 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
+from core.chatgpt_execution_control import execution_gate, status as chatgpt_execution_status
 from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
 from integrations import search_engine_submitter
 from integrations import seo_public_deployer
@@ -168,6 +169,36 @@ def run_once(force=False):
 
     mode = data.get("mode") or "autonomous"
     ensure_baseline()
+    # Discovery baselines are local reference data. Every side effect below
+    # (planning, generation, QC state changes, public deployment and search
+    # submission) requires today's verified ChatGPT execution plan.
+    from core.autonomous_ops import snapshot as mission_snapshot
+    active_mission = mission_snapshot(sync=False).get("active_mission") or {}
+    mission_id = active_mission.get("mission_id")
+    control_gate = execution_gate(mission_id)
+    if not control_gate.get("allowed"):
+        _add_human_item(
+            data,
+            "chatgpt_seo_geo_daily_plan",
+            "等待 ChatGPT 总控下达今日 SEO/GEO 计划",
+            control_gate.get("reason") or "当前没有可执行的总控计划。",
+            "请由 ChatGPT 先确定当日重点、允许动作与 Mission；收到真实 Command → Receipt 后，系统会自动续跑。",
+        )
+        result = {
+            "skipped": True,
+            "reason": control_gate.get("code") or "chatgpt_plan_required",
+            "chatgpt_control": control_gate,
+            "truth": "系统可继续展示状态和保留本地证据，但不会在没有 ChatGPT 当日计划时自行生成、发布或提交 SEO/GEO 工作。",
+        }
+        data["last_run_at"] = now_iso()
+        data["last_result"] = result
+        data["audit"].insert(0, {
+            "at": now_iso(), "kind": "chatgpt_execution_gate_blocked",
+            "mission_id": mission_id, "reason": control_gate.get("code"),
+        })
+        _save(data)
+        return result
+    _close_human_item(data, "chatgpt_seo_geo_daily_plan")
     local = {"skipped": True, "reason": "observe_mode"}
     qc = {"passed": [], "failed": []}
     public_deploy = {"skipped": True, "reason": "mode_or_policy_gate"}
@@ -257,6 +288,7 @@ def run_once(force=False):
     result = {
         "skipped": False,
         "mode": mode,
+        "chatgpt_control": control_gate,
         "local_cycle": local,
         "local_qc": qc,
         "public_deploy": public_deploy,
@@ -287,11 +319,14 @@ def run_once(force=False):
 def status():
     data = _load()
     snap = dashboard()
+    from core.autonomous_ops import snapshot as mission_snapshot
+    active_mission = mission_snapshot(sync=False).get("active_mission") or {}
     open_items = [x for x in data.get("human_items", []) if x.get("status") == "open"]
     return {
         "enabled": bool(data.get("enabled")),
         "mode": data.get("mode") or "autonomous",
         "policy": deepcopy(data.get("policy") or {}),
+        "chatgpt_control": chatgpt_execution_status(active_mission.get("mission_id")),
         "last_run_at": data.get("last_run_at") or "",
         "last_result": deepcopy(data.get("last_result") or {}),
         "human_items": deepcopy(open_items),
