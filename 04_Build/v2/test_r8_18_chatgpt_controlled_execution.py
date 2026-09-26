@@ -54,6 +54,18 @@ def main():
             require(allowed["plan"]["receipt_id"] == receipt["receipt_id"], "execution permit lost its receipt link")
             require("seo_submit" in allowed["plan"]["actions"], "approved action list changed")
 
+            # The same plan must constrain the wider workforce queue: an SEO/GEO
+            # permit cannot silently schedule market, video, social or conversion
+            # work that ChatGPT did not ask for.
+            from core.daily_workforce import ensure_daily_workforce
+            from core.r7_engine import list_jobs
+            ensure_daily_workforce(allowed["plan"]["actions"], command_id=command["command_id"])
+            worker_types = {
+                row.get("task_type") for row in list_jobs()["items"]
+                if row.get("schedule_source") == "daily_workforce"
+            }
+            require(worker_types.issubset({"seo", "geo"}), "daily workforce scheduled actions outside the ChatGPT plan")
+
             # With no active Mission in this isolated runtime, autonomy must stop
             # before planning/generation/deployment side effects.
             result = autonomy.run_once(force=True)

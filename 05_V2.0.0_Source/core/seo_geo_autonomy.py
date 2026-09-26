@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
-from core.chatgpt_execution_control import execution_gate, status as chatgpt_execution_status
+from core.chatgpt_execution_control import SEO_GEO_ACTIONS, allows_action, execution_gate, status as chatgpt_execution_status
 from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
 from integrations import search_engine_submitter
 from integrations import seo_public_deployer
@@ -177,17 +177,17 @@ def run_once(force=False):
     active_mission = mission_snapshot(sync=False).get("active_mission") or {}
     mission_id = active_mission.get("mission_id")
     control_gate = execution_gate(mission_id)
-    if not control_gate.get("allowed"):
+    if not control_gate.get("allowed") or not allows_action(control_gate, *SEO_GEO_ACTIONS):
         _add_human_item(
             data,
             "chatgpt_seo_geo_daily_plan",
             "等待 ChatGPT 总控下达今日 SEO/GEO 计划",
-            control_gate.get("reason") or "当前没有可执行的总控计划。",
-            "请由 ChatGPT 先确定当日重点、允许动作与 Mission；收到真实 Command → Receipt 后，系统会自动续跑。",
+            (control_gate.get("reason") if not control_gate.get("allowed") else "ChatGPT 今日计划未包含 SEO/GEO 动作。") or "当前没有可执行的总控计划。",
+            "请由 ChatGPT 先确定当日重点、允许动作与 Mission；计划需要包含 SEO/GEO 动作并收到真实 Command → Receipt 后，系统才会续跑。",
         )
         result = {
             "skipped": True,
-            "reason": control_gate.get("code") or "chatgpt_plan_required",
+            "reason": control_gate.get("code") if not control_gate.get("allowed") else "chatgpt_seo_geo_action_not_approved",
             "chatgpt_control": control_gate,
             "truth": "系统可继续展示状态和保留本地证据，但不会在没有 ChatGPT 当日计划时自行生成、发布或提交 SEO/GEO 工作。",
         }

@@ -18,6 +18,12 @@ SEO_GEO_ACTIONS = {
     "seo_discovery", "seo_plan", "seo_generate", "seo_qc", "seo_publish",
     "seo_submit", "seo_monitor", "geo_baseline", "geo_observe", "attribution_review",
 }
+PLATFORM_ACTIONS = {
+    "market_scan", "content_generate", "content_qc", "social_draft",
+    "video_generate", "local_analysis", "conversion_analysis", "daily_review",
+    "publish_plan", "publish_execute",
+}
+EXECUTION_ACTIONS = SEO_GEO_ACTIONS | PLATFORM_ACTIONS
 
 
 def _today() -> str:
@@ -64,8 +70,8 @@ def normalize_plan(value: dict | None) -> dict:
     actions = []
     for item in raw_actions:
         action = str(item or "").strip()
-        if action not in SEO_GEO_ACTIONS:
-            raise ValueError(f"不支持的 SEO/GEO 执行动作：{action}")
+        if action not in EXECUTION_ACTIONS:
+            raise ValueError(f"不支持的总控执行动作：{action}")
         if action not in actions:
             actions.append(action)
     if len(actions) > 9:
@@ -127,6 +133,14 @@ def execution_gate(mission_id: str | None, *, date: str | None = None) -> dict:
             "plan": None,
         }
     return {"allowed": True, "code": "approved", "reason": "今日执行计划已由 ChatGPT 总控回执。", "plan": deepcopy(plan)}
+
+
+def allows_action(gate: dict | None, *actions: str) -> bool:
+    """Whether a verified daily plan explicitly permits at least one action."""
+    if not isinstance(gate, dict) or not gate.get("allowed"):
+        return False
+    approved = set((gate.get("plan") or {}).get("actions") or [])
+    return bool(approved.intersection(str(action or "").strip() for action in actions))
 
 
 def status(mission_id: str | None = None) -> dict:
