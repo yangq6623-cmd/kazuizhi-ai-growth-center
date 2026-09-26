@@ -40,7 +40,10 @@ SCHEMA = "kz.search-submitter.v1"
 DEFAULT = {
     "schema": SCHEMA,
     "site_url": "https://kazuizhi.com/",
-    "google_site_url": "https://kazuizhi.com/",
+    # The verified Search Console resource is a domain property, not a
+    # URL-prefix property.  Google requires the same identifier for Sitemap
+    # API writes that it exposes in Search Console (sc-domain:...).
+    "google_site_url": "sc-domain:kazuizhi.com",
     "baidu_site": "kazuizhi.com",
     "allow_baidu_http_submission": False,
     "indexnow_endpoint": "https://api.indexnow.org/indexnow",
@@ -57,6 +60,10 @@ def _load() -> dict:
         data = deepcopy(DEFAULT)
     for key, value in DEFAULT.items():
         data.setdefault(key, deepcopy(value))
+    # Migrate the previous URL-prefix default so existing local installs do
+    # not keep submitting against a different Search Console property.
+    if data.get("google_site_url") == "https://kazuizhi.com/":
+        data["google_site_url"] = DEFAULT["google_site_url"]
     return data
 
 
@@ -73,6 +80,16 @@ def _https_url(value: str, field: str) -> str:
     if parts.scheme != "https" or not parts.netloc:
         raise ValueError(f"{field} 必须是有效 HTTPS 地址")
     return raw.rstrip("/") + "/"
+
+
+def _google_site_property(value: str) -> str:
+    raw = str(value or "").strip()
+    if raw.startswith("sc-domain:"):
+        domain = raw.split(":", 1)[1].strip().lower()
+        if not re.fullmatch(r"[a-z0-9.-]+", domain) or "." not in domain:
+            raise ValueError("Google 域名资源格式不正确")
+        return f"sc-domain:{domain}"
+    return _https_url(raw, "google_site_url")
 
 
 def _vault_get(key: str, env_name: str = "") -> str:
@@ -317,7 +334,7 @@ def configure(payload: dict) -> dict:
     if "site_url" in payload:
         data["site_url"] = _https_url(payload.get("site_url"), "site_url")
     if "google_site_url" in payload:
-        data["google_site_url"] = _https_url(payload.get("google_site_url"), "google_site_url")
+        data["google_site_url"] = _google_site_property(payload.get("google_site_url"))
     if "baidu_site" in payload:
         value = str(payload.get("baidu_site") or "").strip().lower()
         if not value or "/" in value or ":" in value:
