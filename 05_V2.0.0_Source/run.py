@@ -262,6 +262,11 @@ def main():
             remote_result = _sync_r8_17_remote_agent()
             if remote_result.get("ok"):
                 print("R8-17 Remote Agent connected; remote deployment mode is active.", flush=True)
+            # Startup reconciliation only imports already-issued ChatGPT
+            # Commands and their receipts.  It never authorizes a business
+            # action; the global daily-plan gate below remains the sole
+            # authority for execution.
+            sync_chatgpt_handoffs(force=True)
             _run_authorized_platform_work(_chatgpt_execution_context(), full=True)
             run_seo_geo_autonomy(force=False)
         except (OSError, ValueError, RuntimeError) as error:
