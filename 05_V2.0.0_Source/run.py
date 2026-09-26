@@ -35,6 +35,7 @@ from integrations import r8_17_remote_deployer_patch as _r8_17_remote_deployer_p
 from backend import r8_15_seo_public_deploy_patch as _r8_15_seo_public_deploy_patch  # noqa: F401,E402
 from backend import r8_16_search_submit_patch as _r8_16_search_submit_patch  # noqa: F401,E402
 from backend import r8_17_remote_agent_patch as _r8_17_remote_agent_patch  # noqa: F401,E402
+from backend import r8_18_seo_quality_patch as _r8_18_seo_quality_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
