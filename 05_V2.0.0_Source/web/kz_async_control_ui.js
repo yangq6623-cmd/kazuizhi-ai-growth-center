@@ -20,7 +20,7 @@
       };
     }
     if (bus?.configured && bus?.last_error) {
-      return {text:'已配置 · 同步异常', tone:'attention', short:'同步异常'};
+      return {text:'已配置 · 需恢复同步', tone:'attention', short:'需恢复同步'};
     }
     return {text:'待配置独立私有仓库', tone:'waiting', short:'待配置'};
   }
@@ -37,7 +37,7 @@
     box.className = 'r810-async-control-summary';
     box.innerHTML = `
       <div><small>日常主控</small><b>私有异步控制总线</b><span id="kz-bus-state">检查中</span></div>
-      <div><small>本地自治</small><b>Mission 持续执行</b><span id="kz-autonomy-state">检查中</span></div>
+      <div><small>本地自治</small><b>已回执 Mission 执行</b><span id="kz-autonomy-state">检查中</span></div>
       <div><small>实时辅助</small><b>实时 ChatGPT 通道（可选）</b><span id="kz-realtime-state">检查中</span></div>
       <div><small>工程通道</small><b>Work / Codex</b><span>仅检查、修复、升级</span></div>
     `;
@@ -51,8 +51,8 @@
     const autonomy = autonomyRunning(bus);
     const busInfo = busState(bus);
     pill.textContent = autonomy
-      ? `自治：正常 · 异步主控：${busInfo.short} · 实时通道：${realtime ? '已连接' : '可选'}`
-      : `自治：需处理 · 异步主控：${busInfo.short} · 实时通道：${realtime ? '已连接' : '可选'}`;
+      ? `已回执任务：执行中 · 异步主控：${busInfo.short} · 实时通道：${realtime ? '已连接' : '未连接（可选）'}`
+      : `Mission：需处理 · 异步主控：${busInfo.short} · 实时通道：${realtime ? '已连接' : '未连接（可选）'}`;
     pill.className = `r810-state-pill ${autonomy ? 'ok' : 'attention'}`;
   }
 
@@ -67,8 +67,8 @@
     if (value) value.textContent = info.text;
     if (note) {
       note.textContent = bus?.configured
-        ? '普通 ChatGPT Decision Pack → PRIVATE GitHub 控制总线 → 本机 Mission → Receipt 回流'
-        : '本地自治仍可运行；配置独立 PRIVATE GitHub 控制总线后，普通 ChatGPT 可作为日常总脑异步下发决策';
+        ? '普通 ChatGPT Decision Pack → 私有控制总线 → 本机 Mission → Receipt 回流；同步异常时只继续已回执任务'
+        : '尚未配置日常 ChatGPT 控制总线；本机只能保留已回执 Mission，不会自行新增生产、发布或提交';
     }
 
     const card = document.getElementById('r810-connector-card');
@@ -94,7 +94,9 @@
       if (realtime) {
         note.textContent = '实时 ChatGPT 通道已验证，可在当前工作台直接下达目标；日常主控仍可通过 Decision Pack 异步执行。';
       } else if (bus?.configured) {
-        note.textContent = '日常主控正常：普通 ChatGPT 的 Decision Pack 通过私有异步控制总线下发；实时通道未连接不影响已批准 Mission 自动运行。';
+        note.textContent = bus?.last_error
+          ? '日常控制总线需要恢复同步；系统只继续已有回执的低风险本地任务，不会自行创建新的生产、发布或提交。'
+          : '普通 ChatGPT 的 Decision Pack 通过私有异步控制总线下发；实时通道未连接不影响已批准 Mission 的本地执行。';
       } else {
         note.textContent = '本地自治可继续运行。建议配置独立 PRIVATE GitHub 控制总线作为日常主控；实时 ChatGPT 通道只是可选辅助。';
       }
@@ -119,7 +121,7 @@
     }
     if (autonomyState) {
       const running = autonomyRunning(bus);
-      autonomyState.textContent = running ? '正常运行' : '需要处理';
+      autonomyState.textContent = running ? '仅执行已回执任务' : '需要处理';
       autonomyState.className = running ? 'ok' : 'attention';
     }
     if (realtimeState) {
@@ -129,7 +131,9 @@
 
     if (copy) {
       if (bus?.configured) {
-        copy.textContent = '日常主控采用“普通 ChatGPT → 私有异步控制总线 → 本机 Mission → Receipt 回流”。实时 ChatGPT 通道只用于同机即时指令；Work/Codex 只用于软件检查、修复和升级。';
+        copy.textContent = bus?.last_error
+          ? '私有控制总线已配置但同步异常：需要恢复后才能接收新的 ChatGPT 计划。系统仅继续已验证回执的本地任务；不自动发布、提交或产生外部结果。'
+          : '日常主控采用“普通 ChatGPT → 私有异步控制总线 → 本机 Mission → Receipt 回流”。实时 ChatGPT 通道只用于同机即时指令；Work/Codex 只用于软件检查、修复和升级。';
       } else {
         copy.textContent = '本地自治已经与实时 ChatGPT 解耦：已批准 Mission 可继续运行。异步控制总线代码已就绪，激活时必须使用独立 PRIVATE GitHub 仓库；实时 ChatGPT 通道保持可选。';
       }

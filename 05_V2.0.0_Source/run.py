@@ -63,12 +63,18 @@ from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
 
 
-def _sync_r8_17_remote_agent():
-    """Import a local pairing file when present, then keep remote deploy mode live."""
+def _sync_r8_17_remote_agent(*, check_live=True):
+    """Import a local pairing file and optionally check the remote deploy route.
+
+    The desktop must paint its first page from local state.  A public-network
+    probe may take many seconds on an unreliable network, so startup only
+    discovers local pairing data; the background scheduler performs the live
+    route check after the owner shell is ready.
+    """
     try:
         pairing = auto_import_pairing()
         if pairing.get("ok") or pairing.get("reason") == "already_configured":
-            activation = activate_remote_mode_if_ready(check_live=True)
+            activation = activate_remote_mode_if_ready(check_live=check_live)
             if activation.get("activated"):
                 return {"ok": True, "pairing": pairing, "activation": activation}
             return {"ok": False, "pairing": pairing, "activation": activation}
@@ -216,24 +222,10 @@ def main():
         migrate_r6()
         migrate_to_v2_2()
         recover_interrupted()
-        try:
-            remote_result = _sync_r8_17_remote_agent()
-            if remote_result.get("ok"):
-                print("R8-17 Remote Agent connected; remote deployment mode is active.", flush=True)
-            scan_material_inbox()
-            sync_autonomous_ops(autostart=True)
-            sync_content_plans()
-            recover_authorized_qc(limit=10)
-            run_ai_gateway(limit=2)
-            sync_chatgpt_handoffs(force=True)
-            run_publish_planning(limit=10)
-            run_pending_douyin_dry_runs(limit=1)
-            sync_autonomous_ops(autostart=False)
-            sync_mission_backbone()
-            run_seo_geo_autonomy(force=False)
-        except (OSError, ValueError, RuntimeError) as error:
-            print(f"Initial local-first convergence deferred: {error}", flush=True)
-
+        # The HTTP shell is deliberately available before background
+        # convergence. Remote deploy probes, AI Gateway calls and SEO public
+        # checks can be slow or offline; none may delay the first dashboard
+        # paint. start_scheduler owns the identical convergence work below.
         scheduler_stop = start_scheduler()
         relay_stop = start_chatgpt_relay_worker()
         video_worker_stop = start_video_production_worker()

@@ -129,6 +129,25 @@ def main():
             require(searcher.seo_public_deployer is deployer, "R8-16 search submitter did not retain dynamic deployer module")
             require(searcher._ensure_indexnow_key_file.__module__ == remote_patch.__name__, "IndexNow key hosting was not patched for Remote Agent")
 
+            # First paint must not block on an external remote-agent probe. The
+            # scheduler still performs that live probe after the local shell is
+            # ready, so remote deployment readiness is preserved.
+            import run as runtime
+            original_auto_import = runtime.auto_import_pairing
+            original_activate = runtime.activate_remote_mode_if_ready
+            probe_flags = []
+            try:
+                runtime.auto_import_pairing = lambda: {"ok": True}
+                runtime.activate_remote_mode_if_ready = lambda check_live=True: (
+                    probe_flags.append(check_live) or {"activated": False}
+                )
+                runtime._sync_r8_17_remote_agent(check_live=False)
+                runtime._sync_r8_17_remote_agent(check_live=True)
+                require(probe_flags == [False, True], "startup still performs a blocking remote probe")
+            finally:
+                runtime.auto_import_pairing = original_auto_import
+                runtime.activate_remote_mode_if_ready = original_activate
+
             # Activate remote mode using a safe mocked live status.
             original_agent_status = remote_patch.remote_agent.status
             remote_patch.remote_agent.status = lambda check_live=True: {

@@ -31,7 +31,9 @@
     const verified = Boolean(status?.verified);
 
     if (label) {
-      label.textContent = verified ? '已验证实时连接' : (siteTools === 'available' ? '已就绪，等待首次调用' : '当前离线，不影响本地自治');
+      label.textContent = verified
+        ? '已验证实时连接'
+        : (siteTools === 'available' ? '已就绪，等待首次调用' : '当前离线；不能下达新实时指令');
       label.className = verified ? 'ok' : 'waiting';
     }
   }
