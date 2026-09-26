@@ -33,20 +33,12 @@ def _read_json_body(handler):
 
 def _safe_status(check_live=True):
     state = remote_agent.status(check_live=check_live)
-    # Defense in depth: never pass a pairing secret through dashboard APIs.
     state.pop("shared_secret", None)
     state.pop("token", None)
     return state
 
 
 def _bootstrap_remote_agent():
-    """One-click startup bootstrap.
-
-    Existing users who already imported the pairing file only need the stored
-    Windows credential. New users can still drop the pairing JSON on Desktop or
-    Downloads. Startup never fails just because the public endpoint is offline;
-    the dashboard will expose the error and the user can retry later.
-    """
     result = {
         "ok": False,
         "pairing": {},
@@ -146,3 +138,8 @@ def install():
 
 
 install()
+
+# R8-18 extends the existing local HTTP chain with truthful SEO evidence,
+# PageSpeed and internal-link audit endpoints. Import after R8-17 so its
+# handler captures the complete Remote Agent route set without replacing it.
+from backend import r8_18_seo_quality_patch as _r8_18_seo_quality_patch  # noqa: F401,E402
