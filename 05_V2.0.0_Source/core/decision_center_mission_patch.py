@@ -15,6 +15,13 @@ def _augment(report):
         return report
     feedback = feedback_for_r7()
     report["mission_feedback"] = feedback
+    active_id = str(feedback.get("active_mission_id") or "")
+    active = next((item for item in feedback.get("items", []) if item.get("mission_id") == active_id), None)
+    # This is intentionally read from the persisted shared Mission store rather
+    # than derived from the daily queue.  A Mission can be active while all of
+    # today's jobs are merely scheduled for later, and that must remain visible
+    # to ChatGPT and the owner UI as the same operational fact.
+    report["active_mission"] = active
     handoff = report.setdefault("chatgpt_handoff", {})
     handoff["mission_continuity"] = (
         "ChatGPT在同一Mission中读取R7分析与R8真实执行结果；真实发布、咨询和订单结果回流后，"

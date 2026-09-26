@@ -86,6 +86,8 @@ def main() -> None:
 
     # Connection truth: no writable bridge/API state is allowed to impersonate ChatGPT control.
     require(js, "/api/chatgpt-control/status", "explicit ChatGPT control status contract")
+    require(js, "/api/r8-11/mission-ledger", "Mission Ledger identity source")
+    require(js, "ledgerMission||factoryMission", "ledger-first Mission convergence")
     require(js, "文件夹可写、运营桥在线或备用 API 已配置，都不能单独证明 ChatGPT 已连接", "connection truth warning")
     require(js, "未验证连接", "unverified default state")
     require(js, "备用 AI 接口（可选）", "optional backup AI copy")

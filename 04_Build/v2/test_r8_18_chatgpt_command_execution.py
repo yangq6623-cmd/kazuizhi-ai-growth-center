@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "05_V2.0.0_Source"
 sys.path.insert(0, str(SOURCE))
 
-from core import command_execution, daily_workforce, mission_ledger, r7_engine
+from core import command_execution, daily_workforce, decision_center, mission_ledger, r7_engine
 from core.storage import write_json
 from integrations import kz_local_control
 
@@ -78,6 +78,12 @@ def main():
             # receipt created during this test window.
             assert execution["local_execution_receipts"] >= 1
             assert "外网发布" in execution["truth"]
+
+            # The Decision Center and owner workbench must read the same active
+            # Mission identity as the ledger; a scheduled queue is not a reason
+            # to report "no running Mission".
+            decision = decision_center.refresh_decision_center()
+            assert decision["active_mission"]["mission_id"] == mission_id
 
             status = command_execution.status()
             assert status["control_verified"] is True

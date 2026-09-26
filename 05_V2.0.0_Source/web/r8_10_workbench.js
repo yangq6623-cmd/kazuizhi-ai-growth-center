@@ -118,16 +118,23 @@
   }
 
   async function refreshMission(){
-    const [factory]=await Promise.all([safeApi('/api/content-factory'),readConnectorState()]);
+    // The Mission Ledger is the identity source of truth.  Content Factory is
+    // only a production child of that Mission, so an empty/stale campaign must
+    // never make the owner-facing decision center say that no Mission exists.
+    const [factory,ledger]=await Promise.all([safeApi('/api/content-factory'),safeApi('/api/r8-11/mission-ledger'),readConnectorState()]);
     if(factory&&!factory.__error)R810.factory=factory;
     const campaigns=R810.factory?.campaigns||[];
     const activeId=R810.factory?.active_campaign_id||campaigns[0]?.id||'';
-    const mission=campaigns.find(x=>x.id===activeId)||campaigns[0]||null; R810.mission=mission;
+    const factoryMission=campaigns.find(x=>x.id===activeId)||campaigns[0]||null;
+    const ledgerMission=ledger&&!ledger.__error&&ledger.active_mission&&ledger.active_mission.mission_id
+      ? ledger.active_mission : null;
+    const mission=ledgerMission||factoryMission||null; R810.mission=mission;
+    const missionId=mission?.mission_id||mission?.id||'';
     const title=q('r810-mission-title'),goal=q('r810-mission-goal'),ai=q('r810-ai-state'),stage=q('r810-stage-state'),human=q('r810-human-state');
-    if(title)title.textContent=mission?`${mission.id} · ${mission.title||mission.service||'当前增长任务'}`:'尚无运行中的 Mission';
+    if(title)title.textContent=mission?`${missionId} · ${mission.title||mission.service||'当前增长任务'}`:'尚无运行中的 Mission';
     if(goal)goal.textContent=mission?`老板目标：${mission.goal||'等待明确经营目标'}`:'在老板总控下达目标后，由系统建立统一 Mission';
     if(ai){const ok=R810.connector.status==='verified';ai.textContent=`ChatGPT总控：${R810.connector.label}`;ai.className=`r810-state-pill ${ok?'ok':'attention'}`}
-    if(stage){const text=stageForMission(R810.factory,mission?.id);stage.textContent=`阶段：${text}`;stage.className=`r810-state-pill ${text.includes('异常')?'error':text.includes('审核')?'attention':'running'}`}
+    if(stage){const text=ledgerMission?.stage||stageForMission(R810.factory,mission?.id);stage.textContent=`阶段：${text}`;stage.className=`r810-state-pill ${text.includes('异常')?'error':text.includes('审核')?'attention':'running'}`}
     const count=Number(R810.factory?.action_center?.human_count||0); if(human){human.textContent=`待我处理：${count}`;human.className=`r810-state-pill ${count?'attention':'ok'}`}
     const badge=q('r810-attention-badge');if(badge){badge.textContent=String(count);badge.hidden=!count}
     updateCommandAvailability();
