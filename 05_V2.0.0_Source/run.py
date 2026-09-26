@@ -222,6 +222,13 @@ def main():
         migrate_r6()
         migrate_to_v2_2()
         recover_interrupted()
+        # Recover only persisted local ChatGPT handoff state before first paint.
+        # This is a filesystem operation, not an external probe; all network,
+        # AI and SEO work remains on the scheduler below.
+        try:
+            sync_chatgpt_handoffs(force=True)
+        except (OSError, ValueError, RuntimeError) as error:
+            print(f"Initial handoff recovery deferred: {error}", flush=True)
         # The HTTP shell is deliberately available before background
         # convergence. Remote deploy probes, AI Gateway calls and SEO public
         # checks can be slow or offline; none may delay the first dashboard
