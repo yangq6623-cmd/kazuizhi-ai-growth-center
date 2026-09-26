@@ -174,7 +174,11 @@ def check_legacy_account_owner_surface_retired():
 def check_runtime_wires_safe_executor():
     run = (SOURCE / "run.py").read_text(encoding="utf-8")
     assert "douyin_dry_run_executor" in run
-    assert run.count("run_pending_douyin_dry_runs(limit=1)") >= 2
+    # R8-19 has one gated execution path.  A duplicated startup/scheduler
+    # invocation would bypass the daily ChatGPT plan and risk an unapproved
+    # platform-side action.
+    assert "allows_action(gate, \"publish_execute\")" in run
+    assert run.count("run_pending_douyin_dry_runs(limit=1)") == 1
     executor = (SOURCE / "integrations" / "douyin_dry_run_executor.py").read_text(encoding="utf-8")
     for token in ("ready_for_composer", "final_publish_allowed", "publishes_content", "Content/Post ID + URL / Receipt"):
         assert token in executor
