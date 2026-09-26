@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+<style>#asset-table{overflow-x:auto}#asset-table table{min-width:760px}#asset-table th,#asset-table td{white-space:normal;word-break:normal;min-width:76px}</style>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SEO/GEO增长中心 · 卡嘴子 AI</title>
@@ -89,6 +90,38 @@ async function post(path,body){return api(path,{method:'POST',headers:{'Content-
 async function runButton(button,path,body,busy){const old=button.textContent;button.disabled=true;button.textContent=busy;setActionStatus(busy);try{await post(path,body);await load();setActionStatus('操作已完成，页面已刷新为真实状态。')}catch(e){setActionStatus(`操作失败：${e.message}`,true)}finally{button.disabled=false;button.textContent=old}}
 $('plan-btn').onclick=()=>runButton($('plan-btn'),'/api/r8-13/seo-geo/plan',{limit:6},'正在规划…');$('generate-btn').onclick=()=>runButton($('generate-btn'),'/api/r8-13/seo-geo/generate',{limit:6},'正在生成…');$('run-btn').onclick=()=>runButton($('run-btn'),'/api/r8-13/seo-geo/run',{force:true},'正在运行增长循环…');$('refresh-btn').onclick=()=>runButton($('refresh-btn'),'/api/r8-13/seo-geo/audit-site',{},'正在执行真实探测…');document.querySelectorAll('.tabs button').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');focusSection(btn.dataset.to,'已切换到对应区域。')});load();setInterval(load,30000);
 $('baidu-secret-form').addEventListener('submit',async event=>{event.preventDefault();const token=$('baidu-token').value.trim(),site=$('baidu-site').value.trim(),allowed=$('baidu-http-consent').checked;if(!token){setActionStatus('请先粘贴百度 API Token。',true);return}if(!allowed){setActionStatus('请确认百度官方普通收录接口的使用授权。',true);return}const button=$('baidu-save-btn');button.disabled=true;button.textContent='保存中…';try{await post('/api/r8-16/search-submit/config',{baidu_token:token,baidu_site:site,allow_baidu_http_submission:true});$('baidu-token').value='';$('baidu-secret-dialog').close();await load();setActionStatus('百度 Token 已安全保存到本机，已启用真实 API 提交。')}catch(e){setActionStatus(`保存失败：${e.message}`,true)}finally{button.disabled=false;button.textContent='安全保存并启用'}});load();setInterval(load,30000);
+function technicalTime(value){return value?String(value).replace('T',' ').slice(0,16):'尚未检查'}
+function renderTechnical(){
+ const t=state.technical||{},st=t.staging||{},e=state.evidence_summary||{},staged=e.staged_files||0,o=t.observability||{},n=o.network||{},l=o.links||{};
+ const coverage=(value,total)=>total?`${value}/${total}`:'0/0',publicOk=publicReachable(t),measured=o.state==='measured';
+ const networkBadge=measured?`${n.reachable_pages||0}/${o.target_count||0} 已响应`:'未检查';
+ const networkDetail=measured?`最近检查：${technicalTime(o.checked_at)}；中位响应 ${n.median_response_ms??'—'} ms，超过 3 秒页面 ${n.slow_pages_over_3000ms||0} 个。${n.measurement||''}`:'点击“执行技术审计”检查已验证公开页面的 HTTP 响应；不会把网络响应伪装为 Lighthouse 分数。';
+ const linkBadge=measured?`${l.total_internal_links||0} 条内链`:'未审计';
+ const linkDetail=measured?`可出链页面 ${l.pages_with_outbound_internal_links||0} 个；候选孤儿页 ${l.orphan_candidates??'—'} 个。${l.measurement||''}`:'等待对已验证公开页面执行内链扫描。';
+ const rows=[
+  ['robots.txt',st.robots_generated?'本地已生成':'未生成',st.robots_generated?'本地文件存在；不等于公网可抓取。':'等待本地生成。',st.robots_generated?'info':'warn'],
+  ['sitemap.xml',st.sitemap_generated?'本地已生成':'未生成',st.sitemap_generated?'本地文件存在；公网提交前仍需真实部署。':'等待本地生成。',st.sitemap_generated?'info':'warn'],
+  ['Canonical覆盖',coverage(e.canonical_files||0,staged),staged?`按本地 staging 文件检查；${e.canonical_files||0}/${staged} 存在 canonical。`:'还没有可检查的本地页面文件。',(staged&&e.canonical_files===staged)?'info':'warn'],
+  ['Schema覆盖',coverage(e.schema_files||0,staged),staged?`按本地 staging 文件检查；${e.schema_files||0}/${staged} 存在 JSON-LD。`:'还没有可检查的本地页面文件。',(staged&&e.schema_files===staged)?'info':'warn'],
+  ['当前官网探测',publicOk?'已取得证据':'未探测或未通过',publicOk?'最近一次官网、robots 与 sitemap 探测已取得证据。':'执行技术审计会检查已验证公开页；这不改变历史发布回执。',publicOk?'ok':'warn'],
+  ['逐页发布回执',Number((state.summary||{}).public_pages||0)>0?'已有回执':'暂无回执',Number((state.summary||{}).public_pages||0)>0?`${state.summary.public_pages} 个页面已有部署时的公网验证回执。`:'尚无通过内容、canonical、Schema 与 robots 验证的页面。',Number((state.summary||{}).public_pages||0)>0?'ok':'warn'],
+  ['网络响应检查',networkBadge,networkDetail,measured?'info':'warn'],
+  ['内链结构',linkBadge,linkDetail,measured?'info':'warn']
+ ];$('health').innerHTML=rows.map(([name,badge,detail,kind])=>`<div class="health-item"><div><b>${name}</b><div class="sub">${detail}</div></div>${tag(badge,kind)}</div>`).join('');
+}
+function renderConnectors(){
+ const con=(state.technical||{}).connectors||{},deploy=(state.technical||{}).public_deploy||{},submission=state.search_submit||{},last=submission.last_result||{},at=submission.last_run_at||'';
+ const purposes={baidu:'站点验证 / URL提交 / 收录观察',bing:'IndexNow 自动提交（无需登录）',google:'站点验证 / Sitemap / 搜索表现'},authPlatform={google:'google_search_console'},engine={baidu:'baidu',bing:'indexnow',google:'google_search_console'};
+ const evidence=key=>{const success=(last.submitted||[]).find(row=>row.engine===engine[key]),failure=(last.failed||[]).find(row=>row.engine===engine[key]);if(success)return `最近提交：${technicalTime(at)}；回执 ${success.receipt||'已记录'}`;if(failure)return `最近检查：${technicalTime(at)}；未接收：${failure.reason||'平台拒绝'}`;return at?`最近检查：${technicalTime(at)}；本轮无该平台新 URL。`:'尚无提交检查记录。'};
+ $('connectors').innerHTML=Object.entries(con).map(([key,x])=>{const isIndexNow=key==='bing',canInitialize=isIndexNow&&deploy.ready&&!x.ready,stateText=x.ready?'连接器就绪':(isIndexNow?(canInitialize?'等待自动初始化':'等待公网部署配置'):(x.configured?'待验证':'待授权')),init=canInitialize?`<button class="connector-action" data-search-init>初始化 IndexNow</button>`:'',baidu=key==='baidu'?`<button class="connector-action" data-baidu-config>${x.configured?'更新本机 Token':'配置本机 Token'}</button>`:'',auth=key==='google'?`<button class="connector-action" data-search-auth="${authPlatform[key]}">去官方授权</button>`:'';return `<div class="connector"><div><b>${esc(x.label)}</b><div class="sub">${esc(purposes[key]||x.mode||'搜索平台连接')} · ${esc(x.reason||'已就绪')}<br>${esc(evidence(key))}</div></div><div class="connector-actions">${tag(stateText,x.ready?'ok':'warn')}${init}${baidu}${auth}</div></div>`}).join('')||'<div class="empty">没有检测到搜索平台连接器。</div>';
+ document.querySelectorAll('[data-baidu-config]').forEach(btn=>btn.onclick=()=>{$('baidu-token').value='';$('baidu-http-consent').checked=false;$('baidu-secret-dialog').showModal();$('baidu-token').focus()});document.querySelectorAll('[data-search-auth]').forEach(btn=>btn.onclick=()=>{setActionStatus('正在打开官方授权入口；只有官方账户需要授权。');window.parent?.postMessage({type:'kz-r8-search-auth',platform:btn.dataset.searchAuth},location.origin)});document.querySelectorAll('[data-search-init]').forEach(btn=>btn.onclick=async()=>{const old=btn.textContent;btn.disabled=true;btn.textContent='初始化中…';setActionStatus('正在初始化 IndexNow；完成后将显示真实连接状态。');try{await post('/api/r8-16/search-submit/initialize',{});await load();setActionStatus('IndexNow 初始化请求已完成，已刷新真实连接状态。')}catch(error){setActionStatus(`IndexNow 初始化失败：${error.message}`,true)}finally{btn.disabled=false;btn.textContent=old}});
+}
+function renderPipeline(){
+ const s=state.summary||{},f=state.funnel||{},e=state.evidence_summary||{},g=state.geo||{},con=(state.technical||{}).connectors||{},o=(state.technical||{}).observability||{},searchReady=Object.values(con).some(x=>x&&x.configured),auditNote=o.checked_at?`技术检查 ${technicalTime(o.checked_at)}`:'等待自动技术检查';
+ const steps=[['01','需求扫描','发现本地搜索需求',s.keyword_total>0?'done':'waiting',`${s.keyword_total||0} 个存量机会`],['02','关键词评分','S/A/B优先级',s.keyword_total>0?'done':'waiting',`${s.today_planned||0} 个今日规划`],['03','内容生成','生成待部署页面',f.generated>0?'done':'waiting',`${f.generated||0} 个累计生成`],['04','技术质检','Title / Schema / Canonical',(e.qc_passed_total||0)>0?'done':'waiting',`${e.qc_passed_total||0} 个 QC 通过`],['05','公网上线','真实 URL 验证',s.public_pages>0?'done':'blocked',s.public_pages>0?`${s.public_pages} 个已公开`:'等待公网部署连接器'],['06','搜索提交','官方平台回执',s.submitted_urls>0?'done':'blocked',s.submitted_urls>0?`${s.submitted_urls} 个已提交`:(searchReady?'等待可提交 URL':'等待公网部署或搜索连接器')],['07','结果验证','抓取 / 收录 / 排名 / AI',((s.crawled_urls||0)+(s.indexed_urls||0)+(g.observations||0))>0?'done':'waiting',`${s.indexed_urls||0} 收录 / ${g.observations||0} GEO · ${auditNote}`]];
+ $('pipeline').innerHTML=steps.map(([n,title,sub,kind,note])=>`<div class="step ${kind}"><b>${n} ${title}</b><span>${sub}</span><small>${esc(note)}</small></div>`).join('');const runs=state.daily_runs||[];$('logs').innerHTML=runs.length?runs.slice(0,5).map(x=>`<div class="log"><b>${esc(x.date)}</b> · 今日增量：规划 ${x.planned||0} 页，生成 ${x.generated||0} 页，公开 ${x.published||0} 页，提交 ${x.submitted||0} 页 · ${esc(x.note||'')}</div>`).join(''):'<div class="empty">今天尚未运行 SEO/GEO 自动作业。</div>';$('truth-rule').textContent=(state.truth_rule||'')+' 今日作业记录只代表当日增量，历史存量不会重复记入今日。';
+}
+$('refresh-btn').textContent='执行技术审计';$('refresh-btn').onclick=()=>runButton($('refresh-btn'),'/api/r8-13/seo-geo/technical-audit',{},'正在检查公网响应和内链…');
 </script>
 </body>
 </html>

@@ -16,9 +16,11 @@ def main():
         try:
             import core.storage as storage
             import core.seo_geo_growth as growth
+            import core.seo_observability as observability
             import backend.r8_13_seo_geo_patch as seo_patch
             importlib.reload(storage)
             importlib.reload(growth)
+            importlib.reload(observability)
             importlib.reload(seo_patch)
 
             seeded = growth.ensure_baseline()
@@ -53,6 +55,27 @@ def main():
             assert evidence["today_generated"] == 3
             assert enriched["geo"]["measurement_state"] == "not_started"
             assert "只代表本地证据" in evidence["truth"]
+
+            # Public technical audit records only actual HTTP/link observations;
+            # it must not claim Lighthouse or search-engine outcomes.
+            original_read_page = observability._read_page
+            def fake_read_page(url):
+                other = "https://kazuizhi.com/seo/second/"
+                body = f'<a href="{other}">next</a>' if url.endswith("first/") else '<a href="/seo/first/">first</a>'
+                return {"url": url, "status": 200, "content_type": "text/html", "bytes": len(body), "elapsed_ms": 125, "body": body}
+            observability._read_page = fake_read_page
+            technical_audit = observability.run({
+                "config": {"site_base_url": "https://kazuizhi.com/"},
+                "assets": [
+                    {"public_url": "https://kazuizhi.com/seo/first/"},
+                    {"public_url": "https://kazuizhi.com/seo/second/"},
+                ],
+            })
+            observability._read_page = original_read_page
+            assert technical_audit["state"] == "measured"
+            assert technical_audit["network"]["median_response_ms"] == 125
+            assert technical_audit["links"]["total_internal_links"] == 2
+            assert "不是 Lighthouse" in technical_audit["network"]["measurement"]
 
             # Optional connector checks must never take the whole SEO screen
             # offline. This reproduces a damaged local connector store.
@@ -114,7 +137,7 @@ def main():
                 assert token in ui
             for token in ("action-status", "data-kpi-target", "kz-r813-focus", "操作已完成，页面已刷新为真实状态。"):
                 assert token in ui
-            for token in ("AbortController", "本机服务正在就绪", "loadAttempts<5"):
+            for token in ("AbortController", "本机服务正在就绪", "loadAttempts<5", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
                 assert token in ui
             assert "[object Object]" not in ui
 

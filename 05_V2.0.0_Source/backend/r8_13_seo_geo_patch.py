@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from backend import server
+from core import seo_observability
 from core.seo_geo_growth import (
     configure,
     dashboard,
@@ -159,6 +160,11 @@ def _dashboard_payload():
     )
     search = _optional_status("搜索连接器状态", search_submit_status, _connector_fallback())
     technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
+    technical["observability"] = _optional_status(
+        "技术审计状态", seo_observability.status,
+        {"state": "unavailable", "checked_at": "", "network": {}, "links": {},
+         "truth": "技术审计状态正在重新读取。"},
+    )
     payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
     geo = payload.setdefault("geo", {})
@@ -200,6 +206,7 @@ def install():
             "/api/r8-13/seo-geo/generate",
             "/api/r8-13/seo-geo/run",
             "/api/r8-13/seo-geo/audit-site",
+            "/api/r8-13/seo-geo/technical-audit",
             "/api/r8-13/seo-geo/asset-stage",
             "/api/r8-13/seo-geo/geo-observation",
         }
@@ -225,6 +232,10 @@ def install():
             if path == "/api/r8-13/seo-geo/audit-site":
                 site = str(payload.get("site") or dashboard().get("config", {}).get("site_base_url") or "").strip()
                 result = audit_search_site({"site": site})
+                handler._json_ok({"audit": result, "dashboard": _dashboard_payload()})
+                return
+            if path == "/api/r8-13/seo-geo/technical-audit":
+                result = seo_observability.run(_dashboard_payload())
                 handler._json_ok({"audit": result, "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/asset-stage":

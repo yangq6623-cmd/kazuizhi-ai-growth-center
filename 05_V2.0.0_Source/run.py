@@ -45,6 +45,9 @@ from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
 from core.seo_geo_autonomy import run_once as run_seo_geo_autonomy
+from core.seo_geo_autonomy import status as seo_geo_autonomy_status
+from core.seo_geo_growth import dashboard as seo_geo_dashboard
+from core.seo_observability import run as run_seo_technical_audit, should_run_today as seo_technical_audit_due
 from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
@@ -93,6 +96,18 @@ def start_scheduler():
                     # Local SEO/GEO work remains autonomous. PUBLISHED requires
                     # public verification; SUBMITTED requires a search receipt.
                     run_seo_geo_autonomy(force=False)
+                    audit_policy = seo_geo_autonomy_status()
+                    if (
+                        audit_policy.get("enabled")
+                        and audit_policy.get("mode") == "autonomous"
+                        and (audit_policy.get("policy") or {}).get("auto_technical_audit", True)
+                        and seo_technical_audit_due()
+                        and int((seo_geo_dashboard().get("summary") or {}).get("public_pages") or 0) > 0
+                    ):
+                        # This worker is intentionally separate from desktop
+                        # startup and the HTTP handler. Network delays must not
+                        # make the UI look frozen.
+                        run_seo_technical_audit(seo_geo_dashboard())
             except (OSError, ValueError, RuntimeError) as error:
                 print(f"R7/R8-17 scheduler check failed: {error}", flush=True)
 

@@ -34,6 +34,7 @@ DEFAULT = {
         "auto_index_monitor": True,
         "auto_geo_monitor": True,
         "auto_attribution": True,
+        "auto_technical_audit": True,
         "owner_required_for_platform_verification": True,
         "owner_required_for_risk_prompt": True,
         "never_fake_publication": True,
@@ -172,6 +173,10 @@ def run_once(force=False):
     qc = {"passed": [], "failed": []}
     public_deploy = {"skipped": True, "reason": "mode_or_policy_gate"}
     search_submit = {"skipped": True, "reason": "mode_or_policy_gate"}
+    # Public technical audits run in the background scheduler, never in this
+    # synchronous startup/action path. A slow external page must not delay the
+    # desktop dashboard from opening.
+    technical_audit = {"scheduled": bool(data["policy"].get("auto_technical_audit", True))}
 
     if mode in {"assisted", "autonomous"}:
         local = run_daily_cycle(force=bool(force))
@@ -180,7 +185,6 @@ def run_once(force=False):
 
     snap = dashboard()
     readiness = _external_readiness(snap)
-
     if mode == "autonomous" and data["policy"].get("auto_publish_when_connector_ready", True):
         if readiness["publish_connector_ready"]:
             _close_human_item(data, "seo_public_deploy_connector")
@@ -261,6 +265,7 @@ def run_once(force=False):
         "local_qc": qc,
         "public_deploy": public_deploy,
         "search_submit": search_submit,
+        "technical_audit": technical_audit,
         "external_readiness": readiness,
         "counts": {
             "public_pages": summary.get("public_pages", 0),
