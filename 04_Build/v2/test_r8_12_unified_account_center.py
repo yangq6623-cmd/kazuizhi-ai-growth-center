@@ -35,7 +35,7 @@ def check_owner_runtime_contract():
         "/r8_10_truth_convergence.js",
         "/r8_11_backbone_ui.js",
         "/r8_12_account_center_bridge.js",
-        "FiniteStartupObserver",
+        "Never replace the browser's global MutationObserver during startup",
         "dedupeGeneratedSingletons",
         "forceInitialDashboardOnce",
         "r810:workbench-ready",
