@@ -35,6 +35,7 @@ from integrations import r8_17_remote_deployer_patch as _r8_17_remote_deployer_p
 from backend import r8_15_seo_public_deploy_patch as _r8_15_seo_public_deploy_patch  # noqa: F401,E402
 from backend import r8_16_search_submit_patch as _r8_16_search_submit_patch  # noqa: F401,E402
 from backend import r8_17_remote_agent_patch as _r8_17_remote_agent_patch  # noqa: F401,E402
+from backend import r8_18_seo_quality_patch as _r8_18_seo_quality_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import snapshot as autonomous_snapshot
@@ -65,12 +66,17 @@ from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
 
 
-def _sync_r8_17_remote_agent():
-    """Import a local pairing file when present, then keep remote deploy mode live."""
+def _sync_r8_17_remote_agent(*, check_live=True):
+    """Import a local pairing file and optionally check the remote deployment channel.
+
+    The first desktop paint must never wait for a slow public-network probe.
+    Startup performs only local pairing discovery; the scheduler performs the
+    live probe after the owner shell is already available.
+    """
     try:
         pairing = auto_import_pairing()
         if pairing.get("ok") or pairing.get("reason") == "already_configured":
-            activation = activate_remote_mode_if_ready(check_live=True)
+            activation = activate_remote_mode_if_ready(check_live=check_live)
             if activation.get("activated"):
                 return {"ok": True, "pairing": pairing, "activation": activation}
             return {"ok": False, "pairing": pairing, "activation": activation}
@@ -259,7 +265,7 @@ def main():
         migrate_to_v2_2()
         recover_interrupted()
         try:
-            remote_result = _sync_r8_17_remote_agent()
+            remote_result = _sync_r8_17_remote_agent(check_live=False)
             if remote_result.get("ok"):
                 print("R8-17 Remote Agent connected; remote deployment mode is active.", flush=True)
             # Startup reconciliation only imports already-issued ChatGPT
