@@ -1,7 +1,7 @@
-name: Build Kazuizhi R8-17 Desktop Remote Agent
+name: Build Kazuizhi R8-19 ChatGPT Control Loop
 on:
   push:
-    branches: ['r8-17-remote-agent-*']
+    branches: ['r8-17-remote-agent-*', 'r8-18-chatgpt-control-loop']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
