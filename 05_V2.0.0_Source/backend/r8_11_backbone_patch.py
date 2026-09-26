@@ -13,6 +13,7 @@ from promotion import r8_11_runtime_convergence_patch as _r8_11_runtime_converge
 # R8-12 upgrades temporary bindings into durable account assets + device pool.
 from backend import r8_12_account_center_patch as _r8_12_account_center_patch  # noqa: F401,E402
 from core.mission_ledger import snapshot as mission_ledger_snapshot, sync_backbone
+from core.command_execution import reconcile as command_execution_reconcile, status as command_execution_status
 from integrations.channel_registry import snapshot as channel_registry_snapshot
 from integrations.channel_router import build_routes as channel_routes_snapshot
 from integrations.social_session_probe import confirm_owner_login, verify_pending_accounts
@@ -69,6 +70,9 @@ def install():
                     "truth_rule": ledger.get("truth_rule"),
                 })
                 return
+            if path == "/api/r8-18/control-loop":
+                handler._json_ok(command_execution_status())
+                return
             # Account/device pages already refresh these endpoints. Use that
             # existing cadence to run a throttled read-only ADB session probe.
             # Probe failure must never break the owner dashboard.
@@ -90,6 +94,12 @@ def install():
                 return
             result = sync_backbone()
             handler._json_ok(result, code=200)
+            return
+        if path == "/api/r8-18/control-loop/reconcile":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            handler._json_ok(command_execution_reconcile(), code=200)
             return
         if path == "/api/r8-11/social/verify":
             if not _origin_allowed(handler):

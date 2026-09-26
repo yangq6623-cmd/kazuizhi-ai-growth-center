@@ -77,7 +77,11 @@ def exercise(command):
     with tempfile.TemporaryDirectory() as tmp:
         public_report = Path(tmp) / "public-keywords.json"
         public_report.write_text(json.dumps({"keywords": [{"text": "涟水水电工师傅上门服务电话", "score": 73, "last_seen": "2026-09-16"}]}, ensure_ascii=False), encoding="utf-8")
-        env = dict(os.environ, LOCALAPPDATA=tmp, KAZUIZHI_AI_REPORT_PATH=str(public_report))
+        # The build worker is a non-interactive Windows session, where DPAPI
+        # deliberately cannot create a user-bound secret.  Keep the mock key
+        # in this child process only; production configuration still persists
+        # user credentials through DPAPI and never receives this environment.
+        env = dict(os.environ, LOCALAPPDATA=tmp, KAZUIZHI_AI_REPORT_PATH=str(public_report), KAZUIZHI_AI_API_KEY="test-secret-123")
         log_path = Path(tmp) / "runtime.log"
         with open(log_path, "w+", encoding="utf-8") as log:
             process = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -183,7 +187,7 @@ def exercise(command):
                 thread = threading.Thread(target=mock_ai.serve_forever, daemon=True)
                 thread.start()
                 try:
-                    configured = post("/api/integrations/ai/configure", {"base_url": f"http://127.0.0.1:{mock_ai.server_port}/v1", "model": "test-model", "api_key": "test-secret-123"})
+                    configured = post("/api/integrations/ai/configure", {"base_url": f"http://127.0.0.1:{mock_ai.server_port}/v1", "model": "test-model"})
                     check(configured["external_ai"]["configured"] and "api_key" not in json.dumps(configured), "AI configuration failed or leaked")
                     tested = post("/api/integrations/ai/test", {})
                     check(tested["external_ai"]["status"] == "connected", "AI connection test failed")

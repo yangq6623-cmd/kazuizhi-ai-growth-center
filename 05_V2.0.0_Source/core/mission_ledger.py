@@ -48,6 +48,14 @@ def _safe_bus_receipts() -> list[dict]:
         return []
 
 
+def _safe_command_links() -> list[dict]:
+    try:
+        from core.command_execution import command_links
+        return command_links(200)
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return []
+
+
 def _safe_business() -> dict:
     try:
         from analytics.business_metrics import build_analytics
@@ -64,6 +72,24 @@ def _safe_channels() -> dict:
         return value if isinstance(value, dict) else {}
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
         return {"channels": [], "summary": {}}
+
+
+def _safe_execution(mission_id: str) -> dict:
+    """Summarize local task evidence without confusing it with external proof."""
+    try:
+        from core.r7_engine import list_jobs
+        jobs = [x for x in list_jobs().get("items", []) if x.get("mission_id") == mission_id]
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        jobs = []
+    receipts = [x.get("execution_receipt") for x in jobs if isinstance(x.get("execution_receipt"), dict)]
+    states = {name: sum(x.get("state") == name for x in jobs) for name in ("queued", "running", "completed", "failed", "cancelled")}
+    return {
+        "task_count": len(jobs),
+        "states": states,
+        "local_execution_receipts": len(receipts),
+        "latest_local_receipt": receipts[0] if receipts else None,
+        "truth": "本地执行回执仅证明任务在本机完成；外网发布、收录、曝光和经营结果仍须各自真实证据。",
+    }
 
 
 def _safe_routes(active: dict | None) -> dict:
@@ -116,8 +142,11 @@ def _next_action(mission: dict, video: dict | None, real_receipts: list[dict]) -
     return "按 Mission 当前状态继续到下一真实关口"
 
 
-def _command_links(mission_id: str, bus_receipts: list[dict]) -> list[dict]:
+def _command_links(mission_id: str, bus_receipts: list[dict], normalized_links: list[dict] | None = None) -> list[dict]:
     rows = []
+    for row in normalized_links or []:
+        if row.get("mission_id") == mission_id:
+            rows.append(dict(row))
     for receipt in bus_receipts:
         if receipt.get("mission_id") != mission_id:
             continue
@@ -129,10 +158,12 @@ def _command_links(mission_id: str, bus_receipts: list[dict]) -> list[dict]:
             "created_at": receipt.get("created_at"),
             "transport": receipt.get("transport"),
         })
-    return rows
+    rows.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    seen = set()
+    return [row for row in rows if not (str(row.get("command_id") or ""), str(row.get("control_receipt_id") or "")) in seen and not seen.add((str(row.get("command_id") or ""), str(row.get("control_receipt_id") or "")))]
 
 
-def _mission_row(mission: dict, factory: dict, bus_receipts: list[dict], channels: dict) -> dict:
+def _mission_row(mission: dict, factory: dict, bus_receipts: list[dict], channels: dict, normalized_links: list[dict] | None = None) -> dict:
     growth_id = str(mission.get("growth_id") or "")
     videos = [x for x in factory.get("videos", []) if x.get("campaign_id") == growth_id]
     active_video_id = mission.get("active_video_id")
@@ -143,13 +174,15 @@ def _mission_row(mission: dict, factory: dict, bus_receipts: list[dict], channel
     successful = [x for x in receipts if x.get("result") == "成功" and x.get("platform_content_id") and x.get("url")]
     latest_plan = plans[0] if plans else None
     latest_receipt = receipts[0] if receipts else None
-    command_links = _command_links(str(mission.get("mission_id") or ""), bus_receipts)
+    command_links = _command_links(str(mission.get("mission_id") or ""), bus_receipts, normalized_links)
     blocker = (video or {}).get("bottleneck") or mission.get("bottleneck")
+    execution = _safe_execution(str(mission.get("mission_id") or ""))
     return {
         "mission_id": mission.get("mission_id"),
         "growth_id": growth_id or None,
         "command": command_links[0] if command_links else None,
         "command_history": command_links,
+        "execution": execution,
         "title": mission.get("title"),
         "region": mission.get("region"),
         "service": mission.get("service"),
@@ -393,13 +426,19 @@ def snapshot() -> dict:
     # Local backup recovery is intentionally attempted before the derived
     # runtime sync.  It never reaches the network from normal UI reads.
     recover_if_empty(client=None)
+    try:
+        from core.command_execution import reconcile_missions
+        reconcile_missions()
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        pass
     ops = _safe_ops()
     factory = _safe_factory()
     bus_receipts = _safe_bus_receipts()
+    normalized_links = _safe_command_links()
     channels = _safe_channels()
     business = _safe_business()
     missions = [x for x in (ops.get("missions") or []) if isinstance(x, dict)]
-    rows = [_mission_row(mission, factory, bus_receipts, channels) for mission in missions]
+    rows = [_mission_row(mission, factory, bus_receipts, channels, normalized_links) for mission in missions]
     active_id = (ops.get("active_mission") or {}).get("mission_id")
     active = next((x for x in rows if x.get("mission_id") == active_id), rows[0] if rows else None)
     routes = _safe_routes(active)

@@ -40,6 +40,7 @@ from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
 from core.mission_ledger import sync_backbone as sync_mission_backbone
 from core.daily_workforce import ensure_daily_workforce
+from core.command_execution import reconcile as reconcile_command_execution
 from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
@@ -90,6 +91,7 @@ def start_scheduler():
         tick = 0
         while not stop.is_set():
             try:
+                reconcile_command_execution()
                 ensure_daily_workforce()
                 ensure_daily_review()
                 run_due_jobs()
