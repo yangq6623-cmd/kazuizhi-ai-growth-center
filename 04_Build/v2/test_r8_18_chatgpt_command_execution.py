@@ -72,7 +72,11 @@ def main():
             assert active["command_history"]
             execution = active["execution"]
             assert execution["task_count"] == len(jobs) + 1
-            assert execution["local_execution_receipts"] == 1
+            # CI runners use UTC while the desktop runs Asia/Shanghai time.
+            # Additional already-due daily jobs may complete in CI; the
+            # contract is that a local receipt exists, not that it is the only
+            # receipt created during this test window.
+            assert execution["local_execution_receipts"] >= 1
             assert "外网发布" in execution["truth"]
 
             status = command_execution.status()
