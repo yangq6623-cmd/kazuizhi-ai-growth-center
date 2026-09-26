@@ -11,7 +11,7 @@ from core import version  # noqa: E402
 EXPECTED_DISPLAY = "V2.2.2 自治运营核心"
 EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
 EXPECTED_CORE_PHASE = "R8-09"
-EXPECTED_WEB_PHASE = "R8-17"
+EXPECTED_WEB_PHASE = "R8-18"
 EXPECTED_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
 EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core"
 
@@ -76,4 +76,4 @@ if "2.2.2.22" not in windows_version or EXPECTED_PRODUCT not in windows_version:
 if EXPECTED_INSTALLER not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-17 web phase and R7 compatibility are traceable")
+print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-18 web phase and R7 compatibility are traceable")
