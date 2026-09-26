@@ -74,42 +74,6 @@
     });
   }
 
-  function installFiniteStartupObserverPolicy() {
-    const NativeObserver = window.MutationObserver;
-    if (!NativeObserver || window.__KZ_NATIVE_MUTATION_OBSERVER__) return () => {};
-    window.__KZ_NATIVE_MUTATION_OBSERVER__ = NativeObserver;
-
-    class FiniteStartupObserver {
-      constructor(callback) {
-        this.callback = callback;
-        this.timers = [];
-        this.disconnected = false;
-      }
-      observe() {
-        if (this.disconnected || this.timers.length) return;
-        STARTUP_OBSERVER_DELAYS.forEach(delay => {
-          this.timers.push(window.setTimeout(() => {
-            if (!this.disconnected) {
-              try { this.callback([], this); } catch (error) { console.warn('startup observer callback failed', error); }
-            }
-          }, delay));
-        });
-      }
-      disconnect() {
-        this.disconnected = true;
-        this.timers.forEach(timer => window.clearTimeout(timer));
-        this.timers = [];
-      }
-      takeRecords() { return []; }
-    }
-
-    window.MutationObserver = FiniteStartupObserver;
-    return () => {
-      if (window.MutationObserver === FiniteStartupObserver) window.MutationObserver = NativeObserver;
-      delete window.__KZ_NATIVE_MUTATION_OBSERVER__;
-    };
-  }
-
   function dedupeGeneratedSingletons() {
     const seen = new Set();
     document.querySelectorAll('[id]').forEach(node => {
@@ -206,7 +170,6 @@
     installReleaseTruthRefresh();
     emit('kz:startup-base-ready');
 
-    const restoreObserverPolicy = installFiniteStartupObserverPolicy();
     state.phase = 'loading_owner_shell';
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
@@ -232,7 +195,9 @@
       console.error('R8-12 startup coordinator failed', error);
       if (typeof window.toast === 'function') window.toast(`启动收敛失败：${state.error}`, 'error');
     } finally {
-      window.setTimeout(restoreObserverPolicy, 2600);
+      // Never replace the browser's global MutationObserver during startup.
+      // Workbench and embedded pages own independent observers; changing the
+      // platform primitive made their startup timing nondeterministic.
     }
   }
 

@@ -42,6 +42,8 @@ def main():
         assert label in workbench
     assert "nav.querySelectorAll('.r810-nav-button').forEach" in workbench
     assert "/r8_13_seo_geo_bridge.js" in startup
+    assert "window.MutationObserver =" not in startup
+    assert "installFiniteStartupObserverPolicy" not in startup
 
     # Browser syntax gate handles syntax; this gate protects runtime architecture invariants.
     print("PASS: R8-18 SEO lazy loading and finite iframe resize keep owner navigation responsive.")
