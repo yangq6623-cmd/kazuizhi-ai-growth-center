@@ -17,6 +17,7 @@ from copy import deepcopy
 from urllib.parse import urlencode
 
 from core.storage import now_iso, read_json, write_json
+from integrations.credential_vault import get_secret, put_secret
 
 AUTH_REQUESTS_PATH = "r8_12/auth_requests.json"
 AUTH_SCHEMA = "kz.auth-request.v1"
@@ -155,13 +156,43 @@ DEFAULT_ENVIRONMENT_POLICY = {
 }
 
 
+def _credential_key(platform: str, kind: str) -> str:
+    return f"r8_12.oauth.{platform}.{kind}"
+
+
+def provider_credentials(platform: str) -> tuple[str, str]:
+    """Read local DPAPI credentials first, with env vars only as legacy fallback."""
+    provider = PROVIDERS.get(str(platform or "").strip())
+    if not provider:
+        raise ValueError("未登记的平台授权适配器")
+    client_id = get_secret(_credential_key(platform, "client_id")) or os.environ.get(provider.get("client_id_env") or "", "")
+    client_secret = get_secret(_credential_key(platform, "client_secret")) or os.environ.get(provider.get("client_secret_env") or "", "")
+    return str(client_id or "").strip(), str(client_secret or "").strip()
+
+
+def configure_provider_credentials(platform: str, *, client_id: str, client_secret: str) -> dict:
+    platform = str(platform or "").strip()
+    provider = PROVIDERS.get(platform)
+    if not provider or not provider.get("client_id_env") or not provider.get("client_secret_env"):
+        raise ValueError("该平台不支持在本机配置 OAuth 应用凭据")
+    client_id, client_secret = str(client_id or "").strip(), str(client_secret or "").strip()
+    if not client_id or not client_secret:
+        raise ValueError("请完整粘贴客户端 ID 和客户端密钥")
+    if platform == "google_search_console" and not client_id.endswith(".apps.googleusercontent.com"):
+        raise ValueError("Google 客户端 ID 格式不正确")
+    put_secret(_credential_key(platform, "client_id"), client_id)
+    put_secret(_credential_key(platform, "client_secret"), client_secret)
+    return {"ok": True, "platform": platform, "truth": "应用凭据已加密保存到此 Windows 用户的本机凭据库；不会返回到网页、日志或 GitHub。"}
+
+
 def _public_provider(key: str, raw: dict) -> dict:
     row = deepcopy(raw)
     cid_env = row.pop("client_id_env", None)
     secret_env = row.pop("client_secret_env", None)
     row["platform"] = key
-    row["client_id_configured"] = bool(cid_env and os.environ.get(cid_env)) if cid_env else row["auth_mode"].startswith("official_portal")
-    row["client_secret_configured"] = bool(secret_env and os.environ.get(secret_env)) if secret_env else row["auth_mode"].startswith("official_portal")
+    client_id, client_secret = provider_credentials(key) if cid_env or secret_env else ("", "")
+    row["client_id_configured"] = bool(client_id) if cid_env else row["auth_mode"].startswith("official_portal")
+    row["client_secret_configured"] = bool(client_secret) if secret_env else row["auth_mode"].startswith("official_portal")
     row["configured"] = bool(row["client_id_configured"] and row["client_secret_configured"])
     row["credential_names"] = [name for name in (cid_env, secret_env) if name]
     return row
@@ -260,7 +291,7 @@ def start_authorization(platform: str, *, slot_label: str = "", redirect_uri: st
             "truth": "官方应用 Client ID/Secret 未配置时，先进入官方控制台申请；不会生成假的 OAuth 登录。",
         }
 
-    client_id = os.environ.get(provider["client_id_env"], "")
+    client_id, _ = provider_credentials(platform)
     scopes = provider.get("default_scopes") or []
     if provider.get("requires_https_callback") and redirect_uri and not redirect_uri.lower().startswith("https://"):
         item["status"] = "needs_https_callback"; _save_request(item)

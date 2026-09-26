@@ -11,7 +11,6 @@ Security properties:
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -20,7 +19,7 @@ from core.storage import now_iso
 from integrations.account_environment import observe
 from integrations.credential_vault import put_secret
 from integrations.official_account_assets import upsert_official_account
-from integrations.platform_auth_catalog import PROVIDERS, request_by_state, update_request
+from integrations.platform_auth_catalog import PROVIDERS, provider_credentials, request_by_state, update_request
 
 MAX_REQUEST_AGE = timedelta(minutes=10)
 
@@ -56,8 +55,7 @@ def _decode_response(raw: bytes) -> dict:
 
 def _token_payload(platform: str, code: str, item: dict) -> tuple[str, dict, str]:
     provider = PROVIDERS[platform]
-    client_id = os.environ.get(provider.get("client_id_env") or "", "")
-    client_secret = os.environ.get(provider.get("client_secret_env") or "", "")
+    client_id, client_secret = provider_credentials(platform)
     if not client_id or not client_secret:
         raise ValueError("官方应用 Client ID/Secret 尚未配置")
     redirect_uri = str(item.get("redirect_uri") or "")

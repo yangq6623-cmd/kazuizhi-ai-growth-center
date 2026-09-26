@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from backend import server
 from integrations.account_environment import clear_risk, mark_risk, observe, snapshot as environment_snapshot
 from integrations.oauth_token_broker import complete_authorization
-from integrations.platform_auth_catalog import catalog, pending_requests, start_authorization
+from integrations.platform_auth_catalog import catalog, configure_provider_credentials, pending_requests, start_authorization
 
 _INSTALLED = False
 
@@ -81,6 +81,7 @@ def install():
         path = urlsplit(handler.path).path
         allowed = {
             "/api/r8-12/auth/start",
+            "/api/r8-12/auth/configure",
             "/api/r8-12/account-environment/observe",
             "/api/r8-12/account-environment/risk",
             "/api/r8-12/account-environment/clear-risk",
@@ -101,6 +102,12 @@ def install():
                     account_id=str(payload.get("account_id") or "").strip(),
                 )
                 handler._json_ok(result); return
+            if path == "/api/r8-12/auth/configure":
+                handler._json_ok(configure_provider_credentials(
+                    str(payload.get("platform") or "").strip(),
+                    client_id=str(payload.get("client_id") or "").strip(),
+                    client_secret=str(payload.get("client_secret") or "").strip(),
+                )); return
             account_id = str(payload.get("account_id") or "").strip()
             if not account_id: raise ValueError("account_id 不能为空")
             if path == "/api/r8-12/account-environment/observe":
