@@ -27,7 +27,10 @@
     if(!wrap){
       wrap=document.createElement('div');
       wrap.id=WRAP_ID;
-      wrap.innerHTML=`<iframe id="${FRAME_ID}" title="统一账号资产中心" src="/r8_12_account_center.html?embed=1"></iframe>`;
+      // This page is comparatively heavy.  Never leave it alive, hidden in the
+      // owner shell after the user navigates elsewhere: a stalled account iframe
+      // can otherwise make Chrome report the whole local dashboard as unresponsive.
+      wrap.innerHTML=`<iframe id="${FRAME_ID}" title="统一账号资产中心" src="/r8_12_account_center.html?embed=1" loading="lazy"></iframe>`;
       const frame=oldFrame();
       if(frame?.parentNode) frame.parentNode.insertBefore(wrap,frame.nextSibling);
       else root.appendChild(wrap);
@@ -52,6 +55,13 @@
     const root=hub(); const wrap=document.getElementById(WRAP_ID);
     root?.classList.remove('r812-account-mode');
     wrap?.classList.remove('active');
+    // Dispose rather than merely hide the embedded R8-12 application.  The
+    // next explicit account visit recreates it, while ordinary navigation is
+    // protected from a background renderer or timer loop.
+    window.setTimeout(()=>{
+      const current=document.getElementById(WRAP_ID);
+      if(current&&!current.classList.contains('active')) current.remove();
+    },0);
   }
 
   // R8-11 still owns all other execution tabs with a document-capture listener.
@@ -78,6 +88,13 @@
     if(!button) return;
     event.preventDefault();
     openAccountCenter(document.querySelector('.r810-execution-tabs button[data-execution-page="accounts"]'));
+  },true);
+
+  // SEO/GEO and the other owner routes do not need the account renderer in the
+  // background.  Tear it down before switching main navigation to keep the
+  // local shell responsive even if a previous account page became sluggish.
+  window.addEventListener('click',event=>{
+    if(event.target?.closest?.('.r810-nav-button')) closeAccountCenter();
   },true);
 
   window.KZR812AccountCenter={open:openAccountCenter,close:closeAccountCenter};

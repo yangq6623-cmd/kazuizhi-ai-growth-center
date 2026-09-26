@@ -27,6 +27,13 @@ def main():
     assert "primary.querySelector('[data-target=\"r813-seo-geo\"]')" in bridge
     assert "if (createFrame && !page.querySelector(`#${FRAME_ID}`))" in bridge
 
+    # The hidden R8-12 account iframe must not keep a background renderer alive
+    # while the owner moves to SEO or another main navigation page.
+    account_bridge = (SOURCE / "web" / "r8_12_account_center_bridge.js").read_text(encoding="utf-8")
+    assert 'loading="lazy"' in account_bridge
+    assert "current.remove()" in account_bridge
+    assert "background renderer or timer loop" in account_bridge
+
     # Main navigation remains owned by the workbench and SEO is injected as one extra route.
     for label in (
         "老板总控", "AI决策中心", "执行中心", "待我处理", "经营结果",
