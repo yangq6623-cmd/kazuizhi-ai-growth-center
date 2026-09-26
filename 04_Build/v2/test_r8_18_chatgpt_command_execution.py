@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "05_V2.0.0_Source"
 sys.path.insert(0, str(SOURCE))
 
-from core import command_execution, daily_workforce, decision_center, mission_ledger, r7_engine
+from core import command_execution, daily_workforce, decision_center, decision_center_mission_patch, mission_ledger, r7_engine
 from core.storage import write_json
 from integrations import kz_local_control
 
