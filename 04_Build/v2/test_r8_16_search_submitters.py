@@ -183,6 +183,7 @@ def main():
     assert "KZAuthUI" in bridge
     assert "已连接·额度用尽" in page
     assert "baidu_quota_exhausted" in page
+    assert "baidu_quota_hold" in page
 
     # Repeated OAuth callbacks create a history of account assets.  The
     # submitter must use the newest usable credential instead of silently
