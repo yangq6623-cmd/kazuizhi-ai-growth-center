@@ -134,6 +134,33 @@ def main():
     second_after = next(x for x in dashboard()["assets"] if x["id"] == second["id"])
     assert second_after["stage"] == "PUBLISHED", second_after
 
+    # A Baidu quota rejection proves the connector reached Baidu; it must be
+    # represented distinctly and must not re-attempt the same page versions
+    # again on the same natural day.
+    original_baidu_token = submitter._baidu_token
+    original_baidu_submit = submitter._submit_baidu
+    submitter._baidu_token = lambda: "test-token"
+    submitter._submit_baidu = lambda urls, site, token, timeout=15: {
+        "ok": False,
+        "status": 400,
+        "response": {"error": 400, "message": "over quota"},
+        "submitted": len(urls),
+        "at": "test",
+    }
+    try:
+        submitter.configure({"allow_baidu_http_submission": True, "baidu_site": "kazuizhi.example"})
+        quota = submitter.submit_pending(limit=100)
+        retry = submitter.submit_pending(limit=3)
+    finally:
+        submitter._baidu_token = original_baidu_token
+        submitter._submit_baidu = original_baidu_submit
+
+    baidu_failure = next(row for row in quota["failed"] if row["engine"] == "baidu")
+    assert quota["batch_limit"] == 3, quota
+    assert quota["eligible_by_engine"]["baidu"] <= 3, quota
+    assert baidu_failure["reason"] == "baidu_quota_exhausted", quota
+    assert retry["eligible_by_engine"]["baidu"] == 0, retry
+
     connector = submitter.status()
     assert connector["connectors"]["bing"]["configured"] is True, connector
     assert connector["truth"].find("SUBMITTED") >= 0
@@ -148,6 +175,8 @@ def main():
     assert "/api/r8-12/auth/start" in page
     assert "beginSearchAuthorization" in page
     assert "KZAuthUI" in bridge
+    assert "已连接·额度用尽" in page
+    assert "baidu_quota_exhausted" in page
 
     # Repeated OAuth callbacks create a history of account assets.  The
     # submitter must use the newest usable credential instead of silently

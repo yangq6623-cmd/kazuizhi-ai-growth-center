@@ -13,6 +13,12 @@ Supported paths:
   remains in the local DPAPI vault rather than project files/logs.
 
 A successful submission receipt is not treated as crawl/index/rank evidence.
+
+Submission is deliberately conservative: only versioned public pages are
+eligible, a page/version is attempted at most once per engine per natural day,
+and every external batch is capped at three URLs.  This keeps a rejected
+endpoint (especially a Baidu quota response) from repeatedly consuming work on
+the same historical inventory.
 """
 from __future__ import annotations
 
@@ -51,7 +57,10 @@ DEFAULT = {
     "last_run_at": "",
     "last_result": {},
     "last_indexnow_initialization": {},
+    "submission_attempts": {},
 }
+
+MAX_SUBMISSION_BATCH = 3
 
 
 def _load() -> dict:
@@ -190,6 +199,68 @@ def _public_assets() -> list[dict]:
         if url.startswith("https://"):
             assets.append(row)
     return assets
+
+
+def _submission_revision(asset: dict) -> str:
+    """Return the public version marker used to decide whether an asset is new.
+
+    ``updated_at`` cannot be used here because recording a search receipt also
+    updates it.  ``published_at`` is only written after a real public URL has
+    been verified, so it is a stable marker for a newly published page.
+    """
+    return str(asset.get("published_at") or "").strip()
+
+
+def _batch_limit(limit: int | None) -> int:
+    return max(1, min(MAX_SUBMISSION_BATCH, int(limit or MAX_SUBMISSION_BATCH)))
+
+
+def _attempted_today(data: dict, engine: str, asset: dict) -> bool:
+    attempts = data.get("submission_attempts") or {}
+    entry = ((attempts.get(engine) or {}).get(str(asset.get("id"))) or {})
+    if not isinstance(entry, dict):
+        return False
+    return (
+        entry.get("date") == now_iso().split("T", 1)[0]
+        and entry.get("revision") == _submission_revision(asset)
+    )
+
+
+def _record_attempt(data: dict, engine: str, assets: list[dict]) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    today = now_iso().split("T", 1)[0]
+    for asset in assets:
+        attempts[str(asset.get("id"))] = {
+            "date": today,
+            "revision": _submission_revision(asset),
+        }
+
+
+def _eligible_assets(data: dict, engine: str, assets: list[dict], limit: int) -> tuple[list[dict], int]:
+    """Return at most ``limit`` fresh page revisions for one search engine.
+
+    Pre-existing public records without ``published_at`` are intentionally not
+    backfilled into an automated queue.  They can be re-published as a genuine
+    new revision; otherwise automatic retries would re-submit historic pages.
+    """
+    legacy = 0
+    eligible = []
+    for asset in assets:
+        if not _submission_revision(asset):
+            legacy += 1
+            continue
+        if _existing_engine_receipt(asset, engine) or _attempted_today(data, engine, asset):
+            continue
+        eligible.append(asset)
+    eligible.sort(key=lambda asset: _submission_revision(asset), reverse=True)
+    return eligible[:limit], legacy
+
+
+def _baidu_quota_exhausted(result: dict) -> bool:
+    response = result.get("response") if isinstance(result, dict) else ""
+    if isinstance(response, dict):
+        response = " ".join(str(value) for value in response.values())
+    return "over quota" in str(response or "").lower()
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -429,12 +500,33 @@ def status() -> dict:
     }
 
 
-def submit_pending(limit: int = 20) -> dict:
+def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
     data = _load()
     data["last_run_at"] = now_iso()
-    assets = _public_assets()[: max(1, min(100, int(limit or 20)))]
+    assets = _public_assets()
     if not assets:
         result = {"skipped": True, "reason": "no_verified_public_pages", "submitted": [], "failed": []}
+        data["last_result"] = result
+        _save(data)
+        return result
+
+    batch_limit = _batch_limit(limit)
+    pending_by_engine = {}
+    legacy_by_engine = {}
+    for engine in ("indexnow", "google_search_console", "baidu"):
+        pending_by_engine[engine], legacy_by_engine[engine] = _eligible_assets(data, engine, assets, batch_limit)
+
+    if not any(pending_by_engine.values()):
+        result = {
+            "skipped": True,
+            "reason": "no_new_or_updated_public_pages",
+            "submitted": [],
+            "failed": [],
+            "batch_limit": batch_limit,
+            "eligible_by_engine": {engine: 0 for engine in pending_by_engine},
+            "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
+            "truth": "仅提交新发布或实质更新的页面版本；已在当天尝试过的页面不会重复提交。",
+        }
         data["last_result"] = result
         _save(data)
         return result
@@ -450,8 +542,9 @@ def submit_pending(limit: int = 20) -> dict:
     key = _indexnow_key()
     if initialization.get("ok") and key and deploy.get("ready"):
         verification = dict(initialization.get("verification") or {})
-        pending = [x for x in assets if not _existing_engine_receipt(x, "indexnow")]
+        pending = pending_by_engine["indexnow"]
         if verification.get("ok") and pending:
+            _record_attempt(data, "indexnow", pending)
             receipt = _submit_indexnow([x["public_url"] for x in pending], key, verification["key_location"], str(data.get("indexnow_endpoint") or DEFAULT["indexnow_endpoint"]))
             receipt_id = f"INDEXNOW-{now_iso().replace(':','').replace('-','')}"
             _append_receipt({"receipt_id": receipt_id, "engine": "indexnow", "result": receipt, "key_location": verification.get("key_location"), "created_at": now_iso()})
@@ -470,8 +563,9 @@ def submit_pending(limit: int = 20) -> dict:
     # OAuth account already held by the unified account center.
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
-    google_pending = [x for x in assets if not _existing_engine_receipt(x, "google_search_console")]
+    google_pending = pending_by_engine["google_search_console"]
     if google_account and google_token and google_pending:
+        _record_attempt(data, "google_search_console", google_pending)
         sitemap_url = urllib.parse.urljoin(site_url, "seo/sitemap.xml")
         g_result = _submit_google_sitemap(str(data.get("google_site_url") or site_url), sitemap_url, google_token)
         receipt_id = f"GSC-{now_iso().replace(':','').replace('-','')}"
@@ -487,8 +581,9 @@ def submit_pending(limit: int = 20) -> dict:
     # disabled until the owner explicitly opts in after supplying the verified
     # site's token; never expose the token in returned status/results.
     baidu_token = _baidu_token()
-    baidu_pending = [x for x in assets if not _existing_engine_receipt(x, "baidu")]
+    baidu_pending = pending_by_engine["baidu"]
     if baidu_token and data.get("allow_baidu_http_submission") and baidu_pending:
+        _record_attempt(data, "baidu", baidu_pending)
         b_result = _submit_baidu([x["public_url"] for x in baidu_pending], str(data.get("baidu_site") or "kazuizhi.com"), baidu_token)
         receipt_id = f"BAIDU-{now_iso().replace(':','').replace('-','')}"
         _append_receipt({"receipt_id": receipt_id, "engine": "baidu", "result": b_result, "created_at": now_iso()})
@@ -497,17 +592,24 @@ def submit_pending(limit: int = 20) -> dict:
                 _record_submission(asset, "baidu", receipt_id)
                 submitted.append({"asset_id": asset["id"], "engine": "baidu", "receipt": receipt_id})
         else:
-            failed.append({"engine": "baidu", "reason": "api_submit_failed", "result": b_result})
+            failed.append({
+                "engine": "baidu",
+                "reason": "baidu_quota_exhausted" if _baidu_quota_exhausted(b_result) else "api_submit_failed",
+                "result": b_result,
+            })
 
     result = {
         "skipped": False,
-        "attempted_public_assets": len(assets),
+        "attempted_public_assets": max((len(rows) for rows in pending_by_engine.values()), default=0),
+        "batch_limit": batch_limit,
+        "eligible_by_engine": {engine: len(rows) for engine, rows in pending_by_engine.items()},
+        "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
         "submitted": submitted,
         "submitted_count": len(submitted),
         "failed": failed,
         "failed_count": len(failed),
         "indexnow_initialization": initialization,
-        "truth": "搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
+        "truth": "每次最多提交 3 个新发布或实质更新的页面版本；同一页面版本当天只尝试一次。搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
     }
     data["last_result"] = result
     _save(data)

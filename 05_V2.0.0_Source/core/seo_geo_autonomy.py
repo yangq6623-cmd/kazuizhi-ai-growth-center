@@ -221,7 +221,7 @@ def run_once(force=False):
             # it does not claim a search-engine receipt by itself.
             if readiness["publish_connector_ready"]:
                 search_engine_submitter.initialize_indexnow()
-            search_submit = search_engine_submitter.submit_pending(limit=20)
+            search_submit = search_engine_submitter.submit_pending(limit=3)
             refreshed_search = search_engine_submitter.status()
             if refreshed_search.get("ready_engines"):
                 _close_human_item(data, "seo_search_connector")

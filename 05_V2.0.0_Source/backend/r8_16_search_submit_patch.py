@@ -151,7 +151,7 @@ def install():
             elif path.endswith("/initialize"):
                 handler._json_ok(search_submitter.initialize_indexnow())
             else:
-                handler._json_ok(search_submitter.submit_pending(limit=max(1, min(100, int(payload.get("limit") or 20)))))
+                handler._json_ok(search_submitter.submit_pending(limit=max(1, min(3, int(payload.get("limit") or 3)))))
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
