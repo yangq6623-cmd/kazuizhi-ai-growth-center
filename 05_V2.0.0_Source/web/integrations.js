@@ -85,7 +85,10 @@ function bindIntegrationCards(){
     const activate=async()=>{
       const id=card.dataset.integration;
       if(id==='local_engine'){toast('正在执行本地系统体检');await runDiagnostics();return}
-      if(id==='external_ai'){$('ai-base-url')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到外部大模型配置');return}
+      if(id==='external_ai'){
+        if(typeof window.kzOpenModelConnectionCenter==='function'){window.kzOpenModelConnectionCenter();return}
+        $('ai-base-url')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到外部大模型配置');return
+      }
       if(id==='business_data'){openPage('analytics');setTimeout(()=>{$('business-json')?.scrollIntoView({behavior:'smooth',block:'center'});toast('真实经营数据尚未实时接入；当前支持导入已验证聚合快照')},0);return}
       if(id==='operations_bridge'){$('bridge-panel')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到双向运营桥');return}
       if(id==='publishing'){openPage('promotion');toast('内容发布目前仍是人工审核模式；R7 不会自动对外发布');return}

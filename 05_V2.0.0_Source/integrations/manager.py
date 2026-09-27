@@ -128,6 +128,24 @@ def save_ai_config(payload):
 
 
 def _ai_status():
+    # R8-18 model connection centre is the preferred source of truth.  Keep
+    # the legacy R7-compatible form below as a migration fallback only.
+    try:
+        from integrations.ai_gateway import gateway_status
+        centre = gateway_status()
+        if centre.get("configured"):
+            active = ((centre.get("routes") or {}).get(centre.get("active_route")) or {})
+            return {
+                "id": "external_ai", "name": "外部大模型", "configured": True,
+                "status": "connected" if active.get("verified") else "configured",
+                "status_label": "连接已验证" if active.get("verified") else "等待连接测试",
+                "provider": active.get("provider"), "base_url": active.get("endpoint", ""),
+                "model": active.get("model", ""), "has_key": bool(active.get("credential_source") != "none"),
+                "last_test": {"ok": bool(active.get("verified")), "tested_at": active.get("last_test_at")},
+                "message": f"当前使用：{active.get('label') or '模型路线'}。云端与本地模型可在模型接入中心切换；发布仍需人工审核。",
+            }
+    except (OSError, ValueError, RuntimeError, ImportError):
+        pass
     config = _config()
     has_key = bool(_read_key())
     configured = bool(config.get("base_url") and config.get("model") and has_key)

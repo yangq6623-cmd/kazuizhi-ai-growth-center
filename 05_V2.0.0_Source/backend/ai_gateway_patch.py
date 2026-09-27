@@ -5,7 +5,7 @@ import json
 from urllib.parse import urlsplit
 
 from backend import server
-from integrations.ai_gateway import clear_gateway, configure_gateway, gateway_status, run_once
+from integrations.ai_gateway import clear_gateway, configure_gateway, gateway_status, run_once, test_gateway
 
 _INSTALLED = False
 
@@ -52,9 +52,9 @@ def install():
                 if path.endswith("/config"):
                     result = configure_gateway(_read_json(handler))
                 elif path.endswith("/clear"):
-                    result = clear_gateway()
+                    result = clear_gateway(_read_json(handler).get("route"))
                 else:
-                    result = run_once(limit=1)
+                    result = test_gateway(_read_json(handler).get("route"))
                 handler._json_ok(result)
             except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)

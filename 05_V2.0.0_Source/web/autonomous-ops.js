@@ -21,11 +21,12 @@
       .mission-ai-gateway.ready{background:#e8f7ef;color:#147451;border-color:#ccebdc}
       .mission-ai-gateway.warn{background:#fff2df;color:#9a5a13;border-color:#f4d6aa;cursor:pointer}
       .kz-ai-modal-backdrop{position:fixed;inset:0;background:rgba(8,20,38,.48);z-index:99999;display:grid;place-items:center;padding:24px}
-      .kz-ai-modal{width:min(520px,100%);background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.22);padding:22px}
+      .kz-ai-modal{width:min(760px,100%);background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.22);padding:22px}
       .kz-ai-modal h3{margin:0 0 6px;font-size:20px}.kz-ai-modal p{margin:0 0 16px;color:#65738a;line-height:1.7}
       .kz-ai-modal label{display:grid;gap:6px;margin:12px 0;color:#526178;font-size:13px}.kz-ai-modal input{width:100%;border:1px solid #dce5f0;border-radius:9px;padding:10px;font:inherit}
       .kz-ai-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.kz-ai-modal button{border:1px solid #dce5f0;background:#fff;border-radius:9px;padding:9px 13px;cursor:pointer}.kz-ai-modal button.primary{background:#2865df;color:#fff;border-color:#2865df}
       .kz-ai-modal .note{font-size:12px;background:#eef4ff;color:#3d5c8d;padding:10px;border-radius:9px;margin-top:12px}.kz-ai-modal .error{font-size:12px;background:#fff0f0;color:#b94242;padding:10px;border-radius:9px;margin-top:12px}
+      .kz-ai-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}.kz-ai-tabs button{text-align:left;padding:12px}.kz-ai-tabs button.active{border-color:#2865df;background:#eef4ff;color:#173f91}.kz-ai-tabs small{display:block;color:#65738a;margin-top:3px}.kz-ai-modal select{width:100%;border:1px solid #dce5f0;border-radius:9px;padding:10px;background:#fff;font:inherit}.kz-ai-route-status{font-size:12px;border-radius:8px;padding:8px 10px;background:#f5f7fb;color:#53657d}.kz-ai-route-status.ready{background:#e8f7ef;color:#147451}
     `;
     document.head.appendChild(style);
     if(embedded) document.documentElement.classList.add('kz-embedded-r8');
@@ -134,22 +135,34 @@
       </div>`;
   }
 
-  function openGatewayModal(){
+  function openGatewayModal(selectedRoute){
     document.querySelector('.kz-ai-modal-backdrop')?.remove();
     const gateway = lastGateway || {};
+    const routes = gateway.routes || {};
+    const route = selectedRoute === 'local' ? 'local' : (selectedRoute === 'cloud' ? 'cloud' : (gateway.active_route || 'cloud'));
+    const profile = routes[route] || {};
+    const isLocal = route === 'local';
+    const cloudEndpoint = profile.endpoint || 'https://api.openai.com/v1/responses';
+    const localEndpoint = profile.endpoint || 'http://127.0.0.1:11434/v1/chat/completions';
+    const label = isLocal ? '本地开源模型' : '云端模型';
     const root = document.createElement('div');
     root.className = 'kz-ai-modal-backdrop';
     root.innerHTML = `<div class="kz-ai-modal" role="dialog" aria-modal="true">
-      <h3>连接 ChatGPT AI 大脑</h3>
-      <p>只需首次配置一次。密钥仅发送到本机 127.0.0.1，并使用 Windows DPAPI 加密保存在当前 Windows 用户下；网页不会读取回密钥。</p>
-      <label>OpenAI API Key<input type="password" autocomplete="off" data-ai-key placeholder="sk-..."></label>
-      <label>模型<input data-ai-model value="${esc(gateway.model || 'gpt-5.6')}"></label>
-      <div class="note">配置成功后，当前卡住的 ChatGPT 策划/QC 会自动恢复；文件同步桥保留为备用通道。最终成片仍必须老板审核后才能发布。</div>
+      <h3>模型接入中心</h3>
+      <p>选择已获授权的云端模型，或连接已经运行在本机的开源模型。系统不会自动下载模型、占用显卡或产生费用。</p>
+      <div class="kz-ai-tabs"><button type="button" class="${!isLocal?'active':''}" data-ai-route="cloud"><b>云端 AI 模型</b><small>OpenAI 兼容服务；需 HTTPS、模型名和 API 密钥。</small></button><button type="button" class="${isLocal?'active':''}" data-ai-route="local"><b>本地开源模型</b><small>Ollama、LM Studio、vLLM 或自定义本机兼容服务。</small></button></div>
+      <div class="kz-ai-route-status ${profile.verified?'ready':''}">${esc(label)}：${esc(profile.status_label || '未配置')} ${profile.last_test_at ? `· 最近测试 ${esc(String(profile.last_test_at).replace('T',' ').slice(0,16))}` : ''}</div>
+      ${isLocal ? `<label>本地运行环境<select data-ai-provider><option value="ollama" ${profile.provider==='ollama'?'selected':''}>Ollama（推荐）</option><option value="lm_studio" ${profile.provider==='lm_studio'?'selected':''}>LM Studio</option><option value="vllm" ${profile.provider==='vllm'?'selected':''}>vLLM</option><option value="custom" ${!['ollama','lm_studio','vllm'].includes(profile.provider)?'selected':''}>自定义 OpenAI 兼容服务</option></select></label>` : `<label>云端接口协议<select data-ai-protocol><option value="responses" ${profile.protocol!=='chat_completions'?'selected':''}>Responses API（OpenAI）</option><option value="chat_completions" ${profile.protocol==='chat_completions'?'selected':''}>Chat Completions（兼容服务）</option></select></label>`}
+      <label>服务地址<input data-ai-endpoint value="${esc(isLocal ? localEndpoint : cloudEndpoint)}" placeholder="${isLocal?'http://127.0.0.1:11434/v1/chat/completions':'https://服务商地址/v1/responses'}"></label>
+      <label>模型名称<input data-ai-model value="${esc(profile.model || (isLocal ? '' : gateway.model || 'gpt-5.6'))}" placeholder="例如：本机已安装的模型名称"></label>
+      <label>${isLocal?'本机服务密钥（可留空）':'云端 API 密钥'}<input type="password" autocomplete="off" data-ai-key placeholder="${isLocal?'只有本机服务启用了鉴权时才填写':'密钥仅加密保存于当前 Windows 用户'}"></label>
+      <label><input type="checkbox" data-ai-fallback ${gateway.fallback_enabled!==false?'checked':''}> 当当前模型不可用时，允许已验证的另一条模型路线作为备用</label>
+      <div class="note">连接测试只读取模型服务可用性，不生成内容、不发布、不登录任何平台。模型通过后仍只能研究、生成草稿和质检建议；最终发布、账号安全与资金限制保持不变。</div>
       <div data-ai-error hidden></div>
-      <div class="kz-ai-modal-actions"><button type="button" data-ai-cancel>取消</button><button type="button" class="primary" data-ai-save>保存并立即验证</button></div>
+      <div class="kz-ai-modal-actions"><button type="button" data-ai-cancel>取消</button><button type="button" class="primary" data-ai-save>保存并测试 ${isLocal?'本地模型':'云端模型'}</button></div>
     </div>`;
     document.body.appendChild(root);
-    root.querySelector('[data-ai-key]')?.focus();
+    root.querySelector('[data-ai-model]')?.focus();
   }
 
   async function refresh(){
@@ -174,18 +187,32 @@
     }
     if(event.target.closest('[data-mission-retry]')){ refresh(); return; }
     if(event.target.closest('[data-ai-gateway-config]')){ openGatewayModal(); return; }
+    const routeTab = event.target.closest('[data-ai-route]');
+    if(routeTab){ openGatewayModal(routeTab.dataset.aiRoute); return; }
+    const localProvider = event.target.closest('[data-ai-provider]');
+    if(localProvider){
+      const defaults={ollama:'http://127.0.0.1:11434/v1/chat/completions',lm_studio:'http://127.0.0.1:1234/v1/chat/completions',vllm:'http://127.0.0.1:8000/v1/chat/completions'};
+      const endpoint=localProvider.closest('.kz-ai-modal')?.querySelector('[data-ai-endpoint]');
+      if(endpoint && defaults[localProvider.value]) endpoint.value=defaults[localProvider.value];
+      return;
+    }
     if(event.target.closest('[data-ai-cancel]')){ event.target.closest('.kz-ai-modal-backdrop')?.remove(); return; }
     const aiSave = event.target.closest('[data-ai-save]');
     if(aiSave){
       const modal = aiSave.closest('.kz-ai-modal');
+      const route = modal?.querySelector('[data-ai-route].active')?.dataset.aiRoute || (lastGateway?.active_route || 'cloud');
       const key = String(modal?.querySelector('[data-ai-key]')?.value || '').trim();
-      const model = String(modal?.querySelector('[data-ai-model]')?.value || 'gpt-5.6').trim();
+      const model = String(modal?.querySelector('[data-ai-model]')?.value || '').trim();
+      const endpoint = String(modal?.querySelector('[data-ai-endpoint]')?.value || '').trim();
+      const provider = String(modal?.querySelector('[data-ai-provider]')?.value || 'openai_compatible');
+      const protocol = String(modal?.querySelector('[data-ai-protocol]')?.value || (route==='local'?'chat_completions':'responses'));
+      const fallback_enabled = Boolean(modal?.querySelector('[data-ai-fallback]')?.checked);
       const errorBox = modal?.querySelector('[data-ai-error]');
-      if(!key){ modal?.querySelector('[data-ai-key]')?.focus(); return; }
+      if(!model){ modal?.querySelector('[data-ai-model]')?.focus(); return; }
       aiSave.disabled = true; aiSave.textContent = '正在连接…';
       try{
-        await request('/api/ai-gateway/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({api_key:key, model})});
-        await request('/api/ai-gateway/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        await request('/api/ai-gateway/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({route,provider,protocol,api_key:key,model,endpoint,fallback_enabled,set_active:true})});
+        await request('/api/ai-gateway/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({route})});
         modal?.closest('.kz-ai-modal-backdrop')?.remove();
         await refresh();
       }catch(error){
@@ -209,6 +236,18 @@
       }
     }
   }, true);
+
+  document.addEventListener('change', event => {
+    const select = event.target.closest?.('[data-ai-provider]');
+    if(!select) return;
+    const defaults = {ollama:'http://127.0.0.1:11434/v1/chat/completions',lm_studio:'http://127.0.0.1:1234/v1/chat/completions',vllm:'http://127.0.0.1:8000/v1/chat/completions'};
+    const endpoint = select.closest('.kz-ai-modal')?.querySelector('[data-ai-endpoint]');
+    if(endpoint && defaults[select.value]) endpoint.value = defaults[select.value];
+  }, true);
+
+  // The connection health card on the legacy page and the Mission shell share
+  // this opener, so owners see one identical configuration experience.
+  window.kzOpenModelConnectionCenter = openGatewayModal;
 
   installShellStyle();
   window.kazuizhiAutonomousRefresh = refresh;
