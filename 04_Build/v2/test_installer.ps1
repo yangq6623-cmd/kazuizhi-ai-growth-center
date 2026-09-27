@@ -33,6 +33,9 @@ try {
     $exe = Join-Path $testRoot $name
     $version = (Get-Item -LiteralPath $exe).VersionInfo
     if ($version.FileVersion -ne '2.2.2.22' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core') { throw 'Windows EXE version mismatch' }
+    foreach ($serverTool in @('R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1', 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $testRoot $serverTool) -PathType Leaf)) { throw "Installed server root-discovery tool missing: $serverTool" }
+    }
     Verify-Runtime $exe
 
     $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
