@@ -128,6 +128,66 @@ def _sitemap_xml() -> bytes:
     return xml.encode("utf-8")
 
 
+def _root_discovery_files(base: str) -> dict:
+    """Return safe root discovery files for the managed /seo/ sitemap.
+
+    The Remote Agent permits these two root files only.  They are created only
+    after a real HTTP 404 check, so an existing site-owned robots.txt or
+    sitemap.xml is never overwritten by the desktop agent.
+    """
+    sitemap_url = urllib.parse.urljoin(base, "seo/sitemap.xml")
+    root_sitemap_url = urllib.parse.urljoin(base, "sitemap.xml")
+    robots = "User-agent: *\nAllow: /\nSitemap: " + root_sitemap_url + "\nSitemap: " + sitemap_url + "\n"
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"  <sitemap><loc>{sitemap_url}</loc></sitemap>\n"
+        "</sitemapindex>\n"
+    )
+    return {"robots.txt": robots.encode("utf-8"), "sitemap.xml": sitemap.encode("utf-8")}
+
+
+def _public_status(url: str, timeout: int) -> dict:
+    request = urllib.request.Request(url, headers={"User-Agent": "Kazuizhi-R8-17-Discovery/1.0"}, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - validated production base
+            return {"ok": True, "status": int(getattr(response, "status", 200) or 200), "url": url}
+    except urllib.error.HTTPError as error:
+        return {"ok": False, "status": int(error.code), "url": url}
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return {"ok": False, "status": None, "url": url, "error": str(error)[:300]}
+
+
+def _ensure_root_discovery(base: str, timeout: int) -> dict:
+    """Create missing root discovery files without touching existing files."""
+    files = _root_discovery_files(base)
+    results = {}
+    for relative, content in files.items():
+        public_url = urllib.parse.urljoin(base, relative)
+        before = _public_status(public_url, timeout)
+        result = {"before": before, "created": False, "receipt": None, "after": None}
+        if before.get("status") == 404:
+            try:
+                receipt = remote_agent.upload_bytes(relative, content, job_id=_job_id("ROOT-" + relative, "DISCOVERY"))
+                result["created"] = True
+                result["receipt"] = receipt
+                result["after"] = _public_status(public_url, timeout)
+            except (OSError, ValueError, RuntimeError) as error:
+                result["error"] = str(error)
+        elif before.get("status") is None:
+            result["reason"] = "root_http_check_unavailable_existing_file_preserved"
+        else:
+            result["reason"] = "root_file_already_exists_preserved"
+        results[relative] = result
+    return {
+        "root_robots_url": urllib.parse.urljoin(base, "robots.txt"),
+        "root_sitemap_url": urllib.parse.urljoin(base, "sitemap.xml"),
+        "managed_seo_sitemap_url": urllib.parse.urljoin(base, "seo/sitemap.xml"),
+        "files": results,
+        "truth": "根目录文件仅在真实 HTTP 404 时创建；已有文件保持不变。创建后仍需真实公网 HTTP 回查。",
+    }
+
+
 def deploy_pending(limit: int = 10) -> dict:
     if not _remote_mode():
         return _ORIGINAL_DEPLOY_PENDING(limit=limit)
@@ -195,6 +255,7 @@ def deploy_pending(limit: int = 10) -> dict:
         sitemap_result = remote_agent.upload_bytes("seo/sitemap.xml", _sitemap_xml(), job_id=_job_id("SITEMAP", "SITEMAP"))
     except (OSError, ValueError, RuntimeError) as error:
         sitemap_result = {"ok": False, "error": str(error)}
+    root_discovery = _ensure_root_discovery(base, timeout)
 
     result = {
         "skipped": False,
@@ -203,6 +264,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "failed": failed,
         "managed_sitemap": "https://kazuizhi.com/seo/sitemap.xml",
         "sitemap_remote_receipt": sitemap_result,
+        "root_discovery": root_discovery,
         "truth": "Remote Agent 写入不等于发布成功；只有公网HTTP、内容、canonical、Schema、robots/indexability全部验证通过才进入 PUBLISHED。",
     }
     data["last_result"] = result

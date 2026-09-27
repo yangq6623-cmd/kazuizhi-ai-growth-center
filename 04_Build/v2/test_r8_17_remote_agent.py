@@ -56,6 +56,46 @@ def main():
             except ValueError:
                 pass
             require(remote_agent._safe_relative_path("seo/demo/index.html") == "seo/demo/index.html", "managed SEO path rejected")
+            require(remote_agent._safe_relative_path("robots.txt") == "robots.txt", "root robots path rejected")
+            require(remote_agent._safe_relative_path("sitemap.xml") == "sitemap.xml", "root sitemap path rejected")
+
+            discovery = remote_patch._root_discovery_files("https://kazuizhi.example/")
+            require(b"Sitemap: https://kazuizhi.example/sitemap.xml" in discovery["robots.txt"], "root sitemap is missing from robots")
+            require(b"Sitemap: https://kazuizhi.example/seo/sitemap.xml" in discovery["robots.txt"], "managed sitemap is missing from robots")
+            require(b"https://kazuizhi.example/seo/sitemap.xml" in discovery["sitemap.xml"], "root sitemap index does not reference managed sitemap")
+
+            # Root discovery must create only actual 404s, then publicly verify
+            # the result. Existing files are site-owned and must never be
+            # overwritten by the desktop agent.
+            original_public_status = remote_patch._public_status
+            original_upload_bytes = remote_patch.remote_agent.upload_bytes
+            uploaded_root_files = []
+            status_counts = {}
+
+            def missing_then_live(url, timeout):
+                status_counts[url] = status_counts.get(url, 0) + 1
+                status = 404 if status_counts[url] == 1 else 200
+                return {"ok": status == 200, "status": status, "url": url}
+
+            def capture_root_upload(relative_path, content, job_id):
+                uploaded_root_files.append((relative_path, content, job_id))
+                return {"ok": True, "job_id": job_id, "bytes": len(content)}
+
+            try:
+                remote_patch._public_status = missing_then_live
+                remote_patch.remote_agent.upload_bytes = capture_root_upload
+                root_result = remote_patch._ensure_root_discovery("https://kazuizhi.example/", 8)
+                require({item[0] for item in uploaded_root_files} == {"robots.txt", "sitemap.xml"}, "missing root files were not created")
+                require(all(item["after"]["status"] == 200 for item in root_result["files"].values()), "created root files were not publicly rechecked")
+
+                uploaded_root_files.clear()
+                remote_patch._public_status = lambda url, timeout: {"ok": True, "status": 200, "url": url}
+                preserved_result = remote_patch._ensure_root_discovery("https://kazuizhi.example/", 8)
+                require(not uploaded_root_files, "existing root discovery files were overwritten")
+                require(all(item["reason"] == "root_file_already_exists_preserved" for item in preserved_result["files"].values()), "existing root discovery files were not marked preserved")
+            finally:
+                remote_patch._public_status = original_public_status
+                remote_patch.remote_agent.upload_bytes = original_upload_bytes
 
             # Pairing verification happens before persistence; emulate the already field-tested FINAL5 endpoint.
             secrets = {}
