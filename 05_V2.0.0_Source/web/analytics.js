@@ -12,6 +12,10 @@ const CORE_BUSINESS_FIELDS = [
   'new_orders', 'completed_orders', 'cancelled_orders',
 ];
 
+function coreMissingLabels(core) {
+  return (core?.missing_fields || []).map(key => metricLabels[key] || key).join('、');
+}
+
 function showValue(value, suffix = '') {
   return value === null || value === undefined ? '<b class="missing-value">未接入</b>' : `<b>${esc(value)}${suffix}</b>`;
 }
@@ -164,6 +168,7 @@ function renderBusinessSource(data) {
     </div>
     <div class="rate-list">
       <span>核心完整度：${core.present}/${core.total}</span>
+      ${core.missing_fields.length ? `<span>待接入：${esc(coreMissingLabels(core))}</span>` : ''}
       <span>只读：${q.read_only === true ? '已验证' : '待验证'}</span>
       <span>写操作：${esc(q.write_operations ?? '—')}</span>
       <span>0 是真实统计值，不等于未接入</span>
@@ -227,7 +232,7 @@ async function loadAnalytics() {
   $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
   $('analytics-truth').textContent = connected && core.missing_fields.length
-    ? `只显示已验证真实数据；核心分析仍缺 ${core.missing_fields.length} 项，不会用 0、估算值或公开市场信号代替。`
+    ? `只显示已验证真实数据；当前待接入：${coreMissingLabels(core)}。不会用 0、估算值或公开市场信号代替。`
     : '7 个核心指标均有真实来源；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合，0 表示真实统计为 0。';
 
   if (source?.status === 'connected') {

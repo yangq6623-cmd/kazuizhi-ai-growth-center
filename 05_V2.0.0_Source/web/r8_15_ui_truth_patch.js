@@ -146,7 +146,7 @@
       const subtitle = baseline.querySelector('span');
       const code = baseline.querySelector('code');
       if (title) title.textContent = `${info.phase} · ${runLabel}`;
-      if (subtitle) subtitle.textContent = '自治运营 · 真实执行 · 真实回执';
+      if (subtitle) subtitle.textContent = info.phase === 'R8-18' ? '阶段一测试候选 · 真实执行 · 真实回执' : '自治运营 · 真实执行 · 真实回执';
       if (code) code.textContent = `${info.version}${info.commit ? ` · ${info.commit}` : ''}`;
     }
 
@@ -156,8 +156,8 @@
       const title = card.querySelector('b');
       const note = card.querySelector('span');
       if (label === '正式生产版本') {
-        if (title) title.textContent = `当前安装构建 ${runLabel}`;
-        if (note) note.textContent = '覆盖升级保留数据；回滚以真实安装备份为准，不再用旧构建号判断当前版本。';
+        if (title) title.textContent = info.phase === 'R8-18' ? `当前测试候选 ${info.phase} · ${runLabel}` : `当前安装构建 ${runLabel}`;
+        if (note) note.textContent = info.phase === 'R8-18' ? '本包是阶段一候选安装包；#76 底座身份与数据保留，可按真实安装备份回滚。' : '覆盖升级保留数据；回滚以真实安装备份为准，不再用旧构建号判断当前版本。';
       }
       if (label === '当前开发阶段') {
         if (title) title.textContent = `${info.phase} · ${runLabel}`;
