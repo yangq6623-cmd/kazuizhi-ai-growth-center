@@ -160,6 +160,12 @@ def main():
     assert quota["eligible_by_engine"]["baidu"] <= 3, quota
     assert baidu_failure["reason"] == "baidu_quota_exhausted", quota
     assert retry["eligible_by_engine"]["baidu"] == 0, retry
+    legacy_quota = {
+        "last_run_at": submitter.now_iso(),
+        "last_result": {"failed": [{"engine": "baidu", "reason": "api_submit_failed", "result": {"message": "over quota"}}]},
+    }
+    submitter._normalize_baidu_quota_failure(legacy_quota)
+    assert submitter._baidu_quota_held_today(legacy_quota) is True, legacy_quota
 
     connector = submitter.status()
     assert connector["connectors"]["bing"]["configured"] is True, connector

@@ -73,6 +73,7 @@ def _load() -> dict:
     # not keep submitting against a different Search Console property.
     if data.get("google_site_url") == "https://kazuizhi.com/":
         data["google_site_url"] = DEFAULT["google_site_url"]
+    _normalize_baidu_quota_failure(data)
     return data
 
 
@@ -260,7 +261,39 @@ def _baidu_quota_exhausted(result: dict) -> bool:
     response = result.get("response") if isinstance(result, dict) else ""
     if isinstance(response, dict):
         response = " ".join(str(value) for value in response.values())
-    return "over quota" in str(response or "").lower()
+    # Older local records sometimes stored the decoded Baidu payload directly
+    # under ``result`` rather than under ``response``.
+    detail = response if response else result
+    return "over quota" in str(detail or "").lower()
+
+
+def _normalize_baidu_quota_failure(data: dict) -> None:
+    """Upgrade older saved results to the explicit quota state.
+
+    R8-17 installs may already contain a same-day ``api_submit_failed`` record
+    whose Baidu payload says ``over quota``.  Preserve that evidence, but label
+    it correctly so a first run after the upgrade does not retry it.
+    """
+    last = data.get("last_result") or {}
+    for failure in last.get("failed") or []:
+        if (
+            isinstance(failure, dict)
+            and failure.get("engine") == "baidu"
+            and _baidu_quota_exhausted(failure.get("result") or {})
+        ):
+            failure["reason"] = "baidu_quota_exhausted"
+
+
+def _baidu_quota_held_today(data: dict) -> bool:
+    last = data.get("last_result") or {}
+    if str(data.get("last_run_at") or "").split("T", 1)[0] != now_iso().split("T", 1)[0]:
+        return False
+    return any(
+        isinstance(failure, dict)
+        and failure.get("engine") == "baidu"
+        and failure.get("reason") == "baidu_quota_exhausted"
+        for failure in (last.get("failed") or [])
+    )
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -513,8 +546,11 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
     batch_limit = _batch_limit(limit)
     pending_by_engine = {}
     legacy_by_engine = {}
+    baidu_quota_hold = _baidu_quota_held_today(data)
     for engine in ("indexnow", "google_search_console", "baidu"):
         pending_by_engine[engine], legacy_by_engine[engine] = _eligible_assets(data, engine, assets, batch_limit)
+    if baidu_quota_hold:
+        pending_by_engine["baidu"] = []
 
     if not any(pending_by_engine.values()):
         result = {
@@ -525,6 +561,7 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
             "batch_limit": batch_limit,
             "eligible_by_engine": {engine: 0 for engine in pending_by_engine},
             "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
+            "baidu_quota_hold": baidu_quota_hold,
             "truth": "仅提交新发布或实质更新的页面版本；已在当天尝试过的页面不会重复提交。",
         }
         data["last_result"] = result
@@ -604,6 +641,7 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
         "batch_limit": batch_limit,
         "eligible_by_engine": {engine: len(rows) for engine, rows in pending_by_engine.items()},
         "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
+        "baidu_quota_hold": baidu_quota_hold,
         "submitted": submitted,
         "submitted_count": len(submitted),
         "failed": failed,
