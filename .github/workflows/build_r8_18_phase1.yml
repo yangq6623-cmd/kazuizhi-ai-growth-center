@@ -1,0 +1,101 @@
+name: Build Kazuizhi R8-18 Phase 1 Foundation
+
+on:
+  push:
+    branches: ['r8-18-*']
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/**'
+      - '.github/workflows/build_r8_18_phase1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stamp visible build number and commit
+        run: |
+          $path = '05_V2.0.0_Source/web/build_info.js'
+          $text = Get-Content -LiteralPath $path -Raw
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $text = $text.Replace('__GITHUB_SHA__', $shortSha)
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+      - name: Install pinned dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: Verify R7/R8 compatibility and Phase 1 foundation
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r7_block_a.py
+          python 04_Build/v2/test_r7_block_b.py
+          python 04_Build/v2/test_r8_identity.py
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_11_backbone.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_remote_agent.py
+          python 04_Build/v2/test_ai_gateway.py
+          python 04_Build/v2/test_r8_18_model_connection_center.py
+          python 04_Build/v2/test_r8_18_evidence_ledger.py
+      - name: Check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+      - name: Verify packaged source contract
+        run: |
+          python 04_Build/v2/verify_v2_autonomous.py --source
+          python 04_Build/v2/verify_r8_operational.py --source
+      - name: Build packaged runtime and installer
+        run: ./04_Build/build_v2_windows.ps1
+      - name: Scan final installer with Microsoft Defender when available
+        run: ./04_Build/v2/test_windows_security.ps1
+      - name: Test silent install, launch, overwrite upgrade and uninstall
+        run: ./04_Build/v2/test_installer.ps1
+      - name: Record Phase 1 installer provenance
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          @{
+            version = '2.2.2 R8-18 Phase 1 Foundation Candidate'
+            commit = '${{ github.sha }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha256 = $hash
+            scope = @('R8-18 cloud/local model connection center', 'release manifest', 'growth evidence ledger UI')
+            excluded = @('local-model download or deployment', 'cloud API key configuration', 'external platform publishing')
+            acceptance = 'Automated package gate passed. This is a candidate installer: the owner must confirm visible provenance and read-only evidence import before promoting it.'
+          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_18_PHASE1.json
+      - name: Upload R8-18 Phase 1 Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation
+          path: installer_output_v2/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload R8-18 Phase 1 portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation_Portable
+          path: dist_v2/
+          if-no-files-found: error
+          retention-days: 90

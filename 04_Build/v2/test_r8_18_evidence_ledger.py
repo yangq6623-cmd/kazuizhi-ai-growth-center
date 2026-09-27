@@ -55,6 +55,13 @@ def main():
     assert "refreshEvidenceLedger" in ui
     print("R8-18 evidence ledger UI contract checks passed")
 
+    spec = (root / "04_Build" / "kazuizhi_v2.0.0.spec").read_text(encoding="utf-8")
+    assert "release_manifest.json" in spec
+    workflow = (root / ".github" / "workflows" / "build_r8_18_phase1.yml").read_text(encoding="utf-8")
+    assert "test_r8_18_evidence_ledger.py" in workflow
+    assert "Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation" in workflow
+    print("R8-18 installer provenance contract checks passed")
+
 
 if __name__ == "__main__":
     main()
