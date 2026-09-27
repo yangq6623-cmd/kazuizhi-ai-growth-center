@@ -122,13 +122,30 @@ def _valid_indexnow_key(value: str) -> bool:
 def _connected_account(platform: str) -> dict | None:
     registry = read_json(REGISTRY, {})
     accounts = registry.get("accounts") if isinstance(registry, dict) else []
+    candidates: list[dict] = []
     for row in accounts or []:
         if not isinstance(row, dict) or row.get("platform") != platform:
             continue
         auth = row.get("auth") if isinstance(row.get("auth"), dict) else {}
         if auth.get("status") == "connected" and not auth.get("reauthorization_required"):
+            candidates.append(row)
+    if not candidates:
+        return None
+
+    # OAuth consent may be repeated for the same real Google account.  Each
+    # callback is intentionally recorded as a durable account asset, so the
+    # registry can contain older access tokens beside the freshly authorized
+    # one.  Never pick the first historical row: prefer the most recently
+    # verified usable token, then fall back to the newest connected row for a
+    # truthful "needs reauthorization" response.
+    candidates.sort(
+        key=lambda row: str((row.get("auth") or {}).get("last_verified_at") or row.get("updated_at") or ""),
+        reverse=True,
+    )
+    for row in candidates:
+        if _vault_get(f"oauth.{row.get('account_id')}.access_token"):
             return deepcopy(row)
-    return None
+    return deepcopy(candidates[0])
 
 
 def _google_access_token(account: dict | None) -> str:

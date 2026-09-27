@@ -149,6 +149,26 @@ def main():
     assert "beginSearchAuthorization" in page
     assert "KZAuthUI" in bridge
 
+    # Repeated OAuth callbacks create a history of account assets.  The
+    # submitter must use the newest usable credential instead of silently
+    # retrying an old, expired access token.
+    original_read_json = submitter.read_json
+    original_vault_get = submitter._vault_get
+    registry = {
+        "accounts": [
+            {"account_id": "ACC-GSC-OLD", "platform": "google_search_console", "updated_at": "2026-09-27T10:00:00+08:00", "auth": {"status": "connected", "last_verified_at": "2026-09-27T10:00:00+08:00"}},
+            {"account_id": "ACC-GSC-NEW", "platform": "google_search_console", "updated_at": "2026-09-27T16:00:00+08:00", "auth": {"status": "connected", "last_verified_at": "2026-09-27T16:00:00+08:00"}},
+        ]
+    }
+    submitter.read_json = lambda path, default: registry if path == submitter.REGISTRY else original_read_json(path, default)
+    submitter._vault_get = lambda key, env_name="": "fresh-token" if key == "oauth.ACC-GSC-NEW.access_token" else ""
+    try:
+        selected = submitter._connected_account("google_search_console")
+    finally:
+        submitter.read_json = original_read_json
+        submitter._vault_get = original_vault_get
+    assert selected and selected["account_id"] == "ACC-GSC-NEW", selected
+
     print("R8-16 truthful IndexNow/search submission receipt gates passed")
 
 
