@@ -49,6 +49,12 @@ def main():
 
     print("R8-18 evidence ledger checks passed")
 
+    ui = (source / "web" / "integrations.js").read_text(encoding="utf-8")
+    assert "/api/r8-18/release-manifest" in ui
+    assert "/api/r8-18/evidence-ledger/refresh" in ui
+    assert "refreshEvidenceLedger" in ui
+    print("R8-18 evidence ledger UI contract checks passed")
+
 
 if __name__ == "__main__":
     main()

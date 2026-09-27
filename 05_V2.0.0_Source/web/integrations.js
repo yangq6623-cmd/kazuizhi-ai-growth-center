@@ -80,6 +80,62 @@ function renderBridgePanel(bridge){
     <div class="ai-role"><span>模</span><div><strong>当前运行模式</strong><small>桥断开也不会停止已批准本地任务</small></div><i class="ready">${esc(bridge.operating_mode_label)}</i></div>`;
 }
 
+function ensureEvidenceLedgerPanel(){
+  let panel=$('evidence-ledger-panel');if(panel)return panel;
+  const grid=$('integration-grid');if(!grid)return null;
+  panel=document.createElement('article');
+  panel.id='evidence-ledger-panel';panel.className='wide ai-command-card';
+  panel.innerHTML=`<div class="article-head"><div><label>R8-18 平台升级底座</label><h3>版本身份与增长证据总账</h3></div><span id="evidence-ledger-badge" class="status-pill waiting">候选源码</span></div>
+    <div id="release-provenance-grid" class="ai-role-grid"></div>
+    <div id="evidence-ledger-summary" class="notice">正在读取已有本地证据…</div>
+    <div class="button-row"><button id="refresh-evidence-ledger" class="outline-button">汇总已有证据</button></div>
+    <div id="evidence-ledger-events" class="r7-audit-list friendly-empty">尚未汇总；不会自动执行搜索提交或外部发布。</div>`;
+  const anchor=$('bridge-panel')||grid;
+  anchor.insertAdjacentElement('afterend',panel);
+  $('refresh-evidence-ledger').addEventListener('click',refreshEvidenceLedger);
+  return panel;
+}
+
+function evidenceKindLabel(kind){
+  return ({search_submission_receipt:'搜索提交回执',crawl_evidence:'抓取证据',index_evidence:'收录证据',geo_observation:'GEO 观察',business_snapshot:'经营只读快照',mission_receipt:'Mission 回执',search_connector_run:'搜索连接器运行记录'})[kind]||kind||'未知记录';
+}
+
+function renderEvidenceLedger(manifest, ledger){
+  const panel=ensureEvidenceLedgerPanel();if(!panel)return;
+  const baseline=manifest?.baseline||{};const candidate=manifest?.candidate||{};const summary=ledger?.summary||{};
+  $('evidence-ledger-badge').textContent=candidate.package_status==='not_packaged'?'未打包候选':'已安装';
+  $('evidence-ledger-badge').className=`status-pill ${candidate.package_status==='not_packaged'?'waiting':'ready'}`;
+  $('release-provenance-grid').innerHTML=`
+    <div class="ai-role"><span>76</span><div><strong>当前已安装底座</strong><small>${esc(baseline.installed_release||'待核验')} · ${esc(baseline.commit||'')}</small></div><i class="ready">已安装</i></div>
+    <div class="ai-role"><span>18</span><div><strong>当前候选升级</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="waiting">未打包</i></div>
+    <div class="ai-role"><span>证</span><div><strong>已汇总外部证据</strong><small>提交、抓取、收录、引用与经营快照分别统计</small></div><i class="${summary.external?'ready':'waiting'}">${esc(String(summary.external||0))} 条</i></div>
+    <div class="ai-role"><span>模</span><div><strong>本地模型</strong><small>本阶段不下载、不部署、不配置密钥</small></div><i class="waiting">稍后部署</i></div>`;
+  const kinds=Object.entries(summary.by_kind||{}).map(([name,count])=>`${evidenceKindLabel(name)} ${count} 条`).join(' · ')||'暂无可追溯外部证据';
+  $('evidence-ledger-summary').textContent=`总账 ${summary.total||0} 条，其中外部证据 ${summary.external||0} 条。${kinds}。${ledger?.truth||''}`;
+  const events=(ledger?.events||[]).slice(0,8);
+  $('evidence-ledger-events').innerHTML=events.length?events.map(row=>`<div class="r7-audit-row"><i class="${row.external?'ready':'waiting'}"></i><div><strong>${esc(evidenceKindLabel(row.kind))}</strong><p>${esc(row.source||'')} · ${esc(row.reference||'无引用')}</p></div><time>${esc(formatTime(row.observed_at)||'')}</time></div>`).join(''):'尚未汇总；点击“汇总已有证据”只读取并整理本机既有记录，不会执行外部动作。';
+}
+
+async function loadEvidenceLedger(){
+  try{
+    const [manifest,ledger]=await Promise.all([api('/api/r8-18/release-manifest'),api('/api/r8-18/evidence-ledger')]);
+    renderEvidenceLedger(manifest,ledger);
+  }catch(error){
+    // The R8-18 candidate API is absent on the installed #76 package. Keep the
+    // normal connection screen available and avoid presenting the candidate as installed.
+    const panel=ensureEvidenceLedgerPanel();if(panel){$('evidence-ledger-summary').textContent='当前安装包尚未包含 R8-18 证据总账；#76 继续正常运行，候选功能尚未打包。';}
+  }
+}
+
+async function refreshEvidenceLedger(){
+  const button=$('refresh-evidence-ledger');button.disabled=true;button.textContent='汇总中…';
+  try{
+    const data=await api('/api/r8-18/evidence-ledger/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    await loadEvidenceLedger();
+    toast(`已汇总 ${data.result?.added||0} 条既有证据；未执行外部提交或发布`);
+  }catch(error){toast(error.message,'error')}finally{button.disabled=false;button.textContent='汇总已有证据'}
+}
+
 function bindIntegrationCards(){
   document.querySelectorAll('.integration-card-action').forEach(card=>{
     const activate=async()=>{
@@ -123,6 +179,7 @@ async function refreshIntegrations(){
     $('ai-config-badge').textContent=ai.status_label;
     $('ai-config-badge').className=`status-pill ${ai.status==='connected'?'ready':'waiting'}`;
     $('ai-connection-message').textContent=ai.message;
+    loadEvidenceLedger();
   }catch(error){toast(error.message,'error')}
 }
 
