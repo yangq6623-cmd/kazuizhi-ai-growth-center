@@ -82,6 +82,7 @@ jobs:
           python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
           python 04_Build/v2/test_r8_15_seo_public_deploy.py
           python 04_Build/v2/test_r8_15_server_bootstrap.py
+          python 04_Build/v2/test_r8_17_root_discovery_bootstrap.py
           python 04_Build/v2/test_r8_16_search_submitters.py
           python 04_Build/v2/test_r8_17_remote_agent.py
           python 04_Build/v2/test_r8_17_autonomy_remote_bridge.py

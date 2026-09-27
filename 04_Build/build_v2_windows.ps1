@@ -12,10 +12,16 @@ try {
     $portable = 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta'
     $bootstrapPs1 = '04_Build/v2/R8-15_SERVER_BOOTSTRAP.ps1'
     $bootstrapCmd = '04_Build/v2/R8-15_SERVER_BOOTSTRAP.cmd'
+    $rootDiscoveryPs1 = '04_Build/v2/R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1'
+    $rootDiscoveryCmd = '04_Build/v2/R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd'
     Copy-Item -LiteralPath $bootstrapPs1 -Destination $portable -Force
     Copy-Item -LiteralPath $bootstrapCmd -Destination $portable -Force
+    Copy-Item -LiteralPath $rootDiscoveryPs1 -Destination $portable -Force
+    Copy-Item -LiteralPath $rootDiscoveryCmd -Destination $portable -Force
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-15_SERVER_BOOTSTRAP.ps1') -PathType Leaf)) { throw 'R8-15 PowerShell bootstrap missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-15_SERVER_BOOTSTRAP.cmd') -PathType Leaf)) { throw 'R8-15 CMD bootstrap missing from portable package' }
+    if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1') -PathType Leaf)) { throw 'R8-17 root discovery PowerShell bootstrap missing from portable package' }
+    if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd') -PathType Leaf)) { throw 'R8-17 root discovery CMD bootstrap missing from portable package' }
 
     & $Python '04_Build/v2/verify_v2_autonomous.py' --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
     if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 packaged verification failed' }
