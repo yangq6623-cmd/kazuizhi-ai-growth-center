@@ -5,6 +5,10 @@ Operational handshake during overwrite upgrades. User-visible/package identity,
 R8 phase and runtime build are V2.2.2 Autonomous Mission Core.
 """
 
+import json
+from copy import deepcopy
+from pathlib import Path
+
 # Compatibility protocol fields consumed by the preserved R7/R8 shell.
 VERSION = "2.2.0"
 BUILD_STAGE = "Operational"
@@ -21,6 +25,17 @@ R8_RUNTIME_BUILD = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
 R8_PRODUCT_NAME = PRODUCT_NAME
 
 
+def release_manifest():
+    """Return packaged provenance without claiming a candidate is installed."""
+    path = Path(__file__).with_name("release_manifest.json")
+    fallback = {"schema": "kz.release-manifest.v1", "truth_rule": "发布身份不可用"}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return deepcopy(value) if isinstance(value, dict) else fallback
+    except (OSError, ValueError):
+        return fallback
+
+
 def get_version():
     return {
         "version": VERSION,
@@ -35,4 +50,5 @@ def get_version():
         "r8_release": R8_RELEASE,
         "r8_phase": R8_PHASE,
         "r8_product": R8_PRODUCT_NAME,
+        "release_manifest": release_manifest(),
     }
