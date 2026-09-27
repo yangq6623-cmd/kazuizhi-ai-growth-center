@@ -103,11 +103,15 @@ function evidenceKindLabel(kind){
 function renderEvidenceLedger(manifest, ledger){
   const panel=ensureEvidenceLedgerPanel();if(!panel)return;
   const baseline=manifest?.baseline||{};const candidate=manifest?.candidate||{};const summary=ledger?.summary||{};
-  $('evidence-ledger-badge').textContent=candidate.package_status==='not_packaged'?'未打包候选':'已安装';
-  $('evidence-ledger-badge').className=`status-pill ${candidate.package_status==='not_packaged'?'waiting':'ready'}`;
+  // Reaching this API proves that the R8-18 runtime is present.  The manifest is
+  // deliberately source-controlled, so its package_status must not make an
+  // installed candidate package look like an unbuilt source tree.
+  const candidateRuntime=Boolean(candidate.release);
+  $('evidence-ledger-badge').textContent=candidateRuntime?'R8-18 测试运行中':'候选源码';
+  $('evidence-ledger-badge').className=`status-pill ${candidateRuntime?'ready':'waiting'}`;
   $('release-provenance-grid').innerHTML=`
     <div class="ai-role"><span>76</span><div><strong>当前已安装底座</strong><small>${esc(baseline.installed_release||'待核验')} · ${esc(baseline.commit||'')}</small></div><i class="ready">已安装</i></div>
-    <div class="ai-role"><span>18</span><div><strong>当前候选升级</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="waiting">未打包</i></div>
+    <div class="ai-role"><span>18</span><div><strong>当前候选升级</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="${candidateRuntime?'ready':'waiting'}">${candidateRuntime?'测试运行':'候选源码'}</i></div>
     <div class="ai-role"><span>证</span><div><strong>已汇总外部证据</strong><small>提交、抓取、收录、引用与经营快照分别统计</small></div><i class="${summary.external?'ready':'waiting'}">${esc(String(summary.external||0))} 条</i></div>
     <div class="ai-role"><span>模</span><div><strong>本地模型</strong><small>本阶段不下载、不部署、不配置密钥</small></div><i class="waiting">稍后部署</i></div>`;
   const kinds=Object.entries(summary.by_kind||{}).map(([name,count])=>`${evidenceKindLabel(name)} ${count} 条`).join(' · ')||'暂无可追溯外部证据';
