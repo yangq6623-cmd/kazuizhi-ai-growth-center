@@ -18,10 +18,23 @@
       .kz-easy-detect b{color:#17324f}.kz-easy-detect[data-tone="ready"]{background:#eefaf4;border-color:#c8e9d7;color:#287553}.kz-easy-detect[data-tone="warn"]{background:#fff8ea;border-color:#f1d7a7;color:#8b641d}
       body.kz-simple-mode label:has(#kz-simple-ratio),body.kz-simple-mode label:has(#kz-simple-version-count){display:none!important}
       body.kz-simple-mode .kz-simple-note{background:#f7faff;border-color:#dce7f4;color:#53677e}
+      body.kz-simple-mode #kz-simple-request{min-height:72px}
       .kz-easy-defaults{margin-top:10px;font-size:11px;color:#7a8ba0}.kz-easy-defaults b{color:#315476}
-      @media(max-width:760px){body.kz-simple-mode .kz-simple-flow{display:grid;grid-template-columns:1fr}body.kz-simple-mode .kz-simple-flow i{display:none}}
+      .kz-easy-options-title{grid-column:1/-1;margin:2px 0 0;padding:10px 12px;border-radius:6px;background:#f7faff;border:1px solid #dce7f4;color:#315476;font-size:12px;font-weight:700}
+      body.kz-simple-mode .kz-simple-actions{align-items:center}
+      body.kz-simple-mode .kz-simple-actions .kz-simple-primary{min-width:240px;height:46px;font-size:15px}
+      .kz-easy-action-hint{font-size:12px;color:#6d7f96}
+      @media(max-width:760px){body.kz-simple-mode .kz-simple-flow{display:grid;grid-template-columns:1fr}body.kz-simple-mode .kz-simple-flow i{display:none}.kz-easy-action-hint{width:100%}}
     `;
     document.head.appendChild(style);
+  }
+
+  function syncHostHeight() {
+    const root = byId('kz-simple-root');
+    if (!root || !document.body.classList.contains('kz-simple-mode')) return;
+    const shell = document.querySelector('.studio-shell');
+    const height = Math.max(760, (shell?.offsetHeight || 0) + root.scrollHeight + 36);
+    try { parent.postMessage({type:'kz-content-studio-height',height}, location.origin); } catch (_) {}
   }
 
   function setLabel(id, text) {
@@ -50,6 +63,7 @@
     box.dataset.tone = tone;
     const next = `<b>输入识别</b><span>${text}</span>`;
     if (box.innerHTML !== next) box.innerHTML = next;
+    syncHostHeight();
   }
 
   function relabelProgress() {
@@ -85,6 +99,7 @@
       .replaceAll('候选生成','视频制作')
       .replaceAll('AI 导演','自动编排');
     if (after !== before) result.innerHTML = after;
+    syncHostHeight();
   }
 
   function announce() {
@@ -155,6 +170,24 @@
     detectInput();
     relabelProgress();
 
+    const grid = root.querySelector('.kz-simple-grid');
+    if (grid && !byId('kz-easy-options-title')) {
+      const title = document.createElement('div');
+      title.id = 'kz-easy-options-title';
+      title.className = 'kz-easy-options-title';
+      title.textContent = '第 2 步：选择人物、地点、声音、视频方向和时长；都可以使用“自动”。';
+      grid.insertAdjacentElement('afterbegin', title);
+    }
+
+    const actions = root.querySelector('.kz-simple-actions');
+    if (actions && !byId('kz-easy-action-hint')) {
+      const hint = document.createElement('span');
+      hint.id = 'kz-easy-action-hint';
+      hint.className = 'kz-easy-action-hint';
+      hint.textContent = '设置完成后，点击左侧“开始生成视频”。';
+      actions.appendChild(hint);
+    }
+
     const result = byId('kz-simple-result');
     if (result && !result.dataset.kzEasyObserved) {
       result.dataset.kzEasyObserved = '1';
@@ -176,6 +209,9 @@
     }
 
     announce();
+    syncHostHeight();
+    setTimeout(syncHostHeight, 120);
+    setTimeout(syncHostHeight, 500);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(install, 120), {once:true});
