@@ -1,141 +1,171 @@
-.r7-console-link {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 8px;
-  align-items: center;
-  margin: 0 0 12px;
-  padding: 10px;
-  border: 1px solid #355273;
-  border-radius: 9px;
-  background: #152b4b;
-  color: #eef5ff;
-  text-decoration: none;
+/* R8-18 B-end visual system: navigation, shell and embedded workbench density. */
+:root{
+  --kz-navy:#0b2345;
+  --kz-navy-2:#0e2b52;
+  --kz-blue:#2563eb;
+  --kz-line:#dfe7f2;
+  --kz-surface:#ffffff;
+  --kz-canvas:#f4f7fb;
+  --kz-muted:#64748b;
 }
 
-.r7-console-link b,
-.r7-console-link small {
-  display: block;
+.r7-console-link{
+  display:grid;
+  grid-template-columns:24px 1fr;
+  gap:8px;
+  align-items:center;
+  margin:0 0 12px;
+  padding:10px 11px;
+  min-height:44px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;
+  background:rgba(255,255,255,.06);
+  color:#eef5ff;
+  text-decoration:none;
+}
+.r7-console-link b,.r7-console-link small{display:block}
+.r7-console-link b{font-size:12px}
+.r7-console-link small{color:#9bb0ce;font-size:10px;margin-top:2px;line-height:1.35}
+.r7-console-link:hover{background:rgba(255,255,255,.1)}
+
+/* Standalone shell remains available for compatibility, but uses the same
+   compact enterprise visual language as the owner console. */
+.sidebar{
+  background:linear-gradient(180deg,var(--kz-navy) 0%,#091c37 100%);
+  border-right:1px solid rgba(255,255,255,.06);
+}
+.sidebar .brand{padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.09)}
+.sidebar .brand-mark{border-radius:9px;box-shadow:0 7px 18px rgba(37,99,235,.28)}
+.sidebar .nav-label{margin-top:16px;color:#6f87a8;letter-spacing:.08em}
+.sidebar .nav{
+  position:relative;
+  min-height:40px;
+  padding:9px 12px 9px 40px;
+  border-radius:7px;
+  color:#c4d0e1;
+  font-size:13px;
+}
+.sidebar .nav::before{
+  position:absolute;
+  left:12px;
+  top:50%;
+  width:20px;
+  height:20px;
+  transform:translateY(-50%);
+  display:grid;
+  place-items:center;
+  border-radius:6px;
+  background:rgba(255,255,255,.07);
+  color:#9eb4d3;
+  font-size:11px;
+  content:'•';
+}
+.sidebar .nav[data-page="dashboard"]::before{content:'总'}
+.sidebar .nav[data-page="content"]::before{content:'产'}
+.sidebar .nav[data-page="accounts"]::before{content:'发'}
+.sidebar .nav[data-page="search"]::before{content:'搜'}
+.sidebar .nav[data-page="conversion"]::before{content:'果'}
+.sidebar .nav[data-page="health"]::before{content:'检'}
+.sidebar .nav:hover{background:rgba(255,255,255,.07);color:#fff}
+.sidebar .nav.active{
+  background:linear-gradient(90deg,#1f63e9 0%,#2f76ef 100%);
+  color:#fff;
+  box-shadow:0 6px 18px rgba(20,82,199,.28),inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.sidebar .nav.active::before{background:rgba(255,255,255,.16);color:#fff}
+
+.app-shell>main>header{
+  min-height:58px;
+  padding:10px 22px;
+  background:linear-gradient(90deg,var(--kz-navy) 0%,#0a294e 100%);
+  border-bottom:1px solid rgba(255,255,255,.08);
+  color:#fff;
+  box-shadow:0 2px 12px rgba(8,30,60,.18);
+}
+.app-shell>main>header #crumb{color:#8fa8ca;font-size:11px;margin-bottom:2px}
+.app-shell>main>header h1{color:#fff;font-size:16px;margin:0}
+.app-shell>main>header .header-state{gap:10px;color:#b9c9df;font-size:12px}
+.app-shell>main>header .online{
+  display:inline-flex;
+  align-items:center;
+  height:30px;
+  padding:0 10px;
+  border-radius:4px;
+  background:rgba(16,185,129,.13);
+  color:#73e0b4;
 }
 
-.r7-console-link b {
-  font-size: 12px;
-}
-
-.r7-console-link small {
-  color: #91a9c9;
-  font-size: 10px;
-  margin-top: 2px;
-  line-height: 1.35;
-}
-
-.r7-console-link:hover {
-  background: #1c3963;
-}
-
-body.embedded .app-shell {
-  display: block;
-}
-
+body.embedded .app-shell{display:block}
 body.embedded .sidebar,
-body.embedded main > header {
-  display: none;
+body.embedded main>header{display:none}
+body.embedded .page{padding:16px}
+body.embedded .feedback{margin:8px 16px 0}
+
+/* The host page already supplies global navigation; avoid duplicate tiny tabs. */
+body.embedded .workspace-nav{display:none}
+body.embedded .workbench-return{
+  margin:0;
+  padding:10px 16px;
+  border-radius:0;
+  background:#fff;
+  border-bottom:1px solid var(--kz-line);
+  box-shadow:none;
+}
+body.embedded .workbench-return button{
+  height:36px;
+  padding:0 12px;
+  border-radius:6px;
 }
 
-body.embedded .page {
-  padding: 18px;
+/* Owner execution overview: compact, information-dense and scan-friendly. */
+body.embedded #dashboard{
+  max-width:none;
+  padding:16px;
+  background:var(--kz-canvas);
 }
+body.embedded .exec-overview-head{margin-bottom:12px;align-items:center}
+body.embedded .exec-overview-head h2{
+  font-size:32px;
+  line-height:1.12;
+  font-weight:800;
+  letter-spacing:-.03em;
+  color:#10264a;
+}
+body.embedded .exec-overview-head p,
+body.embedded .exec-overview-head span{font-size:12px;color:#667a98}
+body.embedded .exec-workbench-grid{gap:12px}
+body.embedded .exec-workbench-card{
+  min-height:238px;
+  padding:14px;
+  border-color:var(--kz-line);
+  border-radius:10px;
+  box-shadow:0 3px 12px rgba(21,50,90,.05);
+}
+body.embedded .exec-workbench-card:hover{
+  border-color:#89aef2;
+  box-shadow:0 7px 18px rgba(37,99,235,.11);
+  transform:translateY(-1px);
+}
+body.embedded .exec-card-icon{
+  width:38px;
+  height:38px;
+  margin-bottom:9px;
+  border-radius:9px;
+  font-size:20px;
+  background:#edf4ff;
+  box-shadow:none;
+}
+body.embedded .exec-workbench-card>b{font-size:16px;letter-spacing:0}
+body.embedded .exec-workbench-card strong{font-size:13px;color:#1e3151}
+body.embedded .exec-summary-grid{gap:12px;margin-top:12px}
+body.embedded .exec-summary-grid>article{
+  border-color:var(--kz-line);
+  border-radius:10px;
+  box-shadow:0 3px 12px rgba(21,50,90,.04);
+}
+body.embedded .exec-section-title h3{color:#10244a;font-size:16px}
 
-body.embedded .feedback {
-  margin: 10px 18px 0;
-}
-
-/* The host page already provides the global navigation.  In the embedded
-   execution overview, the six large cards are the page switchers; a second
-   strip of tiny workbench buttons makes the screen look duplicated. */
-body.embedded .workspace-nav {
-  display: none;
-}
-
-body.embedded .workbench-return {
-  margin: 0;
-  padding: 14px 26px;
-  border-radius: 0;
-}
-
-/* Owner overview: keep the first screen close to the six-card control-board
-   layout instead of a dense technical dashboard. */
-body.embedded #dashboard {
-  max-width: none;
-  padding: 32px 30px 28px;
-  background: radial-gradient(circle at 78% 0%, rgba(214,230,255,.55), transparent 32%), #f5f8fc;
-}
-
-body.embedded .exec-overview-head h2 {
-  font-size: 46px;
-  font-weight: 800;
-  letter-spacing: .035em;
-  color: #10244a;
-}
-
-body.embedded .exec-overview-head span {
-  font-size: 16px;
-  color: #58709b;
-}
-
-body.embedded .exec-workbench-grid {
-  gap: 16px;
-}
-
-body.embedded .exec-workbench-card {
-  min-height: 300px;
-  padding: 24px 22px 20px;
-  border-color: #dce7f7;
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(30,71,130,.08);
-}
-
-body.embedded .exec-workbench-card:hover {
-  border-color: #4b82ee;
-  box-shadow: 0 16px 34px rgba(34,92,197,.16);
-}
-
-body.embedded .exec-card-icon {
-  width: 64px;
-  height: 64px;
-  font-size: 33px;
-  margin-bottom: 16px;
-  background: linear-gradient(145deg, #f5f9ff, #dfecff);
-  box-shadow: inset 0 1px 1px #fff, 0 6px 14px rgba(45,99,206,.12);
-}
-
-body.embedded .exec-workbench-card > b {
-  font-size: 23px;
-  letter-spacing: .02em;
-}
-
-body.embedded .exec-workbench-card strong {
-  font-size: 15px;
-  color: #1e3151;
-}
-
-body.embedded .exec-summary-grid {
-  gap: 16px;
-  margin-top: 18px;
-}
-
-body.embedded .exec-summary-grid > article {
-  border-color: #dce7f7;
-  border-radius: 18px;
-  box-shadow: 0 10px 25px rgba(30,71,130,.06);
-}
-
-body.embedded .exec-section-title h3 {
-  color: #10244a;
-  font-size: 20px;
-}
-
-@media (max-width: 1250px) {
-  body.embedded #dashboard { padding: 24px 20px; }
-  body.embedded .exec-overview-head h2 { font-size: 38px; }
-}
+@media(max-width:1250px){
+  body.embedded #dashboard{padding:14px}
+  body.embedded .exec-overview-head h2{font-size:28px}
 }
