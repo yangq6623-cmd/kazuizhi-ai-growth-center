@@ -145,14 +145,27 @@
     return true;
   }
 
+  function injectEasyFront(doc) {
+    if (!doc?.body || doc.querySelector('script[data-kz-easy-front]')) return;
+    const easy = doc.createElement('script');
+    easy.src = '/content-studio-easy-front.js';
+    easy.dataset.kzEasyFront = '1';
+    doc.body.appendChild(easy);
+  }
+
   function injectSimpleMode(frame) {
     try {
       const doc = frame.contentDocument;
-      if (!doc || !doc.body || doc.querySelector('script[data-kz-simple-mode]')) return;
-      const script = doc.createElement('script');
-      script.src = '/content-studio-simple.js';
-      script.dataset.kzSimpleMode = '1';
-      doc.body.appendChild(script);
+      if (!doc || !doc.body) return;
+      let script = doc.querySelector('script[data-kz-simple-mode]');
+      if (!script) {
+        script = doc.createElement('script');
+        script.src = '/content-studio-simple.js';
+        script.dataset.kzSimpleMode = '1';
+        script.addEventListener('load', () => injectEasyFront(doc), {once:true});
+        doc.body.appendChild(script);
+      }
+      injectEasyFront(doc);
     } catch (_) {}
   }
 
