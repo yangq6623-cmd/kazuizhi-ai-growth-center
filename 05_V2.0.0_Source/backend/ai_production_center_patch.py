@@ -36,6 +36,7 @@ if not getattr(_server.DashboardHandler, "_kz_ai_production_center_patched", Fal
             "/api/ai-content-center/projects": center.create_project,
             "/api/ai-content-center/assets": center.add_asset,
             "/api/ai-content-center/storyboards/generate": center.create_storyboard_draft,
+            "/api/ai-content-center/director/import": center.import_director_plan,
             "/api/ai-content-center/candidates/queue": center.queue_candidate_generation,
         }
         action = actions.get(path)
