@@ -5,6 +5,9 @@
   const FRAME_ID = 'content-studio-frame';
   let retryTimer = null;
   let ensureAttempts = 0;
+  let lastFrameHeight = 0;
+  let resizeTimer = null;
+  let pendingFrameHeight = 0;
 
   const ROUTE_COPY = {
     overview:['卡嘴子 AI 内容创导平台','内容情报、参考学习、AI 导演、生产、质检与成片统一协同'],
@@ -61,12 +64,29 @@
     return page;
   }
 
-  function resizeFrame(height) {
+  function applyFrameHeight() {
+    resizeTimer = null;
     const frame = document.getElementById(FRAME_ID);
     if (!frame) return;
+    const target = pendingFrameHeight;
+    if (!target) return;
+    const current = lastFrameHeight || Math.round(frame.getBoundingClientRect().height || 0);
+    if (current && Math.abs(target - current) < 12) return;
+    frame.style.height = `${target}px`;
+    lastFrameHeight = target;
+  }
+
+  function resizeFrame(height) {
     const raw = Number(height || 0);
     if (!Number.isFinite(raw) || raw <= 0) return;
-    frame.style.height = `${Math.max(520, Math.min(raw + 4, 5000))}px`;
+    // Important: do not add pixels to the child-reported height. Adding even a
+    // small constant can create an iframe resize -> child ResizeObserver ->
+    // postMessage -> parent resize feedback loop and freeze Chromium.
+    const target = Math.max(520, Math.min(Math.round(raw), 5000));
+    if (lastFrameHeight && Math.abs(target - lastFrameHeight) < 12) return;
+    pendingFrameHeight = target;
+    if (resizeTimer) return;
+    resizeTimer = window.setTimeout(applyFrameHeight, 120);
   }
 
   function routeFrame(route = 'overview') {
@@ -108,7 +128,7 @@
     setVisibleNavActive();
     syncOuterTitle(route);
     routeFrame(route);
-    window.scrollTo({top:0, behavior:'smooth'});
+    window.scrollTo({top:0, behavior:'auto'});
   }
 
   function ensureOwnerNavigation(nav) {
@@ -135,7 +155,14 @@
     if (!nav || !main) return false;
     dedupeBaselines();
     ensureLegacyRoute(nav);
-    ensurePage(main);
+    const page = ensurePage(main);
+    const frame = page?.querySelector(`#${FRAME_ID}`);
+    if (frame && !frame.dataset.kzStableResize) {
+      frame.dataset.kzStableResize = '1';
+      frame.addEventListener('load', () => {
+        lastFrameHeight = Math.round(frame.getBoundingClientRect().height || 620);
+      });
+    }
     const ready = ensureOwnerNavigation(nav);
     if (ready) {
       document.documentElement.dataset.kzContentStudio = 'ready';
