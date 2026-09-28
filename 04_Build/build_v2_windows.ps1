@@ -1,11 +1,19 @@
-param([string]$Python = 'python')
+param(
+    [string]$Python = 'python',
+    [switch]$SkipSourceVerification
+)
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
-    & $Python '04_Build/v2/verify_v2_autonomous.py' --source
-    if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 source verification failed' }
-    & $Python '04_Build/v2/verify_r8_operational.py' --source
-    if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational source verification failed' }
+    if (-not $SkipSourceVerification) {
+        & $Python '04_Build/v2/verify_v2_autonomous.py' --source
+        if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 source verification failed' }
+        & $Python '04_Build/v2/verify_r8_operational.py' --source
+        if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational source verification failed' }
+    } else {
+        Write-Host 'Source verification already passed in the CI gate; skipping duplicate long-running source execution before packaging.'
+    }
+
     & $Python -m PyInstaller --noconfirm --clean --distpath dist_v2 --workpath build_v2 '04_Build/kazuizhi_v2.0.0.spec'
     if ($LASTEXITCODE -ne 0) { throw 'V2 PyInstaller build failed' }
 
