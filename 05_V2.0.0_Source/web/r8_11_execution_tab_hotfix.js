@@ -28,7 +28,11 @@
   function ensureFrame() {
     const hub = document.getElementById('operational-hub');
     if (!hub) return null;
-    let frame = document.getElementById(FRAME_ID);
+    // app.js already owns the execution iframe.  Older R8-11 compatibility
+    // code created a second iframe beside it, which rendered two identical
+    // execution overviews.  Reuse the canonical frame instead.
+    let frame = document.getElementById(FRAME_ID) || hub.querySelector('iframe.operational-hub-frame');
+    if (frame) frame.id = FRAME_ID;
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = FRAME_ID;
@@ -73,6 +77,12 @@
   function makeFrameAuthoritative(frame) {
     const hub = document.getElementById('operational-hub');
     if (!hub || !frame) return;
+    // There must be exactly one embedded execution workbench.  Remove a
+    // stale compatibility frame rather than merely hiding it, because older
+    // CSS may force an iframe back into the layout after a refresh.
+    hub.querySelectorAll('iframe').forEach(candidate => {
+      if (candidate !== frame) candidate.remove();
+    });
     [...hub.children].forEach(child => {
       if (child === frame || child.classList?.contains('operational-hub-intro') || child.id === 'r811-execution-route-status') return;
       child.hidden = true;
