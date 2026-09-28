@@ -2,7 +2,7 @@
 
 This module deliberately records production intent and local assets without
 pretending that a model task, a rendered file, or an external publication has
-already happened.  It is independent from growth campaigns so production can
+already happened. It is independent from growth campaigns so production can
 scale without turning the operations dashboard into a form dump.
 """
 from __future__ import annotations
@@ -72,6 +72,17 @@ def _audit(data, kind, identifier, detail):
     })
 
 
+def _text_list(value, label, limit=8, item_limit=160):
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value[:limit]:
+        text = _clean(item, label, item_limit, False)
+        if text:
+            result.append(text)
+    return result
+
+
 def create_project(payload):
     data = _load()
     project = {
@@ -81,6 +92,9 @@ def create_project(payload):
         "ratio": _clean(payload.get("ratio") or "9:16", "画幅", 10),
         "status": "草稿", "default_character_id": "", "default_scene_id": "",
         "default_voice_id": "", "owner_note": _clean(payload.get("owner_note"), "项目说明", 500, False),
+        "reference_id": _clean(payload.get("reference_id"), "参考内容ID", 80, False),
+        "creative_id": _clean(payload.get("creative_id"), "创意ID", 80, False),
+        "director_plan_id": _clean(payload.get("director_plan_id"), "导演方案ID", 80, False),
     }
     data["projects"].insert(0, project)
     _audit(data, "project_created", project["id"], "已建立本地内容项目；尚未生成或发布。")
@@ -130,6 +144,9 @@ def create_storyboard_draft(payload):
             "purpose": sentence[:70], "narration": sentence, "duration_seconds": 5,
             "shot_type": "中景", "motion": "稳定跟拍", "candidate_count": 2,
             "status": "待 ChatGPT 总控确认", "source": "本地结构草稿",
+            "character": "", "scene": "", "props": [], "action": "",
+            "generation_method": "待导演确认", "consistency_locks": [],
+            "negative_constraints": [],
         }
         data["storyboards"].append(shot); shots.append(shot)
     project["status"] = "等待 ChatGPT 总控确认"
@@ -145,6 +162,92 @@ def create_storyboard_draft(payload):
     return {"project": project, "storyboards": shots, "task": task}
 
 
+def import_director_plan(payload):
+    """Create one production project from an owner-confirmed AI director plan.
+
+    The endpoint records exact structured shots but still does not claim that
+    any image/video candidate or final render exists. Candidate generation is a
+    separate explicit task for every shot.
+    """
+    data = _load()
+    raw_shots = payload.get("shots")
+    if not isinstance(raw_shots, list) or not raw_shots:
+        raise ValueError("导演方案至少需要一个镜头")
+    if len(raw_shots) > 12:
+        raise ValueError("单条导演方案最多导入12个镜头")
+
+    reference_id = _clean(payload.get("reference_id"), "参考内容ID", 80, False)
+    creative_id = _clean(payload.get("creative_id"), "创意ID", 80, False)
+    director_plan_id = _clean(payload.get("director_plan_id") or _id("DIR"), "导演方案ID", 80)
+    project = {
+        "id": _id("AIP"), "created_at": now_iso(),
+        "name": _clean(payload.get("name"), "项目名称", 100),
+        "script": _clean(payload.get("script"), "文案", 6000, False),
+        "ratio": _clean(payload.get("ratio") or "9:16", "画幅", 10),
+        "status": "分镜已确认", "default_character_id": "", "default_scene_id": "",
+        "default_voice_id": "", "owner_note": _clean(payload.get("owner_note"), "项目说明", 500, False),
+        "reference_id": reference_id, "creative_id": creative_id,
+        "director_plan_id": director_plan_id,
+        "director_goal": _clean(payload.get("director_goal"), "视频目标", 80, False),
+        "director_style": _clean(payload.get("director_style"), "全片风格", 80, False),
+        "director_summary": _clean(payload.get("director_summary"), "导演摘要", 1200, False),
+    }
+    data["projects"].insert(0, project)
+
+    shots = []
+    total_duration = 0.0
+    for index, raw in enumerate(raw_shots, 1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"镜头{index}格式不正确")
+        try:
+            duration = float(raw.get("duration_seconds") or 4)
+        except (TypeError, ValueError):
+            duration = 4.0
+        duration = max(1.0, min(duration, 12.0))
+        try:
+            candidate_count = int(raw.get("candidate_count") or 3)
+        except (TypeError, ValueError):
+            candidate_count = 3
+        candidate_count = max(1, min(candidate_count, 4))
+        shot = {
+            "id": _id("SHOT"), "project_id": project["id"], "order": index,
+            "purpose": _clean(raw.get("purpose") or f"镜头 {index}", "镜头目的", 160),
+            "narration": _clean(raw.get("narration"), "台词/旁白", 500, False),
+            "duration_seconds": duration,
+            "shot_type": _clean(raw.get("shot_type") or "中景", "景别", 60),
+            "motion": _clean(raw.get("motion") or "稳定", "运镜", 80),
+            "candidate_count": candidate_count,
+            "status": "待候选生成", "source": "AI 导演确认方案",
+            "character": _clean(raw.get("character"), "人物", 100, False),
+            "scene": _clean(raw.get("scene"), "场景", 120, False),
+            "props": _text_list(raw.get("props"), "物品", 8, 80),
+            "action": _clean(raw.get("action"), "动作", 240, False),
+            "generation_method": _clean(raw.get("generation_method") or "真实素材优先", "生成方式", 80),
+            "consistency_locks": _text_list(raw.get("consistency_locks"), "一致性锁", 8, 100),
+            "negative_constraints": _text_list(raw.get("negative_constraints"), "负面约束", 10, 120),
+            "reference_id": reference_id, "creative_id": creative_id,
+            "director_plan_id": director_plan_id,
+        }
+        total_duration += duration
+        data["storyboards"].append(shot)
+        shots.append(shot)
+
+    if not project["script"]:
+        project["script"] = "\n".join(
+            f"镜头{shot['order']}：{shot['narration'] or shot['purpose']}" for shot in shots
+        )[:6000]
+    task = {
+        "id": _id("TASK"), "project_id": project["id"], "kind": "AI 导演分镜导入",
+        "executor": "内容创导平台 → AI 内容生产中心", "status": "已完成",
+        "progress": 100, "created_at": now_iso(),
+        "detail": f"已确认并导入 {len(shots)} 个结构化镜头（约 {total_duration:g} 秒）；尚未生成候选或成片。",
+    }
+    data["tasks"].insert(0, task)
+    _audit(data, "director_plan_imported", project["id"], task["detail"])
+    _save(data)
+    return {"project": project, "storyboards": shots, "task": task}
+
+
 def queue_candidate_generation(payload):
     data = _load()
     shot_id = _clean(payload.get("shot_id"), "镜头ID", 64)
@@ -155,14 +258,15 @@ def queue_candidate_generation(payload):
     blocked = [x.get("name") for x in assets if x.get("rights") == "待确认"]
     if blocked:
         raise ValueError("以下资产尚未确认授权，不能进入候选生成：" + "、".join(blocked))
+    count = max(1, min(int(shot.get("candidate_count") or 2), 4))
     task = {
         "id": _id("TASK"), "project_id": project["id"], "shot_id": shot_id,
         "kind": "镜头候选生成", "executor": "本地 Router（按显存排队）",
         "status": "待本地执行器", "progress": 0, "created_at": now_iso(),
-        "detail": "仅创建本地执行任务；候选文件生成后才会显示可审核。",
+        "detail": f"仅创建本地执行任务；计划生成 {count} 个候选，出现真实候选文件后才会显示可审核。",
     }
     data["tasks"].insert(0, task); shot["status"] = "候选生成已排队"
-    _audit(data, "candidate_queued", shot_id, "已创建候选生成任务，尚无候选文件或对外发布。")
+    _audit(data, "candidate_queued", shot_id, f"已创建 {count} 候选生成任务，尚无候选文件或对外发布。")
     _save(data)
     return task
 
