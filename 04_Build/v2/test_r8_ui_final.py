@@ -29,6 +29,8 @@ def main():
     usability_css = read(WEB / "operational-usability-349.css")
     autonomous_js = read(WEB / "autonomous-ops.js")
     autonomous_css = read(WEB / "autonomous-ops.css")
+    execution_js = read(WEB / "operational-execution-simplification.js")
+    execution_css = read(WEB / "operational-execution-simplification.css")
     autonomous_core = read(SRC / "core" / "autonomous_ops.py")
     autonomous_backend = read(SRC / "backend" / "autonomous_ops_patch.py")
     mission_feedback = read(SRC / "core" / "decision_center_mission_patch.py")
@@ -47,7 +49,25 @@ def main():
         "loadAutonomousOps",
         "autonomous-ops.js",
         "autonomous-ops.css",
+        "loadExecutionSimplification",
+        "operational-execution-simplification.js",
+        "operational-execution-simplification.css",
     ], "UI final loader", failures)
+
+    require(execution_js, [
+        "AI 内容生产中心",
+        "ChatGPT 总控，本地节点执行",
+        "发布准备不依赖 USB",
+        "removeDeviceHealthGate",
+        "data-owner-target=\"device\"",
+    ], "execution center simplification", failures)
+    require(execution_css, [
+        '.nav[data-page="device"]',
+        ".execution-local-strip",
+        ".execution-local-note",
+    ], "execution center visual system", failures)
+    if "MutationObserver" in execution_js:
+        failures.append("execution simplification must use explicit runtime events, not global MutationObserver polling")
 
     require(forms, [
         "data-autonomous-ops",
