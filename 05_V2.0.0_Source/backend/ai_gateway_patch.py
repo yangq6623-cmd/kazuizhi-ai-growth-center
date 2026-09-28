@@ -104,10 +104,23 @@ def _rewrite_browser_script(source):
     so rewriting only content-studio-simple.js is insufficient. Rewrite both
     modules through one compatibility function and remove the technical 17777
     recovery hint from owner-facing copy.
+
+    The first local-model call may include model cold-start time. The backend
+    proxy deliberately allows up to 120 seconds, so the simple shell must wait
+    longer than that instead of declaring failure after only 45 seconds while
+    the same request is still running successfully in the background.
     """
     return (
         source.replace(_DIRECT_ROUTER_JS, _SAME_ORIGIN_ROUTER_JS)
         .replace("可检查 17777 服务后重试。", "请确认本地 AI 服务已经启动后重试。")
+        .replace(
+            "},45000,400);\n      showAnalysis(analyzed);",
+            "},135000,400);\n      showAnalysis(analyzed);",
+        )
+        .replace(
+            "后台正在分析参考、原创改写、导演分镜并建立候选任务。",
+            "后台正在分析参考、原创改写、导演分镜并建立候选任务。首次调用本地模型可能需要 1–2 分钟，请保持页面打开。",
+        )
     )
 
 
