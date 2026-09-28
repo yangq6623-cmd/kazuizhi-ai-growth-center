@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>卡嘴子 AI 内容创导平台</title>
+  <link rel="stylesheet" href="/ai-production-center.css">
+  <link rel="stylesheet" href="/content-reference-center.css">
+  <style>
+    :root{font-family:Inter,"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#10223d;background:#f4f7fb}
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:#f4f7fb}
+    body{overflow-x:hidden}
+    #studio-root{display:block;width:100%;max-width:none;margin:0;padding:0;background:#f4f7fb}
+    #studio-root>.page{display:none!important;width:100%;margin:0;padding:0}
+    #studio-root>.page.active{display:block!important}
+    #content{min-height:760px}
+    .reference-page,.apc-shell{max-width:none!important;margin:0!important}
+    .content-platform-switch{position:sticky;top:0;z-index:15}
+  </style>
+</head>
+<body>
+  <main id="studio-root" aria-label="卡嘴子 AI 内容创导平台">
+    <section id="content" class="page"></section>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      let currentRoute = 'reference';
+      let heightTimer = null;
+
+      function notifyHeight(){
+        clearTimeout(heightTimer);
+        heightTimer = setTimeout(() => {
+          const height = Math.max(
+            document.documentElement.scrollHeight || 0,
+            document.body.scrollHeight || 0,
+            document.getElementById('studio-root')?.scrollHeight || 0,
+            760
+          );
+          try { parent.postMessage({type:'kz-content-studio-height', height}, location.origin); } catch (_) {}
+        }, 40);
+      }
+
+      function changeRoute(page){
+        const target = document.getElementById(page);
+        if (!target) return false;
+        currentRoute = page;
+        document.querySelectorAll('#studio-root > .page').forEach(node => node.classList.toggle('active', node.id === page));
+        if (page === 'content') window.dispatchEvent(new CustomEvent('operational:content'));
+        window.scrollTo({top:0, behavior:'auto'});
+        notifyHeight();
+        return true;
+      }
+
+      window.changeOperationalPage = changeRoute;
+      window.changePage = changeRoute;
+
+      function openInitial(attempt = 0){
+        const desired = new URLSearchParams(location.search).get('entry') || currentRoute || 'reference';
+        if (changeRoute(desired)) return;
+        if (attempt < 80) setTimeout(() => openInitial(attempt + 1), 80);
+      }
+
+      window.addEventListener('message', event => {
+        if (event.origin !== location.origin) return;
+        if (event.data?.type === 'kz-content-studio-route') {
+          const route = event.data.route === 'content' ? 'content' : 'reference';
+          if (!changeRoute(route)) openInitial(0);
+        }
+      });
+
+      if ('ResizeObserver' in window) {
+        const observer = new ResizeObserver(notifyHeight);
+        observer.observe(document.documentElement);
+        observer.observe(document.body);
+      }
+      new MutationObserver(notifyHeight).observe(document.documentElement, {subtree:true, childList:true, attributes:true});
+      window.addEventListener('load', () => { openInitial(0); notifyHeight(); });
+      window.addEventListener('resize', notifyHeight);
+      setTimeout(() => openInitial(0), 120);
+    })();
+  </script>
+  <script src="/ai-production-center.js"></script>
+</body>
+</html>
