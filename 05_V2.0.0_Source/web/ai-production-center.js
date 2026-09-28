@@ -128,3 +128,18 @@
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true}); else load();
 })();
+
+/* V1.1 closed-loop is loaded natively by the content studio itself. This avoids
+   parent-frame runtime injection and keeps initialization one-shot and local. */
+(() => {
+  const load = () => {
+    if (!document.getElementById('studio-root')) return;
+    if (document.querySelector('script[data-content-pipeline-native]')) return;
+    const script = document.createElement('script');
+    script.src = 'content-pipeline-native.js';
+    script.async = false;
+    script.dataset.contentPipelineNative = '1';
+    document.body.appendChild(script);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true}); else load();
+})();
