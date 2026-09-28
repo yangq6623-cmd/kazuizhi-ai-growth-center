@@ -58,18 +58,7 @@ $('save-memory').addEventListener('click', async () => {
   document.body.appendChild(script);
 })();
 
-// V1.1 closed-loop pipeline is injected into the standalone content studio
-// after the owner-facing iframe is ready. It keeps the legacy production
-// center backward compatible while adding Reference -> Creative -> Director ->
-// structured Storyboard -> Production inheritance.
-(() => {
-  if (document.querySelector('script[data-content-pipeline-host]')) return;
-  const script = document.createElement('script');
-  script.src = '/content-pipeline-host.js';
-  script.async = false;
-  script.dataset.contentPipelineHost = '1';
-  script.onerror = () => {
-    if (typeof toast === 'function') toast('内容创导 V1.1 闭环加载失败，请重新安装最新版本', 'error');
-  };
-  document.body.appendChild(script);
-})();
+// V1.1 front-end enhancement is temporarily quarantined because the injected
+// Creative/Director pipeline can lock the Chromium render process on route
+// changes. Keep the stable standalone content studio active; the V1.1 backend
+// and source files remain in the repository for a safer re-integration.
