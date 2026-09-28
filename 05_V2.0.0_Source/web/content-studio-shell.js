@@ -6,31 +6,44 @@
   let retryTimer = null;
   let ensureAttempts = 0;
 
+  const ROUTE_COPY = {
+    overview:['卡嘴子 AI 内容创导平台','内容情报、参考学习、AI 导演、生产、质检与成片统一协同'],
+    intelligence:['内容情报','发现真实用户问题、搜索机会与值得生产的主题'],
+    reference:['参考内容','导入优秀内容，AI 拆解结构与方法，重构为卡嘴子原创生产方案'],
+    creative:['创意策划','把选题变成可执行创意卡'],
+    director:['AI 导演','统一决定节奏、镜头、人物、场景与素材策略'],
+    content:['生产工作台','分镜、资产、候选任务与本地生成'],
+    assets:['资产中心','人物、数字人、场景、声音与品牌资产'],
+    qc:['AI 质检','连续性、字幕、品牌、授权与质量门禁'],
+    library:['成片库','版本、比例、成片与真实发布回执'],
+  };
+
   function installStyle() {
     if (document.getElementById('content-studio-shell-style')) return;
     const style = document.createElement('style');
     style.id = 'content-studio-shell-style';
     style.textContent = `
-      #content-studio{padding:0!important;background:#f4f7fb;min-height:calc(100vh - 92px)}
+      #content-studio{padding:0!important;background:#f4f7fb;min-height:0!important}
       .content-studio-shell{width:100%;min-width:0;background:#f4f7fb;overflow:visible}
-      .content-studio-frame{display:block;width:100%;height:820px;min-height:820px;border:0;background:#f4f7fb;overflow:hidden}
+      .content-studio-frame{display:block;width:100%;height:620px;min-height:520px;border:0;background:#f4f7fb;overflow:hidden}
       .r810-nav-button[data-target="content-studio"] .r810-icon{font-size:12px;font-weight:800}
-      @media(max-width:900px){.content-studio-frame{min-height:900px}}
+      @media(max-width:900px){.content-studio-frame{min-height:620px}}
     `;
     document.head.appendChild(style);
   }
 
   function ensureLegacyRoute(nav) {
     let proxy = nav.querySelector(`.nav[data-page="${PAGE_ID}"]`);
-    if (proxy) return proxy;
-    proxy = document.createElement('button');
-    proxy.className = 'nav r810-legacy-route';
-    proxy.dataset.page = PAGE_ID;
-    proxy.dataset.title = '内容情报与参考中心';
-    proxy.dataset.subtitle = '导入优秀内容，AI 拆解结构与方法，重构为卡嘴子原创生产方案';
-    proxy.hidden = true;
-    proxy.textContent = '内容创导';
-    nav.appendChild(proxy);
+    if (!proxy) {
+      proxy = document.createElement('button');
+      proxy.className = 'nav r810-legacy-route';
+      proxy.dataset.page = PAGE_ID;
+      proxy.hidden = true;
+      proxy.textContent = '内容创导';
+      nav.appendChild(proxy);
+    }
+    proxy.dataset.title = ROUTE_COPY.overview[0];
+    proxy.dataset.subtitle = ROUTE_COPY.overview[1];
     return proxy;
   }
 
@@ -42,7 +55,7 @@
     page.className = 'page content-studio-page';
     page.innerHTML = `
       <div class="content-studio-shell" aria-label="卡嘴子 AI 内容创导平台">
-        <iframe id="${FRAME_ID}" class="content-studio-frame" title="内容情报与参考中心" src="/content-studio.html?entry=reference" loading="eager" scrolling="no"></iframe>
+        <iframe id="${FRAME_ID}" class="content-studio-frame" title="卡嘴子 AI 内容创导平台" src="/content-studio.html?entry=overview" loading="eager" scrolling="no"></iframe>
       </div>`;
     main.appendChild(page);
     return page;
@@ -51,11 +64,12 @@
   function resizeFrame(height) {
     const frame = document.getElementById(FRAME_ID);
     if (!frame) return;
-    const safe = Math.max(820, Math.min(Number(height || 0) + 8, 6000));
-    if (Number.isFinite(safe)) frame.style.height = `${safe}px`;
+    const raw = Number(height || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return;
+    frame.style.height = `${Math.max(520, Math.min(raw + 4, 5000))}px`;
   }
 
-  function routeFrame(route = 'reference') {
+  function routeFrame(route = 'overview') {
     const frame = document.getElementById(FRAME_ID);
     if (!frame?.contentWindow) return;
     try { frame.contentWindow.postMessage({type:'kz-content-studio-route', route}, location.origin); } catch (_) {}
@@ -72,13 +86,27 @@
     items.slice(1).forEach(node => node.remove());
   }
 
-  function openStudio(route = 'reference') {
+  function syncOuterTitle(route='overview', title='', subtitle='') {
+    const copy = ROUTE_COPY[route] || ROUTE_COPY.overview;
+    const heading = document.getElementById('page-heading');
+    const sub = document.getElementById('page-subtitle');
+    if (heading) heading.textContent = title || copy[0];
+    if (sub) sub.textContent = subtitle || copy[1];
+    const proxy = document.querySelector(`aside nav .nav[data-page="${PAGE_ID}"]`);
+    if (proxy) {
+      proxy.dataset.title = title || copy[0];
+      proxy.dataset.subtitle = subtitle || copy[1];
+    }
+  }
+
+  function openStudio(route = 'overview') {
     if (typeof window.openPage === 'function') {
       window.openPage(PAGE_ID);
     } else {
       document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === PAGE_ID));
     }
     setVisibleNavActive();
+    syncOuterTitle(route);
     routeFrame(route);
     window.scrollTo({top:0, behavior:'smooth'});
   }
@@ -95,7 +123,7 @@
       const decision = primary.querySelector('.r810-nav-button[data-target="workflow"]');
       if (decision) decision.insertAdjacentElement('afterend', button);
       else primary.appendChild(button);
-      button.addEventListener('click', () => openStudio('reference'));
+      button.addEventListener('click', () => openStudio('overview'));
     }
     return true;
   }
@@ -126,6 +154,10 @@
   window.addEventListener('message', event => {
     if (event.origin !== location.origin) return;
     if (event.data?.type === 'kz-content-studio-height') resizeFrame(event.data.height);
+    if (event.data?.type === 'kz-content-studio-route-changed') {
+      syncOuterTitle(event.data.route, event.data.title, event.data.subtitle);
+      setVisibleNavActive();
+    }
   });
 
   window.openKazuizhiContentStudio = openStudio;
