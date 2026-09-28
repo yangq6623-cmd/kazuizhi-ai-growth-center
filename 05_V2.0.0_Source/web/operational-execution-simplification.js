@@ -3,18 +3,10 @@
   const byId=id=>document.getElementById(id);
   const labels={dashboard:'执行总览',campaigns:'增长目标',content:'AI 内容生产中心',accounts:'发布准备',conversion:'咨询与订单',search:'SEO / GEO 增长',health:'运行健康'};
 
-  function localStrip(){
-    const page=byId('content');
-    if(!page)return;
-    let strip=byId('execution-local-strip');
-    if(!strip){
-      strip=document.createElement('section');
-      strip.id='execution-local-strip';
-      strip.className='execution-local-strip';
-      const anchor=byId('final-task-hero')||page.querySelector('.page-intro');
-      anchor?.insertAdjacentElement('afterend',strip);
-    }
-    strip.innerHTML='<article><small>生产方式</small><b>ChatGPT 总控，本地节点执行</b><span>总控拆解目标、标题、脚本、分镜与验收标准。</span></article><article><small>本地执行</small><b>模型、语音、剪辑按任务分工</b><span>Ollama、本地语音和剪辑工具只处理已下达任务。</span></article><article><small>质量闸门</small><b>只生成候选，不虚报完成</b><span>质量检查不通过自动退回，不进入发布队列。</span></article><article><small>发布边界</small><b>人工确认后才可对外</b><span>登录、验证码、平台发布与真实回执始终由本人确认。</span></article>';
+  function keepOneProductionFlow(){
+    // 内容页已经有“总控分配台”。旧版又叠加一张蓝色说明卡，造成同一流程讲两遍。
+    // 只保留原有的四步总控卡，并删除历史版本留下的重复卡。
+    byId('execution-local-strip')?.remove();
   }
 
   function accountNote(){
@@ -54,7 +46,7 @@
     byId('device')?.setAttribute('hidden','');
     replaceLegacyTargets();
     removeDeviceHealthGate();
-    localStrip();
+    keepOneProductionFlow();
     accountNote();
   }
 

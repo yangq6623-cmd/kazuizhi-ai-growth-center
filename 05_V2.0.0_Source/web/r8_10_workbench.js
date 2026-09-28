@@ -177,17 +177,20 @@
   function ensureExecutionTabs(){
     const hub=q('operational-hub');if(!hub)return;
     const intro=hub.querySelector('.operational-hub-intro');if(intro){
-      const h2=intro.querySelector('h2');if(h2)h2.textContent='执行中心';
-      const p=intro.querySelector('p');if(p)p.textContent='内容、品牌增长、平台、真机和转化都在同一执行视图完成；不再出现第二套工作台。';
+      const h2=intro.querySelector('h2');if(h2)h2.textContent='AI 运营工作台';
+      const p=intro.querySelector('p');if(p)p.textContent='只保留今天真正需要看的六件事：工作、内容、发布准备、搜索增长、经营结果和系统检查。';
     }
     if(hub.querySelector('.r810-execution-tabs'))return;
     const tabs=document.createElement('div');tabs.className='r810-execution-tabs';
-    const items=[['dashboard','执行总览'],['content','内容生产'],['search','品牌增长'],['accounts','平台账号'],['device','真机执行'],['conversion','咨询与订单'],['health','执行健康']];
+    const items=[['dashboard','今日工作台'],['content','内容生产'],['accounts','发布准备'],['search','搜索增长'],['conversion','经营结果'],['health','系统检查']];
     tabs.innerHTML=items.map(([page,label],i)=>`<button class="${i===0?'active':''}" data-execution-page="${page}">${label}</button>`).join('');
     intro?.appendChild(tabs);
     tabs.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>switchExecutionPage(btn.dataset.executionPage,btn)));
   }
   function switchExecutionPage(page,button){
+    // “真机”曾是旧版 USB 自动化入口。现在只保留为高级人工辅助，
+    // 绝不再作为内容生产、授权或发布的前置条件。
+    if(page==='device')page='accounts';
     openRoute('operational-hub');
     const frame=q('operational-frame');
     const activate=()=>{try{frame?.contentWindow?.changeOperationalPage?.(page)}catch(error){showNotice('执行中心页面切换失败，请刷新后重试','error')}};

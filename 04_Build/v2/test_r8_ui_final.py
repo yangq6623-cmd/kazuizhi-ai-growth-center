@@ -55,15 +55,14 @@ def main():
     ], "UI final loader", failures)
 
     require(execution_js, [
-        "AI 内容生产中心",
-        "ChatGPT 总控，本地节点执行",
+        "keepOneProductionFlow",
         "发布准备不依赖 USB",
         "removeDeviceHealthGate",
         "data-owner-target=\"device\"",
     ], "execution center simplification", failures)
     require(execution_css, [
         '.nav[data-page="device"]',
-        ".execution-local-strip",
+        ".r8-execution-simplified .hero",
         ".execution-local-note",
     ], "execution center visual system", failures)
     if "MutationObserver" in execution_js:

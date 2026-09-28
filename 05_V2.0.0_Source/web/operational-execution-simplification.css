@@ -1,6 +1,9 @@
 /* R8-18: The USB mirror is an optional manual aid, never a production prerequisite. */
 .nav[data-page="device"], #device { display: none !important; }
 
+/* 顶层 Mission 已经固定显示，执行页不再重复放一张大幅蓝色目标横幅。 */
+.r8-execution-simplified .hero { display: none !important; }
+
 .execution-local-strip {
   display:grid;
   grid-template-columns:1.35fr repeat(3,1fr);

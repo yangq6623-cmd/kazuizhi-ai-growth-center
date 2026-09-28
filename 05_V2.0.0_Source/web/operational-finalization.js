@@ -19,8 +19,8 @@
     if(labels[0])labels[0].textContent='今日与生产';
     if(labels[1])labels[1].textContent='社媒与经营';
     if(labels[2])labels[2].textContent='增长与系统';
-    const names={dashboard:'今日总控',campaigns:'增长战役',content:'内容工厂',device:'终端与真机',accounts:'账号与发布',conversion:'咨询与订单',search:'SEO / GEO',health:'系统体检'};
-    document.querySelectorAll('.nav[data-page]').forEach(btn=>{if(names[btn.dataset.page])btn.textContent=names[btn.dataset.page]});
+    const names={dashboard:'今日工作台',campaigns:'增长目标',content:'内容生产',accounts:'发布准备',conversion:'经营结果',search:'搜索增长',health:'系统检查'};
+    document.querySelectorAll('.nav[data-page]').forEach(btn=>{if(btn.dataset.page==='device'){btn.hidden=true;return}if(names[btn.dataset.page])btn.textContent=names[btn.dataset.page]});
     const link=document.querySelector('.r7-console-link');
     if(link){
       link.classList.add('system-console-link');
@@ -40,11 +40,11 @@
     const pendingReview=videos.filter(v=>v.status==='等待人工审核').length;
     const unverified=accounts.filter(a=>a.connection_status!=='已验证可发布').length;
     const map={
-      dashboard: pendingReview?['先处理等待你确认的内容',`${pendingReview} 条视频等待人工审核。`,'content','去审核']:!d?['先让执行终端上线','真机未在线，自动发布与人工接管都会受阻。','device','检查终端']:['今天没有人工阻塞','系统可以继续按已授权范围推进。','health','查看体检'],
+      dashboard: pendingReview?['先处理等待你确认的内容',`${pendingReview} 条内容等待人工审核。`,'content','去审核']:['今天没有人工阻塞','系统可以按已授权范围推进；异常会集中显示。','health','查看系统检查'],
       campaigns: campaigns.length?['选择一个增长战役继续推进','所有内容、发布和结果都应绑定同一个增长ID。','content','进入内容工厂']:['先建立一个真实增长战役','从真实用户问题开始，不从“我要发什么内容”开始。','campaigns','开始建立'],
       content: !campaigns.length?['先建立增长战役','没有增长ID时不创建孤立内容任务。','campaigns','去建立战役']:pendingReview?['完成老板审核',`${pendingReview} 条成片等待确认，通过后才进入发布。`,'content','查看审核']:['继续生产下一条可验证内容','素材、脚本、成片、审核和发布保持同一增长ID。','content','继续'],
-      device: !d?['连接真实手机','USB调试授权成功后，再进行连续同步与平台登录。','device','扫描手机']:['确认终端绑定关系','检查当前平台、账号和任务是否与这台真机一致。','accounts','查看账号'],
-      accounts: unverified?['完成真实账号授权',`${unverified} 个账号仍需登录、验证或人工处理。`,'device','去真机处理']:['检查今天待发布内容','已授权账号可以进入内容审核与排期。','content','查看内容'],
+      device:['查看发布准备','真机不再是生产、授权或发布的必经环节。','accounts','查看发布准备'],
+      accounts: unverified?['完成发布准备',`${unverified} 个授权记录仍需您在平台官方页面登录或确认。`,'accounts','查看授权项']:['检查今天待发布内容','已授权账号可进入内容审核与排期；最终发布仍需本人确认。','content','查看内容'],
       conversion:['先补齐真实来源数据','咨询、报价、订单未回流前，不把曝光算成经营结果。','health','检查数据链路'],
       search:['先确认技术底座，再扩大内容量','抓取、部署、收录和AI引用必须分别记录真实状态。','search','检查SEO/GEO'],
       health:['先处理异常，再看正常项','正常项默认折叠；需要配置和需要人工的项目优先显示。','dashboard','返回待办']
@@ -66,7 +66,8 @@
     if(!strip){strip=document.createElement('div');strip.className='context-strip';const step=section.querySelector(':scope > .page-next-step');(step||section.firstElementChild)?.insertAdjacentElement('afterend',strip)}
     const c=latestCampaign(),d=connectedDevice();
     const growth=c?.id||'未选择';
-    const task=(d?.current_task||'无执行任务');
+    const rawTask=d?.current_task;
+    const task=!rawTask?'暂无执行任务':(typeof rawTask==='object'?(rawTask.title||rawTask.name||rawTask.label||rawTask.task_id||rawTask.id||rawTask.status||'任务信息待更新'):rawTask);
     strip.innerHTML=`<span><small>增长ID</small><b>${esc(growth)}</b></span><span><small>任务</small><b>${esc(task)}</b></span><span><small>数据来源</small><b>本地真实接口</b></span><span><small>更新时间</small><b>${esc(nowText())}</b></span>`;
   }
 
@@ -109,9 +110,9 @@
     const page=byId('accounts');if(!page)return;
     let box=byId('terminal-account-binding');
     if(!box){box=document.createElement('section');box.id='terminal-account-binding';box.className='terminal-account-binding panel';const intro=page.querySelector('.page-intro');intro?.insertAdjacentElement('afterend',box)}
-    const d=connectedDevice();
     const accounts=window.state?.factory?.accounts||[];
-    box.innerHTML=`<div class="panel-head"><div><p>平台 → 终端 → 账号</p><h3>真实执行绑定关系</h3></div><span class="binding-state ${d?'ok':'wait'}">${d?'终端在线':'终端未连接'}</span></div>${d?`<div class="binding-grid"><div><small>平台</small><b>${esc(d.platform||'未绑定')}</b></div><div><small>真机</small><b>${esc(d.model||d.device_id)}</b></div><div><small>账号</small><b>${esc(d.account||'未绑定')}</b></div><div><small>当前任务</small><b>${esc(d.current_task||'无')}</b></div></div>`:'<div class="empty">先连接真实手机，再完成人工登录；系统不保存平台明文密码。</div>'}<div class="binding-note">已登记账号 ${accounts.length} 个。只有“真机在线 + 账号已验证 + 风险正常”同时满足时，才允许自动发布。</div>`;
+    const verified=accounts.filter(a=>a.connection_status==='已验证可发布'||a.auth_status==='connected').length;
+    box.innerHTML=`<div class="panel-head"><div><p>账号授权 → 内容审核 → 本人确认发布</p><h3>发布准备状态</h3></div><span class="binding-state ${verified?'ok':'wait'}">${verified?'已存在可用授权':'等待授权'}</span></div><div class="binding-grid"><div><small>已登记账号</small><b>${esc(accounts.length)}</b></div><div><small>可用授权</small><b>${esc(verified)}</b></div><div><small>账号密码</small><b>系统不保存</b></div><div><small>最终发布</small><b>本人确认</b></div></div><div class="binding-note">不依赖 USB 或真机。账号登录、验证码、人脸验证和最终发布均由您在平台官方页面完成；拿到真实 URL、Post ID 或 Receipt 后才记录为发布成功。</div>`;
   }
 
   function ensureConversionCRM(){
@@ -143,8 +144,8 @@
 
   function enhanceAll(){
     unifyNavigation();
-    ['dashboard','campaigns','content','device','accounts','conversion','search','health'].forEach(page=>{ensureNextStep(page);ensureContextStrip(page)});
-    ensureContentFlow();ensureDeviceTools();ensureSocialBinding();ensureConversionCRM();ensureSearchOperations();ensureHealthFold();normalizeUnknownValues();
+    ['dashboard','campaigns','content','accounts','conversion','search','health'].forEach(page=>{ensureNextStep(page);ensureContextStrip(page)});
+    ensureContentFlow();ensureSocialBinding();ensureConversionCRM();ensureSearchOperations();ensureHealthFold();normalizeUnknownValues();
   }
 
   document.addEventListener('click',event=>{
