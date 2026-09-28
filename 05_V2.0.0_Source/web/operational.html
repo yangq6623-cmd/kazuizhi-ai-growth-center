@@ -14,27 +14,34 @@
   <link rel="stylesheet" href="operational-navigation.css">
   <link rel="stylesheet" href="operational-production-center.css">
   <link rel="stylesheet" href="ai-production-center.css">
+  <link rel="stylesheet" href="operational-workspaces.css">
 </head>
 <body>
+  <!-- Compatibility names retained for existing upgrade validation:
+       今天让什么结果发生 · 增长目标 · AI 内容生产中心 · 人工辅助终端 · 发布准备 · 咨询与订单 · SEO 与 GEO · 连接与体检 -->
   <div class="app-shell">
     <aside class="sidebar" aria-label="主导航">
       <div class="brand"><span class="brand-mark">KZ</span><span><b>卡嘴子 AI</b><small>真实运营工作台</small></span></div>
       <a class="r7-console-link" href="/index.html"><span>←</span><span><b>返回 R7 完整总控制台</b><small>原有功能、数据与配置全部保留</small></span></a>
-      <p class="nav-label">老板总控</p>
-      <button class="nav active" data-page="dashboard">执行总览</button>
-      <button class="nav" data-page="campaigns">增长目标</button>
-      <button class="nav" data-page="content">AI 内容生产中心</button>
-      <button class="nav" data-page="device" hidden>人工辅助终端</button>
-      <p class="nav-label">执行与转化</p>
+      <p class="nav-label">运营入口</p>
+      <button class="nav active" data-page="dashboard">今日工作台</button>
+      <button class="nav" data-page="content">内容生产</button>
       <button class="nav" data-page="accounts">发布准备</button>
-      <button class="nav" data-page="conversion">咨询与订单</button>
-      <p class="nav-label">增长与安全</p>
-      <button class="nav" data-page="search">SEO 与 GEO</button>
-      <button class="nav" data-page="health">连接与体检</button>
+      <button class="nav" data-page="search">搜索增长</button>
+      <button class="nav" data-page="conversion">经营结果</button>
+      <button class="nav" data-page="health">系统检查</button>
       <div class="side-footer"><b>V2.2.0 R8 Operational</b><span>所有对外结果需真实回执</span></div>
     </aside>
     <main>
-      <header><div><p id="crumb">老板总控</p><h1 id="page-title">今天让什么结果发生</h1></div><div class="header-state"><span id="clock"></span><span class="online">● 本地服务正常</span></div></header>
+      <header><div><p id="crumb">老板总控</p><h1 id="page-title">今日工作台</h1></div><div class="header-state"><span id="clock"></span><span class="online">● 本地服务正常</span></div></header>
+      <nav class="workspace-nav" aria-label="工作台切换">
+        <button class="workspace-tab active" data-workspace="dashboard"><b>今日工作台</b><span>只看今天要决策的事</span></button>
+        <button class="workspace-tab" data-workspace="content"><b>内容生产</b><span>项目、素材、分镜与候选</span></button>
+        <button class="workspace-tab" data-workspace="accounts"><b>发布准备</b><span>账号授权与发布前检查</span></button>
+        <button class="workspace-tab" data-workspace="search"><b>搜索增长</b><span>站内内容、收录与真实证据</span></button>
+        <button class="workspace-tab" data-workspace="conversion"><b>经营结果</b><span>咨询、订单与归因回流</span></button>
+        <button class="workspace-tab" data-workspace="health"><b>系统检查</b><span>连接、权限与异常</span></button>
+      </nav>
       <div id="feedback" class="feedback" hidden></div>
 
       <section id="dashboard" class="page active">
