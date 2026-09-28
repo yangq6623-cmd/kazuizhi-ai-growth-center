@@ -1,9 +1,9 @@
 """Local-only HTTP surface for the direct ChatGPT AI Gateway.
 
-This patch also exposes a same-origin bridge for the owner-facing simple content
-studio. Browser code must not call the model router on :17777 directly: that
-router intentionally has no browser CORS/OPTIONS surface. The dashboard on
-:8876 owns the browser request and forwards it locally instead.
+This patch also exposes a same-origin bridge for owner-facing content studio
+browser modules. Browser code must not call the model router on :17777
+directly: that router intentionally has no browser CORS/OPTIONS surface. The
+dashboard on :8876 owns the browser request and forwards it locally instead.
 """
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ _LOCAL_PROXY_PATH = "/api/local-ai/chat/completions"
 _LOCAL_HEALTH_PATH = "/api/local-ai/health"
 _DIRECT_ROUTER_JS = "http://127.0.0.1:17777/v1/chat/completions"
 _SAME_ORIGIN_ROUTER_JS = _LOCAL_PROXY_PATH
+_LOCAL_AI_BROWSER_SCRIPTS = {
+    "/content-studio-simple.js": "content-studio-simple.js",
+    "/content-reference-center.js": "content-reference-center.js",
+}
 
 
 def _origin_allowed(handler):
@@ -76,7 +80,6 @@ def _proxy_local_chat(payload):
         with urlopen(request, timeout=120) as response:
             raw = response.read()
     except HTTPError as error:
-        # The simple owner UI should never expose router implementation details.
         try:
             detail = json.loads(error.read().decode("utf-8", errors="replace") or "{}")
             message = detail.get("detail") or detail.get("error") or ""
@@ -94,20 +97,27 @@ def _proxy_local_chat(payload):
     return data
 
 
-def _serve_simple_studio_with_same_origin_router(handler):
-    """Serve the simple-studio script with its router URL rewritten locally.
+def _rewrite_browser_script(source):
+    """Keep every content-studio browser hop on the dashboard origin.
 
-    Keeping the rewrite in this compatibility patch avoids a browser CORS hop
-    while preserving the source module's existing production flow. Future
-    source consolidation can replace the literal directly; packaged runtime is
-    already same-origin from this build onward.
+    The simple shell delegates its first AI analysis to content-reference-center,
+    so rewriting only content-studio-simple.js is insufficient. Rewrite both
+    modules through one compatibility function and remove the technical 17777
+    recovery hint from owner-facing copy.
     """
-    path = server.get_web_path() / "content-studio-simple.js"
-    source = path.read_text(encoding="utf-8")
-    source = source.replace(_DIRECT_ROUTER_JS, _SAME_ORIGIN_ROUTER_JS)
+    return (
+        source.replace(_DIRECT_ROUTER_JS, _SAME_ORIGIN_ROUTER_JS)
+        .replace("可检查 17777 服务后重试。", "请确认本地 AI 服务已经启动后重试。")
+    )
+
+
+def _serve_browser_script_with_same_origin_router(handler, filename):
+    path = server.get_web_path() / filename
+    source = _rewrite_browser_script(path.read_text(encoding="utf-8"))
     data = source.encode("utf-8")
     handler.send_response(200)
     handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
@@ -122,9 +132,9 @@ def install():
 
     def do_get(handler):
         path = urlsplit(handler.path).path
-        if path == "/content-studio-simple.js":
+        if path in _LOCAL_AI_BROWSER_SCRIPTS:
             try:
-                _serve_simple_studio_with_same_origin_router(handler)
+                _serve_browser_script_with_same_origin_router(handler, _LOCAL_AI_BROWSER_SCRIPTS[path])
             except OSError as error:
                 handler._json_error(500, error)
             return
