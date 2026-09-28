@@ -42,3 +42,18 @@ $('save-memory').addEventListener('click', async () => {
   };
   document.body.appendChild(coordinator);
 })();
+
+// The content intelligence/reference center is a first-class owner-facing
+// workspace.  It lives beside AI decision and execution, rather than being
+// hidden inside the embedded production frame.
+(() => {
+  if (document.querySelector('script[data-content-studio-shell]')) return;
+  const script = document.createElement('script');
+  script.src = '/content-studio-shell.js';
+  script.async = false;
+  script.dataset.contentStudioShell = '1';
+  script.onerror = () => {
+    if (typeof toast === 'function') toast('内容创导入口加载失败，请重新安装最新版本', 'error');
+  };
+  document.body.appendChild(script);
+})();
