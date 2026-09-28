@@ -11,9 +11,14 @@
   };
   const tell = (text, bad=false) => {
     const box = document.getElementById('apc-feedback');
+    if(!box) return;
     box.textContent = text; box.className = bad ? 'apc-feedback bad' : 'apc-feedback';
   };
   let data = null;
+  const goReferenceCenter = () => {
+    if (typeof window.changePage === 'function') { window.changePage('reference'); return; }
+    document.querySelector('.nav[data-page="reference"]')?.click();
+  };
   const renderLoading = () => {
     page.innerHTML = `
       <section class="apc-shell apc-loading" aria-live="polite" aria-label="内容生产正在读取">
@@ -31,7 +36,7 @@
     const project = currentProject(); const shots = project ? shotsFor(project.id) : [];
     page.innerHTML = `
       <section class="apc-shell" aria-label="AI 内容生产中心">
-        <header class="apc-topbar"><div><p>独立生产工作台 · 阶段 1</p><h2>AI 内容生产中心</h2><span>固定资产 → 文案 → 可编辑分镜 → 候选任务 → 成片复核</span></div><div class="apc-top-actions"><button class="apc-secondary" id="apc-refresh">刷新状态</button><button class="apc-primary" id="apc-new-project">新建项目</button></div></header>
+        <header class="apc-topbar"><div><p>独立生产工作台 · 阶段 1</p><h2>AI 内容生产中心</h2><span>固定资产 → 文案 → 可编辑分镜 → 候选任务 → 成片复核</span></div><div class="apc-top-actions"><button class="apc-secondary" id="apc-reference-center">参考内容中心</button><button class="apc-secondary" id="apc-refresh">刷新状态</button><button class="apc-primary" id="apc-new-project">新建项目</button></div></header>
         <div id="apc-feedback" class="apc-feedback">${esc(data.truth)}</div>
         <div class="apc-status"><span><b>${data.projects.length}</b> 个项目</span><span><b>${data.assets.length}</b> 项资产</span><span><b>${data.tasks.filter(x=>x.status==='待本地执行器').length}</b> 个待本地执行</span><span>所有对外发布仍需人工确认</span></div>
         <div class="apc-grid">
@@ -73,6 +78,7 @@
   };
   const refresh = async () => { data = await api('/api/ai-content-center'); render(); };
   const bind = () => {
+    document.getElementById('apc-reference-center')?.addEventListener('click', goReferenceCenter);
     document.getElementById('apc-refresh')?.addEventListener('click', () => refresh().catch(e=>tell(e.message,true)));
     document.getElementById('apc-new-project')?.addEventListener('click', promptProject);
     document.getElementById('apc-new-project-inline')?.addEventListener('click', promptProject);
@@ -81,7 +87,7 @@
     document.getElementById('apc-storyboard')?.addEventListener('click', async () => { const p=currentProject(); try { await api('/api/ai-content-center/storyboards/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:p.id,script:document.getElementById('apc-script').value})}); await refresh(); tell('已生成本地结构草稿，等待 ChatGPT 总控确认；尚未进入视频生成。'); } catch(e) { tell(e.message,true); }});
     document.querySelectorAll('[data-queue]').forEach(button => button.addEventListener('click', async () => { try { await api('/api/ai-content-center/candidates/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shot_id:button.dataset.queue,asset_ids:[document.getElementById('apc-character').value,document.getElementById('apc-scene').value,document.getElementById('apc-voice').value].filter(Boolean)})}); await refresh(); tell('候选生成任务已排入本地队列；出现真实候选文件前不会显示“成片”。'); } catch(e) { tell(e.message,true); }}));
   };
-  // Preload the independent workbench while it is hidden.  Once it has data,
+  // Preload the independent workbench while it is hidden. Once it has data,
   // clicking "内容生产" paints its own page immediately instead of leaving the
   // execution overview visible while the local API returns.
   window.aiProductionCenterActivate = async () => {
@@ -99,4 +105,26 @@
   };
   window.addEventListener('operational:content', () => window.aiProductionCenterActivate());
   window.aiProductionCenterActivate();
+})();
+
+/* Load the independent Content Intelligence / Reference Center without changing
+   the legacy operational.html contract. The feature remains a separate page,
+   not another block inside the production form. */
+(() => {
+  const load = () => {
+    if (!document.querySelector('link[data-reference-center-style]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'content-reference-center.css';
+      link.dataset.referenceCenterStyle = '1';
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('script[data-reference-center-script]')) {
+      const script = document.createElement('script');
+      script.src = 'content-reference-center.js';
+      script.dataset.referenceCenterScript = '1';
+      document.body.appendChild(script);
+    }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true}); else load();
 })();
