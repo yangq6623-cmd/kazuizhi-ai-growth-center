@@ -48,3 +48,50 @@ body.embedded .page {
 body.embedded .feedback {
   margin: 10px 18px 0;
 }
+
+/* The host page already provides the global navigation.  In the embedded
+   execution overview, the six large cards are the page switchers; a second
+   strip of tiny workbench buttons makes the screen look duplicated. */
+body.embedded .workspace-nav {
+  display: none;
+}
+
+/* Owner overview: keep the first screen close to the six-card control-board
+   layout instead of a dense technical dashboard. */
+body.embedded #dashboard {
+  max-width: none;
+  padding-top: 26px;
+}
+
+body.embedded .exec-overview-head h2 {
+  font-size: 40px;
+  letter-spacing: .02em;
+}
+
+body.embedded .exec-overview-head span {
+  font-size: 16px;
+}
+
+body.embedded .exec-workbench-grid {
+  gap: 14px;
+}
+
+body.embedded .exec-workbench-card {
+  min-height: 286px;
+  padding: 22px;
+}
+
+body.embedded .exec-card-icon {
+  width: 58px;
+  height: 58px;
+  font-size: 31px;
+  margin-bottom: 14px;
+}
+
+body.embedded .exec-workbench-card > b {
+  font-size: 22px;
+}
+
+body.embedded .exec-workbench-card strong {
+  font-size: 15px;
+}
