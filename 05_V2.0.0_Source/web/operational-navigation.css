@@ -56,42 +56,86 @@ body.embedded .workspace-nav {
   display: none;
 }
 
+body.embedded .workbench-return {
+  margin: 0;
+  padding: 14px 26px;
+  border-radius: 0;
+}
+
 /* Owner overview: keep the first screen close to the six-card control-board
    layout instead of a dense technical dashboard. */
 body.embedded #dashboard {
   max-width: none;
-  padding-top: 26px;
+  padding: 32px 30px 28px;
+  background: radial-gradient(circle at 78% 0%, rgba(214,230,255,.55), transparent 32%), #f5f8fc;
 }
 
 body.embedded .exec-overview-head h2 {
-  font-size: 40px;
-  letter-spacing: .02em;
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: .035em;
+  color: #10244a;
 }
 
 body.embedded .exec-overview-head span {
   font-size: 16px;
+  color: #58709b;
 }
 
 body.embedded .exec-workbench-grid {
-  gap: 14px;
+  gap: 16px;
 }
 
 body.embedded .exec-workbench-card {
-  min-height: 286px;
-  padding: 22px;
+  min-height: 300px;
+  padding: 24px 22px 20px;
+  border-color: #dce7f7;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(30,71,130,.08);
+}
+
+body.embedded .exec-workbench-card:hover {
+  border-color: #4b82ee;
+  box-shadow: 0 16px 34px rgba(34,92,197,.16);
 }
 
 body.embedded .exec-card-icon {
-  width: 58px;
-  height: 58px;
-  font-size: 31px;
-  margin-bottom: 14px;
+  width: 64px;
+  height: 64px;
+  font-size: 33px;
+  margin-bottom: 16px;
+  background: linear-gradient(145deg, #f5f9ff, #dfecff);
+  box-shadow: inset 0 1px 1px #fff, 0 6px 14px rgba(45,99,206,.12);
 }
 
 body.embedded .exec-workbench-card > b {
-  font-size: 22px;
+  font-size: 23px;
+  letter-spacing: .02em;
 }
 
 body.embedded .exec-workbench-card strong {
   font-size: 15px;
+  color: #1e3151;
+}
+
+body.embedded .exec-summary-grid {
+  gap: 16px;
+  margin-top: 18px;
+}
+
+body.embedded .exec-summary-grid > article {
+  border-color: #dce7f7;
+  border-radius: 18px;
+  box-shadow: 0 10px 25px rgba(30,71,130,.06);
+}
+
+body.embedded .exec-section-title h3 {
+  color: #10244a;
+  font-size: 20px;
+}
+
+@media (max-width: 1250px) {
+  body.embedded #dashboard { padding: 24px 20px; }
+  body.embedded .exec-overview-head h2 { font-size: 38px; }
+}
 }

@@ -32,7 +32,13 @@
     // code created a second iframe beside it, which rendered two identical
     // execution overviews.  Reuse the canonical frame instead.
     let frame = document.getElementById(FRAME_ID) || hub.querySelector('iframe.operational-hub-frame');
-    if (frame) frame.id = FRAME_ID;
+    if (frame) {
+      frame.id = FRAME_ID;
+      // The execution board is the first screen of this workbench.  It must
+      // not remain blank merely because the parent page created it below a
+      // lazy-loading threshold.
+      frame.loading = 'eager';
+    }
     if (!frame) {
       frame = document.createElement('iframe');
       frame.id = FRAME_ID;
@@ -46,6 +52,18 @@
       else hub.appendChild(frame);
     }
     return frame;
+  }
+
+  function verifyFrameReady(frame) {
+    window.setTimeout(() => {
+      try {
+        const ready = frame?.contentDocument?.querySelector('#execution-overview, .workspace-nav');
+        if (!ready && frame && !frame.dataset.r811RecoveryReloaded) {
+          frame.dataset.r811RecoveryReloaded = 'true';
+          frame.src = FRAME_SRC;
+        }
+      } catch (_) {}
+    }, 1800);
   }
 
   function retireLegacyAccountSurface(frame) {
@@ -150,9 +168,13 @@
   function boot() {
     const frame = ensureFrame();
     if (!frame) return;
-    const patch = () => retireLegacyAccountSurface(frame);
+    const patch = () => {
+      retireLegacyAccountSurface(frame);
+      verifyFrameReady(frame);
+    };
     frame.addEventListener('load', patch);
     window.setTimeout(patch, 250);
+    verifyFrameReady(frame);
     const active = document.querySelector('.r810-execution-tabs button.active[data-execution-page]');
     if (active) route(String(active.dataset.executionPage || 'dashboard'), active);
   }
