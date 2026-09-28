@@ -79,9 +79,6 @@
   function resizeFrame(height) {
     const raw = Number(height || 0);
     if (!Number.isFinite(raw) || raw <= 0) return;
-    // Important: do not add pixels to the child-reported height. Adding even a
-    // small constant can create an iframe resize -> child ResizeObserver ->
-    // postMessage -> parent resize feedback loop and freeze Chromium.
     const target = Math.max(520, Math.min(Math.round(raw), 5000));
     if (lastFrameHeight && Math.abs(target - lastFrameHeight) < 12) return;
     pendingFrameHeight = target;
@@ -148,6 +145,17 @@
     return true;
   }
 
+  function injectSimpleMode(frame) {
+    try {
+      const doc = frame.contentDocument;
+      if (!doc || !doc.body || doc.querySelector('script[data-kz-simple-mode]')) return;
+      const script = doc.createElement('script');
+      script.src = '/content-studio-simple.js';
+      script.dataset.kzSimpleMode = '1';
+      doc.body.appendChild(script);
+    } catch (_) {}
+  }
+
   function ensure() {
     installStyle();
     const nav = document.querySelector('aside nav');
@@ -161,8 +169,10 @@
       frame.dataset.kzStableResize = '1';
       frame.addEventListener('load', () => {
         lastFrameHeight = Math.round(frame.getBoundingClientRect().height || 620);
+        injectSimpleMode(frame);
       });
     }
+    if (frame?.contentDocument?.readyState === 'complete') injectSimpleMode(frame);
     const ready = ensureOwnerNavigation(nav);
     if (ready) {
       document.documentElement.dataset.kzContentStudio = 'ready';
