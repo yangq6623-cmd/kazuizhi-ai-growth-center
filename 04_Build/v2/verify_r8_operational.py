@@ -30,7 +30,7 @@ def source_checks():
     r7_html = (source / "web/index.html").read_text(encoding="utf-8")
     r7_app = (source / "web/app.js").read_text(encoding="utf-8")
     check(BUILD in html, "Operational UI build identity missing")
-    for label in ("今天让什么结果发生", "增长战役", "内容工厂", "手机与真机", "账号与发布", "咨询与订单", "SEO 与 GEO", "连接与体检"):
+    for label in ("今天让什么结果发生", "增长目标", "AI 内容生产中心", "人工辅助终端", "发布准备", "咨询与订单", "SEO 与 GEO", "连接与体检"):
         check(label in html, f"Operational page missing: {label}")
     check("返回 R7 完整总控制台" in html and "/index.html" in html, "Operational workspace cannot return to R7")
     for label in ("AI 指挥中心", "任务与员工", "今日复盘", "经营分析", "内容增长", "市场洞察", "任务日历", "运营总结", "明日计划", "历史记录", "运营记忆"):
