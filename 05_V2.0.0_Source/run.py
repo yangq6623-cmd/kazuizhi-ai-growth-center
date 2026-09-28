@@ -14,6 +14,7 @@ from ai_center.ai_engine import AIEngine
 from backend.server import create_server
 from backend import realtime_mirror_patch as _realtime_mirror_patch  # noqa: F401,E402
 from backend import content_factory_patch as _content_factory_patch  # noqa: F401,E402
+from backend import ai_production_center_patch as _ai_production_center_patch  # noqa: F401,E402
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
 from promotion import local_mission_qc_patch as _local_mission_qc_patch  # noqa: F401,E402
 from promotion import video_worker_v2_extensions as _video_worker_v2_extensions  # noqa: F401,E402
