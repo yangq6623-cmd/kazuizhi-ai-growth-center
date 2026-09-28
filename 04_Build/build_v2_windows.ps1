@@ -5,6 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+    # CI runs the full source acceptance gate immediately before this script.
+    # Local/manual builds still keep the same source verification by default.
     if (-not $SkipSourceVerification) {
         & $Python '04_Build/v2/verify_v2_autonomous.py' --source
         if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 source verification failed' }
