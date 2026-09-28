@@ -228,7 +228,10 @@ def exercise(command):
                 # The independent video worker should pick the job automatically. No
                 # owner click is allowed between ChatGPT plan and FINAL.MP4.
                 qc_video = None
-                for _ in range(120):
+                # The installed package can have a longer first-run encoder warmup
+                # than source mode.  Preserve the same failure state and content-QC
+                # gates, while allowing four minutes before calling it stalled.
+                for _ in range(240):
                     _, factory = http_json(base, "/api/content-factory")
                     current = next(x for x in factory["videos"] if x["id"] == video["id"])
                     if current["status"] in {"等待ChatGPT质检", "等待人工审核"}:
