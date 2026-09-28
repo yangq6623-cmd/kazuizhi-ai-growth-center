@@ -44,7 +44,7 @@ $('save-memory').addEventListener('click', async () => {
 })();
 
 // The content intelligence/reference center is a first-class owner-facing
-// workspace.  It lives beside AI decision and execution, rather than being
+// workspace. It lives beside AI decision and execution, rather than being
 // hidden inside the embedded production frame.
 (() => {
   if (document.querySelector('script[data-content-studio-shell]')) return;
@@ -54,6 +54,22 @@ $('save-memory').addEventListener('click', async () => {
   script.dataset.contentStudioShell = '1';
   script.onerror = () => {
     if (typeof toast === 'function') toast('内容创导入口加载失败，请重新安装最新版本', 'error');
+  };
+  document.body.appendChild(script);
+})();
+
+// V1.1 closed-loop pipeline is injected into the standalone content studio
+// after the owner-facing iframe is ready. It keeps the legacy production
+// center backward compatible while adding Reference -> Creative -> Director ->
+// structured Storyboard -> Production inheritance.
+(() => {
+  if (document.querySelector('script[data-content-pipeline-host]')) return;
+  const script = document.createElement('script');
+  script.src = '/content-pipeline-host.js';
+  script.async = false;
+  script.dataset.contentPipelineHost = '1';
+  script.onerror = () => {
+    if (typeof toast === 'function') toast('内容创导 V1.1 闭环加载失败，请重新安装最新版本', 'error');
   };
   document.body.appendChild(script);
 })();
