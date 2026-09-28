@@ -64,12 +64,30 @@
     return page;
   }
 
+  function measureSimpleModeHeight(frame) {
+    try {
+      const doc = frame?.contentDocument;
+      if (!doc?.body?.classList.contains('kz-simple-mode')) return 0;
+      const simple = doc.getElementById('kz-simple-root');
+      if (!simple?.classList.contains('active')) return 0;
+      const shell = doc.querySelector('.studio-shell');
+      const bodyHeight = Math.max(doc.body.scrollHeight || 0, doc.documentElement?.scrollHeight || 0);
+      const simpleHeight = (shell?.offsetHeight || 0) + (simple.scrollHeight || 0) + 44;
+      return Math.max(820, bodyHeight, simpleHeight);
+    } catch (_) {
+      return 0;
+    }
+  }
+
   function applyFrameHeight() {
     resizeTimer = null;
     const frame = document.getElementById(FRAME_ID);
     if (!frame) return;
-    const target = pendingFrameHeight;
+    let target = pendingFrameHeight;
     if (!target) return;
+    const simpleHeight = measureSimpleModeHeight(frame);
+    if (simpleHeight) target = Math.max(target, simpleHeight);
+    target = Math.max(520, Math.min(Math.round(target), 5000));
     const current = lastFrameHeight || Math.round(frame.getBoundingClientRect().height || 0);
     if (current && Math.abs(target - current) < 12) return;
     frame.style.height = `${target}px`;
@@ -77,13 +95,24 @@
   }
 
   function resizeFrame(height) {
-    const raw = Number(height || 0);
-    if (!Number.isFinite(raw) || raw <= 0) return;
+    const frame = document.getElementById(FRAME_ID);
+    let raw = Number(height || 0);
+    if (!Number.isFinite(raw) || raw <= 0) raw = 520;
+    const simpleHeight = measureSimpleModeHeight(frame);
+    if (simpleHeight) raw = Math.max(raw, simpleHeight);
     const target = Math.max(520, Math.min(Math.round(raw), 5000));
     if (lastFrameHeight && Math.abs(target - lastFrameHeight) < 12) return;
     pendingFrameHeight = target;
     if (resizeTimer) return;
-    resizeTimer = window.setTimeout(applyFrameHeight, 120);
+    resizeTimer = window.setTimeout(applyFrameHeight, 80);
+  }
+
+  function forceMeasureFrame(delay=0) {
+    window.setTimeout(() => {
+      const frame = document.getElementById(FRAME_ID);
+      const simpleHeight = measureSimpleModeHeight(frame);
+      if (simpleHeight) resizeFrame(simpleHeight);
+    }, delay);
   }
 
   function routeFrame(route = 'overview') {
@@ -125,6 +154,8 @@
     setVisibleNavActive();
     syncOuterTitle(route);
     routeFrame(route);
+    forceMeasureFrame(120);
+    forceMeasureFrame(420);
     window.scrollTo({top:0, behavior:'auto'});
   }
 
@@ -150,6 +181,11 @@
     const easy = doc.createElement('script');
     easy.src = '/content-studio-easy-front.js';
     easy.dataset.kzEasyFront = '1';
+    easy.addEventListener('load', () => {
+      forceMeasureFrame(80);
+      forceMeasureFrame(320);
+      forceMeasureFrame(700);
+    }, {once:true});
     doc.body.appendChild(easy);
   }
 
@@ -162,10 +198,15 @@
         script = doc.createElement('script');
         script.src = '/content-studio-simple.js';
         script.dataset.kzSimpleMode = '1';
-        script.addEventListener('load', () => injectEasyFront(doc), {once:true});
+        script.addEventListener('load', () => {
+          injectEasyFront(doc);
+          forceMeasureFrame(100);
+          forceMeasureFrame(400);
+        }, {once:true});
         doc.body.appendChild(script);
       }
       injectEasyFront(doc);
+      forceMeasureFrame(120);
     } catch (_) {}
   }
 
@@ -183,9 +224,14 @@
       frame.addEventListener('load', () => {
         lastFrameHeight = Math.round(frame.getBoundingClientRect().height || 620);
         injectSimpleMode(frame);
+        forceMeasureFrame(180);
+        forceMeasureFrame(600);
       });
     }
-    if (frame?.contentDocument?.readyState === 'complete') injectSimpleMode(frame);
+    if (frame?.contentDocument?.readyState === 'complete') {
+      injectSimpleMode(frame);
+      forceMeasureFrame(160);
+    }
     const ready = ensureOwnerNavigation(nav);
     if (ready) {
       document.documentElement.dataset.kzContentStudio = 'ready';
@@ -207,6 +253,8 @@
     if (event.data?.type === 'kz-content-studio-route-changed') {
       syncOuterTitle(event.data.route, event.data.title, event.data.subtitle);
       setVisibleNavActive();
+      forceMeasureFrame(100);
+      forceMeasureFrame(360);
     }
   });
 
