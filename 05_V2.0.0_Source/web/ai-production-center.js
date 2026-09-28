@@ -14,6 +14,14 @@
     box.textContent = text; box.className = bad ? 'apc-feedback bad' : 'apc-feedback';
   };
   let data = null;
+  const renderLoading = () => {
+    page.innerHTML = `
+      <section class="apc-shell apc-loading" aria-live="polite" aria-label="内容生产正在读取">
+        <p>内容生产工作台</p>
+        <h2>正在读取本地项目与任务</h2>
+        <span>正在核对项目、分镜和本地任务；不会调用模型或发布内容。</span>
+      </section>`;
+  };
   const assetOptions = (type) => (data.assets || []).filter(x => x.asset_type === type && x.enabled)
     .map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
   const projectOptions = () => (data.projects || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.status)}</option>`).join('');
@@ -73,7 +81,22 @@
     document.getElementById('apc-storyboard')?.addEventListener('click', async () => { const p=currentProject(); try { await api('/api/ai-content-center/storyboards/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:p.id,script:document.getElementById('apc-script').value})}); await refresh(); tell('已生成本地结构草稿，等待 ChatGPT 总控确认；尚未进入视频生成。'); } catch(e) { tell(e.message,true); }});
     document.querySelectorAll('[data-queue]').forEach(button => button.addEventListener('click', async () => { try { await api('/api/ai-content-center/candidates/queue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shot_id:button.dataset.queue,asset_ids:[document.getElementById('apc-character').value,document.getElementById('apc-scene').value,document.getElementById('apc-voice').value].filter(Boolean)})}); await refresh(); tell('候选生成任务已排入本地队列；出现真实候选文件前不会显示“成片”。'); } catch(e) { tell(e.message,true); }}));
   };
-  window.aiProductionCenterActivate = () => refresh().catch(e => tell(e.message, true));
+  // Preload the independent workbench while it is hidden.  Once it has data,
+  // clicking "内容生产" paints its own page immediately instead of leaving the
+  // execution overview visible while the local API returns.
+  window.aiProductionCenterActivate = async () => {
+    if (data) {
+      render();
+      refresh().catch(e => tell(e.message, true));
+      return;
+    }
+    renderLoading();
+    try {
+      await refresh();
+    } catch (e) {
+      page.innerHTML = `<section class="apc-shell apc-loading"><p>内容生产工作台</p><h2>暂时无法读取本地项目</h2><span>${esc(e.message)}</span></section>`;
+    }
+  };
   window.addEventListener('operational:content', () => window.aiProductionCenterActivate());
   window.aiProductionCenterActivate();
 })();
