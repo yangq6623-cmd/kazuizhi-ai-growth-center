@@ -1,18 +1,16 @@
-"""Make the production-monitor candidate button actively start real Wan work.
+"""Activate real Wan candidate generation from both production controls.
 
-The normal simple flow already creates candidate tasks.  The old monitor button
-skipped any shot that already had such a task, so after an interrupted/restarted
-executor it could appear to do nothing.  This patch adds an explicit same-origin
-activation endpoint that makes the latest project mission current, repairs only
-unfinished stale checkpoints, verifies ComfyUI/assets, and starts the serialized
-Wan executor.  It also appends a capture-phase browser handler so the owner gets
-immediate truthful feedback instead of a silent no-op.
+The owner-facing contract is one click: when a project already has unfinished
+shot candidates, the main simple-mode button must resume the persisted mission
+and start the real ComfyUI executor instead of silently re-running old text work.
+The production-monitor button keeps the same activation behavior.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from backend import ai_gateway_patch as _ai
 from backend import kz_local_control_patch as _video
 from backend import production_mission_patch as _mission
 from backend import quality_ai_runtime_patch as _quality
@@ -21,7 +19,12 @@ from promotion import ai_production_center as _center
 
 _INSTALLED = False
 _ACTIVATE_PATH = "/api/candidate-executor/activate"
-_MONITOR_PATHS = {"/content-production-monitor.js", "/web/content-production-monitor.js"}
+_SCRIPT_FILES = {
+    "/content-production-monitor.js": "content-production-monitor.js",
+    "/web/content-production-monitor.js": "content-production-monitor.js",
+    "/content-studio-simple.js": "content-studio-simple.js",
+    "/web/content-studio-simple.js": "content-studio-simple.js",
+}
 
 
 def _origin_allowed(handler):
@@ -49,14 +52,12 @@ def _latest_project_and_shots():
 
 def _activate_latest_mission():
     project, shots = _latest_project_and_shots()
-    mission = _mission._sync_project(project, shots)
+    _mission._sync_project(project, shots)
     data = _mission._load()
     current = _mission._mission_for_project(data, project.get("id"))
     if not current:
         raise RuntimeError("内容生产任务没有正确建立")
 
-    # The Comfy worker historically claims the first mission when no id is
-    # supplied.  Make the project visible in the monitor the active mission.
     missions = data.get("missions") or []
     data["missions"] = [current] + [x for x in missions if x is not current]
 
@@ -69,8 +70,6 @@ def _activate_latest_mission():
             has_output = bool(candidate.get("output_id") or candidate.get("file_url"))
             if has_output:
                 continue
-            # A manual click means "continue/fill missing candidates".  Only
-            # unfinished checkpoints are re-armed; completed checkpoints stay.
             if state in {"retry_wait", "failed_terminal"}:
                 candidate["status"] = "pending"
                 candidate["next_retry_at"] = ""
@@ -87,13 +86,13 @@ def _activate_latest_mission():
     current.setdefault("events", []).insert(0, {
         "at": _mission._now(),
         "kind": "manual_candidate_activation",
-        "detail": "老板点击生成/补齐候选；已激活当前项目的真实 ComfyUI 执行器。",
+        "detail": "一键生成/补齐候选已激活当前项目真实 ComfyUI 执行器。",
     })
     _mission._save(data)
 
     images = _video._recent_image_assets()
     if not images:
-        raise ValueError("当前没有可用图片素材。受控双镜头测试请先上传至少1张图片；正式纯文案模式后续会自动生成首帧。")
+        raise ValueError("当前没有可用图片素材。受控测试请先上传至少1张图片。")
     comfy = _quality._comfyui_ready()
     if not comfy.get("ok"):
         raise RuntimeError(comfy.get("message") or "ComfyUI / Wan2.1 尚未就绪")
@@ -105,6 +104,7 @@ def _activate_latest_mission():
         "ok": True,
         "message": "真实候选执行器已启动",
         "project_id": project.get("id"),
+        "director_plan_id": project.get("director_plan_id") or "",
         "shot_count": len(shots),
         "image_assets": len(images),
         "repaired_checkpoints": repaired,
@@ -119,49 +119,135 @@ _BROWSER_APPEND = r'''
   if (window.__KZ_CANDIDATE_ACTIVATION_PATCH__) return;
   window.__KZ_CANDIDATE_ACTIVATION_PATCH__ = true;
   let pollTimer = null;
+
+  async function json(url, options={}) {
+    const r=await fetch(url, options);
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||d.detail||d.message||`HTTP ${r.status}`);
+    return d;
+  }
   function toast(text, bad=false) {
     let node=document.getElementById('kz-candidate-activation-toast');
     if(!node){
       node=document.createElement('div'); node.id='kz-candidate-activation-toast';
-      node.style.cssText='position:fixed;right:22px;bottom:22px;z-index:10050;max-width:430px;padding:11px 14px;border-radius:8px;background:#17324f;color:#fff;font:12px/1.5 sans-serif;box-shadow:0 8px 26px rgba(0,0,0,.18)';
+      node.style.cssText='position:fixed;right:22px;bottom:22px;z-index:10050;max-width:460px;padding:11px 14px;border-radius:8px;background:#17324f;color:#fff;font:12px/1.5 sans-serif;box-shadow:0 8px 26px rgba(0,0,0,.18)';
       document.body.appendChild(node);
     }
     node.style.background=bad?'#b43b3b':'#17324f'; node.textContent=text; node.hidden=false;
   }
+  function inline(text, bad=false) {
+    const node=document.getElementById('kz-simple-result');
+    if(!node) return;
+    node.className=`kz-simple-result ${bad?'kz-simple-error':'kz-simple-success'}`;
+    node.innerHTML=text;
+  }
   async function statusPoll(){
     try{
-      const r=await fetch('/api/comfyui-executor/status',{cache:'no-store'}); const d=await r.json();
-      const state=d?.status||d?.executor?.status||''; const msg=d?.message||d?.executor?.message||''; const err=d?.last_error||d?.executor?.last_error||'';
-      if(err){toast(`ComfyUI执行异常：${err}`,true); clearInterval(pollTimer); pollTimer=null; return;}
-      if(state==='running'){toast(msg||'ComfyUI正在真实生成镜头候选…');}
-      if(['idle','completed'].includes(state)){toast(msg||'本轮候选执行已结束。'); clearInterval(pollTimer); pollTimer=null;}
+      const d=await json('/api/comfyui-executor/status',{cache:'no-store'});
+      const state=d?.status||d?.executor?.status||'';
+      const msg=d?.message||d?.executor?.message||'';
+      const err=d?.last_error||d?.executor?.last_error||'';
+      if(err){
+        toast(`ComfyUI执行异常：${err}`,true);
+        inline(`<b>视频生成没有完成：</b>${String(err).replace(/[&<>]/g,'')}`,true);
+        clearInterval(pollTimer); pollTimer=null; return;
+      }
+      if(state==='running') toast(msg||'ComfyUI正在真实生成镜头候选…');
+      if(state==='waiting'||state==='waiting_retry') toast(msg||'执行器正在等待可继续条件…');
+      if(state==='completed'){
+        toast(msg||'本轮候选执行已完成。');
+        clearInterval(pollTimer); pollTimer=null;
+      }
     }catch(_){ }
   }
-  document.addEventListener('click', async event => {
-    const button=event.target.closest?.('#kz-queue-all'); if(!button) return;
-    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
-    button.disabled=true; button.textContent='正在启动真实候选生成…';
-    toast('正在检查当前任务、素材和 ComfyUI…');
+  function beginPoll(){
+    if(pollTimer) clearInterval(pollTimer);
+    setTimeout(statusPoll,1800);
+    pollTimer=setInterval(statusPoll,2500);
+  }
+  async function activate(button, mainButton=false) {
+    const oldText=button.textContent;
+    button.disabled=true;
+    button.textContent=mainButton?'正在启动视频生成…':'正在启动真实候选生成…';
+    toast('正在恢复当前任务，并检查素材、ComfyUI 和 Wan2.1…');
+    if(mainButton) inline('<b>正在继续当前项目：</b>恢复未完成镜头并启动真实 Wan 视频生成。');
     try{
-      const r=await fetch('/api/candidate-executor/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-      const d=await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(d.error||d.detail||d.message||`HTTP ${r.status}`);
-      const count=Number(d.image_assets||0);
-      button.textContent='已启动 · 正在生成';
-      toast(`已启动真实 Wan 候选生成：${d.shot_count||0}个镜头，检测到${count}张可用图片。请保持页面打开。`);
-      if(pollTimer) clearInterval(pollTimer); pollTimer=setInterval(statusPoll,2500); statusPoll();
+      const d=await json('/api/candidate-executor/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      button.textContent=mainButton?'已启动 · 正在生成视频':'已启动 · 正在生成';
+      const text=`已启动真实 Wan 候选生成：${d.shot_count||0}个镜头，${d.image_assets||0}张可用图片。`;
+      toast(text);
+      if(mainButton) inline(`<b>视频生成已启动。</b>${d.shot_count||0} 个镜头已进入本地 ComfyUI / Wan2.1 串行生成；下面会显示真实候选文件。`);
+      beginPoll();
+      return d;
     }catch(error){
-      button.disabled=false; button.textContent='生成 / 补齐镜头候选';
+      button.disabled=false; button.textContent=oldText;
       toast(`没有启动：${error.message}`,true);
+      if(mainButton) inline(`<b>视频执行器没有启动：</b>${String(error.message||error).replace(/[&<>]/g,'')}`,true);
+      throw error;
+    }
+  }
+  async function pendingCurrentProject(){
+    const center=await json('/api/ai-content-center',{cache:'no-store'});
+    const project=(center.projects||[])[0];
+    if(!project) return null;
+    const pid=String(project.id||'');
+    const shots=(center.storyboards||[]).filter(x=>String(x.project_id||'')===pid);
+    if(!shots.length) return null;
+    const planned=shots.reduce((n,x)=>n+Math.max(1,Number(x.candidate_count||1)),0);
+    const generated=(center.outputs||[]).filter(x=>String(x.project_id||'')===pid && (x.candidate_key||/候选/.test(String(x.kind||x.type||'')))).length;
+    if(generated>=planned) return null;
+    let pipeline={};
+    try{pipeline=JSON.parse(localStorage.getItem('kazuizhi.content-pipeline.v1')||'{}')||{}}catch(_){ }
+    const planId=String(pipeline?.directorPlan?.id||'');
+    const samePlan=!!planId && String(project.director_plan_id||'')===planId;
+    const monitorWaiting=!!document.querySelector('#kz-production-monitor .kz-candidate:not(.ready)');
+    return (samePlan||monitorWaiting) ? {project,shots,planned,generated} : null;
+  }
+
+  document.addEventListener('click', async event => {
+    const button=event.target.closest?.('#kz-queue-all');
+    if(!button) return;
+    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+    try{await activate(button,false);}catch(_){ }
+  }, true);
+
+  document.addEventListener('click', async event => {
+    const button=event.target.closest?.('#kz-simple-start');
+    if(!button) return;
+    if(button.dataset.kzOneClickBypass==='1'){
+      delete button.dataset.kzOneClickBypass;
+      return;
+    }
+    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+    const original=button.textContent;
+    button.disabled=true; button.textContent='正在检查当前生产任务…';
+    try{
+      const pending=await pendingCurrentProject();
+      if(!pending){
+        button.disabled=false; button.textContent=original;
+        button.dataset.kzOneClickBypass='1';
+        button.click();
+        return;
+      }
+      inline(`<b>检测到未完成的当前项目：</b>${pending.generated}/${pending.planned} 个真实候选已生成。现在直接继续视频生成，不重复做前面的 AI 分析。`);
+      await activate(button,true);
+    }catch(error){
+      button.disabled=false; button.textContent=original;
+      toast(`一键生成未启动：${error.message}`,true);
+      inline(`<b>一键生成未启动：</b>${String(error.message||error).replace(/[&<>]/g,'')}`,true);
     }
   }, true);
 })();
 '''
 
 
-def _serve_monitor(handler):
-    web_file = Path(__file__).resolve().parents[1] / "web" / "content-production-monitor.js"
-    source = web_file.read_text(encoding="utf-8") + _BROWSER_APPEND
+def _serve_script(handler, path):
+    filename = _SCRIPT_FILES[path]
+    web_file = Path(__file__).resolve().parents[1] / "web" / filename
+    source = web_file.read_text(encoding="utf-8")
+    if filename == "content-studio-simple.js":
+        source = _ai._rewrite_browser_script(source)
+    source += _BROWSER_APPEND
     payload = source.encode("utf-8")
     handler.send_response(200)
     handler.send_header("Content-Type", "application/javascript; charset=utf-8")
@@ -181,9 +267,9 @@ def install():
 
     def do_get(handler):
         path = urlsplit(handler.path).path
-        if path in _MONITOR_PATHS:
+        if path in _SCRIPT_FILES:
             try:
-                _serve_monitor(handler)
+                _serve_script(handler, path)
             except OSError as error:
                 handler._json_error(500, error)
             return
