@@ -40,17 +40,25 @@ def _quality_rewrite_browser_script(source: str) -> str:
         "const timeout = setTimeout(() => controller.abort(), 1860000);",
     )
 
-    # Load the simple-mode production monitor once. It polls real backend state
-    # and never fabricates model progress.
+    # Load truthful production telemetry and the persisted content task card in
+    # simple mode. Both modules poll real backend state and never fabricate work.
     if "window.__KZ_CONTENT_STUDIO_SIMPLE__" in rewritten and "data-kz-production-monitor-loader" not in rewritten:
         rewritten += """
 \n;(() => {
-  if (document.querySelector('script[data-kz-production-monitor-loader]')) return;
-  const script = document.createElement('script');
-  script.src = 'content-production-monitor.js';
-  script.async = false;
-  script.dataset.kzProductionMonitorLoader = '1';
-  document.body.appendChild(script);
+  if (!document.querySelector('script[data-kz-production-monitor-loader]')) {
+    const monitor = document.createElement('script');
+    monitor.src = 'content-production-monitor.js';
+    monitor.async = false;
+    monitor.dataset.kzProductionMonitorLoader = '1';
+    document.body.appendChild(monitor);
+  }
+  if (!document.querySelector('script[data-kz-mission-card-loader]')) {
+    const mission = document.createElement('script');
+    mission.src = 'content-mission-card.js';
+    mission.async = false;
+    mission.dataset.kzMissionCardLoader = '1';
+    document.body.appendChild(mission);
+  }
 })();
 """
     return rewritten
@@ -65,3 +73,6 @@ from backend import dynamic_director_policy_patch as _dynamic_director_policy_pa
 # Truthful GPU/runtime telemetry, dynamic-shot candidate review controls and
 # final-render queueing.
 from backend import production_runtime_monitor_patch as _production_runtime_monitor_patch  # noqa: E402,F401
+# Persistent content task card, per-candidate checkpoints, restart recovery and
+# bounded automatic retry state used by the upcoming real video executor.
+from backend import production_mission_patch as _production_mission_patch  # noqa: E402,F401
