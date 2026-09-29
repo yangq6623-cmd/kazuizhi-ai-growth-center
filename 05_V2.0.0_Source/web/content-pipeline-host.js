@@ -7,21 +7,39 @@
   let timer = null;
   let attempts = 0;
 
+  function ensureScript(doc, selector, src, datasetKey, errorText) {
+    if (doc.querySelector(selector)) return true;
+    const script = doc.createElement('script');
+    script.src = src;
+    script.async = false;
+    script.dataset[datasetKey] = '1';
+    script.onerror = () => {
+      try { window.toast?.(errorText, 'error'); } catch (_) {}
+    };
+    (doc.body || doc.documentElement).appendChild(script);
+    return true;
+  }
+
   function inject(frame) {
     if (!frame) return false;
     let doc;
     try { doc = frame.contentDocument; } catch (_) { return false; }
     if (!doc || !doc.documentElement) return false;
-    if (doc.querySelector('script[data-kz-content-pipeline-v11]')) return true;
-    const script = doc.createElement('script');
-    script.src = '/content-pipeline-v11.js';
-    script.async = false;
-    script.dataset.kzContentPipelineV11 = '1';
-    script.onerror = () => {
-      try { window.toast?.('内容创导 V1.1 闭环模块加载失败，请重新安装最新版本', 'error'); } catch (_) {}
-    };
-    (doc.body || doc.documentElement).appendChild(script);
-    return true;
+    const pipelineReady = ensureScript(
+      doc,
+      'script[data-kz-content-pipeline-v11]',
+      '/content-pipeline-v11.js',
+      'kzContentPipelineV11',
+      '内容创导 V1.1 闭环模块加载失败，请重新安装最新版本'
+    );
+    const finalReady = ensureScript(
+      doc,
+      'script[data-kz-final-output-71]',
+      '/content-final-output.js',
+      'kzFinalOutput71',
+      '#71 最终成片模块加载失败，请重新安装最新版本'
+    );
+    return pipelineReady && finalReady;
   }
 
   function ensure() {

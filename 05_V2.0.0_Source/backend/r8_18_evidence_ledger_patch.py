@@ -61,3 +61,8 @@ def install():
 
 
 install()
+
+# R8-18 #71: load the truthful final-cut executor after the HTTP server and
+# production-monitor surfaces are available. This automatically resumes a #70
+# "完整成片合成" task without regenerating the already completed shot candidates.
+from backend import final_render_patch as _final_render_patch  # noqa: E402,F401
