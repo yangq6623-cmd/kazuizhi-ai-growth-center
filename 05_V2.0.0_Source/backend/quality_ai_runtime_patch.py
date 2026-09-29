@@ -40,6 +40,14 @@ def _quality_rewrite_browser_script(source: str) -> str:
         "const timeout = setTimeout(() => controller.abort(), 1860000);",
     )
 
+    # Preserve the reference title/link when a director plan enters production
+    # so the durable content task card can trace where an assisted creation came
+    # from. No external content is fetched here; this is only existing metadata.
+    rewritten = rewritten.replace(
+        "reference_id:state.reference?.id||'',creative_id:creative?.id||''",
+        "reference_id:state.reference?.id||'',source_title:state.reference?.title||'',source_url:state.reference?.source||'',creative_id:creative?.id||''",
+    )
+
     # Load truthful production telemetry and the persisted content task card in
     # simple mode. Both modules poll real backend state and never fabricate work.
     if "window.__KZ_CONTENT_STUDIO_SIMPLE__" in rewritten and "data-kz-production-monitor-loader" not in rewritten:
