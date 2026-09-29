@@ -67,7 +67,17 @@ install()
 # "完整成片合成" task without regenerating the already completed shot candidates.
 from backend import final_render_patch as _final_render_patch  # noqa: E402,F401
 
-# #71.1: FFmpeg may advertise h264_nvenc even when the installed NVIDIA driver
-# exposes an older NVENC API. Probe a real tiny encode and transparently fall
-# back to libx264 when needed, then resume the same persisted final task.
+# #71.1/#74: probe real NVENC support, fall back to libx264 when necessary,
+# publish immutable versioned finals, and close duplicate final-render tasks.
 from backend import final_render_compat_patch as _final_render_compat_patch  # noqa: E402,F401
+
+# R8-18 #75: director-grade finalization. Rewrite one coherent audience-facing
+# narration, use real TTS duration as the master clock, prefer unused candidate
+# clips as B-roll, forbid looping short Wan clips to fake duration, use precise
+# subtitles and restrained visual transitions, and generate future 9:16 Wan
+# candidates in a native portrait canvas where applicable.
+from backend import final_director_v75_patch as _final_director_v75_patch  # noqa: E402,F401
+
+# #75 stability layer: never replay the last candidate to fill a short gap and
+# transparently fall back to clean cuts when xfade is unavailable or fails.
+from backend import final_director_v75_stability_patch as _final_director_v75_stability_patch  # noqa: E402,F401
