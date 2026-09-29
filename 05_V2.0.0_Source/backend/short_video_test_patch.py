@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from backend import ai_gateway_patch as _ai
 from backend import dynamic_director_policy_patch as _director
 from backend import kz_local_control_patch as _video
 from backend import server
@@ -144,6 +145,22 @@ def _serve_short_duration_js(handler):
             '<option value="15 秒">15 秒</option>',
             1,
         )
+
+    # A controlled 5-second continuity test must create one direction only.
+    # Otherwise the normal default of three directions would render three
+    # separate two-shot projects and waste GPU time while obscuring the result.
+    source = source.replace(
+        "versionCount:Math.max(1,Math.min(3,Number(byId('kz-simple-version-count')?.value||3))),",
+        "versionCount:(byId('kz-simple-duration')?.value==='5 秒'?1:Math.max(1,Math.min(3,Number(byId('kz-simple-version-count')?.value||3)))),",
+        1,
+    )
+
+    # Do not bypass the normal same-origin Router rewrite, quality-first timeouts,
+    # media-intake injection, or later resilience patches merely because this
+    # endpoint adds two duration options. The rewrite function is looked up at
+    # request time so patches loaded after this module are also preserved.
+    source = _ai._rewrite_browser_script(source)
+
     payload = source.encode("utf-8")
     handler.send_response(200)
     handler.send_header("Content-Type", "application/javascript; charset=utf-8")
