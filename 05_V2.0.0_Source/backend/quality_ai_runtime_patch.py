@@ -12,6 +12,12 @@ from backend import ai_gateway_patch as _ai
 # A complete Mission can contain many serialized steps and may run for hours.
 _ai._LOCAL_AI_TIMEOUT_SECONDS = 30 * 60
 
+# Structured director/reference JSON can exceed the old 1200-token ceiling and
+# get cut in the middle of an object. Quality-first mode therefore gives local
+# structured work more output room. Calls are still serialized and the model is
+# released after each step, so video generation can reclaim the 12 GB card.
+_ai._LOCAL_AI_MAX_TOKENS = 2600
+
 # The native director pipeline is another browser-side model caller. Serve it
 # through the same rewrite path so it never calls :17777 directly.
 _ai._LOCAL_AI_BROWSER_SCRIPTS["/content-pipeline-native.js"] = "content-pipeline-native.js"
@@ -39,6 +45,40 @@ def _quality_rewrite_browser_script(source: str) -> str:
         "const timeout = setTimeout(() => controller.abort(), 35000);",
         "const timeout = setTimeout(() => controller.abort(), 1860000);",
     )
+
+    # Reference analysis needs valid machine-readable JSON. Give that request a
+    # larger explicit output budget and lower temperature, then automatically
+    # retry once with a compact schema if the model returns truncated JSON.
+    rewritten = rewritten.replace(
+        "temperature:.35})",
+        "temperature:.2,max_tokens:2400})",
+    )
+    if "function analysisPrompt(item)" in rewritten and "parseReferenceJsonWithRetry" not in rewritten:
+        rewritten = rewritten.replace(
+            "  function analysisPrompt(item){",
+            """  function parseReferenceJson(text=''){
+    const cleaned=stripJsonFence(text);
+    try{return JSON.parse(cleaned);}catch(firstError){
+      const start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}');
+      if(start>=0&&end>start)return JSON.parse(cleaned.slice(start,end+1));
+      throw firstError;
+    }
+  }
+  async function parseReferenceJsonWithRetry(raw,item){
+    try{return parseReferenceJson(raw);}catch(firstError){
+      const compactPrompt=analysisPrompt(item)+`\n\n重要：上一次结构化输出没有完整闭合。请重新输出一个更精简但字段完整的 JSON。不要解释，不要 Markdown。structure 保留 5 个阶段；style_dna、learnable、must_recreate、do_not_use 每项最多 3 条且每条尽量 24 字以内；kazuizhi_versions 保留 3 个版本，每个字段简洁。必须输出完整闭合的 JSON 对象。`;
+      const retryRaw=await callRouter(compactPrompt);
+      try{return parseReferenceJson(retryRaw);}catch(secondError){
+        throw new Error('AI 返回的结构化分析不完整，系统已自动重试一次；已完成任务不会丢失，请稍后直接重试本步骤。');
+      }
+    }
+  }
+  function analysisPrompt(item){""",
+        )
+        rewritten = rewritten.replace(
+            "const raw=await callRouter(analysisPrompt(item)),parsed=JSON.parse(stripJsonFence(raw));",
+            "const raw=await callRouter(analysisPrompt(item)),parsed=await parseReferenceJsonWithRetry(raw,item);",
+        )
 
     # Preserve the reference title/link when a director plan enters production
     # so the durable content task card can trace where an assisted creation came
