@@ -108,3 +108,8 @@ def install():
 
 
 install()
+
+# Apply the quality-first local AI policy after the base AI gateway has finished
+# installing.  This keeps long RTX3060 text work alive instead of declaring a
+# false failure while the GPU is still actively computing.
+from backend import quality_ai_runtime_patch as _quality_ai_runtime_patch  # noqa: E402,F401
