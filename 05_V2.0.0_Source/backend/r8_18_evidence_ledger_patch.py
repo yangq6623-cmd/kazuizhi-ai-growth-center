@@ -66,3 +66,8 @@ install()
 # production-monitor surfaces are available. This automatically resumes a #70
 # "完整成片合成" task without regenerating the already completed shot candidates.
 from backend import final_render_patch as _final_render_patch  # noqa: E402,F401
+
+# #71.1: FFmpeg may advertise h264_nvenc even when the installed NVIDIA driver
+# exposes an older NVENC API. Probe a real tiny encode and transparently fall
+# back to libx264 when needed, then resume the same persisted final task.
+from backend import final_render_compat_patch as _final_render_compat_patch  # noqa: E402,F401
