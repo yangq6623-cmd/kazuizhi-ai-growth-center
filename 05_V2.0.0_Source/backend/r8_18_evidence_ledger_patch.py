@@ -91,3 +91,9 @@ from backend import short_video_test_patch as _short_video_test_patch  # noqa: E
 # explicit 5-second two-shot acceptance path, fall back to truthful text-only
 # structure analysis so a temporary Router stall cannot block the whole test.
 from backend import short_test_ai_resilience_patch as _short_test_ai_resilience_patch  # noqa: E402,F401
+
+# #82.1 controlled-test director fallback: the 5-second continuity acceptance
+# path is not a creative-ideation benchmark.  After the user's text is understood,
+# create its exact two-shot director contract locally so a second Router stall
+# cannot block real Wan continuity validation. Normal production still uses AI.
+from backend import short_test_director_fallback_patch as _short_test_director_fallback_patch  # noqa: E402,F401
