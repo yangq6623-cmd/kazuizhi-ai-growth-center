@@ -97,3 +97,8 @@ from backend import short_test_ai_resilience_patch as _short_test_ai_resilience_
 # create its exact two-shot director contract locally so a second Router stall
 # cannot block real Wan continuity validation. Normal production still uses AI.
 from backend import short_test_director_fallback_patch as _short_test_director_fallback_patch  # noqa: E402,F401
+
+# #85 candidate activation: the monitor's old button skipped shots that already
+# had queued tasks, so an interrupted executor could make the button appear to
+# do nothing. Explicitly reactivate the latest mission and start real ComfyUI work.
+from backend import candidate_executor_activation_patch as _candidate_executor_activation_patch  # noqa: E402,F401
