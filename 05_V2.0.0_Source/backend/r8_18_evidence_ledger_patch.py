@@ -81,3 +81,8 @@ from backend import final_director_v75_patch as _final_director_v75_patch  # noq
 # #75 stability layer: never replay the last candidate to fill a short gap and
 # transparently fall back to clean cuts when xfade is unavailable or fails.
 from backend import final_director_v75_stability_patch as _final_director_v75_stability_patch  # noqa: E402,F401
+
+# #75 controlled short-video acceptance mode: expose truthful 5s/10s options,
+# force an explicitly requested 5-second two-shot test to stay at two shots,
+# and route the two newest local image references one-per-shot for continuity.
+from backend import short_video_test_patch as _short_video_test_patch  # noqa: E402,F401
