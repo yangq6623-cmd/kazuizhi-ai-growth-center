@@ -86,3 +86,8 @@ from backend import final_director_v75_stability_patch as _final_director_v75_st
 # force an explicitly requested 5-second two-shot test to stay at two shots,
 # and route the two newest local image references one-per-shot for continuity.
 from backend import short_video_test_patch as _short_video_test_patch  # noqa: E402,F401
+
+# #80 resilience: retry transient local Router/socket failures and, only for the
+# explicit 5-second two-shot acceptance path, fall back to truthful text-only
+# structure analysis so a temporary Router stall cannot block the whole test.
+from backend import short_test_ai_resilience_patch as _short_test_ai_resilience_patch  # noqa: E402,F401
