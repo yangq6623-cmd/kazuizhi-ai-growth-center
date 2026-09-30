@@ -9,6 +9,7 @@ on:
       - '05_V2.0.0_Source/integrations/geo_openai_search_executor.py'
       - '05_V2.0.0_Source/web/operational-search.js'
       - '05_V2.0.0_Source/web/operational-search.css'
+      - '05_V2.0.0_Source/web/decision_layout_patch.js'
       - '04_Build/v2/test_r8_19_geo_phase1.py'
       - '.github/workflows/r8_19_geo_phase1_validation.yml'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - '05_V2.0.0_Source/integrations/geo_openai_search_executor.py'
       - '05_V2.0.0_Source/web/operational-search.js'
       - '05_V2.0.0_Source/web/operational-search.css'
+      - '05_V2.0.0_Source/web/decision_layout_patch.js'
       - '04_Build/v2/test_r8_19_geo_phase1.py'
       - '.github/workflows/r8_19_geo_phase1_validation.yml'
 
@@ -48,13 +50,19 @@ jobs:
           python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py
           python -m py_compile 05_V2.0.0_Source/integrations/geo_openai_search_executor.py
-      - name: Check GEO browser script
-        run: node --check 05_V2.0.0_Source/web/operational-search.js
+      - name: Check GEO browser scripts
+        run: |
+          node --check 05_V2.0.0_Source/web/operational-search.js
+          node --check 05_V2.0.0_Source/web/decision_layout_patch.js
       - name: Verify Phase 1 source contracts
         run: |
           $core = Get-Content 05_V2.0.0_Source/core/geo_validation.py -Raw
           @('CONTROLLER = "chatgpt"','GEO50-V2-20260930','authorization_required','MAX_RETRIES = 2','local_model_cannot_be_official_geo_executor','question_set_hash','official_truth') | ForEach-Object {
             if (-not $core.Contains($_)) { throw "Missing GEO core contract: $_" }
+          }
+          $bridge = Get-Content 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py -Raw
+          @('failed_question_requires_chatgpt_retry','_eligible_question_ids','/api/r8-19/geo/retry','openai_web_search') | ForEach-Object {
+            if (-not $bridge.Contains($_)) { throw "Missing GEO execution integrity contract: $_" }
           }
           $executor = Get-Content 05_V2.0.0_Source/integrations/geo_openai_search_executor.py -Raw
           @('api.openai.com/v1/responses','"web_search"','web_search_call','response_id','evidence_level') | ForEach-Object {
@@ -64,8 +72,12 @@ jobs:
           @('SEO 增长','GEO 增长','ChatGPT GEO 总控','执行本轮 GEO 测试','固定 50 问','GEO Evidence / Receipt','待我处理','/api/search-growth') | ForEach-Object {
             if (-not $ui.Contains($_)) { throw "Missing GEO workspace contract: $_" }
           }
+          $decision = Get-Content 05_V2.0.0_Source/web/decision_layout_patch.js -Raw
+          @('今日 GEO 决策 · ChatGPT 总脑','geo-decision-progress','geo-decision-blockers','下一决策条件','kz-search-growth-workspace') | ForEach-Object {
+            if (-not $decision.Contains($_)) { throw "Missing GEO decision-center bridge: $_" }
+          }
           $css = Get-Content 05_V2.0.0_Source/web/operational-search.css -Raw
           @('font-variant-numeric:tabular-nums','is-running','is-success','is-waiting','is-danger','is-neutral') | ForEach-Object {
             if (-not $css.Contains($_)) { throw "Missing B2B visual semantic contract: $_" }
           }
-          Write-Host 'R8-19 Phase 1 validates ChatGPT control, immutable GEO50 baseline, truth-gated external evidence and preserved SEO runtime.'
+          Write-Host 'R8-19 Phase 1 validates ChatGPT control, immutable GEO50 baseline, retry integrity, truth-gated external evidence, Decision Center bridge and preserved SEO runtime.'
