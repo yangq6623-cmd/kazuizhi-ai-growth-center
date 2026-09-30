@@ -176,8 +176,22 @@
     return true;
   }
 
+  function injectB2BPolish(doc) {
+    if (!doc?.head || doc.querySelector('link[data-kz-b2b-polish]')) return;
+    const link = doc.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/content-studio-b2b-polish.css';
+    link.dataset.kzB2bPolish = '1';
+    link.addEventListener('load', () => {
+      forceMeasureFrame(60);
+      forceMeasureFrame(220);
+    }, {once:true});
+    doc.head.appendChild(link);
+  }
+
   function injectEasyFront(doc) {
     if (!doc?.body || doc.querySelector('script[data-kz-easy-front]')) return;
+    injectB2BPolish(doc);
     const easy = doc.createElement('script');
     easy.src = '/content-studio-easy-front.js';
     easy.dataset.kzEasyFront = '1';
@@ -193,6 +207,7 @@
     try {
       const doc = frame.contentDocument;
       if (!doc || !doc.body) return;
+      injectB2BPolish(doc);
       let script = doc.querySelector('script[data-kz-simple-mode]');
       if (!script) {
         script = doc.createElement('script');
