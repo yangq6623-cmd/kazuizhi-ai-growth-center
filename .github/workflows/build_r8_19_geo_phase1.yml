@@ -48,6 +48,7 @@ jobs:
           python 04_Build/v2/test_r7_block_b.py
           python 04_Build/v2/test_r8_identity.py
           python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_10_button_contract.py
           python 04_Build/v2/test_r8_11_backbone.py
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_13_seo_geo_growth.py
@@ -58,6 +59,9 @@ jobs:
           python 04_Build/v2/test_ai_gateway.py
           python 04_Build/v2/test_r8_18_model_connection_center.py
           python 04_Build/v2/test_r8_18_evidence_ledger.py
+          python 04_Build/v2/test_r8_content_factory_v2_completion.py
+          python 04_Build/v2/test_ui_interactions.py
+          python 04_Build/v2/test_r8_ui_final.py
           python 04_Build/v2/test_r8_19_geo_phase1.py
           python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
           python 04_Build/v2/test_r8_19_content_center_ui_qa.py
@@ -85,10 +89,10 @@ jobs:
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            scope = @('GEO independent workspace', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate')
+            scope = @('GEO independent workspace', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'content-center 9-page UI QA', 'button and interaction regression')
             seo_policy = 'SEO feature development frozen; existing SEO runtime and regression retained'
             local_model_policy = 'Local model is auxiliary only and never counts as official GEO evidence'
-            acceptance = '48/48 Phase-1 source acceptance plus installer, launch, overwrite-upgrade and uninstall gates must pass. Live owner external-AI 50-question validation remains a separate field acceptance step.'
+            acceptance = '48/48 Phase-1 source acceptance plus content-center UI/interactions, installer, launch, overwrite-upgrade and uninstall gates must pass. Live owner external-AI 50-question validation remains a separate field acceptance step.'
           } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
       - name: Upload R8-19 GEO Phase 1 Windows installer
         uses: actions/upload-artifact@v4
