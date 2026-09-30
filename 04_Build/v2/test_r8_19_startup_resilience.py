@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "05_V2.0.0_Source" / "web"
 STARTUP = WEB / "r8_12_startup_coordinator.js"
 MANAGER = WEB / "r7_manager_patch.js"
+TRUTH = WEB / "r8_10_truth_convergence.js"
 
 
 def require(condition, message):
@@ -14,6 +15,7 @@ def require(condition, message):
 def main():
     startup = STARTUP.read_text(encoding="utf-8")
     manager = MANAGER.read_text(encoding="utf-8")
+    truth = TRUTH.read_text(encoding="utf-8")
 
     require(MANAGER.exists(), "AI employee manager patch is missing from packaged web source")
     require("Loaded after r7.js" in manager, "manager patch no longer documents the required r7.js ordering")
@@ -33,7 +35,25 @@ def main():
     require("emit('kz:app-ready'" in startup, "degraded startup no longer emits the app-ready event")
     require("R8-19" in startup, "startup release fallback regressed to a stale R8 identity")
 
-    print("PASS: AI employee manager loads before owner shell; individual module failures degrade instead of freezing the app")
+    # A browser primitive must never be replaced globally during startup. The #58
+    # candidate used a fake MutationObserver while modules loaded; that can leave
+    # modules with inconsistent observer semantics and hide real feedback loops.
+    require("window.MutationObserver =" not in startup, "startup still monkeypatches the native MutationObserver")
+    require("FiniteStartupObserver" not in startup, "finite fake observer policy is still present")
+    require("yieldToBrowser" in startup, "owner-shell modules no longer yield to the browser between loads")
+    require("__KZ_OWNER_HEARTBEAT_TIMER__" in startup, "runtime heartbeat for responsiveness checks is missing")
+
+    # Truth convergence previously watched the entire document including
+    # characterData while converge() changed textContent itself. That creates a
+    # self-sustaining mutation -> convergence -> mutation loop. Keep it bounded.
+    require("new MutationObserver" not in truth, "truth convergence still installs a mutation feedback observer")
+    require("characterData:true" not in truth.replace(" ", ""), "truth convergence still watches characterData")
+    require("__KZ_R810_TRUTH_CONVERGENCE__" in truth, "truth convergence has no singleton guard")
+    require("if(running)" in truth or "if (running)" in truth, "truth convergence has no reentrancy guard")
+    require("setText" in truth, "truth convergence no longer avoids unchanged text writes")
+    require("setInterval(()=>scheduleConvergence(0),30000)" in truth.replace(" ", ""), "truth convergence safety refresh is not bounded to low frequency")
+
+    print("PASS: owner-shell startup is fail-soft, uses native observers, yields between modules, and truth convergence cannot self-trigger a DOM mutation loop")
 
 
 if __name__ == "__main__":
