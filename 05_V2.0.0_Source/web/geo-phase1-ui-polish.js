@@ -4,6 +4,22 @@
   window.__KZ_R819_GEO_UI_POLISH__ = true;
 
   const byId = id => document.getElementById(id);
+  let actionBusy = false;
+
+  async function json(path, options) {
+    const response = await fetch(path, {cache: 'no-store', ...(options || {})});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `GEO 服务返回 ${response.status}`);
+    return data;
+  }
+
+  async function post(path, body = {}) {
+    return json(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+  }
 
   function addSeoCrossLink(card) {
     if (!card || card.querySelector('.geo-legacy-link')) return;
@@ -52,6 +68,30 @@
     });
   }
 
+  function ensureActionFeedback() {
+    let box = byId('geo-action-feedback');
+    if (box) return box;
+    const deck = document.querySelector('.geo-command-deck');
+    if (!deck) return null;
+    box = document.createElement('div');
+    box.id = 'geo-action-feedback';
+    box.className = 'geo-action-feedback is-info';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    box.textContent = '操作状态：就绪。点击主按钮后，这里会显示执行结果。';
+    deck.appendChild(box);
+    return box;
+  }
+
+  function feedback(message, level = 'info') {
+    const box = ensureActionFeedback();
+    if (box) {
+      box.className = `geo-action-feedback is-${level}`;
+      box.textContent = message;
+    }
+    if (typeof window.notify === 'function') window.notify(message, level === 'error' ? 'error' : undefined);
+  }
+
   function makeCommandDeck() {
     const actionbar = document.querySelector('#geo-growth-pane .geo-actionbar');
     if (!actionbar || document.querySelector('.geo-command-deck')) return;
@@ -62,8 +102,8 @@
       <div class="geo-command-main">
         <div class="geo-command-copy">
           <span>今日建议</span>
-          <strong>先做 1 题网页真实验证</strong>
-          <small>确认真实外部回答能生成 A 级 Receipt 后，再扩大到 10 题；无需 API。</small>
+          <strong>先完成 1 题网页真实验证</strong>
+          <small>确认真实外部回答生成 A 级 Receipt 后，再扩大到 10 题。API 当前不是必需项。</small>
         </div>
         <div class="geo-command-actions" data-slot="main"></div>
       </div>
@@ -96,7 +136,7 @@
       main?.appendChild(browserOne);
     }
     if (browserTen) {
-      browserTen.textContent = '建立10题网页队列';
+      browserTen.textContent = '准备10题 · 从第1题开始';
       main?.appendChild(browserTen);
     }
     if (state) main?.appendChild(state);
@@ -109,6 +149,7 @@
     if (bootstrap) advanced?.appendChild(bootstrap);
     if (refresh) advanced?.appendChild(refresh);
     actionbar.remove();
+    ensureActionFeedback();
   }
 
   function makeProgress() {
@@ -144,6 +185,17 @@
     cards[2].classList.add('mode-api');
   }
 
+  function decorateWorkbenchFields(workbench) {
+    if (!workbench || workbench.dataset.layoutReady === '1') return;
+    const grids = workbench.querySelectorAll(':scope > .geo-browser-form-grid');
+    if (grids[0]) grids[0].classList.add('geo-browser-meta-grid');
+    if (grids[1]) grids[1].classList.add('geo-browser-proof-grid');
+    const labels = [...workbench.children].filter(node => node.tagName === 'LABEL');
+    if (labels[0]) labels[0].classList.add('geo-browser-question-field');
+    if (labels[1]) labels[1].classList.add('geo-browser-answer-field');
+    workbench.dataset.layoutReady = '1';
+  }
+
   function ensureWorkbenchIdleHint(workbench) {
     if (!workbench || workbench.querySelector('.geo-workbench-idle')) return;
     const hint = document.createElement('div');
@@ -156,12 +208,21 @@
   function updateWorkbench() {
     const workbench = document.querySelector('#geo-growth-pane .geo-browser-workbench');
     if (!workbench) return;
+    decorateWorkbenchFields(workbench);
     ensureWorkbenchIdleHint(workbench);
     const taskId = byId('geo-browser-task-id')?.value?.trim();
     const badge = byId('geo-browser-task-state')?.textContent || '';
     const active = Boolean(taskId) || badge.includes('等待网页回答');
     workbench.classList.toggle('is-idle', !active);
     workbench.classList.toggle('is-active', active);
+    const one = byId('geo-browser-one');
+    const ten = byId('geo-browser-ten');
+    if (one) one.textContent = active ? '继续当前网页验证' : '开始网页验证 · 1题';
+    if (ten) ten.disabled = active;
+  }
+
+  function focusWorkbench() {
+    document.querySelector('#geo-growth-pane .geo-browser-workbench')?.scrollIntoView({behavior: 'smooth', block: 'start'});
   }
 
   function updateLegacyQueueNotice() {
@@ -176,10 +237,123 @@
     if (!note) {
       note = document.createElement('div');
       note.id = 'geo-legacy-queue-note';
-      note.className = 'geo-legacy-queue-note';
-      note.textContent = '检测到升级前遗留的 API 排队任务。点击“开始网页验证”后会自动转换为网页验证任务，不会重复建题，也不需要配置 API。';
+      note.className = 'geo-legacy-queue-notice';
+      note.textContent = '检测到升级前遗留的 API 排队任务。开始网页验证后会自动转换为网页验证任务，不会重复建题，也不需要配置 API。';
       list.parentNode?.insertBefore(note, list);
     }
+  }
+
+  async function refreshGeo() {
+    if (typeof window.searchGrowthActivate === 'function') await window.searchGrowthActivate();
+    updateProgress();
+    updateWorkbench();
+    updateLegacyQueueNotice();
+  }
+
+  async function withBusy(button, busyText, fn) {
+    if (actionBusy) {
+      feedback('已有 GEO 操作正在执行，请等待当前操作完成。', 'warning');
+      return;
+    }
+    actionBusy = true;
+    const original = button?.textContent || '';
+    if (button) {
+      button.disabled = true;
+      button.textContent = busyText;
+    }
+    try {
+      await fn();
+    } catch (error) {
+      feedback(error.message || String(error), 'error');
+    } finally {
+      actionBusy = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = original;
+      }
+      updateWorkbench();
+    }
+  }
+
+  async function browserStart(button, limit) {
+    const currentTask = byId('geo-browser-task-id')?.value?.trim();
+    if (currentTask) {
+      feedback(`当前已有网页验证任务 ${currentTask}，请先完成并保存 Receipt，避免重复领取任务。`, 'info');
+      focusWorkbench();
+      return;
+    }
+    await withBusy(button, limit === 1 ? '正在领取第1题…' : '正在准备10题…', async () => {
+      await post('/api/r8-19/geo/bootstrap', {});
+      const platform = byId('geo-browser-platform')?.value || 'chatgpt_web';
+      const reply = await post('/api/r8-19/geo/browser/prepare', {limit, platform});
+      const task = reply.result?.claim?.task || {};
+      await refreshGeo();
+      if (!task.task_id) throw new Error('没有取得可执行的网页验证任务，请刷新后重试。');
+      feedback(limit === 1
+        ? `已领取第1题：${task.question_id || task.task_id}。请到真实外部AI网页提问，再保存回答。`
+        : `已准备本轮网页验证队列，并激活第1题：${task.question_id || task.task_id}。先完成当前题，再继续下一题。`, 'success');
+      focusWorkbench();
+    });
+  }
+
+  async function localPrecheck(button, limit) {
+    await withBusy(button, `本地预检 ${limit} 题中…`, async () => {
+      const reply = await post('/api/r8-19/geo/local-precheck/run', {limit});
+      await refreshGeo();
+      feedback(`本地预检完成 ${Number(reply.result?.completed || 0)} 题。结果固定为 C 级辅助，不计正式 GEO。`, 'success');
+    });
+  }
+
+  async function submitReceipt(button) {
+    await withBusy(button, '正在保存 Receipt…', async () => {
+      const taskId = byId('geo-browser-task-id')?.value?.trim();
+      const sessionUrl = byId('geo-browser-url')?.value?.trim();
+      const rawAnswer = byId('geo-browser-answer')?.value?.trim();
+      if (!taskId) throw new Error('当前没有网页验证任务。请先点击“开始网页验证 · 1题”。');
+      if (!sessionUrl) throw new Error('请填写真实外部 AI 网页会话地址。');
+      if (!rawAnswer) throw new Error('请填写真实外部 AI 的完整原始回答。');
+      const citationUrls = (byId('geo-browser-citations')?.value || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      const reply = await post('/api/r8-19/geo/browser/receipt', {
+        task_id: taskId,
+        platform: byId('geo-browser-platform')?.value || 'custom_web',
+        session_url: sessionUrl,
+        raw_answer: rawAnswer,
+        citation_urls: citationUrls,
+      });
+      byId('geo-browser-task-id').value = '';
+      byId('geo-browser-question').value = '';
+      byId('geo-browser-url').value = '';
+      byId('geo-browser-answer').value = '';
+      byId('geo-browser-citations').value = '';
+      await refreshGeo();
+      feedback(`已保存 ${reply.result?.evidence_level || 'A'} 级 GEO Evidence / Receipt。正式基线已更新。`, 'success');
+    });
+  }
+
+  async function bootstrap(button) {
+    await withBusy(button, '正在核验50问…', async () => {
+      await post('/api/r8-19/geo/bootstrap', {});
+      await refreshGeo();
+      feedback('固定50问已核验：30自然发现 + 10商业推荐 + 10品牌认知。', 'success');
+    });
+  }
+
+  function installInteractionRepair() {
+    if (document.documentElement.dataset.kzGeoInteractionRepair === '1') return;
+    document.documentElement.dataset.kzGeoInteractionRepair = '1';
+    document.addEventListener('click', event => {
+      const button = event.target.closest?.('#geo-browser-one,#geo-browser-ten,#geo-local-one,#geo-local-ten,#geo-browser-submit,#geo-bootstrap,#geo-refresh');
+      if (!button || !button.closest('#geo-growth-pane')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (button.id === 'geo-browser-one') browserStart(button, 1);
+      else if (button.id === 'geo-browser-ten') browserStart(button, 10);
+      else if (button.id === 'geo-local-one') localPrecheck(button, 1);
+      else if (button.id === 'geo-local-ten') localPrecheck(button, 10);
+      else if (button.id === 'geo-browser-submit') submitReceipt(button);
+      else if (button.id === 'geo-bootstrap') bootstrap(button);
+      else if (button.id === 'geo-refresh') withBusy(button, '刷新中…', async () => { await refreshGeo(); feedback('GEO 状态已刷新。', 'success'); });
+    }, true);
   }
 
   function polishGeo() {
@@ -192,6 +366,7 @@
     updateProgress();
     updateWorkbench();
     updateLegacyQueueNotice();
+    installInteractionRepair();
 
     const tested = byId('geo-tested');
     if (tested && !tested.__kzPolishObserver && window.MutationObserver) {
