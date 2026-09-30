@@ -3,19 +3,23 @@ window.KZ_BUILD_INFO = {
   commit: "__GITHUB_SHA__",
   branch: "r8-18-model-connection-center",
   phase: "R8-18",
-  displayVersion: "V2.2.2 R8-18 阶段一测试候选",
-  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-18-PHASE1-FOUNDATION"
+  displayVersion: "V2.2.2 R8-18 内容中心最终整合候选",
+  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-18-CONTENT-V101"
 };
 
 (() => {
+  const addScript = (src, marker) => {
+    if (document.querySelector(`script[${marker}]`)) return;
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    script.setAttribute(marker, '1');
+    document.body.appendChild(script);
+  };
   const load = () => {
     if (!document.getElementById('studio-root')) return;
-    if (document.querySelector('script[data-series-asset-center-v92]')) return;
-    const script = document.createElement('script');
-    script.src = 'series-asset-center-v92.js';
-    script.async = false;
-    script.dataset.seriesAssetCenterV92 = '1';
-    document.body.appendChild(script);
+    addScript('series-asset-center-v92.js', 'data-series-asset-center-v92');
+    addScript('content-final-v101.js', 'data-content-final-v101');
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true});
   else load();
