@@ -14,6 +14,9 @@
     .geo-direct-top div{min-width:0}.geo-direct-top p{margin:0 0 3px;color:#6b7a90;font-size:11px}.geo-direct-top h1{margin:0;font-size:20px;line-height:1.3}.geo-direct-top a{flex:0 0 auto;padding:8px 12px;border:1px solid #c9d7ed;border-radius:8px;background:#fff;color:#285fc9;text-decoration:none;font-size:12px;font-weight:700}
     .geo-direct-main{max-width:1480px;margin:0 auto;padding:18px 22px 34px}.geo-direct-note{margin:0 0 14px;padding:9px 12px;border:1px solid #dfe6f0;border-radius:8px;background:#fff;color:#64748b;font-size:11px;line-height:1.5}
     #search{display:block!important}.growth-tab[data-growth-tab="seo"] span:after{content:" · 返回完整SEO页面查看"}.geo-direct-seo-placeholder{padding:18px;border:1px dashed #cbd5e1;border-radius:9px;background:#fff;color:#64748b;font-size:12px}.geo-direct-seo-placeholder a{color:#2563eb;font-weight:700}
+    body.geo-direct-embed .geo-direct-top,body.geo-direct-embed .geo-direct-note{display:none}
+    body.geo-direct-embed .geo-direct-main{max-width:none;margin:0;padding:0 2px 18px}
+    body.geo-direct-embed .geo-direct-seo-placeholder{display:none}
     @media(max-width:720px){.geo-direct-top{align-items:flex-start;padding:12px 14px}.geo-direct-main{padding:14px}.geo-direct-top h1{font-size:17px}}
   </style>
 </head>
@@ -31,6 +34,8 @@
     </section>
   </main>
   <script>
+    const geoParams=new URLSearchParams(location.search);
+    if(geoParams.get('embed')==='1')document.body.classList.add('geo-direct-embed');
     try{localStorage.setItem('kz-search-growth-workspace','geo')}catch(_){ }
   </script>
   <script src="operational-search.js"></script>
