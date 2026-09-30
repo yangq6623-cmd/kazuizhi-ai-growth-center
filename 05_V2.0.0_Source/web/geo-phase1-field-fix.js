@@ -5,6 +5,8 @@
 
   const byId = id => document.getElementById(id);
   let busy = false;
+  let syncTimer = null;
+  let periodicTimer = null;
 
   const PLATFORM_URLS = {
     chatgpt_web: 'https://chatgpt.com/',
@@ -41,17 +43,27 @@
       }
     }
     if (box) {
-      box.className = `geo-action-feedback is-${level}`;
+      const nextClass = `geo-action-feedback is-${level}`;
+      if (box.className !== nextClass) box.className = nextClass;
       box.setAttribute('role', 'status');
       box.setAttribute('aria-live', 'polite');
-      box.textContent = message;
+      if (box.textContent !== message) box.textContent = message;
     }
     if (typeof window.notify === 'function') window.notify(message, level === 'error' ? 'error' : undefined);
   }
 
+  function scheduleSync(delay = 0) {
+    if (syncTimer) window.clearTimeout(syncTimer);
+    syncTimer = window.setTimeout(() => {
+      syncTimer = null;
+      if (!document.hidden) syncUi();
+    }, delay);
+  }
+
   async function refreshGeo() {
     if (typeof window.searchGrowthActivate === 'function') await window.searchGrowthActivate();
-    setTimeout(syncUi, 0);
+    scheduleSync(0);
+    scheduleSync(240);
   }
 
   async function run(button, busyText, work) {
@@ -75,7 +87,7 @@
         button.disabled = false;
         button.textContent = old;
       }
-      setTimeout(syncUi, 0);
+      scheduleSync(0);
     }
   }
 
@@ -262,18 +274,25 @@
     if (truth) shell.append(truth);
   }
 
+  function setButtonText(button, text) {
+    if (button && button.textContent !== text) button.textContent = text;
+  }
+
   function syncUi() {
+    const pane = byId('geo-growth-pane');
+    if (!pane) return;
     bindKpis();
     ensureTaskToolbar();
     compactRunner();
     const active = Boolean(currentTaskId());
     const one = byId('geo-browser-one');
     const ten = byId('geo-browser-ten');
-    if (one) one.textContent = active ? '打开AI网页并复制问题' : '开始网页验证 · 1题';
+    setButtonText(one, active ? '打开AI网页并复制问题' : '开始网页验证 · 1题');
     if (ten) {
-      ten.disabled = false;
-      ten.textContent = active ? '当前题完成后再准备10题' : '准备10题 · 从第1题开始';
-      ten.title = active ? '当前已有网页验证任务，点击会提示先完成当前题' : '';
+      if (ten.disabled) ten.disabled = false;
+      setButtonText(ten, active ? '当前题完成后再准备10题' : '准备10题 · 从第1题开始');
+      const title = active ? '当前已有网页验证任务，点击会提示先完成当前题' : '';
+      if (ten.title !== title) ten.title = title;
     }
     const tools = document.querySelector('.geo-task-actions');
     tools?.classList.toggle('is-active', active);
@@ -315,15 +334,21 @@
     else if (button.id === 'geo-refresh') run(button, '刷新中…', async () => { await refreshGeo(); feedback('GEO 状态已刷新。', 'success'); });
   }, true);
 
-  const observer = new MutationObserver(() => syncUi());
-  function install() {
+  function install(attempt = 0) {
     const pane = byId('geo-growth-pane');
     if (!pane) {
-      setTimeout(install, 80);
+      if (attempt < 50) window.setTimeout(() => install(attempt + 1), 100);
       return;
     }
     syncUi();
-    observer.observe(pane, {subtree: true, childList: true, attributes: true});
+    [180, 500, 1200, 2600].forEach(delay => window.setTimeout(syncUi, delay));
+    if (!periodicTimer) {
+      periodicTimer = window.setInterval(() => {
+        if (!document.hidden) syncUi();
+      }, 2000);
+    }
+    window.addEventListener('focus', () => scheduleSync(80));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleSync(80); });
   }
 
   install();
