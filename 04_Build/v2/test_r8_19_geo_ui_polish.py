@@ -20,20 +20,25 @@ def main():
 
     for marker in (
         "开始网页验证 · 1题",
-        "建立10题网页队列",
+        "准备10题 · 从第1题开始",
         "本地辅助预检",
         "高级工具",
         "第一轮真实基线",
         "GEO 联动摘要（只读）",
         "进入 GEO 增长",
         "SEO 自治运行",
+        "geo-action-feedback",
+        "installInteractionRepair",
+        "当前已有网页验证任务",
     ):
-        require(marker in polish, f"GEO/SEO visual information architecture marker missing: {marker}")
+        require(marker in polish, f"GEO/SEO visual or interaction marker missing: {marker}")
 
     for marker in (
         ".geo-command-deck",
         ".geo-baseline-progress",
+        ".geo-action-feedback",
         ".geo-browser-workbench.is-idle",
+        ".geo-browser-workbench.is-active",
         ".legacy-geo-summary",
         ".geo-legacy-queue-notice",
     ):
@@ -51,12 +56,16 @@ def main():
     ):
         require(button_id in ui, f"existing GEO control removed by visual upgrade: {button_id}")
 
-    require("prepareBrowserTask(1" in ui and "prepareBrowserTask(10" in ui, "browser 1/10 task controls lost wiring")
-    require("runLocalPrecheck(1" in ui and "runLocalPrecheck(10" in ui, "local precheck controls lost wiring")
-    require("submitBrowserReceipt" in ui, "browser Evidence/Receipt save action missing")
+    require("prepareBrowserTask(1" in ui and "prepareBrowserTask(10" in ui, "base browser 1/10 task controls lost wiring")
+    require("runLocalPrecheck(1" in ui and "runLocalPrecheck(10" in ui, "base local precheck controls lost wiring")
+    require("submitBrowserReceipt" in ui, "base browser Evidence/Receipt save action missing")
     require("runApiRound" in ui, "optional API action missing")
+    require("event.stopImmediatePropagation()" in polish, "repaired GEO buttons can double-fire old handlers")
+    require("'/api/r8-19/geo/local-precheck/run'" in polish, "local precheck repaired click path missing")
+    require("'/api/r8-19/geo/browser/prepare'" in polish, "browser prepare repaired click path missing")
+    require("'/api/r8-19/geo/browser/receipt'" in polish, "browser receipt repaired click path missing")
 
-    print("PASS: R8-19 GEO workspace uses compact B2B command layout without removing functional controls; SEO GEO duplicate is reduced to read-only linkage")
+    print("PASS: R8-19 GEO workspace has compact B2B layout, visible click feedback and protected browser/local controls; SEO GEO duplicate remains read-only")
 
 
 if __name__ == "__main__":
