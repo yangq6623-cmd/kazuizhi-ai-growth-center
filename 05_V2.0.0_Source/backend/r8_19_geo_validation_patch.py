@@ -27,6 +27,7 @@ from core.geo_validation import (
     retry_task,
     set_decision,
 )
+from integrations import geo_openai_search_executor
 
 _INSTALLED = False
 
@@ -53,6 +54,12 @@ def _task_id(payload):
     return value
 
 
+def _dashboard_with_executor():
+    value = dashboard()
+    value["executor"] = geo_openai_search_executor.status()
+    return value
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -65,7 +72,7 @@ def install():
         path = parsed.path
         query = parse_qs(parsed.query)
         if path == "/api/r8-19/geo":
-            handler._json_ok(dashboard())
+            handler._json_ok(_dashboard_with_executor())
             return
         if path == "/api/r8-19/geo/questions":
             handler._json_ok(question_set())
@@ -81,6 +88,9 @@ def install():
             return
         if path == "/api/r8-19/geo/audit":
             handler._json_ok({"events": audit_events(query.get("limit", [200])[0])})
+            return
+        if path == "/api/r8-19/geo/executor":
+            handler._json_ok(geo_openai_search_executor.status())
             return
         return original_get(handler)
 
@@ -115,9 +125,13 @@ def install():
                     question_ids=payload.get("question_ids") or None,
                 )
             elif path == "/api/r8-19/geo/run":
-                # The caller must provide a verified external executor contract.
-                # Without it the task truthfully becomes authorization_required.
-                result = claim_next_task(payload.get("executor") or payload)
+                mode = str(payload.get("mode") or "openai_web_search").strip()
+                if mode == "external_contract":
+                    result = claim_next_task(payload.get("executor") or payload)
+                elif mode == "openai_web_search":
+                    result = geo_openai_search_executor.run_once()
+                else:
+                    raise ValueError("unsupported_geo_executor_mode")
             elif path == "/api/r8-19/geo/receipt":
                 result = record_result(payload)
             elif path == "/api/r8-19/geo/fail":
@@ -136,7 +150,7 @@ def install():
                 )
             else:
                 result = set_decision(payload)
-            handler._json_ok({"result": result, "geo": dashboard()})
+            handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
