@@ -85,7 +85,7 @@
     hero.insertAdjacentHTML('afterend', geoDecisionCard());
     document.getElementById('geo-decision-open')?.addEventListener('click', () => {
       try { localStorage.setItem('kz-search-growth-workspace','geo'); } catch (_) {}
-      window.location.href = 'operational.html#search';
+      window.location.href = '/geo.html';
     });
     refreshGeoDecisionBrief();
     return true;
