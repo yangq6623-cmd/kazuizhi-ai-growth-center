@@ -19,10 +19,11 @@ $('save-memory').addEventListener('click', async () => {
   }
 });
 
-// R8-12.1 startup convergence: the owner shell, truth layer, R8-11 backbone,
-// R8-12 account center and local control helpers are now loaded by one ordered
-// coordinator after the legacy/base page has settled. This prevents first-open
-// duplicate cards and route races caused by several independent loaders.
+// R8-12.1 startup convergence: the owner shell is loaded through a single
+// coordinator after the legacy/base page has settled. Heavy iframe workspaces
+// (Content Studio, Execution and SEO/GEO) are intentionally NOT injected here;
+// the coordinator now lazy-loads them on first use so the dashboard can become
+// responsive before any large child application starts.
 (() => {
   if (!document.querySelector('link[data-r810-workbench]')) {
     const link = document.createElement('link');
@@ -41,35 +42,4 @@ $('save-memory').addEventListener('click', async () => {
     if (typeof toast === 'function') toast('R8-12 启动协调器加载失败，请重新安装最新版本', 'error');
   };
   document.body.appendChild(coordinator);
-})();
-
-// The content intelligence/reference center is a first-class owner-facing
-// workspace. It lives beside AI decision and execution, rather than being
-// hidden inside the embedded production frame.
-(() => {
-  if (document.querySelector('script[data-content-studio-shell]')) return;
-  const script = document.createElement('script');
-  script.src = '/content-studio-shell.js';
-  script.async = false;
-  script.dataset.contentStudioShell = '1';
-  script.onerror = () => {
-    if (typeof toast === 'function') toast('内容创导入口加载失败，请重新安装最新版本', 'error');
-  };
-  document.body.appendChild(script);
-})();
-
-// #36 stable V1.1 re-integration. The host performs only a bounded one-time
-// bootstrap into the same-origin content studio iframe. The pipeline itself
-// has no MutationObserver, ResizeObserver or interval loops and cancels stale
-// Router work whenever the owner changes route.
-(() => {
-  if (document.querySelector('script[data-content-pipeline-host]')) return;
-  const script = document.createElement('script');
-  script.src = '/content-pipeline-host.js';
-  script.async = false;
-  script.dataset.contentPipelineHost = '1';
-  script.onerror = () => {
-    if (typeof toast === 'function') toast('内容创导闭环模块加载失败，请重新安装最新版本', 'error');
-  };
-  document.body.appendChild(script);
 })();
