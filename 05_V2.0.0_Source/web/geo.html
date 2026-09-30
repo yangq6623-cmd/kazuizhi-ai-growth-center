@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#2563eb">
+  <title>卡嘴子 AI · GEO 增长工作区</title>
+  <style>
+    html,body{height:100%;margin:0;background:#f5f7fb;font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif}
+    #geo-shell{width:100%;height:100%;border:0;display:block;background:#f5f7fb}
+    #geo-loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:13px;background:#f5f7fb;z-index:2}
+  </style>
+</head>
+<body>
+  <div id="geo-loading">正在打开 GEO 增长工作区…</div>
+  <iframe id="geo-shell" title="GEO 增长工作区" src="/operational.html?embedded=1"></iframe>
+  <script>
+    (()=>{
+      try{localStorage.setItem('kz-search-growth-workspace','geo')}catch(_){ }
+      const frame=document.getElementById('geo-shell');
+      const loading=document.getElementById('geo-loading');
+      frame.addEventListener('load',()=>{
+        try{
+          const target=frame.contentWindow;
+          if(typeof target.changePage==='function')target.changePage('search');
+          const select=target.document?.querySelector('[data-growth-tab="geo"]');
+          if(select&&!select.classList.contains('active'))select.click();
+          target.scrollTo?.({top:0,behavior:'auto'});
+        }catch(_){ }
+        loading.hidden=true;
+      });
+    })();
+  </script>
+</body>
+</html>
