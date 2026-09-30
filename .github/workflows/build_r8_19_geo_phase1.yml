@@ -63,6 +63,7 @@ jobs:
           python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
           python 04_Build/v2/test_r8_19_geo_main_platform_integration.py
           python 04_Build/v2/test_r8_19_model_connection_ui.py
+          python 04_Build/v2/test_r8_19_geo_live_gate.py
       - name: Integrate unified model connection center into packaged web
         run: |
           $targets = @(
@@ -107,10 +108,10 @@ jobs:
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            scope = @('GEO merged into normal main-platform SEO/GEO route', 'SEO/GEO internal first-level tabs', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'main-platform field integration gate', 'unified local/cloud AI model connection center')
+            scope = @('GEO merged into normal main-platform SEO/GEO route', 'SEO/GEO internal first-level tabs', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'main-platform field integration gate', 'unified local/cloud AI model connection center', 'one-question live preflight gate')
             seo_policy = 'SEO feature development frozen; existing SEO runtime and regression retained'
             local_model_policy = 'Local model may serve auxiliary analysis/production through a verified localhost OpenAI-compatible route, but never counts as official GEO A/B evidence'
-            acceptance = '48/48 Phase-1 source acceptance plus main-platform integration, unified model-center regression, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live owner external-AI 50-question validation remains a separate field acceptance step.'
+            acceptance = '48/48 Phase-1 source acceptance plus main-platform integration, live preflight, unified model-center regression, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live owner external-AI 50-question validation remains a separate field acceptance step.'
           } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
       - name: Upload R8-19 GEO Phase 1 Windows installer
         uses: actions/upload-artifact@v4
