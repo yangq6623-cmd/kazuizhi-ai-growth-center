@@ -78,8 +78,9 @@ from backend import final_render_compat_patch as _final_render_compat_patch  # n
 # candidates in a native portrait canvas where applicable.
 from backend import final_director_v75_patch as _final_director_v75_patch  # noqa: E402,F401
 
-# #75 stability layer: never replay the last candidate to fill a short gap and
-# transparently fall back to clean cuts when xfade is unavailable or fails.
+# #75/#89 stability + true continuation layer: preserve non-loop rendering,
+# clean director instructions out of public narration, continue eligible shots
+# from the previous real candidate tail frame, and use action-match hard cuts.
 from backend import final_director_v75_stability_patch as _final_director_v75_stability_patch  # noqa: E402,F401
 
 # #75 controlled short-video acceptance mode: expose truthful 5s/10s options,
@@ -98,7 +99,12 @@ from backend import short_test_ai_resilience_patch as _short_test_ai_resilience_
 # cannot block real Wan continuity validation. Normal production still uses AI.
 from backend import short_test_director_fallback_patch as _short_test_director_fallback_patch  # noqa: E402,F401
 
-# #85 candidate activation: the monitor's old button skipped shots that already
-# had queued tasks, so an interrupted executor could make the button appear to
-# do nothing. Explicitly reactivate the latest mission and start real ComfyUI work.
+# #85/#88 candidate activation: explicitly reactivate interrupted missions and
+# auto-start the local ComfyUI portable runtime when normal one-click production
+# reaches real Wan candidate execution.
 from backend import candidate_executor_activation_patch as _candidate_executor_activation_patch  # noqa: E402,F401
+
+# #90 quality closure: compare the previous real tail frame with the next clip's
+# opening frames, automatically regenerate only the discontinuous next shot, and
+# keep the owner UI aligned with the current project's real duration/completion.
+from backend import continuity_qc_v90_patch as _continuity_qc_v90_patch  # noqa: E402,F401
