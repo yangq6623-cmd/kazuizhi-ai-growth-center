@@ -31,6 +31,22 @@
     }catch(error){console.warn('GEO UI polish inject deferred',error)}
   }
 
+  function injectGeoFieldFix(frame, after){
+    try{
+      const doc=frame.contentDocument;
+      if(!doc){after?.();return;}
+      ensureStyle(doc,'r819-geo-field-fix-style','/geo-phase1-field-fix.css');
+      const existing=doc.getElementById('r819-geo-field-fix-script');
+      if(existing){after?.();return;}
+      const script=doc.createElement('script');
+      script.id='r819-geo-field-fix-script';
+      script.src='/geo-phase1-field-fix.js';
+      script.addEventListener('load',()=>after?.(),{once:true});
+      script.addEventListener('error',()=>{console.warn('GEO field fix load failed');after?.();},{once:true});
+      doc.body.appendChild(script);
+    }catch(error){console.warn('GEO field fix inject deferred',error);after?.();}
+  }
+
   function ensureSearchHost(doc){
     let host=doc.getElementById('search');
     if(host)return host;
@@ -74,26 +90,24 @@
       ensureSearchHost(doc);
       ensureStyle(doc,'r819-growth-workspace-style','/operational-search.css');
       ensureStyle(doc,'r819-geo-polish-style','/geo-phase1-ui-polish.css');
+      ensureStyle(doc,'r819-geo-field-fix-style','/geo-phase1-field-fix.css');
       injectAutonomy(frame);
+      const finishUi=()=>injectGeoFieldFix(frame,()=>injectGeoPolish(frame));
       const selectRequested=()=>{
         let saved='seo';
         try{saved=desiredWorkspace||localStorage.getItem(WORKSPACE_KEY)||'seo'}catch(_){saved=desiredWorkspace||'seo'}
         switchFrameWorkspace(saved);
-        injectGeoPolish(frame);
+        finishUi();
         scheduleResize(frame);
       };
       if(doc.getElementById('r819-growth-workspace-script')){
-        injectGeoPolish(frame);
         selectRequested();
         return;
       }
       const script=doc.createElement('script');
       script.id='r819-growth-workspace-script';
       script.src='/operational-search.js';
-      script.addEventListener('load',()=>{
-        injectGeoPolish(frame);
-        setTimeout(selectRequested,0);
-      },{once:true});
+      script.addEventListener('load',()=>setTimeout(selectRequested,0),{once:true});
       doc.body.appendChild(script);
     }catch(error){console.warn('R8-19 integrated SEO/GEO workspace inject deferred',error)}
   }
