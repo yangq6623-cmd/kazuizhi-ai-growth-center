@@ -29,6 +29,19 @@
     }catch(error){console.warn('GEO live gate inject deferred',error)}
   }
 
+  function injectGeoPolish(frame){
+    try{
+      const doc=frame.contentDocument;
+      if(!doc)return;
+      ensureStyle(doc,'r819-geo-polish-style','/geo-phase1-ui-polish.css');
+      if(doc.getElementById('r819-geo-polish-script'))return;
+      const script=doc.createElement('script');
+      script.id='r819-geo-polish-script';
+      script.src='/geo-phase1-ui-polish.js';
+      doc.body.appendChild(script);
+    }catch(error){console.warn('GEO UI polish inject deferred',error)}
+  }
+
   function ensureSearchHost(doc){
     let host=doc.getElementById('search');
     if(host)return host;
@@ -71,15 +84,18 @@
       if(!doc)return;
       ensureSearchHost(doc);
       ensureStyle(doc,'r819-growth-workspace-style','/operational-search.css');
+      ensureStyle(doc,'r819-geo-polish-style','/geo-phase1-ui-polish.css');
       injectAutonomy(frame);
       const selectRequested=()=>{
         let saved='seo';
         try{saved=desiredWorkspace||localStorage.getItem(WORKSPACE_KEY)||'seo'}catch(_){saved=desiredWorkspace||'seo'}
         switchFrameWorkspace(saved);
+        injectGeoPolish(frame);
         scheduleResize(frame);
       };
       if(doc.getElementById('r819-growth-workspace-script')){
         injectGeoLiveGate(frame);
+        injectGeoPolish(frame);
         selectRequested();
         return;
       }
@@ -88,6 +104,7 @@
       script.src='/operational-search.js';
       script.addEventListener('load',()=>{
         injectGeoLiveGate(frame);
+        injectGeoPolish(frame);
         setTimeout(selectRequested,0);
       },{once:true});
       doc.body.appendChild(script);
@@ -182,7 +199,6 @@
     refresh
   };
 
-  // AI决策中心的“打开GEO工作区”必须回到主平台，不再跳独立浏览器页面。
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('#geo-decision-open');
     if(!button)return;
@@ -190,7 +206,6 @@
     activateWorkspace('geo');
   },true);
 
-  // The integrated SEO iframe cannot directly control the owner-shell account iframe.
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.data?.type !== 'kz-r8-search-auth') return;
     const platform = String(event.data.platform || 'google_search_console');
