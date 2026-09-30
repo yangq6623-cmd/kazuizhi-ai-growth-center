@@ -3,8 +3,8 @@ window.KZ_BUILD_INFO = {
   commit: "__GITHUB_SHA__",
   branch: "r8-18-model-connection-center",
   phase: "R8-18",
-  displayVersion: "V2.2.2 R8-18 内容中心最终整合候选",
-  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-18-CONTENT-V101"
+  displayVersion: "V2.2.2 R8-18 内容中心最终整合候选 · V111 视觉收口",
+  runtimeBuild: "KZ-ENTERPRISE-V2.2.2-R8-18-CONTENT-V101-UI-V111"
 };
 
 (() => {
@@ -20,6 +20,7 @@ window.KZ_BUILD_INFO = {
     if (!document.getElementById('studio-root')) return;
     addScript('series-asset-center-v92.js', 'data-series-asset-center-v92');
     addScript('content-final-v101.js', 'data-content-final-v101');
+    addScript('content-studio-v111.js', 'data-content-studio-v111');
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true});
   else load();
