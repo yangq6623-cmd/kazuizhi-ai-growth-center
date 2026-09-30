@@ -1,9 +1,8 @@
 """R8-19 Phase 1 HTTP bridge for truth-gated GEO validation.
 
-This patch is deliberately additive. Existing SEO/GEO endpoints remain intact.
-The new surface orchestrates GEO work but never treats a generic/local model as
-external GEO proof. ChatGPT remains the controller; the current Mission and the
-selected Phase-1 validation provider are persisted into the GEO decision record.
+Browser validation is the default no-API path. Local models can precheck and
+analyse but remain C-level only. Cloud API validation stays optional and may be
+selected later by ChatGPT without changing the GEO evidence model.
 """
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ import json
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
+from core import geo_validation as geo_core
 from core.geo_validation import (
     DECISION_PATH,
     audit_events,
@@ -31,13 +31,13 @@ from core.geo_validation import (
     set_decision,
 )
 from core.mission_ledger import snapshot as mission_ledger_snapshot
-from core.storage import write_json
-from integrations import geo_openai_search_executor
+from core.storage import now_iso, write_json
+from integrations import geo_browser_validation, geo_local_precheck, geo_openai_search_executor
 
 _INSTALLED = False
-PHASE1_PROVIDERS = {"openai_web_search"}
-DEFAULT_PROVIDER = "openai_web_search"
-DEFAULT_TEST_METHOD = "api"
+PHASE1_PROVIDERS = {"browser_external_ai", "openai_web_search"}
+DEFAULT_PROVIDER = "browser_external_ai"
+DEFAULT_TEST_METHOD = "browser"
 
 
 def _origin_allowed(handler):
@@ -50,7 +50,7 @@ def _origin_allowed(handler):
 
 def _read_json(handler):
     length = int(handler.headers.get("Content-Length", "0") or 0)
-    if length < 0 or length > 256 * 1024:
+    if length < 0 or length > 512 * 1024:
         raise ValueError("请求内容过大")
     return json.loads(handler.rfile.read(length) or b"{}") if length else {}
 
@@ -77,7 +77,6 @@ def _normalized_providers(value):
 
 
 def _active_mission_context():
-    """Read the current truthful Mission without inventing a separate GEO Mission."""
     try:
         ledger = mission_ledger_snapshot()
         active = ledger.get("active_mission") if isinstance(ledger, dict) else None
@@ -98,12 +97,27 @@ def _active_mission_context():
         return {}
 
 
+def _method_for_provider(provider):
+    return "api" if provider == "openai_web_search" else "browser"
+
+
 def _persist_decision_extras(current, providers=None, mission_context=None):
     value = dict(current or {})
-    value["test_providers"] = _normalized_providers(providers or value.get("test_providers"))
-    value["test_method"] = DEFAULT_TEST_METHOD
+    selected = providers or value.get("test_providers") or [DEFAULT_PROVIDER]
+    # Upgrade older installs that were hard-wired to OpenAI but never actually
+    # had a verified API connection. Explicit future OpenAI selections still win.
+    if providers is None and selected == ["openai_web_search"]:
+        try:
+            if not geo_openai_search_executor.status().get("ready"):
+                selected = [DEFAULT_PROVIDER]
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            selected = [DEFAULT_PROVIDER]
+    value["test_providers"] = _normalized_providers(selected)
+    value["test_method"] = _method_for_provider(value["test_providers"][0])
     value["provider_selection_controller"] = "chatgpt"
     value["platform_self_polling_allowed"] = False
+    value["api_required"] = False
+    value["browser_first"] = value["test_providers"][0] == "browser_external_ai"
     if mission_context:
         value["bound_to_current_mission"] = True
         value["source_command_id"] = mission_context.get("source_command_id") or value.get("source_command_id") or ""
@@ -115,7 +129,6 @@ def _persist_decision_extras(current, providers=None, mission_context=None):
 
 
 def _effective_decision():
-    """Keep GEO attached to the current Mission while preserving ChatGPT decision IDs."""
     current = decision()
     mission = _active_mission_context()
     if mission and mission.get("mission_id") != current.get("mission_id"):
@@ -140,72 +153,70 @@ def _set_controller_decision(payload):
     providers = _normalized_providers(payload.pop("test_providers", None))
     mission = _active_mission_context()
     if mission:
-        # A browser/client may not detach GEO from the current company Mission.
         payload["mission_id"] = mission.get("mission_id")
         payload["mission_title"] = mission.get("mission_title") or payload.get("mission_title")
     current = set_decision(payload)
     return _persist_decision_extras(current, providers=providers, mission_context=mission)
 
 
-def _executor_manual_item(executor):
-    if executor.get("ready"):
-        return None
-    return {
-        "provider": "OpenAI 外部 GEO 验证",
-        "question_id": "",
-        "reason": executor.get("reason") or "真实外部 GEO 验证执行器尚未就绪",
-        "kind": "api_or_permission",
-        "action": "请在系统状态与连接中完成云端模型/API配置并通过连接验证",
-    }
+def _migrate_pending_api_tasks_to_browser():
+    queue = geo_core._load_queue()
+    changed = 0
+    for task in queue.get("tasks") or []:
+        if task.get("provider") != "openai_web_search":
+            continue
+        if task.get("state") not in {"queued", "authorization_required"}:
+            continue
+        task["provider"] = "browser_external_ai"
+        task["test_method"] = "browser"
+        task["state"] = "queued"
+        task["authorization_reason"] = ""
+        task["failure_reason"] = ""
+        task["failure_code"] = ""
+        task["updated_at"] = now_iso()
+        changed += 1
+    if changed:
+        geo_core._save_queue(queue)
+        geo_core._audit("geo_pending_tasks_migrated_to_browser", {"count": changed})
+    return changed
 
 
 def _dashboard_with_executor():
-    _effective_decision()
     value = dashboard()
     value["decision"] = _effective_decision()
-    executor = geo_openai_search_executor.status()
-    executor["recommended_next_step"] = (
-        "先验证1题" if executor.get("ready") else "先完成外部AI授权/连接验证"
-    )
-    value["executor"] = executor
-
-    manual = dict(value.get("manual") or {})
-    items = list(manual.get("items") or [])
-    extra = _executor_manual_item(executor)
-    if extra and not any(item.get("kind") == extra["kind"] for item in items if isinstance(item, dict)):
-        items.insert(0, extra)
-    manual["items"] = items
-    manual["count"] = len(items)
-    value["manual"] = manual
+    browser = geo_browser_validation.status()
+    api = geo_openai_search_executor.status()
+    local = geo_local_precheck.status()
+    value["executor"] = browser
+    value["browser_executor"] = browser
+    value["api_executor"] = api
+    value["local_precheck"] = local
+    value["execution_modes"] = {
+        "default": "browser",
+        "browser": {"ready": True, "requires_api": False, "label": "网页真实验证"},
+        "api": {"ready": bool(api.get("ready")), "requires_api": True, "label": "API验证（可选）"},
+        "local_precheck": {"ready": bool(local.get("ready")), "official_truth": False, "label": "本地预检（C级）"},
+    }
+    value["manual"] = manual_requirements()
     return value
 
 
 def _preflight_status():
     value = _dashboard_with_executor()
-    executor = value.get("executor") or {}
-    queue = value.get("queue") or {}
     return {
-        "ready": bool(executor.get("ready")),
-        "executor": executor,
-        "queue": {
-            "queued": int(queue.get("queued") or 0),
-            "running": int(queue.get("running") or 0),
-            "failed": int(queue.get("failed") or 0),
-            "authorization_required": int(queue.get("authorization_required") or 0),
-        },
+        "ready": True,
+        "default_mode": "browser",
+        "browser": value.get("browser_executor"),
+        "api": value.get("api_executor"),
+        "local_precheck": value.get("local_precheck"),
+        "queue": value.get("queue") or {},
         "recommended_run_size": 1,
-        "next_step": executor.get("recommended_next_step"),
-        "truth_rule": executor.get("truth_rule"),
+        "next_step": "先本地预检1题，再用真实外部AI网页验证1题",
+        "truth_rule": "API不是必需项；浏览器真实外部AI结果可形成A级Evidence，本地模型固定为C级辅助。",
     }
 
 
 def _eligible_question_ids(requested=None):
-    """Return only baseline questions that may receive a *new* task.
-
-    Failed questions are deliberately blocked here. A failure must be continued
-    through the ChatGPT-approved retry endpoint so callers cannot reset retry
-    counters by creating a fresh plan for the same question.
-    """
     questions = question_set().get("questions") or []
     known = {item.get("question_id") for item in questions}
     tasks = queue_summary().get("tasks") or []
@@ -227,11 +238,35 @@ def _eligible_question_ids(requested=None):
     failed_requested = [qid for qid in source if qid in failed_ids]
     if requested and failed_requested:
         raise ValueError("failed_question_requires_chatgpt_retry")
-    return [
-        qid
-        for qid in source
-        if qid in known and qid not in active_ids and qid not in failed_ids and qid not in official_ids
-    ]
+    return [qid for qid in source if qid in known and qid not in active_ids and qid not in failed_ids and qid not in official_ids]
+
+
+def _prepare_browser_task(payload):
+    _migrate_pending_api_tasks_to_browser()
+    platform = str((payload or {}).get("platform") or "custom_web")
+    queue = queue_summary().get("tasks") or []
+    if not any(item.get("state") == "queued" for item in queue):
+        current = _effective_decision()
+        eligible = _eligible_question_ids((payload or {}).get("question_ids") or None)
+        create_and_enqueue_plan(
+            limit=max(1, min(int((payload or {}).get("limit") or 1), int(current.get("daily_test_limit") or 10))),
+            provider="browser_external_ai",
+            test_method="browser",
+            mission_id=current.get("mission_id", ""),
+            question_ids=eligible,
+        )
+    claim = claim_next_task(
+        {
+            "real_external": True,
+            "authorization_ready": True,
+            "provider_ready": True,
+            "provider": platform,
+            "test_method": "browser",
+            "executor_id": geo_browser_validation.EXECUTOR_ID,
+        }
+    )
+    task = claim.get("task") or {}
+    return {"claim": claim, "contract": geo_browser_validation.contract(task, platform=platform)}
 
 
 def install():
@@ -261,13 +296,19 @@ def install():
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})
             return
         if path == "/api/r8-19/geo/manual":
-            handler._json_ok(_dashboard_with_executor().get("manual") or manual_requirements())
+            handler._json_ok(manual_requirements())
             return
         if path == "/api/r8-19/geo/audit":
             handler._json_ok({"events": audit_events(query.get("limit", [200])[0])})
             return
         if path == "/api/r8-19/geo/executor":
+            handler._json_ok(geo_browser_validation.status())
+            return
+        if path == "/api/r8-19/geo/api-executor":
             handler._json_ok(geo_openai_search_executor.status())
+            return
+        if path == "/api/r8-19/geo/local-precheck":
+            handler._json_ok({"status": geo_local_precheck.status(), "results": geo_local_precheck.results(query.get("limit", [50])[0])})
             return
         return original_get(handler)
 
@@ -283,6 +324,9 @@ def install():
             "/api/r8-19/geo/resume",
             "/api/r8-19/geo/retry",
             "/api/r8-19/geo/decision",
+            "/api/r8-19/geo/browser/prepare",
+            "/api/r8-19/geo/browser/receipt",
+            "/api/r8-19/geo/local-precheck/run",
         }
         if path not in supported:
             return original_post(handler)
@@ -298,17 +342,23 @@ def install():
                 requested = payload.get("question_ids") or None
                 eligible_ids = _eligible_question_ids(requested)
                 provider = current.get("test_providers", [DEFAULT_PROVIDER])[0]
-                if payload.get("require_executor_ready") and provider == "openai_web_search":
-                    executor = geo_openai_search_executor.status()
-                    if not executor.get("ready"):
-                        raise ValueError(f"geo_executor_not_ready:{executor.get('reason') or 'external_validation_not_ready'}")
+                if provider == "openai_web_search" and payload.get("require_executor_ready"):
+                    api = geo_openai_search_executor.status()
+                    if not api.get("ready"):
+                        raise ValueError(f"geo_executor_not_ready:{api.get('reason') or 'external_validation_not_ready'}")
                 result = create_and_enqueue_plan(
                     limit=payload.get("limit", current.get("daily_test_limit", 10)),
                     provider=provider,
-                    test_method=current.get("test_method", DEFAULT_TEST_METHOD),
+                    test_method=_method_for_provider(provider),
                     mission_id=current.get("mission_id", ""),
                     question_ids=eligible_ids,
                 )
+            elif path == "/api/r8-19/geo/browser/prepare":
+                result = _prepare_browser_task(payload)
+            elif path == "/api/r8-19/geo/browser/receipt":
+                result = geo_browser_validation.record_browser_result(payload)
+            elif path == "/api/r8-19/geo/local-precheck/run":
+                result = geo_local_precheck.run(limit=payload.get("limit", 1), question_ids=payload.get("question_ids"))
             elif path == "/api/r8-19/geo/run":
                 current = _effective_decision()
                 provider = current.get("test_providers", [DEFAULT_PROVIDER])[0]
@@ -322,23 +372,17 @@ def install():
             elif path == "/api/r8-19/geo/receipt":
                 result = record_result(payload)
             elif path == "/api/r8-19/geo/fail":
-                result = fail_task(
-                    _task_id(payload),
-                    payload.get("reason") or "execution_failed",
-                )
+                result = fail_task(_task_id(payload), payload.get("reason") or "execution_failed")
             elif path == "/api/r8-19/geo/pause":
                 result = pause_task(_task_id(payload))
             elif path == "/api/r8-19/geo/resume":
                 result = resume_task(_task_id(payload))
             elif path == "/api/r8-19/geo/retry":
-                result = retry_task(
-                    _task_id(payload),
-                    approved_by=str(payload.get("approved_by") or "chatgpt"),
-                )
+                result = retry_task(_task_id(payload), approved_by=str(payload.get("approved_by") or "chatgpt"))
             else:
                 result = _set_controller_decision(payload)
             handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
-        except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
+        except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
     server.DashboardHandler.do_GET = do_get
