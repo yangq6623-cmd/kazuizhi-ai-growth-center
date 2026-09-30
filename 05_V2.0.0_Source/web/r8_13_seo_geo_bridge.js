@@ -5,201 +5,80 @@
 
   const PAGE_ID = 'r813-seo-geo';
   const WORKSPACE_KEY = 'kz-search-growth-workspace';
-  let desiredWorkspace = null;
+  let desiredWorkspace = 'seo';
 
-  function injectAutonomy(frame){
+  function installStyle(){
+    if(document.getElementById('r813-integrated-growth-style'))return;
+    const style=document.createElement('style');
+    style.id='r813-integrated-growth-style';
+    style.textContent=`
+      #${PAGE_ID}{padding:0!important;background:#f4f7fb;min-height:0!important}
+      .r813-growth-shell{background:#f4f7fb;width:100%;min-width:0}
+      .r813-growth-tabs{display:flex;gap:8px;align-items:center;padding:12px 14px;background:#fff;border:1px solid #dfe7f1;border-radius:10px;margin:0 0 10px}
+      .r813-growth-tab{min-width:180px;text-align:left;border:1px solid #d6dfec;background:#fff;color:#31506f;border-radius:8px;padding:10px 14px;cursor:pointer;font:inherit}
+      .r813-growth-tab b{display:block;font-size:13px}.r813-growth-tab span{display:block;font-size:11px;color:#7a8ba0;margin-top:2px}
+      .r813-growth-tab.active{border-color:#2563eb;background:#eef4ff;color:#1f5dcc;box-shadow:0 0 0 2px rgba(37,99,235,.06)}
+      .r813-growth-pane{display:block}.r813-growth-pane[hidden]{display:none!important}
+      .r813-growth-frame{display:block;width:100%;height:calc(100vh - 300px);min-height:720px;max-height:980px;border:0;background:#f4f7fb;border-radius:10px;overflow:auto}
+      @media(max-width:900px){.r813-growth-tabs{padding:8px}.r813-growth-tab{min-width:0;flex:1}.r813-growth-frame{height:calc(100vh - 250px);min-height:640px}}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function decorateLegacySeo(frame){
     try{
-      const doc=frame.contentDocument;
-      if(!doc||doc.getElementById('r814-autonomy-script'))return;
-      const script=doc.createElement('script');
-      script.id='r814-autonomy-script';
-      script.src='/r8_14_seo_geo_autonomy_ui.js';
-      doc.body.appendChild(script);
-    }catch(error){console.warn('SEO/GEO autonomy UI inject deferred',error)}
-  }
-
-  function injectGeoPolish(frame){
-    try{
-      const doc=frame.contentDocument;
-      if(!doc)return;
-      ensureStyle(doc,'r819-geo-polish-style','/geo-phase1-ui-polish.css');
-      if(doc.getElementById('r819-geo-polish-script'))return;
-      const script=doc.createElement('script');
-      script.id='r819-geo-polish-script';
-      script.src='/geo-phase1-ui-polish.js';
-      doc.body.appendChild(script);
-    }catch(error){console.warn('GEO UI polish inject deferred',error)}
-  }
-
-  function injectGeoFieldFix(frame, after){
-    try{
-      const doc=frame.contentDocument;
-      if(!doc){after?.();return;}
-      ensureStyle(doc,'r819-geo-field-fix-style','/geo-phase1-field-fix.css');
-      const existing=doc.getElementById('r819-geo-field-fix-script');
-      if(existing){after?.();return;}
-      const script=doc.createElement('script');
-      script.id='r819-geo-field-fix-script';
-      script.src='/geo-phase1-field-fix.js';
-      script.addEventListener('load',()=>after?.(),{once:true});
-      script.addEventListener('error',()=>{console.warn('GEO field fix load failed');after?.();},{once:true});
-      doc.body.appendChild(script);
-    }catch(error){console.warn('GEO field fix inject deferred',error);after?.();}
-  }
-
-  function ensureSearchHost(doc){
-    let host=doc.getElementById('search');
-    if(host)return host;
-    host=doc.createElement('section');
-    host.id='search';
-    host.className='page active';
-    const movable=[...doc.body.childNodes].filter(node=>!(node.nodeType===1&&['SCRIPT','STYLE','LINK'].includes(node.tagName)));
-    doc.body.insertBefore(host,doc.body.firstChild);
-    movable.forEach(node=>host.appendChild(node));
-    return host;
-  }
-
-  function ensureStyle(doc,id,href){
-    if(doc.getElementById(id))return;
-    const link=doc.createElement('link');
-    link.id=id;link.rel='stylesheet';link.href=href;
-    doc.head.appendChild(link);
-  }
-
-  function measureFrameHeight(frame){
-    try{
-      const doc=frame?.contentDocument;
-      if(!doc)return 0;
-      const htmlHeight=doc.documentElement?.scrollHeight||0;
-      const bodyHeight=doc.body?.scrollHeight||0;
-      const searchHeight=doc.getElementById('search')?.scrollHeight||0;
-      const seoPane=doc.getElementById('seo-growth-pane');
-      const geoPane=doc.getElementById('geo-growth-pane');
-      const activePaneHeight=!seoPane?.hidden?(seoPane?.scrollHeight||0):(geoPane?.scrollHeight||0);
-      return Math.max(1300,htmlHeight,bodyHeight,searchHeight,activePaneHeight)+32;
-    }catch(_){return 0;}
-  }
-
-  function applyMeasuredHeight(frame){
-    if(!frame)return;
-    const measured=measureFrameHeight(frame);
-    if(!measured)return;
-    const target=Math.max(1300,Math.min(12000,Math.round(measured)));
-    const current=parseInt(frame.style.height||'0',10)||Math.round(frame.getBoundingClientRect().height||0);
-    if(current&&Math.abs(target-current)<32)return;
-    frame.style.height=`${target}px`;
-  }
-
-  function queueResize(frame,delay=0){
-    if(!frame)return;
-    window.setTimeout(()=>{
-      if(frame.__kzGrowthResizeTimer)window.clearTimeout(frame.__kzGrowthResizeTimer);
-      frame.__kzGrowthResizeTimer=window.setTimeout(()=>{
-        frame.__kzGrowthResizeTimer=null;
-        requestAnimationFrame(()=>applyMeasuredHeight(frame));
-      },90);
-    },delay);
-  }
-
-  function scheduleResize(frame){
-    [0,160,520,1200].forEach(delay=>queueResize(frame,delay));
-  }
-
-  function switchFrameWorkspace(name){
-    const frame=document.getElementById('r813-seo-geo-frame');
-    const doc=frame?.contentDocument;
-    const target=name==='geo'?'geo':'seo';
-    const button=doc?.querySelector(`[data-growth-tab="${target}"]`);
-    if(button){
-      button.click();
-      scheduleResize(frame);
-      return true;
-    }
-    return false;
-  }
-
-  function installGrowthWorkspace(frame){
-    try{
-      const doc=frame.contentDocument;
-      if(!doc)return;
-      ensureSearchHost(doc);
-      ensureStyle(doc,'r819-growth-workspace-style','/operational-search.css');
-      ensureStyle(doc,'r819-geo-polish-style','/geo-phase1-ui-polish.css');
-      ensureStyle(doc,'r819-geo-field-fix-style','/geo-phase1-field-fix.css');
-      injectAutonomy(frame);
-      const finishUi=()=>injectGeoFieldFix(frame,()=>injectGeoPolish(frame));
-      const selectRequested=()=>{
-        let saved='seo';
-        try{saved=desiredWorkspace||localStorage.getItem(WORKSPACE_KEY)||'seo'}catch(_){saved=desiredWorkspace||'seo'}
-        switchFrameWorkspace(saved);
-        finishUi();
-        scheduleResize(frame);
-      };
-      if(doc.getElementById('r819-growth-workspace-script')){
-        selectRequested();
-        return;
-      }
-      const script=doc.createElement('script');
-      script.id='r819-growth-workspace-script';
-      script.src='/operational-search.js';
-      script.addEventListener('load',()=>setTimeout(selectRequested,0),{once:true});
-      doc.body.appendChild(script);
-    }catch(error){console.warn('R8-19 integrated SEO/GEO workspace inject deferred',error)}
-  }
-
-  function setupResize(frame){
-    try{
-      const doc=frame?.contentDocument;if(!doc)return;
-      frame.setAttribute('scrolling','auto');
-      frame.style.overflow='auto';
-      queueResize(frame,0);
-
-      // Never observe documentElement/body here. Changing the parent iframe height
-      // changes the child viewport, which can resize those nodes and self-trigger a
-      // ResizeObserver -> iframe height -> ResizeObserver feedback loop in Chrome.
-      if(window.ResizeObserver&&!frame.__kzGrowthResizeObserver){
-        const observer=new ResizeObserver(()=>queueResize(frame,80));
-        [doc.getElementById('search'),doc.getElementById('seo-growth-pane'),doc.getElementById('geo-growth-pane')]
-          .filter(Boolean).forEach(node=>observer.observe(node));
-        frame.__kzGrowthResizeObserver=observer;
-      }
-      if(window.MutationObserver&&!frame.__kzGrowthMutationObserver){
-        const host=doc.getElementById('search');
-        if(host){
-          const observer=new MutationObserver(()=>queueResize(frame,120));
-          observer.observe(host,{subtree:true,childList:true,attributes:false,characterData:false});
-          frame.__kzGrowthMutationObserver=observer;
+      const doc=frame.contentDocument;if(!doc)return;
+      [...doc.querySelectorAll('h2,h3')].forEach(node=>{
+        const text=(node.textContent||'').trim();
+        if(text==='SEO/GEO自治运行')node.textContent='SEO自治运行';
+        if(text==='GEO / AI 50问验证')node.textContent='GEO 联动摘要（只读）';
+      });
+      if(!doc.getElementById('r813-seo-readonly-note')){
+        const geoCard=[...doc.querySelectorAll('.card')].find(card=>/GEO\s*\/\s*AI\s*50问验证|GEO 联动摘要/.test(card.textContent||''));
+        if(geoCard){
+          const note=doc.createElement('div');
+          note.id='r813-seo-readonly-note';
+          note.style.cssText='margin-top:10px;padding:9px 11px;border-radius:8px;background:#eef5ff;border:1px solid #d8e6ff;color:#315d9f;font-size:12px';
+          note.textContent='这里只显示 GEO 联动摘要；真实网页验证、50问和 Evidence / Receipt 请切换上方“GEO 增长”。';
+          geoCard.appendChild(note);
         }
       }
-      if(!frame.__kzGrowthTabResizeBound){
-        frame.__kzGrowthTabResizeBound='1';
-        doc.addEventListener('click',event=>{
-          if(event.target?.closest?.('[data-growth-tab],.tabs button,[data-to]'))scheduleResize(frame);
-        },true);
-      }
-    }catch(error){console.warn('SEO/GEO iframe resize deferred',error)}
+    }catch(error){console.warn('SEO legacy decoration deferred',error)}
   }
 
   function ensurePage(){
+    installStyle();
     let page=document.getElementById(PAGE_ID);
     if(!page){
       page=document.createElement('section');
       page.id=PAGE_ID;
       page.className='page';
-      page.innerHTML='<iframe id="r813-seo-geo-frame" title="SEO/GEO增长中心" src="/r8_13_seo_geo.html?embed=1" style="width:100%;height:1600px;min-height:1300px;border:0;background:#f4f7fb;overflow:auto" scrolling="auto"></iframe>';
+      page.innerHTML=`
+        <div class="r813-growth-shell">
+          <div class="r813-growth-tabs" role="tablist" aria-label="SEO/GEO增长工作区">
+            <button type="button" class="r813-growth-tab active" data-r813-workspace="seo" role="tab"><b>SEO 增长</b><span>保持现有 SEO 全功能运行</span></button>
+            <button type="button" class="r813-growth-tab" data-r813-workspace="geo" role="tab"><b>GEO 增长</b><span>R8-19 · 浏览器真实验证</span></button>
+          </div>
+          <div class="r813-growth-pane" data-r813-pane="seo">
+            <iframe id="r813-seo-frame" class="r813-growth-frame" title="SEO增长中心" src="/r8_13_seo_geo.html?embed=1" scrolling="auto"></iframe>
+          </div>
+          <div class="r813-growth-pane" data-r813-pane="geo" hidden>
+            <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO增长中心" src="about:blank" data-src="/geo.html?embed=1" scrolling="auto"></iframe>
+          </div>
+        </div>`;
       document.querySelector('main')?.appendChild(page);
-      const frame=page.querySelector('iframe');
-      frame?.addEventListener('load',()=>{installGrowthWorkspace(frame);setupResize(frame);scheduleResize(frame)});
+      page.querySelectorAll('[data-r813-workspace]').forEach(button=>button.addEventListener('click',()=>activateWorkspace(button.dataset.r813Workspace)));
+      const seoFrame=page.querySelector('#r813-seo-frame');
+      seoFrame?.addEventListener('load',()=>decorateLegacySeo(seoFrame));
+      if(seoFrame?.contentDocument?.readyState==='complete')decorateLegacySeo(seoFrame);
     }
-    const frame=page.querySelector('#r813-seo-geo-frame');
-    if(frame?.contentDocument?.readyState==='complete'){installGrowthWorkspace(frame);setupResize(frame);scheduleResize(frame)}
     const legacy=document.querySelector('aside nav');
     if(legacy&&!legacy.querySelector(`.nav[data-page="${PAGE_ID}"]`)){
       const proxy=document.createElement('button');
       proxy.className='nav r810-legacy-route';
       proxy.dataset.page=PAGE_ID;
       proxy.dataset.title='SEO/GEO增长';
-      proxy.dataset.subtitle='SEO保持完整运行；GEO第一阶段真实验证已合并到主平台';
+      proxy.dataset.subtitle='SEO 与 GEO 分离运行，共享同一主平台入口';
       proxy.hidden=true;
       proxy.textContent='SEO/GEO增长';
       legacy.appendChild(proxy);
@@ -207,32 +86,56 @@
     return page;
   }
 
+  function loadGeoIfNeeded(){
+    const frame=document.getElementById('r813-geo-frame');
+    if(!frame)return;
+    const wanted=frame.dataset.src||'/geo.html?embed=1';
+    if(frame.dataset.kzLoaded==='1')return;
+    frame.dataset.kzLoaded='1';
+    frame.src=wanted;
+  }
+
+  function renderWorkspace(name){
+    const page=ensurePage();
+    const target=name==='geo'?'geo':'seo';
+    page.querySelectorAll('[data-r813-workspace]').forEach(button=>{
+      const active=button.dataset.r813Workspace===target;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-selected',String(active));
+    });
+    page.querySelectorAll('[data-r813-pane]').forEach(pane=>{pane.hidden=pane.dataset.r813Pane!==target;});
+    if(target==='geo')loadGeoIfNeeded();
+    desiredWorkspace=target;
+    try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
+  }
+
   function activate(){
-    ensurePage();
-    if(typeof window.openPage==='function') window.openPage(PAGE_ID);
+    const page=ensurePage();
+    if(typeof window.openPage==='function')window.openPage(PAGE_ID);
     else document.querySelectorAll('.page').forEach(node=>node.classList.toggle('active',node.id===PAGE_ID));
     document.querySelectorAll('.r810-nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.target===PAGE_ID));
-    setTimeout(()=>switchFrameWorkspace(desiredWorkspace||'seo'),0);
-    const frame=document.getElementById('r813-seo-geo-frame');
-    if(frame)scheduleResize(frame);
+    let saved=desiredWorkspace;
+    try{saved=localStorage.getItem(WORKSPACE_KEY)||saved}catch(_){}
+    renderWorkspace(saved);
+    page.scrollIntoView({block:'start',behavior:'auto'});
   }
 
   function activateWorkspace(name){
     desiredWorkspace=name==='geo'?'geo':'seo';
-    try{localStorage.setItem(WORKSPACE_KEY,desiredWorkspace)}catch(_){}
-    activate();
-    const frame=document.getElementById('r813-seo-geo-frame');
-    if(!switchFrameWorkspace(desiredWorkspace)&&frame){
-      const retry=()=>switchFrameWorkspace(desiredWorkspace);
-      frame.addEventListener('load',()=>setTimeout(retry,0),{once:true});
+    const page=ensurePage();
+    if(!page.classList.contains('active')){
+      if(typeof window.openPage==='function')window.openPage(PAGE_ID);
+      else document.querySelectorAll('.page').forEach(node=>node.classList.toggle('active',node.id===PAGE_ID));
     }
-    if(frame)scheduleResize(frame);
+    document.querySelectorAll('.r810-nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.target===PAGE_ID));
+    renderWorkspace(desiredWorkspace);
   }
 
   function refresh(){
-    const frame=document.getElementById('r813-seo-geo-frame');
-    try{frame?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO/GEO workspace refresh deferred',error)}
-    if(frame)scheduleResize(frame);
+    const seo=document.getElementById('r813-seo-frame');
+    const geo=document.getElementById('r813-geo-frame');
+    try{seo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO refresh deferred',error)}
+    try{geo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('GEO refresh deferred',error)}
   }
 
   window.KZR813SeoGeoBridge={open:activate,openGeo:()=>activateWorkspace('geo'),openSeo:()=>activateWorkspace('seo'),refresh};
@@ -258,12 +161,10 @@
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.data?.type !== 'kz-r813-focus') return;
     const targetId = String(event.data.target || '');
-    const frame = document.getElementById('r813-seo-geo-frame');
-    const target = frame?.contentDocument?.getElementById(targetId);
-    if (!frame || !target) return;
-    const frameRect = frame.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    window.scrollTo({top: window.scrollY + frameRect.top + targetRect.top - 84, behavior:'smooth'});
+    const sourceFrame=[document.getElementById('r813-seo-frame'),document.getElementById('r813-geo-frame')]
+      .find(frame=>frame?.contentWindow===event.source);
+    const target=sourceFrame?.contentDocument?.getElementById(targetId);
+    try{target?.scrollIntoView({block:'start',behavior:'smooth'})}catch(_){}
   });
 
   function ensureNav(){
