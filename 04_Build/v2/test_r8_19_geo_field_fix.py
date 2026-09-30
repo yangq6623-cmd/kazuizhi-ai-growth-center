@@ -32,6 +32,13 @@ def main():
     ):
         require(marker in js, f"GEO field interaction marker missing: {marker}")
 
+    # Field fix used to observe the whole GEO subtree with attributes:true while
+    # syncUi itself changed classes/attributes/DOM, causing a self-triggering
+    # MutationObserver loop and freezing Chrome as soon as GEO was opened.
+    require("new MutationObserver" not in js, "GEO field fix reintroduced a self-triggering MutationObserver")
+    require("setInterval" in js and "document.hidden" in js, "safe low-frequency visible-only UI sync missing")
+    require("setButtonText" in js, "idempotent compare-before-write button updates missing")
+
     for marker in (
         ".geo-runner-shell",
         ".geo-kpi-action",
@@ -41,7 +48,7 @@ def main():
     ):
         require(marker in css, f"GEO compact field layout style missing: {marker}")
 
-    print("PASS: embedded GEO field buttons are explicit, KPI cards drill down, browser actions work, and runner layout is compact")
+    print("PASS: embedded GEO field controls are explicit and use bounded event/timer sync without mutation feedback loops")
 
 
 if __name__ == "__main__":
