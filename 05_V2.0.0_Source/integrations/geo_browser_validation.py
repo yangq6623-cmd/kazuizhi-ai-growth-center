@@ -47,10 +47,12 @@ def _external_https_url(value: str) -> str:
     raw = str(value or "").strip()
     parsed = urllib.parse.urlsplit(raw)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme.lower() != "https" or not host:
+    if not host:
         raise ValueError("browser_geo_receipt_requires_external_https_url")
     if host in {"127.0.0.1", "localhost", "::1"} or host.endswith(".local"):
         raise ValueError("browser_geo_receipt_cannot_use_local_url")
+    if parsed.scheme.lower() != "https":
+        raise ValueError("browser_geo_receipt_requires_external_https_url")
     return raw
 
 
