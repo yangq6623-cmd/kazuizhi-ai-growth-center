@@ -57,9 +57,31 @@ jobs:
           python 04_Build/v2/test_r8_17_remote_agent.py
           python 04_Build/v2/test_ai_gateway.py
           python 04_Build/v2/test_r8_18_model_connection_center.py
+          python 04_Build/v2/test_r8_18_model_gateway_routes.py
           python 04_Build/v2/test_r8_18_evidence_ledger.py
           python 04_Build/v2/test_r8_19_geo_phase1.py
           python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
+          python 04_Build/v2/test_r8_19_model_connection_ui.py
+      - name: Integrate unified model connection center into packaged web
+        run: |
+          $targets = @(
+            '05_V2.0.0_Source/web/index.html',
+            '05_V2.0.0_Source/web/operational.html'
+          )
+          foreach ($path in $targets) {
+            $text = Get-Content -LiteralPath $path -Raw
+            if (-not $text.Contains('model-connection-center.css')) {
+              $text = $text.Replace('</head>', '<link rel="stylesheet" href="model-connection-center.css"></head>')
+            }
+            if (-not $text.Contains('model-connection-center.js')) {
+              $text = $text.Replace('</body>', '<script src="model-connection-center.js"></script></body>')
+            }
+            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css')) {
+              throw "Unified model connection center injection failed: $path"
+            }
+            Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          }
+          Write-Host 'Unified local/cloud AI model center integrated into index.html and operational.html.'
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -84,10 +106,10 @@ jobs:
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            scope = @('GEO independent workspace', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate')
+            scope = @('GEO independent workspace', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'truth-gated external AI runner', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'unified local/cloud AI model connection center')
             seo_policy = 'SEO feature development frozen; existing SEO runtime and regression retained'
-            local_model_policy = 'Local model is auxiliary only and never counts as official GEO evidence'
-            acceptance = '48/48 Phase-1 source acceptance plus installer, launch, overwrite-upgrade and uninstall gates must pass. Live owner external-AI 50-question validation remains a separate field acceptance step.'
+            local_model_policy = 'Local model may serve auxiliary analysis/production through a verified localhost OpenAI-compatible route, but never counts as official GEO A/B evidence'
+            acceptance = '48/48 Phase-1 source acceptance, unified model-center regression, installer, launch, overwrite-upgrade and uninstall gates must pass. Live owner external-AI 50-question validation remains a separate field acceptance step.'
           } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
       - name: Upload R8-19 GEO Phase 1 Windows installer
         uses: actions/upload-artifact@v4
