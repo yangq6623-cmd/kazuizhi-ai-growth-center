@@ -1,11 +1,9 @@
 """Real-browser smoke gate for the R8-19 owner shell.
 
-This test exists because static/source tests and a process launch gate can all pass
-while Chromium's renderer is trapped in a DOM/mutation loop. It starts either
-the source runtime or a packaged EXE, opens the real owner page in Chrome via
-Playwright, waits for the R8 coordinator, verifies the 250 ms heartbeat keeps
-advancing, clicks the main owner navigation, stress-tests the SEO/GEO iframe,
-and rejects runaway DOM growth or uncaught page errors.
+Static tests can pass while Chromium is trapped in a renderer loop. This gate
+starts either source or packaged runtime, opens real Chrome, verifies the owner
+heartbeat, clicks the main routes, explicitly stress-tests the split SEO/GEO
+workspace, and rejects runaway DOM growth or uncaught page errors.
 """
 
 from __future__ import annotations
@@ -42,7 +40,7 @@ def wait_http(url: str, timeout: float = 30.0) -> None:
             with urllib.request.urlopen(url, timeout=1.5) as response:
                 if response.status < 500:
                     return
-        except Exception as error:  # noqa: BLE001 - report final startup cause
+        except Exception as error:
             last_error = error
         time.sleep(0.25)
     raise AssertionError(f"runtime did not become reachable: {url}: {last_error}")
@@ -113,43 +111,61 @@ def wait_lazy_bundle(page, target: str) -> None:
 
 
 def exercise_seo_geo(page) -> None:
-    frame_element = page.locator("#r813-seo-geo-frame").first
-    frame_element.wait_for(state="visible", timeout=6000)
-    handle = frame_element.element_handle()
-    child = handle.content_frame() if handle else None
-    if child is None:
-        raise AssertionError("SEO/GEO iframe did not expose a same-origin content frame")
+    seo_tab = page.locator('[data-r813-workspace="seo"]').first
+    geo_tab = page.locator('[data-r813-workspace="geo"]').first
+    seo_tab.wait_for(state="visible", timeout=6000)
+    geo_tab.wait_for(state="visible", timeout=6000)
 
-    child.wait_for_selector('#search-growth-switch [data-growth-tab="seo"]', timeout=8000)
-    child.wait_for_selector('#search-growth-switch [data-growth-tab="geo"]', timeout=8000)
+    seo_frame_element = page.locator('#r813-seo-frame').first
+    seo_frame_element.wait_for(state="visible", timeout=6000)
+    seo_handle = seo_frame_element.element_handle()
+    seo_frame = seo_handle.content_frame() if seo_handle else None
+    if seo_frame is None:
+        raise AssertionError("SEO iframe did not expose same-origin content")
+    seo_frame.wait_for_selector('text=SEO/GEO增长中心', timeout=10000)
 
-    seo = child.locator('#search-growth-switch [data-growth-tab="seo"]').first
-    geo = child.locator('#search-growth-switch [data-growth-tab="geo"]').first
-
-    # Reproduce the field path that froze Build #72: open SEO, switch GEO, switch
-    # back to SEO, scroll the long legacy SEO page, and leave it alive briefly.
-    seo.click(timeout=4000)
-    page.wait_for_timeout(350)
-    heartbeat(page, min_delta=1, timeout_ms=3000)
-
-    geo.click(timeout=4000)
+    # Field reproduction: SEO -> GEO -> SEO, then long-page scrolling and idle.
+    geo_tab.click(timeout=4000)
     page.wait_for_timeout(500)
     heartbeat(page, min_delta=1, timeout_ms=3000)
 
-    seo.click(timeout=4000)
-    page.wait_for_timeout(500)
+    geo_frame_element = page.locator('#r813-geo-frame').first
+    geo_frame_element.wait_for(state="visible", timeout=6000)
+    page.wait_for_function(
+        "() => { const f=document.getElementById('r813-geo-frame'); return !!f && f.src && !f.src.endsWith('about:blank'); }",
+        timeout=5000,
+    )
+    geo_handle = geo_frame_element.element_handle()
+    geo_frame = geo_handle.content_frame() if geo_handle else None
+    if geo_frame is None:
+        raise AssertionError("GEO iframe did not expose same-origin content")
+    geo_frame.wait_for_selector('#geo-mission', state='attached', timeout=12000)
     heartbeat(page, min_delta=1, timeout_ms=3000)
 
-    child.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    seo_tab.click(timeout=4000)
+    page.wait_for_timeout(500)
+    heartbeat(page, min_delta=1, timeout_ms=3000)
+    seo_frame.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
     page.wait_for_timeout(1200)
     heartbeat(page, min_delta=2, timeout_ms=3500)
-    child.evaluate("() => window.scrollTo(0, 0)")
-    page.wait_for_timeout(1800)
+    seo_frame.evaluate("() => window.scrollTo(0, 0)")
+
+    geo_tab.click(timeout=4000)
+    page.wait_for_timeout(500)
+    heartbeat(page, min_delta=1, timeout_ms=3000)
+    geo_frame.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.wait_for_timeout(1200)
+    heartbeat(page, min_delta=2, timeout_ms=3500)
+    geo_frame.evaluate("() => window.scrollTo(0, 0)")
+
+    seo_tab.click(timeout=4000)
+    page.wait_for_timeout(2200)
     heartbeat(page, min_delta=2, timeout_ms=3500)
 
-    child_nodes = child.locator("*").count()
-    if child_nodes > 24000:
-        raise AssertionError(f"SEO/GEO iframe DOM unexpectedly large after switching: {child_nodes}")
+    seo_nodes = seo_frame.locator('*').count()
+    geo_nodes = geo_frame.locator('*').count()
+    if seo_nodes > 24000 or geo_nodes > 24000:
+        raise AssertionError(f"SEO/GEO iframe DOM unexpectedly large: seo={seo_nodes}, geo={geo_nodes}")
 
 
 def main() -> None:
@@ -186,9 +202,7 @@ def main() -> None:
                     raise AssertionError(f"unexpectedly large initial DOM: {baseline_nodes} nodes")
 
                 nav = page.locator(".r810-primary-nav .r810-nav-button:visible[data-target]")
-                targets = nav.evaluate_all(
-                    "nodes => nodes.map(node => node.dataset.target).filter(Boolean)"
-                )
+                targets = nav.evaluate_all("nodes => nodes.map(node => node.dataset.target).filter(Boolean)")
                 if len(targets) < 5:
                     raise AssertionError(f"owner navigation did not initialize; visible targets={targets}")
 
@@ -237,10 +251,7 @@ def main() -> None:
                 if duplicates:
                     raise AssertionError(f"generated singleton IDs duplicated after navigation: {duplicates[:10]}")
 
-                fatal_errors = [
-                    item for item in page_errors
-                    if "ResizeObserver loop" not in item and "Script error" not in item
-                ]
+                fatal_errors = [item for item in page_errors if "ResizeObserver loop" not in item and "Script error" not in item]
                 if fatal_errors:
                     raise AssertionError(f"uncaught browser page errors: {fatal_errors[:8]}")
 
@@ -253,7 +264,7 @@ def main() -> None:
                 target_name = "packaged runtime" if args.exe else "source runtime"
                 print(
                     f"PASS: {target_name} stayed responsive in real Chrome; {len(clicked)} owner routes clicked; "
-                    "SEO/GEO toggled and scrolled; no startup degradation, runaway DOM or uncaught page errors"
+                    "split SEO/GEO toggled, scrolled and idled without heartbeat loss or runaway DOM"
                 )
         finally:
             if process.poll() is None:
