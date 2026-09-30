@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from core.geo_validation import (
+    audit_events,
     bootstrap_question_set,
     claim_next_task,
     create_and_enqueue_plan,
@@ -78,6 +79,9 @@ def install():
         if path == "/api/r8-19/geo/manual":
             handler._json_ok(manual_requirements())
             return
+        if path == "/api/r8-19/geo/audit":
+            handler._json_ok({"events": audit_events(query.get("limit", [200])[0])})
+            return
         return original_get(handler)
 
     def do_post(handler):
@@ -117,13 +121,19 @@ def install():
             elif path == "/api/r8-19/geo/receipt":
                 result = record_result(payload)
             elif path == "/api/r8-19/geo/fail":
-                result = fail_task(_task_id(payload), payload.get("reason") or "execution_failed")
+                result = fail_task(
+                    _task_id(payload),
+                    payload.get("reason") or "execution_failed",
+                )
             elif path == "/api/r8-19/geo/pause":
                 result = pause_task(_task_id(payload))
             elif path == "/api/r8-19/geo/resume":
                 result = resume_task(_task_id(payload))
             elif path == "/api/r8-19/geo/retry":
-                result = retry_task(_task_id(payload))
+                result = retry_task(
+                    _task_id(payload),
+                    approved_by=str(payload.get("approved_by") or "chatgpt"),
+                )
             else:
                 result = set_decision(payload)
             handler._json_ok({"result": result, "geo": dashboard()})
