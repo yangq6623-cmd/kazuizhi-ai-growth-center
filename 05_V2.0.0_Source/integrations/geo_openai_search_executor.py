@@ -208,7 +208,7 @@ def run_once() -> dict:
         )
         return {"ok": True, "task_id": task["task_id"], "receipt": receipt, "executor": current}
     except PermissionError as error:
-        task = geo.require_authorization(task["task_id"], str(error))
+        task = geo._transition(task["task_id"], "authorization_required", str(error))
         return {"ok": False, "task": task, "executor": status(), "error": str(error)}
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
         task = geo.fail_task(task["task_id"], str(error))
