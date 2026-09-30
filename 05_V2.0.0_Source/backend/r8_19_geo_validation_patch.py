@@ -60,6 +60,41 @@ def _dashboard_with_executor():
     return value
 
 
+def _eligible_question_ids(requested=None):
+    """Return only baseline questions that may receive a *new* task.
+
+    Failed questions are deliberately blocked here. A failure must be continued
+    through the ChatGPT-approved retry endpoint so callers cannot reset retry
+    counters by creating a fresh plan for the same question.
+    """
+    questions = question_set().get("questions") or []
+    known = {item.get("question_id") for item in questions}
+    tasks = queue_summary().get("tasks") or []
+    active_ids = {
+        item.get("question_id")
+        for item in tasks
+        if item.get("state") in {"queued", "running", "authorization_required", "paused"}
+    }
+    failed_ids = {item.get("question_id") for item in tasks if item.get("state") == "failed"}
+    official_ids = {
+        item.get("question_id")
+        for item in receipts(1000)
+        if item.get("official_truth") and item.get("evidence_level") in {"A", "B"}
+    }
+    source = list(requested or [item.get("question_id") for item in questions])
+    unknown = [qid for qid in source if qid not in known]
+    if unknown:
+        raise ValueError(f"unknown_geo_question_id:{unknown[0]}")
+    failed_requested = [qid for qid in source if qid in failed_ids]
+    if requested and failed_requested:
+        raise ValueError("failed_question_requires_chatgpt_retry")
+    return [
+        qid
+        for qid in source
+        if qid in known and qid not in active_ids and qid not in failed_ids and qid not in official_ids
+    ]
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -117,12 +152,14 @@ def install():
             if path == "/api/r8-19/geo/bootstrap":
                 result = bootstrap_question_set(force=bool(payload.get("force")))
             elif path == "/api/r8-19/geo/plan":
+                requested = payload.get("question_ids") or None
+                eligible_ids = _eligible_question_ids(requested)
                 result = create_and_enqueue_plan(
                     limit=payload.get("limit", 10),
                     provider=payload.get("provider", "external_ai"),
                     test_method=payload.get("test_method", "browser"),
                     mission_id=payload.get("mission_id", ""),
-                    question_ids=payload.get("question_ids") or None,
+                    question_ids=eligible_ids,
                 )
             elif path == "/api/r8-19/geo/run":
                 mode = str(payload.get("mode") or "openai_web_search").strip()
