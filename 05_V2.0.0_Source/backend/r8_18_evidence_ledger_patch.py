@@ -108,3 +108,8 @@ from backend import candidate_executor_activation_patch as _candidate_executor_a
 # opening frames, automatically regenerate only the discontinuous next shot, and
 # keep the owner UI aligned with the current project's real duration/completion.
 from backend import continuity_qc_v90_patch as _continuity_qc_v90_patch  # noqa: E402,F401
+
+# #92 reusable series assets: durable people, voice/dialect, scene and series
+# templates. Voice records keep rights/source/recording evidence and never claim
+# a usable clone before a real local clone model has produced it.
+from backend import series_asset_center_v92_patch as _series_asset_center_v92_patch  # noqa: E402,F401
