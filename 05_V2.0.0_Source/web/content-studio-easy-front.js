@@ -24,6 +24,7 @@
       body.kz-simple-mode .kz-simple-actions{align-items:center}
       body.kz-simple-mode .kz-simple-actions .kz-simple-primary{min-width:240px;height:46px;font-size:15px}
       .kz-easy-action-hint{font-size:12px;color:#6d7f96}
+      .kz-easy-queue-warning{margin-top:8px;padding:8px 10px;border:1px solid #f1d7a7;border-radius:6px;background:#fff8ea;color:#8b641d;font-size:12px;line-height:1.55}
       @media(max-width:760px){body.kz-simple-mode .kz-simple-flow{display:grid;grid-template-columns:1fr}body.kz-simple-mode .kz-simple-flow i{display:none}.kz-easy-action-hint{width:100%}}
     `;
     document.head.appendChild(style);
@@ -86,19 +87,55 @@
     });
   }
 
+  function replaceResultText(result) {
+    const replacements = [
+      ['导演分镜','视频结构'],
+      ['生产项目','制作任务'],
+      ['候选生成','视频制作'],
+      ['AI 导演','自动编排']
+    ];
+    const walker = document.createTreeWalker(result, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) nodes.push(node);
+    nodes.forEach(textNode => {
+      let value = textNode.nodeValue || '';
+      replacements.forEach(([from,to]) => { value = value.replaceAll(from,to); });
+      if (value !== textNode.nodeValue) textNode.nodeValue = value;
+    });
+  }
+
+  function markQueueMismatch(result) {
+    const text = result.textContent || '';
+    const match = text.match(/共\s*\d+\s*个方向、\s*(\d+)\s*个分镜，已排入\s*(\d+)\s*个镜头候选任务/);
+    const existing = result.querySelector('#kz-easy-queue-warning');
+    if (!match) {
+      existing?.remove();
+      return;
+    }
+    const total = Number(match[1]);
+    const queued = Number(match[2]);
+    if (!Number.isFinite(total) || !Number.isFinite(queued) || queued >= total) {
+      existing?.remove();
+      return;
+    }
+    result.classList.remove('kz-simple-success');
+    result.classList.add('kz-simple-error');
+    const warning = existing || document.createElement('div');
+    warning.id = 'kz-easy-queue-warning';
+    warning.className = 'kz-easy-queue-warning';
+    warning.textContent = `有 ${total - queued} 个镜头没有成功排入候选任务；请检查本地内容中心状态后再继续。`;
+    if (!existing) result.appendChild(warning);
+  }
+
   function simplifyResult() {
     const result = byId('kz-simple-result');
     if (!result) return;
     result.querySelectorAll('button').forEach(button => {
       if (/生产|工作台/.test(button.textContent)) button.textContent = '查看制作进度';
     });
-    const before = result.innerHTML;
-    const after = before
-      .replaceAll('导演分镜','视频结构')
-      .replaceAll('生产项目','制作任务')
-      .replaceAll('候选生成','视频制作')
-      .replaceAll('AI 导演','自动编排');
-    if (after !== before) result.innerHTML = after;
+    replaceResultText(result);
+    markQueueMismatch(result);
     syncHostHeight();
   }
 
