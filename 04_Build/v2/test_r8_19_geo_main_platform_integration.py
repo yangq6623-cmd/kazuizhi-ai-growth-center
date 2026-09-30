@@ -35,14 +35,20 @@ def main():
     ):
         require(marker in seo, f"original SEO section missing from source: {marker}")
 
-    # The embedded frame must keep measuring dynamic content after the tabs are injected.
+    # The embedded frame must preserve full content without observing the iframe
+    # viewport roots. Observing documentElement/body while changing the parent
+    # iframe height can self-trigger Chrome ResizeObserver feedback loops.
     require("doc.body?.scrollHeight" in bridge, "SEO iframe no longer measures body height")
     require("doc.getElementById('search')?.scrollHeight" in bridge, "integrated search host height is not measured")
     require("seo-growth-pane" in bridge, "SEO pane height is not measured")
     require("geo-growth-pane" in bridge, "GEO pane height is not measured")
-    require("MutationObserver" in bridge, "dynamic SEO/GEO height changes are not observed")
-    require("ResizeObserver" in bridge, "SEO/GEO frame resize observer missing")
-    require("scheduleResize" in bridge, "delayed resize stabilization missing")
+    require("scheduleResize" in bridge and "queueResize" in bridge, "bounded resize stabilization missing")
+    require("ResizeObserver" in bridge, "bounded SEO/GEO resize observer missing")
+    require("MutationObserver" in bridge, "bounded SEO/GEO mutation observer missing")
+    require("attributes:false" in bridge and "characterData:false" in bridge, "SEO/GEO mutation observer is too broad")
+    require("observer.observe(doc.body" not in bridge, "SEO/GEO bridge must not ResizeObserve iframe body")
+    require("observer.observe(doc.documentElement" not in bridge, "SEO/GEO bridge must not ResizeObserve iframe documentElement")
+    require("scrolling=\"auto\"" in bridge, "SEO/GEO iframe must keep an internal-scroll fallback")
 
     # The new GEO workspace is injected into that normal route, not opened as a separate browser.
     require("ensureSearchHost" in bridge, "main route does not prepare integrated search host")
@@ -64,7 +70,7 @@ def main():
     # Backup/debug route stays available but is not the normal navigation path.
     require("operational-search.js" in backup, "backup /geo.html route no longer works")
 
-    print("PASS: GEO is merged into the normal route and the complete legacy SEO workspace is preserved")
+    print("PASS: GEO is merged into the normal route, legacy SEO is preserved, and iframe resizing is feedback-loop safe")
 
 
 if __name__ == "__main__":
