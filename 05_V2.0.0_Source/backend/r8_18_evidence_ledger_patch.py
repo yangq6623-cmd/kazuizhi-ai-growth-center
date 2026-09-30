@@ -113,3 +113,9 @@ from backend import continuity_qc_v90_patch as _continuity_qc_v90_patch  # noqa:
 # templates. Voice records keep rights/source/recording evidence and never claim
 # a usable clone before a real local clone model has produced it.
 from backend import series_asset_center_v92_patch as _series_asset_center_v92_patch  # noqa: E402,F401
+
+# #96-#101 final integrated content-center upgrade. The module imports #96
+# reference/no-material routing, #97 reusable asset binding, #98 authorized
+# local voice-clone routing, #99 targeted shot editing, #100 professional
+# post-production, and exposes the #101 truthful final-acceptance surface.
+from backend import content_final_v101_patch as _content_final_v101_patch  # noqa: E402,F401
