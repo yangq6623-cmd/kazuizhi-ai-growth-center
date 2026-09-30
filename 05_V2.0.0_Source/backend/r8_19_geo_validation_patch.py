@@ -2,7 +2,8 @@
 
 This patch is deliberately additive. Existing SEO/GEO endpoints remain intact.
 The new surface orchestrates GEO work but never treats a generic/local model as
-external GEO proof.
+external GEO proof. ChatGPT remains the controller; the current Mission and the
+selected Phase-1 validation provider are persisted into the GEO decision record.
 """
 from __future__ import annotations
 
@@ -11,11 +12,13 @@ from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from core.geo_validation import (
+    DECISION_PATH,
     audit_events,
     bootstrap_question_set,
     claim_next_task,
     create_and_enqueue_plan,
     dashboard,
+    decision,
     fail_task,
     manual_requirements,
     pause_task,
@@ -27,9 +30,14 @@ from core.geo_validation import (
     retry_task,
     set_decision,
 )
+from core.mission_ledger import snapshot as mission_ledger_snapshot
+from core.storage import write_json
 from integrations import geo_openai_search_executor
 
 _INSTALLED = False
+PHASE1_PROVIDERS = {"openai_web_search"}
+DEFAULT_PROVIDER = "openai_web_search"
+DEFAULT_TEST_METHOD = "api"
 
 
 def _origin_allowed(handler):
@@ -54,8 +62,95 @@ def _task_id(payload):
     return value
 
 
+def _normalized_providers(value):
+    raw = value if isinstance(value, list) else [value] if value else [DEFAULT_PROVIDER]
+    providers = []
+    for item in raw:
+        provider = str(item or "").strip()
+        if not provider:
+            continue
+        if provider not in PHASE1_PROVIDERS:
+            raise ValueError(f"unsupported_phase1_geo_provider:{provider}")
+        if provider not in providers:
+            providers.append(provider)
+    return providers or [DEFAULT_PROVIDER]
+
+
+def _active_mission_context():
+    """Read the current truthful Mission without inventing a separate GEO Mission."""
+    try:
+        ledger = mission_ledger_snapshot()
+        active = ledger.get("active_mission") if isinstance(ledger, dict) else None
+        if not isinstance(active, dict):
+            return {}
+        mission_id = str(active.get("mission_id") or "").strip()
+        if not mission_id:
+            return {}
+        command = active.get("command") if isinstance(active.get("command"), dict) else {}
+        return {
+            "mission_id": mission_id,
+            "mission_title": str(active.get("title") or "").strip(),
+            "mission_goal": str(active.get("goal") or "").strip(),
+            "source_command_id": str(command.get("command_id") or "").strip(),
+            "source_decision_pack_id": str(command.get("decision_pack_id") or "").strip(),
+        }
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError, ImportError):
+        return {}
+
+
+def _persist_decision_extras(current, providers=None, mission_context=None):
+    value = dict(current or {})
+    value["test_providers"] = _normalized_providers(providers or value.get("test_providers"))
+    value["test_method"] = DEFAULT_TEST_METHOD
+    value["provider_selection_controller"] = "chatgpt"
+    value["platform_self_polling_allowed"] = False
+    if mission_context:
+        value["bound_to_current_mission"] = True
+        value["source_command_id"] = mission_context.get("source_command_id") or value.get("source_command_id") or ""
+        value["source_decision_pack_id"] = mission_context.get("source_decision_pack_id") or value.get("source_decision_pack_id") or ""
+    else:
+        value.setdefault("bound_to_current_mission", False)
+    write_json(DECISION_PATH, value)
+    return value
+
+
+def _effective_decision():
+    """Keep GEO attached to the current Mission while preserving ChatGPT decision IDs."""
+    current = decision()
+    mission = _active_mission_context()
+    if mission and mission.get("mission_id") != current.get("mission_id"):
+        current = set_decision(
+            {
+                "decision_id": current.get("decision_id"),
+                "command_id": current.get("command_id"),
+                "mission_id": mission.get("mission_id"),
+                "mission_title": mission.get("mission_title") or current.get("mission_title"),
+                "today_goal": current.get("today_goal"),
+                "judgement": current.get("judgement"),
+                "next_decision_condition": current.get("next_decision_condition"),
+                "daily_test_limit": current.get("daily_test_limit"),
+                "created_at": current.get("created_at"),
+            }
+        )
+    return _persist_decision_extras(current, mission_context=mission)
+
+
+def _set_controller_decision(payload):
+    payload = dict(payload or {})
+    providers = _normalized_providers(payload.pop("test_providers", None))
+    mission = _active_mission_context()
+    if mission:
+        # A browser/client may not detach GEO from the current company Mission.
+        payload["mission_id"] = mission.get("mission_id")
+        payload["mission_title"] = mission.get("mission_title") or payload.get("mission_title")
+    current = set_decision(payload)
+    return _persist_decision_extras(current, providers=providers, mission_context=mission)
+
+
 def _dashboard_with_executor():
+    _effective_decision()
     value = dashboard()
+    value["decision"] = _effective_decision()
     value["executor"] = geo_openai_search_executor.status()
     return value
 
@@ -152,23 +247,27 @@ def install():
             if path == "/api/r8-19/geo/bootstrap":
                 result = bootstrap_question_set(force=bool(payload.get("force")))
             elif path == "/api/r8-19/geo/plan":
+                current = _effective_decision()
                 requested = payload.get("question_ids") or None
                 eligible_ids = _eligible_question_ids(requested)
+                provider = current.get("test_providers", [DEFAULT_PROVIDER])[0]
                 result = create_and_enqueue_plan(
-                    limit=payload.get("limit", 10),
-                    provider=payload.get("provider", "external_ai"),
-                    test_method=payload.get("test_method", "browser"),
-                    mission_id=payload.get("mission_id", ""),
+                    limit=payload.get("limit", current.get("daily_test_limit", 10)),
+                    provider=provider,
+                    test_method=current.get("test_method", DEFAULT_TEST_METHOD),
+                    mission_id=current.get("mission_id", ""),
                     question_ids=eligible_ids,
                 )
             elif path == "/api/r8-19/geo/run":
-                mode = str(payload.get("mode") or "openai_web_search").strip()
+                current = _effective_decision()
+                provider = current.get("test_providers", [DEFAULT_PROVIDER])[0]
+                mode = str(payload.get("mode") or provider).strip()
                 if mode == "external_contract":
                     result = claim_next_task(payload.get("executor") or payload)
-                elif mode == "openai_web_search":
+                elif mode == "openai_web_search" and provider == "openai_web_search":
                     result = geo_openai_search_executor.run_once()
                 else:
-                    raise ValueError("unsupported_geo_executor_mode")
+                    raise ValueError("geo_executor_not_selected_by_chatgpt_decision")
             elif path == "/api/r8-19/geo/receipt":
                 result = record_result(payload)
             elif path == "/api/r8-19/geo/fail":
@@ -186,7 +285,7 @@ def install():
                     approved_by=str(payload.get("approved_by") or "chatgpt"),
                 )
             else:
-                result = set_decision(payload)
+                result = _set_controller_decision(payload)
             handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
