@@ -35,13 +35,14 @@ def check_owner_runtime_contract():
         "/r8_10_truth_convergence.js",
         "/r8_11_backbone_ui.js",
         "/r8_12_account_center_bridge.js",
-        "FiniteStartupObserver",
+        "yieldToBrowser",
         "dedupeGeneratedSingletons",
         "forceInitialDashboardOnce",
         "r810:workbench-ready",
         "kz:app-ready",
     ):
         assert token in coordinator, f"startup convergence contract missing: {token}"
+    assert "window.MutationObserver =" not in coordinator, "startup must not replace native browser observers"
 
 
 def check_same_growth_mission_identity_guard():
@@ -163,7 +164,7 @@ def main():
 
     check_owner_runtime_contract()
     check_same_growth_mission_identity_guard()
-    print("R8-12 unified account center + startup convergence regression passed")
+    print("R8-12 unified account center + native-observer startup convergence regression passed")
 
 
 if __name__ == "__main__":
