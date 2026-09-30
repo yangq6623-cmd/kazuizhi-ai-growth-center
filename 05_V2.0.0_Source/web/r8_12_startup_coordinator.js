@@ -11,34 +11,51 @@
     degraded: false,
     heartbeat: 0,
     last_heartbeat_at: null,
+    current_module: '',
+    lazy_loaded: [],
   };
 
   const state = window.__KZ_R812_STARTUP_COORDINATOR__;
   const SCRIPT_TIMEOUT_MS = 4500;
-  // r7.js is part of the static base shell. The manager patch must be loaded
-  // immediately afterwards and before the R8 owner-shell workbench.
+
+  // Keep first paint deliberately small.  The previous startup loaded every
+  // iframe-backed workspace before the dashboard became usable.  On Chrome
+  // that meant Content Studio + Execution + SEO/GEO could all initialise at
+  // once and starve the renderer.  Only lightweight owner-shell modules are
+  // allowed in the critical path; heavy workspaces are loaded on first use.
   const SCRIPT_SEQUENCE = [
     ['/r7_manager_patch.js', 'r7ManagerPatch'],
     ['/r8_10_workbench.js', 'r810Workbench'],
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
-    ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
-    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
     ['/r8_15_ui_truth_patch.js', 'r815UiTruth'],
-    ['/kz_site_tools.js', 'kzSiteTools'],
-    ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
-    ['/kz_async_control_ui.js', 'kzAsyncControlUi'],
   ];
+
+  const LAZY_SEQUENCE = {
+    execution: [
+      ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
+    ],
+    seo_geo: [
+      ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
+    ],
+    content_studio: [
+      ['/content-studio-shell.js', 'contentStudioShell'],
+      ['/content-pipeline-host.js', 'contentPipelineHost'],
+    ],
+    connections: [
+      ['/kz_site_tools.js', 'kzSiteTools'],
+      ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
+      ['/kz_async_control_ui.js', 'kzAsyncControlUi'],
+    ],
+  };
+
   const GENERATED_ID_PREFIXES = ['r8-', 'r810-', 'r811-', 'r812-', 'r813-', 'kz-'];
+  const lazyPromises = new Map();
 
   function emit(name, detail = {}) {
     window.dispatchEvent(new CustomEvent(name, {detail}));
     document.dispatchEvent(new CustomEvent(name, {detail}));
-  }
-
-  function wait(ms) {
-    return new Promise(resolve => window.setTimeout(resolve, ms));
   }
 
   async function yieldToBrowser(delay = 60) {
@@ -90,6 +107,9 @@
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       let settled = false;
+      state.current_module = src;
+      document.documentElement.dataset.kzStartupCurrentModule = src;
+      console.info('[KZ startup] loading', src);
       const finish = (ok, error) => {
         if (settled) return;
         settled = true;
@@ -97,6 +117,7 @@
         if (ok) {
           script.dataset.kzLoadReady = '1';
           state.loaded.push({src, reused:false});
+          console.info('[KZ startup] loaded', src);
           resolve(script);
         } else {
           script.dataset.kzLoadFailed = '1';
@@ -121,17 +142,30 @@
       await loadScript(src, key);
       return true;
     } catch (error) {
-      const failure = {
-        src,
-        error: String(error?.message || error),
-        at: new Date().toISOString(),
-      };
+      const failure = {src, error: String(error?.message || error), at: new Date().toISOString()};
       state.failed_modules.push(failure);
       state.degraded = true;
       console.error('Owner-shell module degraded, continuing startup', failure);
       emit('kz:startup-module-failed', failure);
       return false;
     }
+  }
+
+  async function loadLazyBundle(name) {
+    if (lazyPromises.has(name)) return lazyPromises.get(name);
+    const sequence = LAZY_SEQUENCE[name] || [];
+    const promise = (async () => {
+      document.documentElement.dataset.kzLazyWorkspace = name;
+      for (const [src, key] of sequence) {
+        await loadScriptFailSoft(src, key);
+        await yieldToBrowser(70);
+      }
+      if (!state.lazy_loaded.includes(name)) state.lazy_loaded.push(name);
+      emit('kz:lazy-workspace-ready', {name});
+      return true;
+    })();
+    lazyPromises.set(name, promise);
+    return promise;
   }
 
   function dedupeGeneratedSingletons() {
@@ -148,15 +182,67 @@
     if (document.documentElement.dataset.kzInitialRouteLocked === '1') return;
     document.documentElement.dataset.kzInitialRouteLocked = '1';
     try {
-      if (typeof window.openPage === 'function') {
-        window.openPage('dashboard');
-      } else {
+      if (typeof window.openPage === 'function') window.openPage('dashboard');
+      else {
         document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === 'dashboard'));
         document.querySelectorAll('aside nav .nav').forEach(button => button.classList.toggle('active', button.dataset.page === 'dashboard'));
       }
     } catch (error) {
       console.warn('initial dashboard route failed', error);
     }
+  }
+
+  function ensureLazyNavButton(target, label, icon, beforeTarget = '') {
+    const primary = document.querySelector('.r810-primary-nav');
+    if (!primary) return null;
+    let button = primary.querySelector(`.r810-nav-button[data-target="${target}"]`);
+    if (button) return button;
+    button = document.createElement('button');
+    button.className = 'r810-nav-button';
+    button.dataset.target = target;
+    button.dataset.kzLazyRoute = '1';
+    button.innerHTML = `<span class="r810-icon">${icon}</span><span>${label}</span>`;
+    const before = beforeTarget ? primary.querySelector(`.r810-nav-button[data-target="${beforeTarget}"]`) : null;
+    if (before) primary.insertBefore(button, before); else primary.appendChild(button);
+    return button;
+  }
+
+  function installLazyWorkspaceRoutes() {
+    ensureLazyNavButton('content-studio', '内容创导', '创', 'operational-hub');
+    ensureLazyNavButton('r813-seo-geo', 'SEO/GEO增长', '搜', 'r810-evolution');
+
+    if (window.__KZ_R812_LAZY_ROUTE_CAPTURE__) return;
+    window.__KZ_R812_LAZY_ROUTE_CAPTURE__ = true;
+    window.addEventListener('click', async event => {
+      const button = event.target?.closest?.('.r810-nav-button[data-target]');
+      if (!button) return;
+      const target = String(button.dataset.target || '');
+      let bundle = '';
+      if (target === 'content-studio') bundle = 'content_studio';
+      else if (target === 'r813-seo-geo') bundle = 'seo_geo';
+      else if (target === 'operational-hub') bundle = 'execution';
+      else if (target === 'connections') bundle = 'connections';
+      if (!bundle) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      button.disabled = true;
+      button.dataset.kzLoading = '1';
+      try {
+        await loadLazyBundle(bundle);
+        if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
+        else if (target === 'r813-seo-geo') window.KZR813SeoGeoBridge?.open?.();
+        else if (target === 'operational-hub') {
+          if (typeof window.openPage === 'function') window.openPage('operational-hub');
+          else document.querySelectorAll('.page').forEach(node => node.classList.toggle('active', node.id === 'operational-hub'));
+        } else if (target === 'connections') {
+          if (typeof window.openPage === 'function') window.openPage('connections');
+        }
+      } finally {
+        button.disabled = false;
+        delete button.dataset.kzLoading;
+      }
+    }, true);
   }
 
   function resolvedBuildValue(value, fallback = '') {
@@ -173,21 +259,16 @@
     const displayVersion = resolvedBuildValue(build.displayVersion, 'V2.2.2 Autonomous Mission Core');
     const runtimeBuild = resolvedBuildValue(build.runtimeBuild, 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922');
     const runLabel = runNumber ? `#${runNumber}` : '本地源码';
-
     const baseline = document.querySelector('.baseline');
     if (baseline) {
       baseline.replaceChildren();
-      const title = document.createElement('b');
-      title.textContent = `${phase} · ${runLabel}`;
+      const title = document.createElement('b'); title.textContent = `${phase} · ${runLabel}`;
       const br = document.createElement('br');
-      const subtitle = document.createElement('span');
-      subtitle.textContent = '自治运营 · 真实执行 · 真实回执';
-      const code = document.createElement('code');
-      code.textContent = `${displayVersion}${commit ? ` · ${commit}` : ''}`;
+      const subtitle = document.createElement('span'); subtitle.textContent = '自治运营 · 真实执行 · 真实回执';
+      const code = document.createElement('code'); code.textContent = `${displayVersion}${commit ? ` · ${commit}` : ''}`;
       baseline.append(title, br, subtitle, code);
       baseline.title = [runtimeBuild, branch ? `branch: ${branch}` : '', commit ? `commit: ${commit}` : ''].filter(Boolean).join('\n');
     }
-
     document.title = `卡嘴子 AI 自治运营工作台 · ${phase}${runNumber ? ` · #${runNumber}` : ''}`;
     const meta = document.querySelector('meta[name="kazuizhi-build"]');
     if (meta) meta.setAttribute('content', runtimeBuild);
@@ -198,17 +279,10 @@
   function refreshTodayLabel() {
     const label = document.getElementById('today-label');
     if (!label) return;
-    label.textContent = new Intl.DateTimeFormat('zh-CN', {
-      month: 'long',
-      day: 'numeric',
-      weekday: 'short',
-    }).format(new Date());
+    label.textContent = new Intl.DateTimeFormat('zh-CN', {month:'long', day:'numeric', weekday:'short'}).format(new Date());
   }
 
-  function convergeVisibleReleaseTruth() {
-    applyReleaseIdentity();
-    refreshTodayLabel();
-  }
+  function convergeVisibleReleaseTruth() { applyReleaseIdentity(); refreshTodayLabel(); }
 
   function installReleaseTruthRefresh() {
     if (window.__KZ_R815_RELEASE_TRUTH_REFRESH__) return;
@@ -216,9 +290,7 @@
     convergeVisibleReleaseTruth();
     window.setInterval(convergeVisibleReleaseTruth, 60000);
     window.addEventListener('focus', convergeVisibleReleaseTruth);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) convergeVisibleReleaseTruth();
-    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) convergeVisibleReleaseTruth(); });
     document.addEventListener('r810:workbench-ready', convergeVisibleReleaseTruth);
     document.addEventListener('kz:app-ready', convergeVisibleReleaseTruth);
   }
@@ -238,6 +310,7 @@
     document.documentElement.dataset.kzStartupPhase = state.phase;
     document.documentElement.dataset.kzStartupDegraded = state.degraded ? '1' : '0';
     document.documentElement.dataset.kzStartupFailures = String(state.failed_modules.length);
+    document.documentElement.dataset.kzStartupCurrentModule = state.current_module || '';
   }
 
   async function boot() {
@@ -249,14 +322,12 @@
     installReleaseTruthRefresh();
     emit('kz:startup-base-ready');
 
-    // Never replace browser primitives such as MutationObserver. R8 modules
-    // must be correct with native browser semantics. Modules are loaded in a
-    // bounded sequence with a render yield between each one so the owner UI
-    // remains interactive during startup.
     state.phase = 'loading_owner_shell';
     exposeStartupStatus();
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
+        state.current_module = src;
+        exposeStartupStatus();
         const loaded = await loadScriptFailSoft(src, key);
         await yieldToBrowser(src === '/r7_manager_patch.js' ? 90 : 55);
         if (src === '/r8_10_workbench.js' && loaded) {
@@ -264,8 +335,10 @@
           await yieldToBrowser(100);
         }
       }
+      state.current_module = '';
       await yieldToBrowser(120);
       dedupeGeneratedSingletons();
+      installLazyWorkspaceRoutes();
       forceInitialDashboardOnce();
       convergeVisibleReleaseTruth();
       state.phase = state.failed_modules.length ? 'degraded' : 'ready';
@@ -288,5 +361,6 @@
     }
   }
 
+  window.KZLoadOwnerWorkspace = loadLazyBundle;
   boot();
 })();
