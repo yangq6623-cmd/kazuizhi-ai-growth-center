@@ -1,7 +1,7 @@
 """Real-browser smoke gate for the R8-19 owner shell.
 
 This test exists because static/source tests and a process launch gate can all pass
-while Chromium's renderer is trapped in a DOM/mutation loop.  It starts either
+while Chromium's renderer is trapped in a DOM/mutation loop. It starts either
 the source runtime or a packaged EXE, opens the real owner page in Chrome via
 Playwright, waits for the R8 coordinator, verifies the 250 ms heartbeat keeps
 advancing, clicks the main owner navigation, and rejects runaway DOM growth or
@@ -90,6 +90,28 @@ def heartbeat(page, *, min_delta: int = 2, timeout_ms: int = 3000) -> int:
     return after
 
 
+def wait_lazy_bundle(page, target: str) -> None:
+    bundle_by_target = {
+        "content-studio": "content_studio",
+        "r813-seo-geo": "seo_geo",
+        "operational-hub": "execution",
+    }
+    bundle = bundle_by_target.get(target)
+    if not bundle:
+        return
+    try:
+        page.wait_for_function(
+            "bundle => (window.__KZ_R812_STARTUP_COORDINATOR__?.lazy_loaded || []).includes(bundle)",
+            arg=bundle,
+            timeout=8000,
+        )
+    except PlaywrightTimeoutError as error:
+        current = page.evaluate(
+            "() => ({lazy: window.__KZ_R812_STARTUP_COORDINATOR__?.lazy_loaded || [], current: document.documentElement.dataset.kzStartupCurrentModule || ''})"
+        )
+        raise AssertionError(f"lazy owner workspace did not finish loading: target={target}, state={current}") from error
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", default="", help="Optional packaged runtime EXE; source runtime is used when omitted")
@@ -102,9 +124,6 @@ def main() -> None:
             url = f"http://127.0.0.1:{port}/"
             wait_http(url)
             with sync_playwright() as playwright:
-                # windows-latest already provides Google Chrome. Using the real
-                # installed channel avoids a separate browser download and is
-                # closer to the user's field environment.
                 browser = playwright.chromium.launch(channel="chrome", headless=True)
                 page = browser.new_page(viewport={"width": 1600, "height": 1000})
                 page_errors: list[str] = []
@@ -118,30 +137,46 @@ def main() -> None:
                     )
                 except PlaywrightTimeoutError as error:
                     phase = page.evaluate("() => document.documentElement.dataset.kzStartupPhase || 'missing'")
-                    raise AssertionError(f"owner shell did not reach ready/degraded state; phase={phase}") from error
+                    current = page.evaluate("() => document.documentElement.dataset.kzStartupCurrentModule || 'none'")
+                    raise AssertionError(f"owner shell did not reach ready/degraded state; phase={phase}; current_module={current}") from error
 
                 heartbeat(page)
                 baseline_nodes = page.locator("*").count()
                 if baseline_nodes > 12000:
                     raise AssertionError(f"unexpectedly large initial DOM: {baseline_nodes} nodes")
 
-                # Exercise every visible primary owner navigation button. This
-                # catches click handlers, iframe setup and route patches that a
-                # plain HTTP or process-launch test cannot validate.
-                nav = page.locator(".r810-primary-nav .r810-nav-button:visible")
-                labels = [value.strip() for value in nav.all_text_contents()]
-                if len(labels) < 5:
-                    raise AssertionError(f"owner navigation did not initialize; visible labels={labels}")
+                # Use stable data-target route IDs rather than mutable button text.
+                # The 待我处理 badge changes asynchronously (0/1/...), so selecting
+                # by all_text_contents can make an otherwise healthy UI look broken.
+                nav = page.locator(".r810-primary-nav .r810-nav-button:visible[data-target]")
+                targets = nav.evaluate_all(
+                    "nodes => nodes.map(node => node.dataset.target).filter(Boolean)"
+                )
+                if len(targets) < 5:
+                    raise AssertionError(f"owner navigation did not initialize; visible targets={targets}")
 
-                for label in labels[:10]:
-                    target = page.locator(".r810-primary-nav .r810-nav-button:visible", has_text=label).first
+                clicked: list[str] = []
+                for route_target in targets[:10]:
+                    selector = f'.r810-primary-nav .r810-nav-button[data-target="{route_target}"]'
+                    target = page.locator(selector).first
+                    target.wait_for(state="visible", timeout=4000)
                     target.click(timeout=4000)
+                    wait_lazy_bundle(page, route_target)
+                    try:
+                        page.wait_for_function(
+                            "sel => { const el=document.querySelector(sel); return !!el && !el.disabled && el.dataset.kzLoading !== '1'; }",
+                            arg=selector,
+                            timeout=5000,
+                        )
+                    except PlaywrightTimeoutError as error:
+                        raise AssertionError(f"owner route remained stuck in loading state: {route_target}") from error
                     page.wait_for_timeout(250)
-                    heartbeat(page, min_delta=1, timeout_ms=2500)
+                    heartbeat(page, min_delta=1, timeout_ms=3000)
+                    clicked.append(route_target)
 
                 # Return to the boss dashboard and leave the app running long
                 # enough to catch delayed observer/timer feedback loops.
-                boss = page.locator(".r810-primary-nav .r810-nav-button:visible", has_text="老板总控").first
+                boss = page.locator('.r810-primary-nav .r810-nav-button[data-target="dashboard"]').first
                 if boss.count():
                     boss.click(timeout=4000)
                 heartbeat(page)
@@ -178,10 +213,10 @@ def main() -> None:
                     raise AssertionError(f"owner shell started degraded: phase={phase}, failed_modules={failures}")
 
                 browser.close()
-                target = "packaged runtime" if args.exe else "source runtime"
+                target_name = "packaged runtime" if args.exe else "source runtime"
                 print(
-                    f"PASS: {target} stayed responsive in real Chrome; {len(labels)} owner routes clicked; "
-                    f"DOM {baseline_nodes}->{final_nodes}; no startup degradation or uncaught page errors"
+                    f"PASS: {target_name} stayed responsive in real Chrome; {len(clicked)} owner routes clicked "
+                    f"by stable data-target; DOM {baseline_nodes}->{final_nodes}; no startup degradation or uncaught page errors"
                 )
         finally:
             if process.poll() is None:
