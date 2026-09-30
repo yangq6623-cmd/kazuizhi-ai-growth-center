@@ -66,8 +66,43 @@
     doc.head.appendChild(link);
   }
 
+  function measureFrameHeight(frame){
+    try{
+      const doc=frame?.contentDocument;
+      if(!doc)return 0;
+      const htmlHeight=doc.documentElement?.scrollHeight||0;
+      const bodyHeight=doc.body?.scrollHeight||0;
+      const searchHeight=doc.getElementById('search')?.scrollHeight||0;
+      const seoPane=doc.getElementById('seo-growth-pane');
+      const geoPane=doc.getElementById('geo-growth-pane');
+      const activePaneHeight=!seoPane?.hidden?(seoPane?.scrollHeight||0):(geoPane?.scrollHeight||0);
+      return Math.max(1300,htmlHeight,bodyHeight,searchHeight,activePaneHeight)+32;
+    }catch(_){return 0;}
+  }
+
+  function applyMeasuredHeight(frame){
+    if(!frame)return;
+    const measured=measureFrameHeight(frame);
+    if(!measured)return;
+    const target=Math.max(1300,Math.min(12000,Math.round(measured)));
+    const current=parseInt(frame.style.height||'0',10)||Math.round(frame.getBoundingClientRect().height||0);
+    if(current&&Math.abs(target-current)<32)return;
+    frame.style.height=`${target}px`;
+  }
+
+  function queueResize(frame,delay=0){
+    if(!frame)return;
+    window.setTimeout(()=>{
+      if(frame.__kzGrowthResizeTimer)window.clearTimeout(frame.__kzGrowthResizeTimer);
+      frame.__kzGrowthResizeTimer=window.setTimeout(()=>{
+        frame.__kzGrowthResizeTimer=null;
+        requestAnimationFrame(()=>applyMeasuredHeight(frame));
+      },90);
+    },delay);
+  }
+
   function scheduleResize(frame){
-    [0,50,150,350,800].forEach(delay=>setTimeout(()=>setupResize(frame),delay));
+    [0,160,520,1200].forEach(delay=>queueResize(frame,delay));
   }
 
   function switchFrameWorkspace(name){
@@ -115,25 +150,32 @@
   function setupResize(frame){
     try{
       const doc=frame?.contentDocument;if(!doc)return;
-      const resize=()=>{
-        const htmlHeight=doc.documentElement?.scrollHeight||0;
-        const bodyHeight=doc.body?.scrollHeight||0;
-        const searchHeight=doc.getElementById('search')?.scrollHeight||0;
-        const seoPane=doc.getElementById('seo-growth-pane');
-        const geoPane=doc.getElementById('geo-growth-pane');
-        const activePaneHeight=!seoPane?.hidden?(seoPane?.scrollHeight||0):(geoPane?.scrollHeight||0);
-        frame.style.height=`${Math.max(1300,htmlHeight,bodyHeight,searchHeight,activePaneHeight)+32}px`;
-      };
-      resize();
+      frame.setAttribute('scrolling','auto');
+      frame.style.overflow='auto';
+      queueResize(frame,0);
+
+      // Never observe documentElement/body here. Changing the parent iframe height
+      // changes the child viewport, which can resize those nodes and self-trigger a
+      // ResizeObserver -> iframe height -> ResizeObserver feedback loop in Chrome.
       if(window.ResizeObserver&&!frame.__kzGrowthResizeObserver){
-        const observer=new ResizeObserver(()=>resize());
-        [doc.documentElement,doc.body,doc.getElementById('search')].filter(Boolean).forEach(node=>observer.observe(node));
+        const observer=new ResizeObserver(()=>queueResize(frame,80));
+        [doc.getElementById('search'),doc.getElementById('seo-growth-pane'),doc.getElementById('geo-growth-pane')]
+          .filter(Boolean).forEach(node=>observer.observe(node));
         frame.__kzGrowthResizeObserver=observer;
       }
-      if(window.MutationObserver&&!frame.__kzGrowthMutationObserver&&doc.body){
-        const observer=new MutationObserver(()=>resize());
-        observer.observe(doc.body,{subtree:true,childList:true,attributes:true,characterData:false});
-        frame.__kzGrowthMutationObserver=observer;
+      if(window.MutationObserver&&!frame.__kzGrowthMutationObserver){
+        const host=doc.getElementById('search');
+        if(host){
+          const observer=new MutationObserver(()=>queueResize(frame,120));
+          observer.observe(host,{subtree:true,childList:true,attributes:false,characterData:false});
+          frame.__kzGrowthMutationObserver=observer;
+        }
+      }
+      if(!frame.__kzGrowthTabResizeBound){
+        frame.__kzGrowthTabResizeBound='1';
+        doc.addEventListener('click',event=>{
+          if(event.target?.closest?.('[data-growth-tab],.tabs button,[data-to]'))scheduleResize(frame);
+        },true);
       }
     }catch(error){console.warn('SEO/GEO iframe resize deferred',error)}
   }
@@ -144,7 +186,7 @@
       page=document.createElement('section');
       page.id=PAGE_ID;
       page.className='page';
-      page.innerHTML='<iframe id="r813-seo-geo-frame" title="SEO/GEO增长中心" src="/r8_13_seo_geo.html?embed=1" style="width:100%;min-height:1400px;border:0;background:#f4f7fb" scrolling="no"></iframe>';
+      page.innerHTML='<iframe id="r813-seo-geo-frame" title="SEO/GEO增长中心" src="/r8_13_seo_geo.html?embed=1" style="width:100%;height:1600px;min-height:1300px;border:0;background:#f4f7fb;overflow:auto" scrolling="auto"></iframe>';
       document.querySelector('main')?.appendChild(page);
       const frame=page.querySelector('iframe');
       frame?.addEventListener('load',()=>{installGrowthWorkspace(frame);setupResize(frame);scheduleResize(frame)});
