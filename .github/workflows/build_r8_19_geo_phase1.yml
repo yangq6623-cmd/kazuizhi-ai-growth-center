@@ -67,6 +67,7 @@ jobs:
           python 04_Build/v2/test_r8_19_geo_browser_first.py
           python 04_Build/v2/test_r8_19_geo_ui_polish.py
           python 04_Build/v2/test_r8_19_geo_field_fix.py
+          python 04_Build/v2/test_r8_19_startup_resilience.py
       - name: Integrate unified model connection center into packaged web
         run: |
           $targets = @(
@@ -111,12 +112,13 @@ jobs:
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            scope = @('GEO merged into normal main-platform SEO/GEO route', 'SEO/GEO internal first-level tabs', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'browser-first no-API external AI validation', 'local-model C-level GEO precheck', 'optional API validation', 'compact B2B GEO command layout', 'field-tested button interaction repair', 'KPI drill-down controls', 'active-task external AI open/copy helper', 'duplicate-running-task recovery', 'SEO/GEO duplicate reduced to read-only linkage', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'main-platform field integration gate', 'unified local/cloud AI model connection center')
+            scope = @('GEO merged into normal main-platform SEO/GEO route', 'SEO/GEO internal first-level tabs', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'browser-first no-API external AI validation', 'local-model C-level GEO precheck', 'optional API validation', 'compact B2B GEO command layout', 'field-tested button interaction repair', 'KPI drill-down controls', 'active-task external AI open/copy helper', 'duplicate-running-task recovery', 'AI employee manager ordered startup', 'fail-soft owner-shell startup', 'SEO/GEO duplicate reduced to read-only linkage', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'main-platform field integration gate', 'unified local/cloud AI model connection center')
             seo_policy = 'SEO feature development frozen; existing SEO runtime and regression retained. Legacy GEO summary remains read-only and links to the dedicated GEO workspace.'
             local_model_policy = 'Local model may precheck and analyse GEO through a verified localhost OpenAI-compatible route, but it is always C-level auxiliary evidence and never changes official GEO A/B metrics'
             api_policy = 'Paid API is optional. Browser validation is the default Phase-1 path; APIs remain an optional future acceleration channel.'
             work_policy = 'The browser validation contract is designed for manual use now and later ChatGPT Work/browser-agent execution without changing the Evidence/Receipt schema.'
-            acceptance = '48/48 Phase-1 source acceptance plus main-platform integration, browser-first no-API regression, local-precheck truth gate, GEO UI polish gate, GEO field-interaction gate, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live owner browser validation of the first real question remains a separate field acceptance step.'
+            startup_policy = 'r7_manager_patch loads before the R8 owner shell. Individual module load failures are recorded as degraded and must not freeze the remaining navigation or app-ready event.'
+            acceptance = '48/48 Phase-1 source acceptance plus main-platform integration, browser-first no-API regression, local-precheck truth gate, GEO UI polish gate, GEO field-interaction gate, owner-shell startup resilience gate, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live owner browser validation of the first real question remains a separate field acceptance step.'
           } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
       - name: Upload R8-19 GEO Phase 1 Windows installer
         uses: actions/upload-artifact@v4
