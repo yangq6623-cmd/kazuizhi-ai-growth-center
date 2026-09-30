@@ -16,6 +16,7 @@ from backend import content_assets_v97_patch as _v97  # noqa: F401
 from backend import voice_clone_v98_patch as _v98
 from backend import shot_editor_v99_patch as _v99
 from backend import postproduction_v100_patch as _v100
+from backend import content_final_stability_v101_1_patch as _stability  # noqa: F401
 from backend import quality_ai_runtime_patch as _quality
 from backend import server
 from backend import series_asset_center_v92_patch as _series
@@ -59,7 +60,7 @@ def status():
         missing.append("127.0.0.1:17779 本地声音克隆服务")
     counts = assets.get("counts") or {}
     return {
-        "version": "#101",
+        "version": "#101.1",
         "package": "六模块内容生产中心最终整合",
         "modules": modules,
         "core_ready": core_ready,
@@ -69,6 +70,7 @@ def status():
         "auto_keyframe": keyframe,
         "voice": voice,
         "postproduction": _v100.status(),
+        "media_isolation": "current_project_only",
         "assets": {"character": counts.get("character", 0), "voice": counts.get("voice", 0), "scene": counts.get("scene", 0), "series": counts.get("series", 0)},
         "editor_actions": ["新增", "删除", "修改", "拆分", "合并", "排序", "单镜头重生", "增加候选"],
         "truth": (
@@ -89,6 +91,7 @@ def self_test():
     add("#98 声音路由", modules.get("voice_v98"), result.get("voice", {}).get("message"), required=True)
     add("#99 镜头编辑器", modules.get("editor_v99"), "支持新增/删除/拆分/合并/排序/单镜头重生")
     add("#100 专业后期", bool((result.get("postproduction") or {}).get("ready")), "FFmpeg 母带/封面/多比例版本")
+    add("#101.1 当前项目素材隔离", result.get("media_isolation") == "current_project_only", "新纯文案任务不会静默复用历史项目旧图片")
     add("Wan2.1 真视频模型", bool((result.get("wan") or {}).get("wan_i2v_fp8") or (result.get("wan") or {}).get("ok")), (result.get("wan") or {}).get("message"))
     add("纯文案自动首帧", bool((result.get("auto_keyframe") or {}).get("ready")), (result.get("auto_keyframe") or {}).get("message"))
     add("授权声音克隆服务", bool((result.get("voice") or {}).get("available")), (result.get("voice") or {}).get("message"))
