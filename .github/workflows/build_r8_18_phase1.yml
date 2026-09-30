@@ -1,4 +1,4 @@
-name: Build Kazuizhi R8-18 Phase 1 Foundation
+name: Build Kazuizhi R8-18 Content Center Final Candidate
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
-      - name: Verify R7/R8 compatibility and Phase 1 foundation
+      - name: Verify R7/R8 compatibility and final content center
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -58,6 +58,7 @@ jobs:
           python 04_Build/v2/test_ai_gateway.py
           python 04_Build/v2/test_r8_18_model_connection_center.py
           python 04_Build/v2/test_r8_18_evidence_ledger.py
+          python 04_Build/v2/test_content_center_v101_integration.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -71,31 +72,31 @@ jobs:
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install, launch, overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record Phase 1 installer provenance
+      - name: Record final content-center installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-18 Phase 1 Foundation Candidate'
+            version = '2.2.2 R8-18 Content Center #101 Final Integration Candidate'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            scope = @('R8-18 cloud/local model connection center', 'release manifest', 'growth evidence ledger UI')
-            excluded = @('local-model download or deployment', 'cloud API key configuration', 'external platform publishing')
-            acceptance = 'Automated package gate passed. This is a candidate installer: the owner must confirm visible provenance and read-only evidence import before promoting it.'
-          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_18_PHASE1.json
-      - name: Upload R8-18 Phase 1 Windows installer
+            scope = @('#96 real reference parsing and no-material keyframes', '#97 reusable generation asset binding', '#98 authorized local voice clone routing', '#99 targeted shot editor', '#100 professional post-production', '#101 truthful final acceptance')
+            excluded = @('model-weight download or redistribution', 'cloud API key provisioning', 'external platform publishing without a verified account connector')
+            acceptance = 'Automated source/package/security/overwrite-install gates passed. Runtime self-test still distinguishes installed code from local T2I/voice model availability; owner final media-quality acceptance is required.'
+          } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD_R8_18_CONTENT_V101.json
+      - name: Upload R8-18 final content-center Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation
+          name: Kazuizhi_AI_Enterprise_R8_18_Content_Center_Final_Candidate
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload R8-18 Phase 1 portable application
+      - name: Upload R8-18 final content-center portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation_Portable
+          name: Kazuizhi_AI_Enterprise_R8_18_Content_Center_Final_Candidate_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
