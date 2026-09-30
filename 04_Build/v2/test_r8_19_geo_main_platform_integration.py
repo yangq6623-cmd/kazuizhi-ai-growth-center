@@ -3,6 +3,7 @@
 A standalone /geo.html page is retained only as a backup/debug route. It is not
 sufficient for Phase-1 field acceptance. The normal owner workflow is:
 left nav SEO/GEO增长 -> internal SEO增长/GEO增长 -> GEO controls/evidence.
+The existing SEO workspace must remain complete after integration.
 """
 from pathlib import Path
 
@@ -27,6 +28,22 @@ def main():
     require("/r8_13_seo_geo.html?embed=1" in bridge, "existing SEO workspace was removed")
     require("SEO/GEO增长中心" in seo, "existing SEO page no longer preserved")
 
+    # Full original SEO contract: the GEO merge must not collapse the old page to only its upper cards.
+    for marker in (
+        "关键词机会池", "索引与收录漏斗", "技术SEO健康检查", "内容与页面工厂",
+        "站长平台与索引连接", "转化与归因", "今日自动作业流水线",
+    ):
+        require(marker in seo, f"original SEO section missing from source: {marker}")
+
+    # The embedded frame must keep measuring dynamic content after the tabs are injected.
+    require("doc.body?.scrollHeight" in bridge, "SEO iframe no longer measures body height")
+    require("doc.getElementById('search')?.scrollHeight" in bridge, "integrated search host height is not measured")
+    require("seo-growth-pane" in bridge, "SEO pane height is not measured")
+    require("geo-growth-pane" in bridge, "GEO pane height is not measured")
+    require("MutationObserver" in bridge, "dynamic SEO/GEO height changes are not observed")
+    require("ResizeObserver" in bridge, "SEO/GEO frame resize observer missing")
+    require("scheduleResize" in bridge, "delayed resize stabilization missing")
+
     # The new GEO workspace is injected into that normal route, not opened as a separate browser.
     require("ensureSearchHost" in bridge, "main route does not prepare integrated search host")
     require("/operational-search.css" in bridge, "GEO workspace CSS not integrated into main route")
@@ -47,7 +64,7 @@ def main():
     # Backup/debug route stays available but is not the normal navigation path.
     require("operational-search.js" in backup, "backup /geo.html route no longer works")
 
-    print("PASS: GEO Phase 1 is merged into the normal SEO/GEO platform route; /geo.html is backup only")
+    print("PASS: GEO is merged into the normal route and the complete legacy SEO workspace is preserved")
 
 
 if __name__ == "__main__":
