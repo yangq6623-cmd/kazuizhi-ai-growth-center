@@ -10,13 +10,13 @@ def require(condition, message):
 
 
 def main():
-    bridge = (WEB / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
+    geo = (WEB / "geo.html").read_text(encoding="utf-8")
     polish = (WEB / "geo-phase1-ui-polish.js").read_text(encoding="utf-8")
     css = (WEB / "geo-phase1-ui-polish.css").read_text(encoding="utf-8")
     ui = (WEB / "operational-search.js").read_text(encoding="utf-8")
 
-    for marker in ("geo-phase1-ui-polish.css", "geo-phase1-ui-polish.js", "injectGeoPolish"):
-        require(marker in bridge, f"integrated bridge missing GEO polish asset: {marker}")
+    for marker in ("geo-phase1-ui-polish.css", "geo-phase1-ui-polish.js"):
+        require(marker in geo, f"embedded GEO workspace missing polish asset: {marker}")
 
     for marker in (
         "开始网页验证 · 1题",
@@ -45,14 +45,8 @@ def main():
         require(marker in css, f"GEO B2B polish style missing: {marker}")
 
     for button_id in (
-        "geo-local-one",
-        "geo-local-ten",
-        "geo-browser-one",
-        "geo-browser-ten",
-        "geo-browser-submit",
-        "geo-run-round",
-        "geo-bootstrap",
-        "geo-refresh",
+        "geo-local-one", "geo-local-ten", "geo-browser-one", "geo-browser-ten",
+        "geo-browser-submit", "geo-run-round", "geo-bootstrap", "geo-refresh",
     ):
         require(button_id in ui, f"existing GEO control removed by visual upgrade: {button_id}")
 
@@ -65,7 +59,7 @@ def main():
     require("'/api/r8-19/geo/browser/prepare'" in polish, "browser prepare repaired click path missing")
     require("'/api/r8-19/geo/browser/receipt'" in polish, "browser receipt repaired click path missing")
 
-    print("PASS: R8-19 GEO workspace has compact B2B layout, visible click feedback and protected browser/local controls; SEO GEO duplicate remains read-only")
+    print("PASS: embedded GEO workspace keeps compact B2B polish and protected browser/local controls")
 
 
 if __name__ == "__main__":
