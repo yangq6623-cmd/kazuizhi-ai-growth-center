@@ -1,10 +1,23 @@
 (() => {
   'use strict';
 
+  if (window.__KZ_R810_TRUTH_CONVERGENCE__) return;
+  window.__KZ_R810_TRUTH_CONVERGENCE__ = true;
+
   let factory = null;
+  let running = false;
+  let rerunRequested = false;
+  let refreshTimer = null;
 
   const text = node => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
   const leafNodes = root => [...(root?.querySelectorAll?.('*') || [])].filter(node => !node.children.length);
+  const setText = (node, value) => {
+    if (!node) return false;
+    const next = String(value ?? '');
+    if (node.textContent === next) return false;
+    node.textContent = next;
+    return true;
+  };
 
   async function readFactory(){
     try{
@@ -89,12 +102,10 @@
     leafNodes(dashboard).forEach(node => {
       const value = text(node);
       if(/闭环得分\s*[\d.]+\s*\/\s*10/.test(value) || /自治闭环成熟度\s*[\d.]+\s*\/\s*10/.test(value) || /自治闭环工程就绪度\s*[\d.]+\s*\/\s*10/.test(value)){
-        node.textContent = `自治闭环工程就绪度 ${score}/10（非业务KPI）`;
+        setText(node, `自治闭环工程就绪度 ${score}/10（非业务KPI）`);
         node.title = '工程就绪度依据当前 Mission 的生产、质检、账号、真实发布回执和归因链路计算；不代表订单、收入或推广效果。';
       }
-      if(value.startsWith('当前首要阻塞')){
-        node.textContent = `当前首要阻塞：${blocker}`;
-      }
+      if(value.startsWith('当前首要阻塞')) setText(node, `当前首要阻塞：${blocker}`);
     });
   }
 
@@ -103,8 +114,8 @@
     if(!page) return;
     leafNodes(page).forEach(node => {
       const value = text(node);
-      if(value === '今日要求完成度' || value === '今日要求完成') node.textContent = '今日例行任务完成度';
-      if(/^\d+\s*\/\s*\d+\s*·\s*\d+%$/.test(value)) node.textContent = `今日例行任务完成度 ${value}`;
+      if(value === '今日要求完成度' || value === '今日要求完成') setText(node, '今日例行任务完成度');
+      if(/^\d+\s*\/\s*\d+\s*·\s*\d+%$/.test(value)) setText(node, `今日例行任务完成度 ${value}`);
     });
     let note = document.getElementById('r810-current-mission-progress');
     if(!note){
@@ -116,7 +127,8 @@
       anchor?.insertAdjacentElement('afterend', note);
     }
     const video = foregroundVideo(data);
-    note.innerHTML = `<b>当前 Mission：</b>${missionStage(data)}${video?.id ? ` · ${video.id}` : ''}。与下方“今日例行任务完成度”分开统计；例行任务 100% 不代表当前 Mission 已完成。`;
+    const html = `<b>当前 Mission：</b>${missionStage(data)}${video?.id ? ` · ${video.id}` : ''}。与下方“今日例行任务完成度”分开统计；例行任务 100% 不代表当前 Mission 已完成。`;
+    if(note.innerHTML !== html) note.innerHTML = html;
   }
 
   function countFromItem(items, id){
@@ -129,34 +141,34 @@
   function patchAttentionTruth(data){
     const items = Array.isArray(data?.action_center?.human_items) ? data.action_center.human_items : [];
     const count = items.length;
-    const set = (id,value) => { const node=document.getElementById(id); if(node) node.textContent=String(value); };
+    const set = (id,value) => setText(document.getElementById(id), String(value));
     set('r810-human-total', count);
     set('r810-video-review', countFromItem(items,'final_review'));
     set('r810-login-human', countFromItem(items,'account_human'));
     set('r810-hard-errors', countFromItem(items,'production_exception'));
     const badge = document.getElementById('r810-attention-badge');
-    if(badge){ badge.textContent=String(count); badge.hidden=!count; }
-    const top = document.getElementById('r810-human-state');
-    if(top) top.textContent=`待我处理：${count}`;
+    if(badge){ setText(badge, String(count)); badge.hidden=!count; }
+    set('r810-human-state', `待我处理：${count}`);
 
-    // Older product layers may still render their own owner badge. Keep every
-    // owner-facing badge bound to the same current-Mission action_center truth.
-    leafNodes(document).forEach(node => {
+    // Only scan compact owner-facing text nodes when convergence is explicitly
+    // requested. Never observe characterData and never run a document-wide
+    // mutation feedback loop.
+    document.querySelectorAll('aside span,aside b,header span,header b,.r810-state-pill,.status-pill').forEach(node => {
       const value = text(node);
-      if(/^待我处理\s*[:：]?\s*\d+$/.test(value)) node.textContent = `待我处理：${count}`;
-      else if(/^待处理\s*\d+$/.test(value)) node.textContent = `待处理 ${count}`;
+      if(/^待我处理\s*[:：]?\s*\d+$/.test(value)) setText(node, `待我处理：${count}`);
+      else if(/^待处理\s*\d+$/.test(value)) setText(node, `待处理 ${count}`);
     });
   }
 
   function patchReviewLabels(root){
     if(!root) return;
-    leafNodes(root).forEach(node => {
+    root.querySelectorAll('button,[role="button"],summary').forEach(node => {
       const value = text(node);
       if(value === '通过并发布' || value === '确认发布'){
-        node.textContent = '审核通过，进入发布队列';
+        setText(node, '审核通过，进入发布队列');
         if(node.tagName === 'BUTTON') node.title = '仅授权进入发布队列；没有真实平台 URL / Post ID / Receipt 不算发布成功';
       }else if(value.includes('通过并发布')){
-        node.textContent = value.replaceAll('通过并发布','审核通过进入发布队列');
+        setText(node, value.replaceAll('通过并发布','审核通过进入发布队列'));
       }
     });
   }
@@ -172,29 +184,45 @@
     try{
       const doc = frame?.contentDocument;
       if(doc) patchReviewLabels(doc);
-    }catch(error){
-      // Same-origin execution frame is expected; if unavailable, parent truth still remains correct.
-    }
+    }catch(error){}
   }
 
   async function converge(){
-    const data = await readFactory();
-    if(!data) return;
-    patchBossTruth(data);
-    patchDecisionTruth(data);
-    patchAttentionTruth(data);
-    patchReviewLabels(document);
-    patchEmbeddedExecution();
+    if(running){ rerunRequested = true; return; }
+    running = true;
+    try{
+      const data = await readFactory();
+      if(!data) return;
+      patchBossTruth(data);
+      patchDecisionTruth(data);
+      patchAttentionTruth(data);
+      patchReviewLabels(document);
+      patchEmbeddedExecution();
+      document.documentElement.dataset.kzTruthConvergence = new Date().toISOString();
+    }finally{
+      running = false;
+      if(rerunRequested){
+        rerunRequested = false;
+        scheduleConvergence(250);
+      }
+    }
   }
 
-  const observer = new MutationObserver(() => {
-    clearTimeout(observer._timer);
-    observer._timer = setTimeout(() => converge().catch(()=>{}), 120);
-  });
-  if(document.documentElement) observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
-  window.addEventListener('focus',()=>converge().catch(()=>{}));
-  window.addEventListener('operational:refreshed',()=>setTimeout(()=>converge().catch(()=>{}),80));
-  setInterval(()=>converge().catch(()=>{}),15000);
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>converge().catch(()=>{}),0),{once:true});
-  else setTimeout(()=>converge().catch(()=>{}),0);
+  function scheduleConvergence(delay = 120){
+    clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => converge().catch(()=>{}), delay);
+  }
+
+  // Deliberately event-driven. The previous document-wide MutationObserver
+  // watched characterData while converge() itself changed textContent, creating
+  // a self-sustaining main-thread loop that could make Chrome report the page
+  // as unresponsive. Known product events plus a low-frequency safety refresh
+  // are sufficient and bounded.
+  window.addEventListener('focus',()=>scheduleConvergence(40));
+  window.addEventListener('operational:refreshed',()=>scheduleConvergence(80));
+  window.addEventListener('kz:app-ready',()=>scheduleConvergence(120));
+  document.addEventListener('r810:workbench-ready',()=>scheduleConvergence(120));
+  window.setInterval(()=>scheduleConvergence(0),30000);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>scheduleConvergence(0),{once:true});
+  else scheduleConvergence(0);
 })();
