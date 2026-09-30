@@ -1,13 +1,13 @@
 (() => {
   'use strict';
 
+  if (window.__KZ_CONTENT_STUDIO_SHELL_STABLE__) return;
+  window.__KZ_CONTENT_STUDIO_SHELL_STABLE__ = true;
+
   const PAGE_ID = 'content-studio';
   const FRAME_ID = 'content-studio-frame';
   let retryTimer = null;
   let ensureAttempts = 0;
-  let lastFrameHeight = 0;
-  let resizeTimer = null;
-  let pendingFrameHeight = 0;
 
   const ROUTE_COPY = {
     overview:['卡嘴子 AI 内容创导平台','内容情报、参考学习、AI 导演、生产、质检与成片统一协同'],
@@ -27,10 +27,10 @@
     style.id = 'content-studio-shell-style';
     style.textContent = `
       #content-studio{padding:0!important;background:#f4f7fb;min-height:0!important}
-      .content-studio-shell{width:100%;min-width:0;background:#f4f7fb;overflow:visible}
-      .content-studio-frame{display:block;width:100%;height:620px;min-height:520px;border:0;background:#f4f7fb;overflow:hidden}
+      .content-studio-shell{width:100%;min-width:0;background:#f4f7fb;overflow:hidden;border-radius:8px}
+      .content-studio-frame{display:block;width:100%;height:calc(100vh - 205px);min-height:680px;max-height:980px;border:0;background:#f4f7fb;overflow:auto}
       .r810-nav-button[data-target="content-studio"] .r810-icon{font-size:12px;font-weight:800}
-      @media(max-width:900px){.content-studio-frame{min-height:620px}}
+      @media(max-width:900px){.content-studio-frame{height:calc(100vh - 180px);min-height:620px}}
     `;
     document.head.appendChild(style);
   }
@@ -58,64 +58,13 @@
     page.className = 'page content-studio-page';
     page.innerHTML = `
       <div class="content-studio-shell" aria-label="卡嘴子 AI 内容创导平台">
-        <iframe id="${FRAME_ID}" class="content-studio-frame" title="卡嘴子 AI 内容创导平台" src="/content-studio.html?entry=overview" loading="eager" scrolling="no"></iframe>
+        <iframe id="${FRAME_ID}" class="content-studio-frame" title="卡嘴子 AI 内容创导平台" src="/content-studio.html?entry=overview" loading="lazy" scrolling="auto"></iframe>
       </div>`;
     main.appendChild(page);
     return page;
   }
 
-  function measureSimpleModeHeight(frame) {
-    try {
-      const doc = frame?.contentDocument;
-      if (!doc?.body?.classList.contains('kz-simple-mode')) return 0;
-      const simple = doc.getElementById('kz-simple-root');
-      if (!simple?.classList.contains('active')) return 0;
-      const shell = doc.querySelector('.studio-shell');
-      const bodyHeight = Math.max(doc.body.scrollHeight || 0, doc.documentElement?.scrollHeight || 0);
-      const simpleHeight = (shell?.offsetHeight || 0) + (simple.scrollHeight || 0) + 44;
-      return Math.max(820, bodyHeight, simpleHeight);
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  function applyFrameHeight() {
-    resizeTimer = null;
-    const frame = document.getElementById(FRAME_ID);
-    if (!frame) return;
-    let target = pendingFrameHeight;
-    if (!target) return;
-    const simpleHeight = measureSimpleModeHeight(frame);
-    if (simpleHeight) target = Math.max(target, simpleHeight);
-    target = Math.max(520, Math.min(Math.round(target), 5000));
-    const current = lastFrameHeight || Math.round(frame.getBoundingClientRect().height || 0);
-    if (current && Math.abs(target - current) < 12) return;
-    frame.style.height = `${target}px`;
-    lastFrameHeight = target;
-  }
-
-  function resizeFrame(height) {
-    const frame = document.getElementById(FRAME_ID);
-    let raw = Number(height || 0);
-    if (!Number.isFinite(raw) || raw <= 0) raw = 520;
-    const simpleHeight = measureSimpleModeHeight(frame);
-    if (simpleHeight) raw = Math.max(raw, simpleHeight);
-    const target = Math.max(520, Math.min(Math.round(raw), 5000));
-    if (lastFrameHeight && Math.abs(target - lastFrameHeight) < 12) return;
-    pendingFrameHeight = target;
-    if (resizeTimer) return;
-    resizeTimer = window.setTimeout(applyFrameHeight, 80);
-  }
-
-  function forceMeasureFrame(delay=0) {
-    window.setTimeout(() => {
-      const frame = document.getElementById(FRAME_ID);
-      const simpleHeight = measureSimpleModeHeight(frame);
-      if (simpleHeight) resizeFrame(simpleHeight);
-    }, delay);
-  }
-
-  function routeFrame(route = 'overview') {
+  function routeFrame(route='overview') {
     const frame = document.getElementById(FRAME_ID);
     if (!frame?.contentWindow) return;
     try { frame.contentWindow.postMessage({type:'kz-content-studio-route', route}, location.origin); } catch (_) {}
@@ -145,17 +94,12 @@
     }
   }
 
-  function openStudio(route = 'overview') {
-    if (typeof window.openPage === 'function') {
-      window.openPage(PAGE_ID);
-    } else {
-      document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === PAGE_ID));
-    }
+  function openStudio(route='overview') {
+    if (typeof window.openPage === 'function') window.openPage(PAGE_ID);
+    else document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === PAGE_ID));
     setVisibleNavActive();
     syncOuterTitle(route);
     routeFrame(route);
-    forceMeasureFrame(120);
-    forceMeasureFrame(420);
     window.scrollTo({top:0, behavior:'auto'});
   }
 
@@ -169,8 +113,7 @@
       button.dataset.target = PAGE_ID;
       button.innerHTML = '<span class="r810-icon">创</span><span>内容创导</span>';
       const decision = primary.querySelector('.r810-nav-button[data-target="workflow"]');
-      if (decision) decision.insertAdjacentElement('afterend', button);
-      else primary.appendChild(button);
+      if (decision) decision.insertAdjacentElement('afterend', button); else primary.appendChild(button);
       button.addEventListener('click', () => openStudio('overview'));
     }
     return true;
@@ -181,32 +124,23 @@
     const easy = doc.createElement('script');
     easy.src = '/content-studio-easy-front.js';
     easy.dataset.kzEasyFront = '1';
-    easy.addEventListener('load', () => {
-      forceMeasureFrame(80);
-      forceMeasureFrame(320);
-      forceMeasureFrame(700);
-    }, {once:true});
     doc.body.appendChild(easy);
   }
 
   function injectSimpleMode(frame) {
     try {
       const doc = frame.contentDocument;
-      if (!doc || !doc.body) return;
+      if (!doc?.body) return;
       let script = doc.querySelector('script[data-kz-simple-mode]');
       if (!script) {
         script = doc.createElement('script');
         script.src = '/content-studio-simple.js';
         script.dataset.kzSimpleMode = '1';
-        script.addEventListener('load', () => {
-          injectEasyFront(doc);
-          forceMeasureFrame(100);
-          forceMeasureFrame(400);
-        }, {once:true});
+        script.addEventListener('load', () => injectEasyFront(doc), {once:true});
         doc.body.appendChild(script);
+      } else {
+        injectEasyFront(doc);
       }
-      injectEasyFront(doc);
-      forceMeasureFrame(120);
     } catch (_) {}
   }
 
@@ -219,19 +153,14 @@
     ensureLegacyRoute(nav);
     const page = ensurePage(main);
     const frame = page?.querySelector(`#${FRAME_ID}`);
-    if (frame && !frame.dataset.kzStableResize) {
-      frame.dataset.kzStableResize = '1';
+    if (frame && !frame.dataset.kzStableBound) {
+      frame.dataset.kzStableBound = '1';
       frame.addEventListener('load', () => {
-        lastFrameHeight = Math.round(frame.getBoundingClientRect().height || 620);
         injectSimpleMode(frame);
-        forceMeasureFrame(180);
-        forceMeasureFrame(600);
+        document.documentElement.dataset.kzContentStudioFrame = 'ready';
       });
     }
-    if (frame?.contentDocument?.readyState === 'complete') {
-      injectSimpleMode(frame);
-      forceMeasureFrame(160);
-    }
+    if (frame?.contentDocument?.readyState === 'complete') injectSimpleMode(frame);
     const ready = ensureOwnerNavigation(nav);
     if (ready) {
       document.documentElement.dataset.kzContentStudio = 'ready';
@@ -244,17 +173,18 @@
     if (retryTimer) window.clearTimeout(retryTimer);
     if (ensure()) return;
     ensureAttempts += 1;
-    if (ensureAttempts < 40) retryTimer = window.setTimeout(converge, 150);
+    if (ensureAttempts < 24) retryTimer = window.setTimeout(converge, 180);
   }
 
   window.addEventListener('message', event => {
     if (event.origin !== location.origin) return;
-    if (event.data?.type === 'kz-content-studio-height') resizeFrame(event.data.height);
+    // Height messages are intentionally ignored. Earlier builds resized the
+    // iframe from child Resize/Mutation observers, which could feed back into
+    // the child layout and freeze Chrome. The frame now has a stable viewport
+    // and scrolls internally instead.
     if (event.data?.type === 'kz-content-studio-route-changed') {
       syncOuterTitle(event.data.route, event.data.title, event.data.subtitle);
       setVisibleNavActive();
-      forceMeasureFrame(100);
-      forceMeasureFrame(360);
     }
   });
 
@@ -263,6 +193,4 @@
   document.addEventListener('r810:workbench-ready', () => { ensureAttempts = 0; converge(); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', converge, {once:true});
   else converge();
-  window.setTimeout(converge, 500);
-  window.setTimeout(converge, 1600);
 })();
