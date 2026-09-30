@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / "05_V2.0.0_Source" / "web"
 STARTUP = WEB / "r8_12_startup_coordinator.js"
 MANAGER = WEB / "r7_manager_patch.js"
+WORKBENCH = WEB / "r8_10_workbench.js"
 TRUTH = WEB / "r8_10_truth_convergence.js"
 
 
@@ -15,6 +16,7 @@ def require(condition, message):
 def main():
     startup = STARTUP.read_text(encoding="utf-8")
     manager = MANAGER.read_text(encoding="utf-8")
+    workbench = WORKBENCH.read_text(encoding="utf-8")
     truth = TRUTH.read_text(encoding="utf-8")
 
     require(MANAGER.exists(), "AI employee manager patch is missing from packaged web source")
@@ -43,6 +45,14 @@ def main():
     require("yieldToBrowser" in startup, "owner-shell modules no longer yield to the browser between loads")
     require("__KZ_OWNER_HEARTBEAT_TIMER__" in startup, "runtime heartbeat for responsiveness checks is missing")
 
+    # The owner workbench itself previously observed the whole body for childList
+    # changes, while its callback rewrote textContent/innerHTML. textContent is a
+    # childList mutation, so the observer could schedule itself forever.
+    require("new MutationObserver" not in workbench, "owner workbench still installs a document-wide mutation feedback observer")
+    require("scheduleMaintenance" in workbench, "owner workbench no longer has bounded event-driven maintenance")
+    require("setText" in workbench, "owner workbench no longer avoids unchanged text writes")
+    require("dataset.r810Built" in workbench, "owner workbench can rebuild large owner pages repeatedly")
+
     # Truth convergence previously watched the entire document including
     # characterData while converge() changed textContent itself. That creates a
     # self-sustaining mutation -> convergence -> mutation loop. Keep it bounded.
@@ -53,7 +63,7 @@ def main():
     require("setText" in truth, "truth convergence no longer avoids unchanged text writes")
     require("setInterval(()=>scheduleConvergence(0),30000)" in truth.replace(" ", ""), "truth convergence safety refresh is not bounded to low frequency")
 
-    print("PASS: owner-shell startup is fail-soft, uses native observers, yields between modules, and truth convergence cannot self-trigger a DOM mutation loop")
+    print("PASS: owner-shell startup is fail-soft, native-observer safe, and both workbench/truth layers are bounded without DOM mutation feedback loops")
 
 
 if __name__ == "__main__":
