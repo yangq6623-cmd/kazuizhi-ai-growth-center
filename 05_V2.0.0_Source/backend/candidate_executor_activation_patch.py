@@ -1,12 +1,14 @@
 """Activate real Wan candidate generation from both production controls.
 
-The owner-facing contract is one click: when a project already has unfinished
-shot candidates, the main simple-mode button must resume the persisted mission
-and start the real ComfyUI executor instead of silently re-running old text work.
-The production-monitor button keeps the same activation behavior.
+Owner-facing contract: one click must resume unfinished candidates and, when the
+local ComfyUI service is installed but not running, start it automatically. The
+owner must not have to open ComfyUI manually for normal production.
 """
 from __future__ import annotations
 
+import subprocess
+import threading
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -25,6 +27,7 @@ _SCRIPT_FILES = {
     "/content-studio-simple.js": "content-studio-simple.js",
     "/web/content-studio-simple.js": "content-studio-simple.js",
 }
+_COMFY_START_LOCK = threading.Lock()
 
 
 def _origin_allowed(handler):
@@ -48,6 +51,74 @@ def _latest_project_and_shots():
     if not shots:
         raise ValueError("当前项目还没有镜头分镜")
     return project, shots
+
+
+def _spawn_comfyui(root: Path):
+    portable = root.parent
+    launcher = portable / "run_nvidia_gpu.bat"
+    flags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    common = {
+        "cwd": str(portable),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "creationflags": flags,
+    }
+    if launcher.is_file():
+        subprocess.Popen(["cmd.exe", "/c", str(launcher)], **common)
+        return str(launcher)
+
+    python_exe = portable / "python_embeded" / "python.exe"
+    main_py = root / "main.py"
+    if python_exe.is_file() and main_py.is_file():
+        subprocess.Popen([
+            str(python_exe), "-s", str(main_py),
+            "--windows-standalone-build", "--listen", "127.0.0.1", "--port", "8188",
+        ], **common)
+        return str(python_exe)
+
+    raise RuntimeError(
+        "已找到 ComfyUI 模型目录，但没有找到 run_nvidia_gpu.bat 或 python_embeded\\python.exe，无法自动启动 ComfyUI。"
+    )
+
+
+def _ensure_comfyui_ready():
+    """Return a ready ComfyUI snapshot, auto-starting the local portable service."""
+    with _COMFY_START_LOCK:
+        status = _quality._comfyui_ready()
+        if status.get("ok"):
+            status["autostarted"] = False
+            return status
+
+        root = _quality._comfyui_root()
+        if not root:
+            raise RuntimeError(
+                "没有找到本机 ComfyUI 安装目录。应存在 F:\\KazuizhiAI\\ComfyUI_windows_portable\\ComfyUI。"
+            )
+        model = root / "models" / "diffusion_models" / "wan2.1_i2v_480p_14B_fp8_scaled.safetensors"
+        if not model.is_file():
+            raise RuntimeError(
+                "ComfyUI 已安装，但缺少 Wan2.1 I2V FP8 模型：wan2.1_i2v_480p_14B_fp8_scaled.safetensors。"
+            )
+
+        # Installation and model are present. If only port 8188 is down, normal
+        # production should launch the portable service automatically.
+        launcher = _spawn_comfyui(root)
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline:
+            time.sleep(1.0)
+            status = _quality._comfyui_ready()
+            if status.get("ok"):
+                status["autostarted"] = True
+                status["launcher"] = launcher
+                status["message"] = "ComfyUI 已由平台自动启动，Wan2.1 FP8 已就绪"
+                return status
+
+        latest = _quality._comfyui_ready()
+        raise RuntimeError(
+            "平台已尝试自动启动 ComfyUI，但 90 秒内 8188 仍未就绪。"
+            f" 安装目录：{latest.get('root') or str(root)}；Wan FP8：{'已找到' if latest.get('wan_i2v_fp8') else '未找到'}。"
+        )
 
 
 def _activate_latest_mission():
@@ -93,10 +164,8 @@ def _activate_latest_mission():
     images = _video._recent_image_assets()
     if not images:
         raise ValueError("当前没有可用图片素材。受控测试请先上传至少1张图片。")
-    comfy = _quality._comfyui_ready()
-    if not comfy.get("ok"):
-        raise RuntimeError(comfy.get("message") or "ComfyUI / Wan2.1 尚未就绪")
 
+    comfy = _ensure_comfyui_ready()
     _video._start_comfy_worker()
     snapshot = _video._executor_snapshot()
     summary = _mission.current_mission().get("mission") or {}
@@ -168,13 +237,14 @@ _BROWSER_APPEND = r'''
   async function activate(button, mainButton=false) {
     const oldText=button.textContent;
     button.disabled=true;
-    button.textContent=mainButton?'正在启动视频生成…':'正在启动真实候选生成…';
-    toast('正在恢复当前任务，并检查素材、ComfyUI 和 Wan2.1…');
-    if(mainButton) inline('<b>正在继续当前项目：</b>恢复未完成镜头并启动真实 Wan 视频生成。');
+    button.textContent=mainButton?'正在启动本地视频引擎…':'正在启动本地视频引擎…';
+    toast('正在恢复当前任务；如 ComfyUI 未运行，平台会自动启动，然后加载 Wan2.1…');
+    if(mainButton) inline('<b>正在继续当前项目：</b>恢复未完成镜头，并自动启动本地 ComfyUI / Wan 视频引擎。');
     try{
       const d=await json('/api/candidate-executor/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       button.textContent=mainButton?'已启动 · 正在生成视频':'已启动 · 正在生成';
-      const text=`已启动真实 Wan 候选生成：${d.shot_count||0}个镜头，${d.image_assets||0}张可用图片。`;
+      const auto=d?.comfyui?.autostarted?'；ComfyUI 已自动启动':'';
+      const text=`已启动真实 Wan 候选生成：${d.shot_count||0}个镜头，${d.image_assets||0}张可用图片${auto}。`;
       toast(text);
       if(mainButton) inline(`<b>视频生成已启动。</b>${d.shot_count||0} 个镜头已进入本地 ComfyUI / Wan2.1 串行生成；下面会显示真实候选文件。`);
       beginPoll();
@@ -284,7 +354,7 @@ def install():
             return
         try:
             handler._json_ok(_activate_latest_mission())
-        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError, subprocess.SubprocessError) as error:
             handler._json_error(409, error)
 
     server.DashboardHandler.do_GET = do_get
