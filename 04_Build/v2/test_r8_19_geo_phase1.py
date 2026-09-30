@@ -5,8 +5,9 @@ The gate verifies the product contract rather than external network availability
 - GEO50 is a versioned 30/10/10 baseline and discovery prompts are unbranded.
 - local models never count as official GEO evidence.
 - A/B evidence requires a real external proof contract.
-- retry/authorization states remain explicit.
+- retry/authorization states remain explicit and failed tasks cannot reset retries by replanning.
 - the Operational UI exposes the independent GEO workspace without replacing SEO.
+- the executive Decision Center surfaces today's ChatGPT GEO decision without a ninth AI employee.
 """
 from __future__ import annotations
 
@@ -42,6 +43,7 @@ def main():
         try:
             from core import geo_validation as geo
             from integrations import geo_openai_search_executor as executor
+            from backend import r8_19_geo_validation_patch as geo_api
 
             qset = geo.question_set()
             questions = qset["questions"]
@@ -70,6 +72,8 @@ def main():
             check(plan["command_id"] == decision["command_id"], "Command ID did not propagate")
             check(plan["mission_id"] == "MISSION-GEO-TEST", "Mission ID did not propagate")
             geo.enqueue_plan(plan)
+            active_ids={item["question_id"] for item in plan["questions"]}
+            check(not active_ids.intersection(set(geo_api._eligible_question_ids())), "active GEO questions were offered for duplicate replanning")
 
             expect_error(
                 lambda: geo.create_plan(limit=1, provider="local_model", test_method="api"),
@@ -88,6 +92,17 @@ def main():
             expect_error(lambda: geo.retry_task(task_id, approved_by="chatgpt"), "retry_limit")
             expect_error(lambda: geo.retry_task(task_id, approved_by="local_model"))
 
+            # A failed question cannot bypass its retry counter by creating a fresh plan.
+            failed_question = questions[45]["question_id"]
+            failed_plan = geo.create_plan(limit=1, provider="openai_web_search", test_method="api", question_ids=[failed_question])
+            failed_task = geo.enqueue_plan(failed_plan)["tasks"][0]
+            geo.fail_task(failed_task["task_id"], "simulated_provider_failure")
+            expect_error(
+                lambda: geo_api._eligible_question_ids([failed_question]),
+                "failed_question_requires_chatgpt_retry",
+            )
+            check(failed_question not in geo_api._eligible_question_ids(), "failed question leaked back into automatic planning")
+
             # C-level local simulation remains useful internally but never changes official GEO.
             sim_question = questions[20]["question_id"]
             sim_plan = geo.create_plan(limit=1, provider="local_model", test_method="local_simulation", question_ids=[sim_question])
@@ -105,7 +120,7 @@ def main():
             official_question = questions[30]["question_id"]
             official_plan = geo.create_plan(limit=1, provider="openai_web_search", test_method="api", question_ids=[official_question])
             official_task = geo.enqueue_plan(official_plan)["tasks"][0]
-            running = geo.claim_next_task({
+            geo.claim_next_task({
                 "real_external": True,
                 "authorization_ready": True,
                 "provider_ready": True,
@@ -113,8 +128,7 @@ def main():
                 "test_method": "api",
                 "executor_id": "test-executor",
             })
-            # claim_next_task may claim another queued task left from earlier checks; use direct receipt on our queued task,
-            # which is intentionally supported for manual/external contract ingestion.
+            # Direct receipt ingestion is supported for a separately authenticated external/manual executor.
             receipt = geo.record_result({
                 "task_id": official_task["task_id"],
                 "provider": "openai_web_search",
@@ -160,13 +174,17 @@ def main():
 
             ui = (SRC / "web" / "operational-search.js").read_text(encoding="utf-8")
             css = (SRC / "web" / "operational-search.css").read_text(encoding="utf-8")
+            decision_ui = (SRC / "web" / "decision_layout_patch.js").read_text(encoding="utf-8")
             for marker in ("SEO 增长", "GEO 增长", "ChatGPT GEO 总控", "执行本轮 GEO 测试", "固定 50 问", "GEO Evidence / Receipt", "待我处理"):
                 check(marker in ui, f"GEO workspace marker missing: {marker}")
             for marker in ("is-running", "is-success", "is-waiting", "is-danger", "font-variant-numeric:tabular-nums"):
                 check(marker in css, f"GEO B2B UI semantic marker missing: {marker}")
+            for marker in ("今日 GEO 决策 · ChatGPT 总脑", "geo-decision-progress", "geo-decision-blockers", "下一决策条件", "kz-search-growth-workspace"):
+                check(marker in decision_ui, f"AI Decision Center GEO bridge missing: {marker}")
             check("/api/search-growth" in ui and "search-pack" in ui, "existing SEO workspace behavior was removed")
+            check("第九" not in decision_ui and "9 个员工" not in decision_ui, "GEO was incorrectly added as a ninth AI employee")
 
-            print("PASS: R8-19 GEO Phase 1 truth gates, baseline, runner contracts and workspace are intact")
+            print("PASS: R8-19 GEO Phase 1 truth gates, baseline, runner contracts and decision/workspace UI are intact")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
