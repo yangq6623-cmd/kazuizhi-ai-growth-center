@@ -18,6 +18,17 @@
     }catch(error){console.warn('SEO/GEO autonomy UI inject deferred',error)}
   }
 
+  function injectGeoLiveGate(frame){
+    try{
+      const doc=frame.contentDocument;
+      if(!doc||doc.getElementById('r819-geo-live-gate-script'))return;
+      const script=doc.createElement('script');
+      script.id='r819-geo-live-gate-script';
+      script.src='/geo-phase1-live-gate.js';
+      doc.body.appendChild(script);
+    }catch(error){console.warn('GEO live gate inject deferred',error)}
+  }
+
   function ensureSearchHost(doc){
     let host=doc.getElementById('search');
     if(host)return host;
@@ -67,11 +78,18 @@
         switchFrameWorkspace(saved);
         scheduleResize(frame);
       };
-      if(doc.getElementById('r819-growth-workspace-script')){selectRequested();return}
+      if(doc.getElementById('r819-growth-workspace-script')){
+        injectGeoLiveGate(frame);
+        selectRequested();
+        return;
+      }
       const script=doc.createElement('script');
       script.id='r819-growth-workspace-script';
       script.src='/operational-search.js';
-      script.addEventListener('load',()=>setTimeout(selectRequested,0),{once:true});
+      script.addEventListener('load',()=>{
+        injectGeoLiveGate(frame);
+        setTimeout(selectRequested,0);
+      },{once:true});
       doc.body.appendChild(script);
     }catch(error){console.warn('R8-19 integrated SEO/GEO workspace inject deferred',error)}
   }
