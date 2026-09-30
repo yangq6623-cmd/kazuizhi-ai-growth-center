@@ -9,14 +9,14 @@
     loaded: [],
     failed_modules: [],
     degraded: false,
+    heartbeat: 0,
+    last_heartbeat_at: null,
   };
 
   const state = window.__KZ_R812_STARTUP_COORDINATOR__;
-  const STARTUP_OBSERVER_DELAYS = [80, 220, 500, 900, 1500, 2200];
   const SCRIPT_TIMEOUT_MS = 4500;
   // r7.js is part of the static base shell. The manager patch must be loaded
-  // immediately afterwards and before the R8 owner-shell modules that consume
-  // the AI employee/task UI.
+  // immediately afterwards and before the R8 owner-shell workbench.
   const SCRIPT_SEQUENCE = [
     ['/r7_manager_patch.js', 'r7ManagerPatch'],
     ['/r8_10_workbench.js', 'r810Workbench'],
@@ -39,6 +39,14 @@
 
   function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
+  }
+
+  async function yieldToBrowser(delay = 60) {
+    await new Promise(resolve => {
+      const finish = () => window.setTimeout(resolve, delay);
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(finish);
+      else finish();
+    });
   }
 
   function waitForWindowLoad() {
@@ -124,42 +132,6 @@
       emit('kz:startup-module-failed', failure);
       return false;
     }
-  }
-
-  function installFiniteStartupObserverPolicy() {
-    const NativeObserver = window.MutationObserver;
-    if (!NativeObserver || window.__KZ_NATIVE_MUTATION_OBSERVER__) return () => {};
-    window.__KZ_NATIVE_MUTATION_OBSERVER__ = NativeObserver;
-
-    class FiniteStartupObserver {
-      constructor(callback) {
-        this.callback = callback;
-        this.timers = [];
-        this.disconnected = false;
-      }
-      observe() {
-        if (this.disconnected || this.timers.length) return;
-        STARTUP_OBSERVER_DELAYS.forEach(delay => {
-          this.timers.push(window.setTimeout(() => {
-            if (!this.disconnected) {
-              try { this.callback([], this); } catch (error) { console.warn('startup observer callback failed', error); }
-            }
-          }, delay));
-        });
-      }
-      disconnect() {
-        this.disconnected = true;
-        this.timers.forEach(timer => window.clearTimeout(timer));
-        this.timers = [];
-      }
-      takeRecords() { return []; }
-    }
-
-    window.MutationObserver = FiniteStartupObserver;
-    return () => {
-      if (window.MutationObserver === FiniteStartupObserver) window.MutationObserver = NativeObserver;
-      delete window.__KZ_NATIVE_MUTATION_OBSERVER__;
-    };
   }
 
   function dedupeGeneratedSingletons() {
@@ -251,6 +223,17 @@
     document.addEventListener('kz:app-ready', convergeVisibleReleaseTruth);
   }
 
+  function installHeartbeat() {
+    if (window.__KZ_OWNER_HEARTBEAT_TIMER__) return;
+    const beat = () => {
+      state.heartbeat += 1;
+      state.last_heartbeat_at = Date.now();
+      document.documentElement.dataset.kzHeartbeat = String(state.heartbeat);
+    };
+    beat();
+    window.__KZ_OWNER_HEARTBEAT_TIMER__ = window.setInterval(beat, 250);
+  }
+
   function exposeStartupStatus() {
     document.documentElement.dataset.kzStartupPhase = state.phase;
     document.documentElement.dataset.kzStartupDegraded = state.degraded ? '1' : '0';
@@ -260,26 +243,28 @@
   async function boot() {
     state.phase = 'waiting_base';
     exposeStartupStatus();
+    installHeartbeat();
     await waitForWindowLoad();
     await waitForBaseShell();
     installReleaseTruthRefresh();
     emit('kz:startup-base-ready');
 
-    const restoreObserverPolicy = installFiniteStartupObserverPolicy();
+    // Never replace browser primitives such as MutationObserver. R8 modules
+    // must be correct with native browser semantics. Modules are loaded in a
+    // bounded sequence with a render yield between each one so the owner UI
+    // remains interactive during startup.
     state.phase = 'loading_owner_shell';
     exposeStartupStatus();
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
         const loaded = await loadScriptFailSoft(src, key);
-        await wait(40);
-        dedupeGeneratedSingletons();
-        convergeVisibleReleaseTruth();
+        await yieldToBrowser(src === '/r7_manager_patch.js' ? 90 : 55);
         if (src === '/r8_10_workbench.js' && loaded) {
-          await wait(180);
           emit('r810:workbench-ready');
+          await yieldToBrowser(100);
         }
       }
-      await wait(180);
+      await yieldToBrowser(120);
       dedupeGeneratedSingletons();
       forceInitialDashboardOnce();
       convergeVisibleReleaseTruth();
@@ -295,15 +280,11 @@
         window.toast(`部分模块未加载（${state.failed_modules.length}），主界面已继续启动；可在系统检查中查看详情。`, 'warning');
       }
     } catch (error) {
-      // Only a coordinator-level programming/runtime error is fatal. Individual
-      // module loading errors are handled above and must never freeze navigation.
       state.phase = 'failed';
       state.error = String(error?.message || error);
       exposeStartupStatus();
       console.error('R8-12 startup coordinator fatal failure', error);
       if (typeof window.toast === 'function') window.toast(`启动协调器异常：${state.error}`, 'error');
-    } finally {
-      window.setTimeout(restoreObserverPolicy, 2600);
     }
   }
 
