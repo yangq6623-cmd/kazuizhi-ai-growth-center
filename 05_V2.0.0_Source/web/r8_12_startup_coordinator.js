@@ -7,11 +7,18 @@
     started_at: new Date().toISOString(),
     ready_at: null,
     loaded: [],
+    failed_modules: [],
+    degraded: false,
   };
 
   const state = window.__KZ_R812_STARTUP_COORDINATOR__;
   const STARTUP_OBSERVER_DELAYS = [80, 220, 500, 900, 1500, 2200];
+  const SCRIPT_TIMEOUT_MS = 4500;
+  // r7.js is part of the static base shell. The manager patch must be loaded
+  // immediately afterwards and before the R8 owner-shell modules that consume
+  // the AI employee/task UI.
   const SCRIPT_SEQUENCE = [
+    ['/r7_manager_patch.js', 'r7ManagerPatch'],
     ['/r8_10_workbench.js', 'r810Workbench'],
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
@@ -54,24 +61,69 @@
     });
   }
 
-  function loadScript(src, datasetKey) {
-    const selector = `script[data-${datasetKey.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}]`;
-    const existing = document.querySelector(selector) || [...document.scripts].find(node => {
+  function scriptSelector(datasetKey) {
+    return `script[data-${datasetKey.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}]`;
+  }
+
+  function findExistingScript(src, datasetKey) {
+    return document.querySelector(scriptSelector(datasetKey)) || [...document.scripts].find(node => {
       try { return new URL(node.src, location.href).pathname === src; } catch { return false; }
     });
-    if (existing) {
+  }
+
+  function loadScript(src, datasetKey) {
+    const existing = findExistingScript(src, datasetKey);
+    if (existing && existing.dataset.kzLoadFailed !== '1') {
       state.loaded.push({src, reused:true});
       return Promise.resolve(existing);
     }
+    if (existing?.dataset.kzLoadFailed === '1') existing.remove();
+
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
+      let settled = false;
+      const finish = (ok, error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        if (ok) {
+          script.dataset.kzLoadReady = '1';
+          state.loaded.push({src, reused:false});
+          resolve(script);
+        } else {
+          script.dataset.kzLoadFailed = '1';
+          reject(error || new Error(`启动模块加载失败：${src}`));
+        }
+      };
+      const timer = window.setTimeout(
+        () => finish(false, new Error(`启动模块加载超时：${src}`)),
+        SCRIPT_TIMEOUT_MS,
+      );
       script.src = src;
       script.async = false;
       script.dataset[datasetKey] = '1';
-      script.onload = () => { state.loaded.push({src, reused:false}); resolve(script); };
-      script.onerror = () => reject(new Error(`启动模块加载失败：${src}`));
+      script.onload = () => finish(true);
+      script.onerror = () => finish(false, new Error(`启动模块加载失败：${src}`));
       document.body.appendChild(script);
     });
+  }
+
+  async function loadScriptFailSoft(src, key) {
+    try {
+      await loadScript(src, key);
+      return true;
+    } catch (error) {
+      const failure = {
+        src,
+        error: String(error?.message || error),
+        at: new Date().toISOString(),
+      };
+      state.failed_modules.push(failure);
+      state.degraded = true;
+      console.error('Owner-shell module degraded, continuing startup', failure);
+      emit('kz:startup-module-failed', failure);
+      return false;
+    }
   }
 
   function installFiniteStartupObserverPolicy() {
@@ -142,7 +194,7 @@
 
   function applyReleaseIdentity() {
     const build = window.KZ_BUILD_INFO || {};
-    const phase = resolvedBuildValue(build.phase, 'R8-15');
+    const phase = resolvedBuildValue(build.phase, 'R8-19');
     const runNumber = resolvedBuildValue(build.runNumber);
     const commit = resolvedBuildValue(build.commit);
     const branch = resolvedBuildValue(build.branch);
@@ -199,8 +251,15 @@
     document.addEventListener('kz:app-ready', convergeVisibleReleaseTruth);
   }
 
+  function exposeStartupStatus() {
+    document.documentElement.dataset.kzStartupPhase = state.phase;
+    document.documentElement.dataset.kzStartupDegraded = state.degraded ? '1' : '0';
+    document.documentElement.dataset.kzStartupFailures = String(state.failed_modules.length);
+  }
+
   async function boot() {
     state.phase = 'waiting_base';
+    exposeStartupStatus();
     await waitForWindowLoad();
     await waitForBaseShell();
     installReleaseTruthRefresh();
@@ -208,13 +267,14 @@
 
     const restoreObserverPolicy = installFiniteStartupObserverPolicy();
     state.phase = 'loading_owner_shell';
+    exposeStartupStatus();
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
-        await loadScript(src, key);
+        const loaded = await loadScriptFailSoft(src, key);
         await wait(40);
         dedupeGeneratedSingletons();
         convergeVisibleReleaseTruth();
-        if (src === '/r8_10_workbench.js') {
+        if (src === '/r8_10_workbench.js' && loaded) {
           await wait(180);
           emit('r810:workbench-ready');
         }
@@ -223,14 +283,25 @@
       dedupeGeneratedSingletons();
       forceInitialDashboardOnce();
       convergeVisibleReleaseTruth();
-      state.phase = 'ready';
+      state.phase = state.failed_modules.length ? 'degraded' : 'ready';
       state.ready_at = new Date().toISOString();
-      emit('kz:app-ready', {loaded: state.loaded.slice()});
+      exposeStartupStatus();
+      emit('kz:app-ready', {
+        loaded: state.loaded.slice(),
+        failed_modules: state.failed_modules.slice(),
+        degraded: state.degraded,
+      });
+      if (state.failed_modules.length && typeof window.toast === 'function') {
+        window.toast(`部分模块未加载（${state.failed_modules.length}），主界面已继续启动；可在系统检查中查看详情。`, 'warning');
+      }
     } catch (error) {
+      // Only a coordinator-level programming/runtime error is fatal. Individual
+      // module loading errors are handled above and must never freeze navigation.
       state.phase = 'failed';
       state.error = String(error?.message || error);
-      console.error('R8-12 startup coordinator failed', error);
-      if (typeof window.toast === 'function') window.toast(`启动收敛失败：${state.error}`, 'error');
+      exposeStartupStatus();
+      console.error('R8-12 startup coordinator fatal failure', error);
+      if (typeof window.toast === 'function') window.toast(`启动协调器异常：${state.error}`, 'error');
     } finally {
       window.setTimeout(restoreObserverPolicy, 2600);
     }
