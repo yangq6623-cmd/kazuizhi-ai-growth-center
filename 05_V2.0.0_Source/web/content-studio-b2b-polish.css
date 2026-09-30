@@ -1,0 +1,156 @@
+/* 卡嘴子 AI 内容创导中心 · 第二阶段 B 端 SaaS 视觉统一
+   仅调整视觉与信息密度，不改变功能、文字、状态与流程。 */
+
+:root{
+  --kz-ui-bg:#f4f7fb;
+  --kz-ui-card:#fff;
+  --kz-ui-border:#dfe7f1;
+  --kz-ui-border-soft:#edf1f6;
+  --kz-ui-text:#17324f;
+  --kz-ui-muted:#6d7f96;
+  --kz-ui-primary:#1768e5;
+  --kz-ui-success:#16875c;
+  --kz-ui-warning:#9a671c;
+  --kz-ui-danger:#c53b3b;
+  --kz-ui-radius:8px;
+  --kz-ui-gap:16px;
+  --kz-ui-control:36px;
+}
+
+html,body{background:var(--kz-ui-bg)}
+button,input,select,textarea{font-family:Inter,"PingFang SC","Microsoft YaHei",Arial,sans-serif}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid rgba(23,104,229,.28);
+  outline-offset:1px;
+}
+
+/* 顶部工作区与专业模式九页 */
+.studio-nav{
+  min-height:52px;
+  padding:8px 16px;
+  border-radius:0;
+  box-shadow:0 1px 0 rgba(255,255,255,.05),0 2px 8px rgba(12,45,87,.10);
+}
+.studio-brand{min-width:200px}
+.studio-brand b{font-size:14px}
+.studio-tab{height:var(--kz-ui-control);border-radius:4px;padding:0 12px}
+.studio-chip{height:28px;border-radius:4px}
+.studio-page{padding:0 16px 16px}
+.studio-page-head{
+  margin-bottom:var(--kz-ui-gap);
+  padding:12px 16px;
+  border-radius:var(--kz-ui-radius);
+  box-shadow:0 1px 2px rgba(16,34,61,.03);
+}
+.studio-page-head h2{font-size:18px;line-height:1.35;letter-spacing:-.01em}
+.studio-page-head p{font-size:12px;line-height:1.55}
+.studio-primary,.studio-secondary{height:var(--kz-ui-control);border-radius:4px}
+.studio-grid{gap:var(--kz-ui-gap);margin-bottom:var(--kz-ui-gap)}
+.studio-main-grid{gap:var(--kz-ui-gap)}
+.studio-card,.studio-section{
+  border-radius:var(--kz-ui-radius);
+  padding:14px 16px;
+  box-shadow:0 1px 2px rgba(16,34,61,.025);
+}
+.studio-card strong{
+  margin:4px 0 1px;
+  font-size:22px;
+  line-height:1.2;
+  font-variant-numeric:tabular-nums;
+}
+.studio-section h3{margin-bottom:8px;font-size:14px}
+.studio-list{gap:0}
+.studio-row{
+  min-height:40px;
+  grid-template-columns:132px minmax(0,1fr) auto;
+  gap:12px;
+  padding:7px 0;
+}
+.studio-row b{font-size:13px}
+.studio-row span{font-size:12px;line-height:1.45}
+.studio-row .studio-status,.studio-row em{justify-self:end}
+.studio-status{height:24px;border-radius:4px;padding:0 8px}
+.studio-form{gap:10px 12px}
+.studio-form input,.studio-form select{height:var(--kz-ui-control)}
+.studio-form textarea{min-height:96px}
+.studio-actions{gap:8px;margin-top:12px}
+.studio-empty{padding:18px;border-radius:6px}
+
+/* 简单模式：压缩落地页感，改为操作后台密度 */
+.kz-simple{padding:0 16px 16px}
+.kz-simple-hero{
+  margin-bottom:var(--kz-ui-gap);
+  padding:12px 16px;
+  border-radius:var(--kz-ui-radius);
+  box-shadow:0 1px 2px rgba(16,34,61,.03);
+}
+.kz-simple-hero h2{font-size:18px;line-height:1.35;margin:3px 0}
+.kz-simple-hero p{font-size:12px;line-height:1.55}
+.kz-simple-flow{margin-bottom:var(--kz-ui-gap);padding:8px 10px;border-radius:var(--kz-ui-radius)}
+.kz-simple-main{gap:var(--kz-ui-gap)}
+.kz-simple-card{padding:14px 16px;border-radius:var(--kz-ui-radius);box-shadow:0 1px 2px rgba(16,34,61,.025)}
+.kz-simple-card h3{font-size:14px}
+.kz-simple-card textarea{min-height:96px}
+.kz-simple-card input,.kz-simple-card select{height:var(--kz-ui-control)}
+.kz-simple-grid{gap:10px 12px}
+.kz-simple-primary,.kz-simple-secondary{height:var(--kz-ui-control);min-height:var(--kz-ui-control);border-radius:4px}
+body.kz-simple-mode .kz-simple-actions .kz-simple-primary{height:var(--kz-ui-control);min-width:200px;font-size:13px}
+.kz-simple-progress{gap:0}
+.kz-simple-progress div{min-height:40px;padding:7px 8px;border-radius:0;border-left:0;border-right:0;border-bottom:0}
+.kz-simple-progress div:first-child{border-top:0}
+.kz-simple-progress span{font-variant-numeric:tabular-nums}
+.kz-simple-result,.kz-simple-note,.kz-easy-detect{border-radius:6px}
+
+/* 参考中心：统一 16px 大区块间距、紧凑标题、时间右对齐 */
+.reference-page{padding:16px}
+.reference-page-head{
+  margin-bottom:var(--kz-ui-gap);
+  padding:12px 16px;
+  border-radius:var(--kz-ui-radius);
+  box-shadow:0 1px 2px rgba(16,34,61,.03);
+}
+.reference-page-head h2{font-size:18px;line-height:1.35;letter-spacing:-.01em}
+.reference-feedback{margin-bottom:var(--kz-ui-gap)}
+.reference-kpis{gap:var(--kz-ui-gap);margin-bottom:var(--kz-ui-gap)}
+.reference-kpis article{padding:11px 14px;border-radius:var(--kz-ui-radius);box-shadow:0 1px 2px rgba(16,34,61,.025)}
+.reference-kpis b{font-size:22px;font-variant-numeric:tabular-nums}
+.reference-import-card{margin-bottom:var(--kz-ui-gap);padding:14px 16px;border-radius:var(--kz-ui-radius);box-shadow:0 1px 2px rgba(16,34,61,.025)}
+.reference-workspace{gap:var(--kz-ui-gap)}
+.reference-library,.reference-analysis,.reference-director{padding:14px 16px;border-radius:var(--kz-ui-radius);box-shadow:0 1px 2px rgba(16,34,61,.025)}
+.reference-list-item small{text-align:right;font-variant-numeric:tabular-nums}
+.ref-primary,.ref-secondary{height:var(--kz-ui-control);border-radius:4px}
+.ref-chip{border-radius:4px}
+.reference-import-grid input,.reference-import-grid select{height:var(--kz-ui-control);border-radius:4px}
+.reference-import-grid textarea{border-radius:4px}
+
+/* 生产工作台：统一卡片、状态条、数字与时间网格 */
+.apc-shell{max-width:none;padding-bottom:16px}
+.apc-topbar{
+  margin-bottom:var(--kz-ui-gap);
+  padding:12px 16px;
+  border-radius:var(--kz-ui-radius);
+  box-shadow:0 1px 2px rgba(16,34,61,.03);
+}
+.apc-topbar h2{font-size:18px;line-height:1.35;letter-spacing:-.01em}
+.apc-feedback{margin-bottom:var(--kz-ui-gap)}
+.apc-status{margin-bottom:var(--kz-ui-gap);border-radius:var(--kz-ui-radius);box-shadow:none}
+.apc-status b{font-size:16px;font-variant-numeric:tabular-nums}
+.apc-grid{gap:var(--kz-ui-gap)}
+.apc-assets,.apc-canvas,.apc-control,.apc-bottom{border-radius:var(--kz-ui-radius);box-shadow:0 1px 2px rgba(16,34,61,.025)}
+.apc-primary,.apc-secondary,.apc-section-head button{height:var(--kz-ui-control);min-height:var(--kz-ui-control);border-radius:4px}
+.apc-section-head select,.apc-control select{height:var(--kz-ui-control);border-radius:4px}
+.apc-storyboard-list{gap:12px;margin-top:var(--kz-ui-gap)}
+.apc-bottom{margin-top:var(--kz-ui-gap);padding:14px 16px}
+.apc-task-grid{gap:var(--kz-ui-gap)}
+.apc-audit span{text-align:right;font-variant-numeric:tabular-nums}
+
+/* 状态语义统一 */
+.studio-status.blue,.ref-chip.blue{background:#e8f1ff;color:var(--kz-ui-primary)}
+.studio-status.green,.ref-chip.green{background:#e8f7f0;color:var(--kz-ui-success)}
+.studio-status.amber,.ref-chip.amber{background:#fff4df;color:var(--kz-ui-warning)}
+.studio-status.red,.ref-chip.red{background:#ffebeb;color:var(--kz-ui-danger)}
+
+@media(max-width:1100px){
+  .studio-page,.kz-simple,.reference-page{padding-left:12px;padding-right:12px}
+  .studio-grid,.reference-kpis{gap:12px}
+}
