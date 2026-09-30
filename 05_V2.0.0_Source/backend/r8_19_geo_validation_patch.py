@@ -147,12 +147,56 @@ def _set_controller_decision(payload):
     return _persist_decision_extras(current, providers=providers, mission_context=mission)
 
 
+def _executor_manual_item(executor):
+    if executor.get("ready"):
+        return None
+    return {
+        "provider": "OpenAI 外部 GEO 验证",
+        "question_id": "",
+        "reason": executor.get("reason") or "真实外部 GEO 验证执行器尚未就绪",
+        "kind": "api_or_permission",
+        "action": "请在系统状态与连接中完成云端模型/API配置并通过连接验证",
+    }
+
+
 def _dashboard_with_executor():
     _effective_decision()
     value = dashboard()
     value["decision"] = _effective_decision()
-    value["executor"] = geo_openai_search_executor.status()
+    executor = geo_openai_search_executor.status()
+    executor["recommended_next_step"] = (
+        "先验证1题" if executor.get("ready") else "先完成外部AI授权/连接验证"
+    )
+    value["executor"] = executor
+
+    manual = dict(value.get("manual") or {})
+    items = list(manual.get("items") or [])
+    extra = _executor_manual_item(executor)
+    if extra and not any(item.get("kind") == extra["kind"] for item in items if isinstance(item, dict)):
+        items.insert(0, extra)
+    manual["items"] = items
+    manual["count"] = len(items)
+    value["manual"] = manual
     return value
+
+
+def _preflight_status():
+    value = _dashboard_with_executor()
+    executor = value.get("executor") or {}
+    queue = value.get("queue") or {}
+    return {
+        "ready": bool(executor.get("ready")),
+        "executor": executor,
+        "queue": {
+            "queued": int(queue.get("queued") or 0),
+            "running": int(queue.get("running") or 0),
+            "failed": int(queue.get("failed") or 0),
+            "authorization_required": int(queue.get("authorization_required") or 0),
+        },
+        "recommended_run_size": 1,
+        "next_step": executor.get("recommended_next_step"),
+        "truth_rule": executor.get("truth_rule"),
+    }
 
 
 def _eligible_question_ids(requested=None):
@@ -204,6 +248,9 @@ def install():
         if path == "/api/r8-19/geo":
             handler._json_ok(_dashboard_with_executor())
             return
+        if path == "/api/r8-19/geo/preflight":
+            handler._json_ok(_preflight_status())
+            return
         if path == "/api/r8-19/geo/questions":
             handler._json_ok(question_set())
             return
@@ -214,7 +261,7 @@ def install():
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})
             return
         if path == "/api/r8-19/geo/manual":
-            handler._json_ok(manual_requirements())
+            handler._json_ok(_dashboard_with_executor().get("manual") or manual_requirements())
             return
         if path == "/api/r8-19/geo/audit":
             handler._json_ok({"events": audit_events(query.get("limit", [200])[0])})
@@ -251,6 +298,10 @@ def install():
                 requested = payload.get("question_ids") or None
                 eligible_ids = _eligible_question_ids(requested)
                 provider = current.get("test_providers", [DEFAULT_PROVIDER])[0]
+                if payload.get("require_executor_ready") and provider == "openai_web_search":
+                    executor = geo_openai_search_executor.status()
+                    if not executor.get("ready"):
+                        raise ValueError(f"geo_executor_not_ready:{executor.get('reason') or 'external_validation_not_ready'}")
                 result = create_and_enqueue_plan(
                     limit=payload.get("limit", current.get("daily_test_limit", 10)),
                     provider=provider,
