@@ -29,7 +29,7 @@ for relative in MODULES:
 
 v96 = (SRC / MODULES[0]).read_text(encoding="utf-8")
 assert "/api/content-final/reference/parse" in v96
-assert "models\" / \"checkpoints" in v96
+assert 'root / "models" / "checkpoints"' in v96
 assert "系统不会用占位图冒充 AI 首帧" in v96
 
 v97 = (SRC / MODULES[1]).read_text(encoding="utf-8")
