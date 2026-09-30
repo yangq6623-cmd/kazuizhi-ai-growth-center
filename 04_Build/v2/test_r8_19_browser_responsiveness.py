@@ -4,8 +4,8 @@ This test exists because static/source tests and a process launch gate can all p
 while Chromium's renderer is trapped in a DOM/mutation loop. It starts either
 the source runtime or a packaged EXE, opens the real owner page in Chrome via
 Playwright, waits for the R8 coordinator, verifies the 250 ms heartbeat keeps
-advancing, clicks the main owner navigation, and rejects runaway DOM growth or
-uncaught page errors.
+advancing, clicks the main owner navigation, stress-tests the SEO/GEO iframe,
+and rejects runaway DOM growth or uncaught page errors.
 """
 
 from __future__ import annotations
@@ -112,6 +112,46 @@ def wait_lazy_bundle(page, target: str) -> None:
         raise AssertionError(f"lazy owner workspace did not finish loading: target={target}, state={current}") from error
 
 
+def exercise_seo_geo(page) -> None:
+    frame_element = page.locator("#r813-seo-geo-frame").first
+    frame_element.wait_for(state="visible", timeout=6000)
+    handle = frame_element.element_handle()
+    child = handle.content_frame() if handle else None
+    if child is None:
+        raise AssertionError("SEO/GEO iframe did not expose a same-origin content frame")
+
+    child.wait_for_selector('#search-growth-switch [data-growth-tab="seo"]', timeout=8000)
+    child.wait_for_selector('#search-growth-switch [data-growth-tab="geo"]', timeout=8000)
+
+    seo = child.locator('#search-growth-switch [data-growth-tab="seo"]').first
+    geo = child.locator('#search-growth-switch [data-growth-tab="geo"]').first
+
+    # Reproduce the field path that froze Build #72: open SEO, switch GEO, switch
+    # back to SEO, scroll the long legacy SEO page, and leave it alive briefly.
+    seo.click(timeout=4000)
+    page.wait_for_timeout(350)
+    heartbeat(page, min_delta=1, timeout_ms=3000)
+
+    geo.click(timeout=4000)
+    page.wait_for_timeout(500)
+    heartbeat(page, min_delta=1, timeout_ms=3000)
+
+    seo.click(timeout=4000)
+    page.wait_for_timeout(500)
+    heartbeat(page, min_delta=1, timeout_ms=3000)
+
+    child.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.wait_for_timeout(1200)
+    heartbeat(page, min_delta=2, timeout_ms=3500)
+    child.evaluate("() => window.scrollTo(0, 0)")
+    page.wait_for_timeout(1800)
+    heartbeat(page, min_delta=2, timeout_ms=3500)
+
+    child_nodes = child.locator("*").count()
+    if child_nodes > 24000:
+        raise AssertionError(f"SEO/GEO iframe DOM unexpectedly large after switching: {child_nodes}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", default="", help="Optional packaged runtime EXE; source runtime is used when omitted")
@@ -145,9 +185,6 @@ def main() -> None:
                 if baseline_nodes > 12000:
                     raise AssertionError(f"unexpectedly large initial DOM: {baseline_nodes} nodes")
 
-                # Use stable data-target route IDs rather than mutable button text.
-                # The 待我处理 badge changes asynchronously (0/1/...), so selecting
-                # by all_text_contents can make an otherwise healthy UI look broken.
                 nav = page.locator(".r810-primary-nav .r810-nav-button:visible[data-target]")
                 targets = nav.evaluate_all(
                     "nodes => nodes.map(node => node.dataset.target).filter(Boolean)"
@@ -172,10 +209,10 @@ def main() -> None:
                         raise AssertionError(f"owner route remained stuck in loading state: {route_target}") from error
                     page.wait_for_timeout(250)
                     heartbeat(page, min_delta=1, timeout_ms=3000)
+                    if route_target == "r813-seo-geo":
+                        exercise_seo_geo(page)
                     clicked.append(route_target)
 
-                # Return to the boss dashboard and leave the app running long
-                # enough to catch delayed observer/timer feedback loops.
                 boss = page.locator('.r810-primary-nav .r810-nav-button[data-target="dashboard"]').first
                 if boss.count():
                     boss.click(timeout=4000)
@@ -215,8 +252,8 @@ def main() -> None:
                 browser.close()
                 target_name = "packaged runtime" if args.exe else "source runtime"
                 print(
-                    f"PASS: {target_name} stayed responsive in real Chrome; {len(clicked)} owner routes clicked "
-                    f"by stable data-target; DOM {baseline_nodes}->{final_nodes}; no startup degradation or uncaught page errors"
+                    f"PASS: {target_name} stayed responsive in real Chrome; {len(clicked)} owner routes clicked; "
+                    "SEO/GEO toggled and scrolled; no startup degradation, runaway DOM or uncaught page errors"
                 )
         finally:
             if process.poll() is None:
