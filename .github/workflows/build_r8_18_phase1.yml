@@ -89,14 +89,14 @@ jobs:
       - name: Upload R8-18 final content-center Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_18_Content_Center_Final_Candidate
+          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload R8-18 final content-center portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_18_Content_Center_Final_Candidate_Portable
+          name: Kazuizhi_AI_Enterprise_R8_18_Phase1_Foundation_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
