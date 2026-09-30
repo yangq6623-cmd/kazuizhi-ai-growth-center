@@ -67,7 +67,7 @@ def main():
             gate.ok(1, "SEO 增长" in ui and "GEO 增长" in ui, "保留同一SEO/GEO业务入口，不新增GEO主侧栏")
             gate.ok(2, "data-growth-tab=\"seo\"" in ui and "data-growth-tab=\"geo\"" in ui, "内部拆分SEO/GEO一级工作区")
             gate.ok(3, "kz-search-growth-workspace" in ui and "localStorage" in ui, "记忆最后工作区")
-            gate.ok(4, "changePage('search')" in direct and "data-growth-tab=\"geo\"" in direct, "存在可直达GEO的 /geo.html 路由")
+            gate.ok(4, "id=\"search\"" in direct and "operational-search.js" in direct and "kz-search-growth-workspace" in direct and "<iframe" not in direct, "存在不依赖iframe、可直接渲染GEO的 /geo.html 路由")
             gate.ok(5, "/api/search-growth" in ui and "search-pack" in ui, "SEO原运行入口保持存在")
             gate.ok(6, "ChatGPT GEO 总控" in ui and ui.index("ChatGPT GEO 总控") < ui.index("GEO第一阶段核心指标"), "GEO首屏第一视觉是ChatGPT总控")
 
