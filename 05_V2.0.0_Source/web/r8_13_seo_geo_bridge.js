@@ -4,6 +4,8 @@
   window.__KZ_R813_SEO_GEO_BRIDGE__ = true;
 
   const PAGE_ID = 'r813-seo-geo';
+  const WORKSPACE_KEY = 'kz-search-growth-workspace';
+  let desiredWorkspace = null;
 
   function injectAutonomy(frame){
     try{
@@ -16,6 +18,66 @@
     }catch(error){console.warn('SEO/GEO autonomy UI inject deferred',error)}
   }
 
+  function ensureSearchHost(doc){
+    let host=doc.getElementById('search');
+    if(host)return host;
+    host=doc.createElement('section');
+    host.id='search';
+    host.className='page active';
+    const movable=[...doc.body.childNodes].filter(node=>!(node.nodeType===1&&['SCRIPT','STYLE','LINK'].includes(node.tagName)));
+    doc.body.insertBefore(host,doc.body.firstChild);
+    movable.forEach(node=>host.appendChild(node));
+    return host;
+  }
+
+  function ensureStyle(doc,id,href){
+    if(doc.getElementById(id))return;
+    const link=doc.createElement('link');
+    link.id=id;link.rel='stylesheet';link.href=href;
+    doc.head.appendChild(link);
+  }
+
+  function switchFrameWorkspace(name){
+    const frame=document.getElementById('r813-seo-geo-frame');
+    const doc=frame?.contentDocument;
+    const target=name==='geo'?'geo':'seo';
+    const button=doc?.querySelector(`[data-growth-tab="${target}"]`);
+    if(button){button.click();return true}
+    return false;
+  }
+
+  function installGrowthWorkspace(frame){
+    try{
+      const doc=frame.contentDocument;
+      if(!doc)return;
+      ensureSearchHost(doc);
+      ensureStyle(doc,'r819-growth-workspace-style','/operational-search.css');
+      injectAutonomy(frame);
+      const selectRequested=()=>{
+        let saved='seo';
+        try{saved=desiredWorkspace||localStorage.getItem(WORKSPACE_KEY)||'seo'}catch(_){saved=desiredWorkspace||'seo'}
+        switchFrameWorkspace(saved);
+      };
+      if(doc.getElementById('r819-growth-workspace-script')){selectRequested();return}
+      const script=doc.createElement('script');
+      script.id='r819-growth-workspace-script';
+      script.src='/operational-search.js';
+      script.addEventListener('load',()=>setTimeout(selectRequested,0),{once:true});
+      doc.body.appendChild(script);
+    }catch(error){console.warn('R8-19 integrated SEO/GEO workspace inject deferred',error)}
+  }
+
+  function setupResize(frame){
+    try{
+      const doc=frame.contentDocument;if(!doc)return;
+      const resize=()=>{frame.style.height=`${Math.max(1300,doc.documentElement.scrollHeight,doc.body?.scrollHeight||0)+24}px`};
+      resize();
+      if(window.ResizeObserver&&!frame.__kzGrowthResizeObserver){
+        const observer=new ResizeObserver(resize);observer.observe(doc.documentElement);frame.__kzGrowthResizeObserver=observer;
+      }
+    }catch(error){console.warn('SEO/GEO iframe resize deferred',error)}
+  }
+
   function ensurePage(){
     let page=document.getElementById(PAGE_ID);
     if(!page){
@@ -25,24 +87,17 @@
       page.innerHTML='<iframe id="r813-seo-geo-frame" title="SEO/GEO增长中心" src="/r8_13_seo_geo.html?embed=1" style="width:100%;min-height:1400px;border:0;background:#f4f7fb" scrolling="no"></iframe>';
       document.querySelector('main')?.appendChild(page);
       const frame=page.querySelector('iframe');
-      frame?.addEventListener('load',()=>{
-        try{
-          const doc=frame.contentDocument;
-          if(!doc)return;
-          injectAutonomy(frame);
-          const resize=()=>{frame.style.height=`${Math.max(1300,doc.documentElement.scrollHeight,doc.body?.scrollHeight||0)+20}px`};
-          resize();
-          if(window.ResizeObserver){new ResizeObserver(resize).observe(doc.documentElement)}
-        }catch(error){console.warn('SEO/GEO iframe resize deferred',error)}
-      });
+      frame?.addEventListener('load',()=>{installGrowthWorkspace(frame);setupResize(frame)});
     }
+    const frame=page.querySelector('#r813-seo-geo-frame');
+    if(frame?.contentDocument?.readyState==='complete'){installGrowthWorkspace(frame);setupResize(frame)}
     const legacy=document.querySelector('aside nav');
     if(legacy&&!legacy.querySelector(`.nav[data-page="${PAGE_ID}"]`)){
       const proxy=document.createElement('button');
       proxy.className='nav r810-legacy-route';
       proxy.dataset.page=PAGE_ID;
       proxy.dataset.title='SEO/GEO增长';
-      proxy.dataset.subtitle='关键词、页面、技术SEO、索引收录、GEO可见性与归因';
+      proxy.dataset.subtitle='SEO保持运行；GEO第一阶段真实验证已合并到主平台';
       proxy.hidden=true;
       proxy.textContent='SEO/GEO增长';
       legacy.appendChild(proxy);
@@ -55,11 +110,41 @@
     if(typeof window.openPage==='function') window.openPage(PAGE_ID);
     else document.querySelectorAll('.page').forEach(node=>node.classList.toggle('active',node.id===PAGE_ID));
     document.querySelectorAll('.r810-nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.target===PAGE_ID));
+    setTimeout(()=>switchFrameWorkspace(desiredWorkspace||'seo'),0);
   }
 
-  // The SEO iframe cannot directly control the owner-shell account iframe.
-  // Bridge its explicit authorization request to the durable account center and
-  // open the official-provider chooser for the requested platform.
+  function activateWorkspace(name){
+    desiredWorkspace=name==='geo'?'geo':'seo';
+    try{localStorage.setItem(WORKSPACE_KEY,desiredWorkspace)}catch(_){}
+    activate();
+    const frame=document.getElementById('r813-seo-geo-frame');
+    if(!switchFrameWorkspace(desiredWorkspace)&&frame){
+      const retry=()=>switchFrameWorkspace(desiredWorkspace);
+      frame.addEventListener('load',()=>setTimeout(retry,0),{once:true});
+    }
+  }
+
+  function refresh(){
+    const frame=document.getElementById('r813-seo-geo-frame');
+    try{frame?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO/GEO workspace refresh deferred',error)}
+  }
+
+  window.KZR813SeoGeoBridge={
+    open:activate,
+    openGeo:()=>activateWorkspace('geo'),
+    openSeo:()=>activateWorkspace('seo'),
+    refresh
+  };
+
+  // AI决策中心的“打开GEO工作区”必须回到主平台，不再跳独立浏览器页面。
+  document.addEventListener('click',event=>{
+    const button=event.target.closest?.('#geo-decision-open');
+    if(!button)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    activateWorkspace('geo');
+  },true);
+
+  // The integrated SEO iframe cannot directly control the owner-shell account iframe.
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.data?.type !== 'kz-r8-search-auth') return;
     const platform = String(event.data.platform || 'google_search_console');
@@ -71,9 +156,6 @@
     if (frame?.contentWindow?.KZAuthUI) openAuth(); else frame?.addEventListener('load', openAuth, {once:true});
   });
 
-  // The SEO page is rendered in a tall iframe. Scrolling only inside that
-  // document is visually invisible in the owner shell, so relay an explicit
-  // focus request to the outer page as well.
   window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.data?.type !== 'kz-r813-focus') return;
     const targetId = String(event.data.target || '');
