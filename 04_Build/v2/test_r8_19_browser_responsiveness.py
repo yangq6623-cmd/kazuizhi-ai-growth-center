@@ -163,7 +163,10 @@ def exercise_seo_geo(page) -> None:
     seo_heading = seo_frame.locator('.head h1').first.inner_text().strip()
     if 'SEO' not in seo_heading:
         raise AssertionError(f"SEO heading missing after embed decoration: {seo_heading!r}")
-    seo_frame.wait_for_selector('text=今日自动化作业流水线', timeout=12000)
+    # The pipeline section is the stable, bottom-most SEO business block. Gate on
+    # its DOM identity rather than display copy so copy-polish cannot create a
+    # false build failure while still proving that the lower half rendered.
+    seo_frame.wait_for_selector('#pipeline-section', state='visible', timeout=12000)
     assert_embedded_frame_expanded(page, 'r813-seo-frame', 'SEO')
 
     # Field reproduction: SEO -> GEO -> SEO. Scrolling happens on the owner page,
