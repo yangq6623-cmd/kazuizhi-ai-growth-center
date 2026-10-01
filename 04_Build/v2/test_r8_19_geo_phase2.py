@@ -17,6 +17,7 @@ def main():
         sys.path.insert(0, str(SRC))
         try:
             from core import geo_analysis
+            from integrations import geo_chatgpt_analyzer
 
             receipts = [
                 {
@@ -108,6 +109,11 @@ def main():
             assert brand["brand_mentioned"] is True
             assert brand["brand_cited"] is False
             assert any(g["code"] == "official_citation_missing" for g in brand["gaps"])
+
+            advisor_status = geo_chatgpt_analyzer.status()
+            assert isinstance(advisor_status.get("ready"), bool)
+            assert geo_chatgpt_analyzer.SCHEMA["type"] == "object"
+            assert "candidate_actions" in geo_chatgpt_analyzer.SCHEMA["properties"]
 
             pack = geo_analysis.analysis_pack()
             assert pack["facts_only"] is True
