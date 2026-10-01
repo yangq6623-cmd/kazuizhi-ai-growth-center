@@ -19,6 +19,7 @@ on:
       - '05_V2.0.0_Source/web/geo-phase2-chatgpt.css'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.js'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.css'
+      - '05_V2.0.0_Source/web/seo-geo-phase1-final.css'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
       - '.github/workflows/r8_19_geo_phase2_validation.yml'
   pull_request:
@@ -37,6 +38,8 @@ on:
       - '05_V2.0.0_Source/core/geo_analysis.py'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.js'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.css'
+      - '05_V2.0.0_Source/web/geo-phase2-chatgpt.css'
+      - '05_V2.0.0_Source/web/seo-geo-phase1-final.css'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
       - '.github/workflows/r8_19_geo_phase2_validation.yml'
 
@@ -98,7 +101,7 @@ jobs:
             if (-not $ui.Contains($_)) { throw "Missing GEO workspace contract: $_" }
           }
           $direct = Get-Content 05_V2.0.0_Source/web/geo.html -Raw
-          @("changePage('search')",'data-growth-tab="geo"','kz-search-growth-workspace') | ForEach-Object {
+          @('id="search" class="page active"','operational-search.js','kz-search-growth-workspace','geo-phase2-analysis.js') | ForEach-Object {
             if (-not $direct.Contains($_)) { throw "Missing direct GEO route contract: $_" }
           }
           $decision = Get-Content 05_V2.0.0_Source/web/decision_layout_patch.js -Raw
@@ -121,4 +124,12 @@ jobs:
           @('GEO-CHATGPT-ADVISORY-V1-20261001','store','json_schema','advisory_only') | ForEach-Object {
             if (-not $advisor.Contains($_)) { throw "Missing ChatGPT advisory contract: $_" }
           }
-          Write-Host 'R8-19 Phase 1 regression plus GEO Phase 2 analysis/comparison contracts are present. Live external 50-question completion remains a separate field step.'
+          $seoTruth = Get-Content 05_V2.0.0_Source/web/seo-geo-phase1-final.css -Raw
+          @('自动作业流水线（累计真实状态）','累计状态：','今日增量','两者不混用') | ForEach-Object {
+            if (-not $seoTruth.Contains($_)) { throw "Missing SEO truth-semantics contract: $_" }
+          }
+          $geoTruth = Get-Content 05_V2.0.0_Source/web/geo-phase2-chatgpt.css -Raw
+          @('ChatGPT 总控、网页真实验证、云端模型 API 为三个独立状态','不影响 GEO 真实网页验证、Evidence / Receipt 保存与 A/B 正式证据统计') | ForEach-Object {
+            if (-not $geoTruth.Contains($_)) { throw "Missing GEO connection-semantics contract: $_" }
+          }
+          Write-Host 'R8-19 Phase 1 regression plus GEO Phase 2 analysis/comparison and field truth-semantics contracts are present. Live external 50-question completion remains a separate field step.'
