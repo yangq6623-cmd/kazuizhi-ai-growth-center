@@ -24,6 +24,7 @@ def main():
             from core import geo_analysis
             from core import geo_validation as geo
             from core import geo_phase3
+            from core import geo_phase3_retest_patch  # noqa: F401
             from core import r7_engine
             from core import seo_geo_growth
 
@@ -79,6 +80,13 @@ def main():
             current = geo_phase3.status()["plan"]
             retest_task = current["actions"][0]["retest_task_id"]
             assert retest_task
+            # Every action tied to the same question must point at the same durable
+            # retest task rather than relying on second-level timestamps.
+            assert all(
+                action.get("retest_task_id") == retest_task
+                for action in current["actions"]
+                if action.get("question_id") == "GEO50-D01"
+            )
             after = geo.record_result({
                 "task_id": retest_task,
                 "provider": "doubao_web",
@@ -99,13 +107,14 @@ def main():
             final_plan = final["plan"]
             assert final_plan["status"] == "completed"
             assert final_plan["before_after"]
+            assert all(row["after_evidence_id"] == after["evidence_id"] for row in final_plan["before_after"])
             assert final_plan["before_after"][0]["delta"] > 0
             assert final_plan["outcome"] == "improved"
 
             # Cloud C-level observations remain excluded from the formal score.
             assert geo.dashboard()["official"]["tested"] == 1
 
-            print("PASS: Phase2 latest truth + GEO Phase3 gap -> authorized AI job -> SEO opportunity -> real A/B retest -> Before/After")
+            print("PASS: Phase2 latest truth + durable Phase3 retest link + authorized AI job + SEO opportunity + Before/After")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
