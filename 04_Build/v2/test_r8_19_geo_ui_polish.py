@@ -13,9 +13,11 @@ def main():
     geo = (WEB / "geo.html").read_text(encoding="utf-8")
     polish = (WEB / "geo-phase1-ui-polish.js").read_text(encoding="utf-8")
     css = (WEB / "geo-phase1-ui-polish.css").read_text(encoding="utf-8")
+    owner_ux = (WEB / "geo-owner-ux.js").read_text(encoding="utf-8")
+    owner_css = (WEB / "geo-owner-ux.css").read_text(encoding="utf-8")
     ui = (WEB / "operational-search.js").read_text(encoding="utf-8")
 
-    for marker in ("geo-phase1-ui-polish.css", "geo-phase1-ui-polish.js"):
+    for marker in ("geo-phase1-ui-polish.css", "geo-phase1-ui-polish.js", "geo-owner-ux.css", "geo-owner-ux.js"):
         require(marker in geo, f"embedded GEO workspace missing polish asset: {marker}")
 
     for marker in (
@@ -44,6 +46,30 @@ def main():
     ):
         require(marker in css, f"GEO B2B polish style missing: {marker}")
 
+    for marker in (
+        ".geo-mode-action",
+        ".kz-geo-api-overlay",
+        ".kz-geo-api-dialog",
+        ".geo-human-flow",
+    ):
+        require(marker in owner_css, f"GEO owner UX style missing: {marker}")
+
+    for marker in (
+        "配置云端大模型 API",
+        "API 名称",
+        "接口协议",
+        "保存 API 配置",
+        "测试连接",
+        "geo-mode-action",
+        "openApiDialog",
+        "scrollToWorkbench",
+        "openLocalTools",
+        "'/api/ai-gateway/config'",
+        "'/api/ai-gateway/test'",
+        "'/api/ai-gateway/clear'",
+    ):
+        require(marker in owner_ux, f"GEO owner action/API configuration marker missing: {marker}")
+
     for button_id in (
         "geo-local-one", "geo-local-ten", "geo-browser-one", "geo-browser-ten",
         "geo-browser-submit", "geo-run-round", "geo-bootstrap", "geo-refresh",
@@ -59,7 +85,7 @@ def main():
     require("'/api/r8-19/geo/browser/prepare'" in polish, "browser prepare repaired click path missing")
     require("'/api/r8-19/geo/browser/receipt'" in polish, "browser receipt repaired click path missing")
 
-    print("PASS: embedded GEO workspace keeps compact B2B polish and protected browser/local controls")
+    print("PASS: embedded GEO workspace keeps compact B2B polish, actionable mode cards, API setup, and protected browser/local controls")
 
 
 if __name__ == "__main__":
