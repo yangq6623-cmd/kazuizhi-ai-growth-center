@@ -35,7 +35,7 @@
           <div class="geo2-actions">
             <span id="geo2-status" class="geo2-status neutral">等待真实证据</span>
             <button id="geo2-refresh" class="geo2-btn primary" type="button">刷新分析</button>
-            <button id="geo2-copy" class="geo2-btn secondary" type="button">复制 ChatGPT 分析包</button>
+            <button id="geo2-copy" class="geo2-btn secondary" type="button">复制 ChatGPT 分析包</button><button id="geo2-chatgpt" class="geo2-btn secondary" type="button">提交总脑分析</button>
           </div>
         </div>
 
@@ -68,6 +68,8 @@
             <p class="geo2-note">系统只记录回答中明确出现的名称；默认不会自动认定为正式竞品，后续由 ChatGPT 总脑确认。</p>
           </article>
         </div>
+
+        <div id="geo2-chatgpt-box" class="geo2-chatgpt"><div class="geo2-chatgpt-title"><span>ChatGPT 总脑判断</span><span id="geo2-chatgpt-status" class="geo2-status neutral">尚未分析</span></div><div id="geo2-chatgpt-content" class="geo2-chatgpt-content">配置云端API并取得A/B Evidence后，可提交给ChatGPT总脑进行结构化分析。这里的结果仅作为判断依据，不会直接改变Evidence或执行任务。</div></div>
 
         <div class="geo2-footer">
           <span><b>分析控制：</b>确定性规则自动整理事实；战略解释、任务优先级、内容动作和复测由 ChatGPT 总脑决定。</span>
@@ -157,11 +159,18 @@
     document.getElementById('geo2-generated').textContent = data?.generated_at ? `分析时间：${esc(data.generated_at)}` : '尚未生成分析快照';
   }
 
+  async function loadChatGPT() { try { const data = await json('/api/r8-19/geo/analysis/chatgpt'); renderChatGPT(data); } catch (_) {} }
+
+  function renderChatGPT(data) { const status = data && data.status ? data.status : {}; const snap = data && data.snapshot ? data.snapshot : {}; const box = document.getElementById('geo2-chatgpt-content'); const badge = document.getElementById('geo2-chatgpt-status'); const button = document.getElementById('geo2-chatgpt'); if (button) button.disabled = !status.ready; if (!box || !badge) return; if (snap.analysis) { badge.textContent = '已完成'; badge.className = 'geo2-status success'; const a=snap.analysis; const findings=(a.key_findings||[]).slice(0,4).map(x => '<li><b>'+esc(x.title)+'</b>：'+esc(x.detail)+'</li>').join(''); const actions=(a.candidate_actions||[]).slice(0,4).map(x => '<li>'+esc(x.action)+'<small>'+esc(x.why)+'</small></li>').join(''); box.innerHTML='<p>'+esc(a.executive_summary||'')+'</p>'+(findings?'<div><b>关键发现</b><ul>'+findings+'</ul></div>':'')+(actions?'<div><b>候选行动（待总控确认）</b><ul>'+actions+'</ul></div>':''); return; } badge.textContent = status.ready ? '可提交' : 'API未配置'; badge.className = 'geo2-status '+(status.ready?'success':'neutral'); box.textContent = status.ready ? '当前可以提交总脑分析。' : (status.reason || '请先在GEO API入口完成云端模型连接验证。'); }
+
+  async function runChatGPT(button) { if(button) button.disabled=true; try { const data=await post('/api/r8-19/geo/analysis/chatgpt/run'); renderChatGPT({status:{ready:true},snapshot:data.result||data}); window.notify?.('ChatGPT 总脑分析已完成；候选行动仍需总控确认。'); } catch(error) { window.notify?.(error.message,'error'); loadChatGPT(); } finally { if(button) button.disabled=false; } }
+
   async function load() {
     ensurePanel();
     try {
       const data = await json('/api/r8-19/geo/analysis');
       render(data);
+      loadChatGPT();
       return data;
     } catch (error) {
       const status = document.getElementById('geo2-status');
@@ -200,6 +209,7 @@
     panel.dataset.bound = '1';
     document.getElementById('geo2-refresh')?.addEventListener('click', event => refresh(event.currentTarget));
     document.getElementById('geo2-copy')?.addEventListener('click', copyPack);
+    document.getElementById('geo2-chatgpt')?.addEventListener('click', event => runChatGPT(event.currentTarget));
     const receiptList = document.getElementById('geo-receipt-list');
     if (receiptList && window.MutationObserver) {
       let timer = null;
