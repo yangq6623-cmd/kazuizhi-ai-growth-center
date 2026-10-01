@@ -12,11 +12,13 @@ on:
       - '05_V2.0.0_Source/web/operational-search.css'
       - '05_V2.0.0_Source/web/decision_layout_patch.js'
       - '05_V2.0.0_Source/web/geo.html'
-      - '04_Build/v2/test_r8_19_geo_phase1.py
-      - name: Verify GEO Phase 2 analysis and comparison
-        run: python 04_Build/v2/test_r8_19_geo_phase2.py'
+      - '04_Build/v2/test_r8_19_geo_phase1.py'
+      - '04_Build/v2/test_r8_19_geo_phase2.py'
+      - '05_V2.0.0_Source/core/geo_analysis.py'
+      - '05_V2.0.0_Source/web/geo-phase2-analysis.js'
+      - '05_V2.0.0_Source/web/geo-phase2-analysis.css'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
-      - '.github/workflows/r8_19_geo_phase1_validation.yml'
+      - '.github/workflows/r8_19_geo_phase2_validation.yml'
   pull_request:
     branches: [main]
     paths:
@@ -28,9 +30,7 @@ on:
       - '05_V2.0.0_Source/web/operational-search.css'
       - '05_V2.0.0_Source/web/decision_layout_patch.js'
       - '05_V2.0.0_Source/web/geo.html'
-      - '04_Build/v2/test_r8_19_geo_phase1.py
-      - name: Verify GEO Phase 2 analysis and comparison
-        run: python 04_Build/v2/test_r8_19_geo_phase2.py'
+      - '04_Build/v2/test_r8_19_geo_phase1.py'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
       - '.github/workflows/r8_19_geo_phase1_validation.yml'
 
@@ -38,7 +38,7 @@ permissions:
   contents: read
 
 jobs:
-  validate-geo-phase1:
+  validate-geo-phase2:
     runs-on: windows-latest
     timeout-minutes: 15
     defaults:
@@ -62,12 +62,14 @@ jobs:
       - name: Compile R8-19 backend modules
         run: |
           python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
+          python -m py_compile 05_V2.0.0_Source/core/geo_analysis.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py
           python -m py_compile 05_V2.0.0_Source/integrations/geo_openai_search_executor.py
       - name: Check GEO browser scripts
         run: |
           node --check 05_V2.0.0_Source/web/operational-search.js
           node --check 05_V2.0.0_Source/web/decision_layout_patch.js
+          node --check 05_V2.0.0_Source/web/geo-phase2-analysis.js
       - name: Verify Phase 1 source contracts
         run: |
           $core = Get-Content 05_V2.0.0_Source/core/geo_validation.py -Raw
@@ -100,4 +102,12 @@ jobs:
           @('font-variant-numeric:tabular-nums','is-running','is-success','is-waiting','is-danger','is-neutral') | ForEach-Object {
             if (-not $css.Contains($_)) { throw "Missing B2B visual semantic contract: $_" }
           }
-          Write-Host 'R8-19 Phase 1 validates all 48 agreed details at code/contract level. Live external 50-question completion still requires a real verified external provider.'
+          $analysis = Get-Content 05_V2.0.0_Source/core/geo_analysis.py -Raw
+          @('GEO-ANALYSIS-V1-20261001','analysis_pack','chatgpt_judgement','platform_candidates','visibility_score') | ForEach-Object {
+            if (-not $analysis.Contains($_)) { throw "Missing GEO Phase 2 analysis contract: $_" }
+          }
+          $phase2 = Get-Content 05_V2.0.0_Source/web/geo-phase2-analysis.js -Raw
+          @('geo-phase2-analysis','/api/r8-19/geo/analysis','/api/r8-19/geo/analysis/refresh','复制 ChatGPT 分析包') | ForEach-Object {
+            if (-not $phase2.Contains($_)) { throw "Missing GEO Phase 2 UI contract: $_" }
+          }
+          Write-Host 'R8-19 Phase 1 regression plus GEO Phase 2 analysis/comparison contracts are present. Live external 50-question completion remains a separate field step.'
