@@ -22,19 +22,20 @@
     style.textContent = `
       .geo-auto{margin:12px 0 16px;border:1px solid #cbdcff;border-radius:12px;background:#f8fbff;padding:14px 16px;box-shadow:0 5px 18px rgba(37,99,235,.05)}
       .geo-auto-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.geo-auto-head p{margin:0;color:#315d9f;font-size:11px;font-weight:800;letter-spacing:.04em}.geo-auto-head h3{margin:3px 0 4px;font-size:18px}.geo-auto-head small{display:block;color:#64748b;line-height:1.55}.geo-auto-state{flex:0 0 auto;border-radius:4px;padding:5px 9px;font-size:12px;font-weight:800;background:#e2e8f0;color:#475569}.geo-auto-state.running{background:#eaf1ff;color:#245ec7}.geo-auto-state.completed{background:#e7f7ee;color:#16895f}.geo-auto-state.paused,.geo-auto-state.attention{background:#fff0d8;color:#a86500}
-      .geo-auto-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:12px}.geo-auto-metric{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:9px 10px;min-width:0}.geo-auto-metric span{display:block;color:#718096;font-size:11px}.geo-auto-metric b{display:block;margin-top:3px;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.geo-auto-metric small{display:block;color:#8793a5;font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .geo-auto-progress{height:7px;background:#e5eaf2;border-radius:99px;overflow:hidden;margin:11px 0 7px}.geo-auto-progress i{display:block;height:100%;background:#2563eb;transition:width .25s ease}.geo-auto-current{font-size:12px;color:#4a5b72;min-height:20px}.geo-auto-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.geo-auto-actions button{border:1px solid #cbd7e8;border-radius:8px;background:#fff;color:#315d9f;padding:8px 12px;font-weight:800;cursor:pointer}.geo-auto-actions button.primary{background:#2563eb;border-color:#2563eb;color:#fff}.geo-auto-actions button:disabled{opacity:.5;cursor:not-allowed}.geo-auto-truth{margin-top:10px;padding-top:9px;border-top:1px dashed #ccd8ea;color:#607086;font-size:11px;line-height:1.55}.geo-auto-error{color:#b42318;font-weight:700}
-      @media(max-width:1050px){.geo-auto-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:620px){.geo-auto-head{flex-direction:column}.geo-auto-grid{grid-template-columns:repeat(2,1fr)}}
+      .geo-auto-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}.geo-auto-metric{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:9px 10px;min-width:0}.geo-auto-metric span{display:block;color:#718096;font-size:11px}.geo-auto-metric b{display:block;margin-top:3px;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.geo-auto-metric small{display:block;color:#8793a5;font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .geo-auto-progress{height:7px;background:#e5eaf2;border-radius:99px;overflow:hidden;margin:11px 0 7px}.geo-auto-progress i{display:block;height:100%;background:#2563eb;transition:width .25s ease}.geo-auto-current{font-size:12px;color:#4a5b72;min-height:20px}.geo-auto-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.geo-auto-actions button{border:1px solid #cbd7e8;border-radius:8px;background:#fff;color:#315d9f;padding:8px 12px;font-weight:800;cursor:pointer}.geo-auto-actions button.primary{background:#2563eb;border-color:#2563eb;color:#fff}.geo-auto-actions button.stage-done{background:#e7f7ee;border-color:#bfe4d0;color:#16895f}.geo-auto-actions button:disabled{opacity:.5;cursor:not-allowed}.geo-auto-truth{margin-top:10px;padding-top:9px;border-top:1px dashed #ccd8ea;color:#607086;font-size:11px;line-height:1.55}.geo-auto-truth.ok{color:#25705a}.geo-auto-truth.warn{color:#a15c00;background:#fff8e8;border:1px solid #f3ddb0;border-radius:7px;padding:8px 10px}.geo-auto-error{color:#b42318;font-weight:700}
+      @media(max-width:1180px){.geo-auto-grid{grid-template-columns:repeat(4,1fr)}}@media(max-width:760px){.geo-auto-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.geo-auto-head{flex-direction:column}}
     `;
     document.head.appendChild(style);
   }
 
   function markup() {
     return `<section id="geo-autonomy" class="geo-auto" aria-label="GEO自动验证">
-      <div class="geo-auto-head"><div><p>GEO · AUTONOMOUS CLOUD SCAN</p><h3>GEO 自动验证 · 50问自治运行</h3><small>云端 API 已验证后，系统可自动逐题执行、保存回答和回执，无需人工点击 50 次。</small></div><span id="geo-auto-state" class="geo-auto-state">待启动</span></div>
+      <div class="geo-auto-head"><div><p>GEO · AUTONOMOUS CLOUD SCAN</p><h3>GEO 自动验证 · 分阶段自治验收</h3><small>按 1题 → 3题 → 10题 → 50题逐级放量。每一阶段自动逐题执行、保存原始回答和回执，不需要人工连续点击。</small></div><span id="geo-auto-state" class="geo-auto-state">待启动</span></div>
       <div class="geo-auto-grid">
-        <div class="geo-auto-metric"><span>云端自动扫描</span><b id="geo-auto-progress-text">0 / 50</b><small>C级辅助结果</small></div>
-        <div class="geo-auto-metric"><span>正式 A/B Evidence</span><b id="geo-auto-formal">0 / 50</b><small>正式 GEO 成绩</small></div>
+        <div class="geo-auto-metric"><span>云端自动扫描</span><b id="geo-auto-progress-text">0 / 1</b><small>C级辅助结果</small></div>
+        <div class="geo-auto-metric"><span>正式 A/B Evidence</span><b id="geo-auto-formal">0 / 50</b><small>统一正式 GEO 成绩</small></div>
+        <div class="geo-auto-metric"><span>Phase 2 已分析</span><b id="geo-auto-analyzed">0 / 50</b><small>必须与正式 A/B 一致</small></div>
         <div class="geo-auto-metric"><span>排队</span><b id="geo-auto-queued">0</b><small>待自动执行</small></div>
         <div class="geo-auto-metric"><span>失败 / 待授权</span><b id="geo-auto-failed">0</b><small>异常才需要处理</small></div>
         <div class="geo-auto-metric"><span>云端模型</span><b id="geo-auto-model">--</b><small id="geo-auto-provider">读取中</small></div>
@@ -43,7 +44,10 @@
       <div class="geo-auto-progress"><i id="geo-auto-bar" style="width:0%"></i></div>
       <div id="geo-auto-current" class="geo-auto-current">当前没有自动 GEO 任务。</div>
       <div class="geo-auto-actions">
-        <button id="geo-auto-start" class="primary" type="button">启动自动50问</button>
+        <button id="geo-auto-stage-1" class="primary" type="button">测试1题</button>
+        <button id="geo-auto-stage-3" type="button">测试到3题</button>
+        <button id="geo-auto-stage-10" type="button">测试到10题</button>
+        <button id="geo-auto-stage-50" type="button">启动剩余至50题</button>
         <button id="geo-auto-pause" type="button">暂停</button>
         <button id="geo-auto-resume" type="button">继续</button>
         <button id="geo-auto-retry" type="button">重试失败题</button>
@@ -51,6 +55,10 @@
       </div>
       <div id="geo-auto-truth" class="geo-auto-truth">证据边界：普通豆包/云端 API 回答会真实保存，但没有可核验的联网搜索证据时固定为 C 级辅助；只有真实 A/B Evidence 才进入正式 GEO 成绩。</div>
     </section>`;
+  }
+
+  function stageStart(button, target) {
+    return act(button, '/api/r8-19/geo/autonomy/start', {target}, `已启动 ${target} 题阶段验收。`);
   }
 
   function mount() {
@@ -63,7 +71,10 @@
     const anchor = pane.querySelector('.geo-mode-grid');
     if (anchor?.parentNode) anchor.parentNode.insertBefore(node, anchor.nextSibling);
     else pane.prepend(node);
-    byId('geo-auto-start')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/start', {target:50}));
+    byId('geo-auto-stage-1')?.addEventListener('click', event => stageStart(event.currentTarget, 1));
+    byId('geo-auto-stage-3')?.addEventListener('click', event => stageStart(event.currentTarget, 3));
+    byId('geo-auto-stage-10')?.addEventListener('click', event => stageStart(event.currentTarget, 10));
+    byId('geo-auto-stage-50')?.addEventListener('click', event => stageStart(event.currentTarget, 50));
     byId('geo-auto-pause')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/pause'));
     byId('geo-auto-resume')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/resume'));
     byId('geo-auto-retry')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/retry-failed'));
@@ -73,20 +84,32 @@
     return true;
   }
 
+  function setStageButton(id, threshold, completed, busy, ready) {
+    const button = byId(id);
+    if (!button) return;
+    const done = completed >= threshold;
+    button.disabled = busy || !ready || done;
+    button.classList.toggle('stage-done', done);
+    if (done) button.title = `云端自动扫描已完成前 ${threshold} 题`;
+    else button.title = `启动并自动运行到第 ${threshold} 题`;
+  }
+
   function render(data) {
     if (!data || !byId('geo-autonomy')) return;
     const target = Number(data.target || 50);
     const completed = Number(data.cloud_completed || 0);
     const formal = Number(data.formal_ab_completed || 0);
+    const analyzed = Number(data.phase2_analyzed || 0);
     const queue = data.queue || {};
     const executor = data.executor || {};
-    const stateLabels = {idle:'待启动',running:'运行中',paused:'已暂停',completed:'已完成',attention:'需要处理'};
+    const stateLabels = {idle:'待启动',running:'运行中',paused:'已暂停',completed:'本阶段完成',attention:'需要处理'};
     const state = data.state || 'idle';
     const stateNode = byId('geo-auto-state');
     stateNode.textContent = stateLabels[state] || state;
     stateNode.className = `geo-auto-state ${state}`;
     byId('geo-auto-progress-text').textContent = `${completed} / ${target}`;
     byId('geo-auto-formal').textContent = `${formal} / 50`;
+    byId('geo-auto-analyzed').textContent = `${analyzed} / 50`;
     byId('geo-auto-queued').textContent = String(Number(queue.queued || 0));
     byId('geo-auto-failed').textContent = String(Number(queue.failed || 0) + Number(queue.authorization_required || 0));
     byId('geo-auto-model').textContent = executor.model || '--';
@@ -99,11 +122,25 @@
       ? `<span class="geo-auto-error">${esc(error)}</span>`
       : current.question_id
         ? `当前：<b>${esc(current.question_id)}</b> · ${esc(current.question_text || '')}`
-        : completed >= target ? '本轮云端自动扫描已完成。' : '当前没有正在执行的题目。';
-    byId('geo-auto-start').disabled = Boolean(data.enabled) || !executor.ready;
+        : completed >= target ? `当前 ${target} 题阶段已完成；验收通过后再进入下一档。` : '当前没有正在执行的题目。';
+
+    const busy = Boolean(data.enabled);
+    setStageButton('geo-auto-stage-1', 1, completed, busy, executor.ready);
+    setStageButton('geo-auto-stage-3', 3, completed, busy, executor.ready);
+    setStageButton('geo-auto-stage-10', 10, completed, busy, executor.ready);
+    setStageButton('geo-auto-stage-50', 50, completed, busy, executor.ready);
     byId('geo-auto-pause').disabled = !data.enabled || Boolean(data.paused);
     byId('geo-auto-resume').disabled = !data.enabled || !data.paused || !executor.ready;
     byId('geo-auto-retry').disabled = (Number(queue.failed || 0) + Number(queue.authorization_required || 0)) === 0;
+
+    const truth = byId('geo-auto-truth');
+    if (truth) {
+      const consistent = data.truth_consistent !== false && formal === analyzed;
+      truth.className = `geo-auto-truth ${consistent ? 'ok' : 'warn'}`;
+      truth.textContent = consistent
+        ? `数据口径一致：正式 A/B Evidence ${formal} 题，Phase 2 已分析 ${analyzed} 题。普通豆包/云端 API 无联网证据时仍固定为 C 级辅助。`
+        : `数据口径异常：正式 A/B Evidence ${formal} 题，Phase 2 已分析 ${analyzed} 题。系统已阻止把两者混为同一成绩，请刷新后再开始下一阶段。`;
+    }
   }
 
   async function refresh(announce=false) {
@@ -118,21 +155,20 @@
     }
   }
 
-  async function act(button, path, body={}) {
+  async function act(button, path, body={}, successMessage='GEO 自动运行状态已更新。') {
     const old = button.textContent;
     button.disabled = true;
     button.textContent = '处理中…';
     try {
       const data = await post(path, body);
       render(data.status || data);
-      window.notify?.(path.endsWith('/start') ? 'GEO 自动50问已启动。' : 'GEO 自动运行状态已更新。');
+      window.notify?.(successMessage);
       setTimeout(refresh, 300);
     } catch (error) {
       window.notify?.(error.message, 'error');
       const node = byId('geo-auto-current');
       if (node) node.innerHTML = `<span class="geo-auto-error">${esc(error.message)}</span>`;
     } finally {
-      button.disabled = false;
       button.textContent = old;
       setTimeout(refresh, 600);
     }
