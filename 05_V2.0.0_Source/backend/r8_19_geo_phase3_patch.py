@@ -9,6 +9,7 @@ from core import geo_phase2_latest_truth_patch as _geo_phase2_latest_truth_patch
 from core import geo_phase3_job_patch as _geo_phase3_job_patch  # noqa: F401
 from core import geo_phase3_seo_bridge as _geo_phase3_seo_bridge  # noqa: F401
 from core import geo_phase3
+from core import geo_phase3_retest_patch as _geo_phase3_retest_patch  # noqa: F401
 from core import seo_geo_autonomy as seo_core
 
 _INSTALLED = False
