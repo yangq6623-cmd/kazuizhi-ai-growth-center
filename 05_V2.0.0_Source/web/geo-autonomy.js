@@ -36,7 +36,7 @@
         <div class="geo-auto-metric"><span>云端自动扫描</span><b id="geo-auto-progress-text">0 / 1</b><small>C级辅助结果</small></div>
         <div class="geo-auto-metric"><span>正式 A/B Evidence</span><b id="geo-auto-formal">0 / 50</b><small>统一正式 GEO 成绩</small></div>
         <div class="geo-auto-metric"><span>Phase 2 已分析</span><b id="geo-auto-analyzed">0 / 50</b><small>必须与正式 A/B 一致</small></div>
-        <div class="geo-auto-metric"><span>排队</span><b id="geo-auto-queued">0</b><small>待自动执行</small></div>
+        <div class="geo-auto-metric"><span>排队</span><b id="geo-auto-queued">0</b><small id="geo-auto-queue-note">当前阶段待执行</small></div>
         <div class="geo-auto-metric"><span>失败 / 待授权</span><b id="geo-auto-failed">0</b><small>异常才需要处理</small></div>
         <div class="geo-auto-metric"><span>云端模型</span><b id="geo-auto-model">--</b><small id="geo-auto-provider">读取中</small></div>
         <div class="geo-auto-metric"><span>运行状态</span><b id="geo-auto-mode">待启动</b><small>单任务顺序执行</small></div>
@@ -96,7 +96,7 @@
 
   function render(data) {
     if (!data || !byId('geo-autonomy')) return;
-    const target = Number(data.target || 50);
+    const target = Number(data.target || 1);
     const completed = Number(data.cloud_completed || 0);
     const formal = Number(data.formal_ab_completed || 0);
     const analyzed = Number(data.phase2_analyzed || 0);
@@ -111,6 +111,9 @@
     byId('geo-auto-formal').textContent = `${formal} / 50`;
     byId('geo-auto-analyzed').textContent = `${analyzed} / 50`;
     byId('geo-auto-queued').textContent = String(Number(queue.queued || 0));
+    const hiddenHistorical = Number(queue.historical_unscoped || 0);
+    const queueNote = byId('geo-auto-queue-note');
+    if (queueNote) queueNote.textContent = hiddenHistorical ? `当前阶段待执行 · 旧队列${hiddenHistorical}题暂不运行` : '当前阶段待执行';
     byId('geo-auto-failed').textContent = String(Number(queue.failed || 0) + Number(queue.authorization_required || 0));
     byId('geo-auto-model').textContent = executor.model || '--';
     byId('geo-auto-provider').textContent = `${executor.label || '云端API'} · ${executor.ready ? '已验证' : '未就绪'}`;
@@ -124,7 +127,7 @@
         ? `当前：<b>${esc(current.question_id)}</b> · ${esc(current.question_text || '')}`
         : completed >= target ? `当前 ${target} 题阶段已完成；验收通过后再进入下一档。` : '当前没有正在执行的题目。';
 
-    const busy = Boolean(data.enabled);
+    const busy = Boolean(data.enabled) && !Boolean(data.paused);
     setStageButton('geo-auto-stage-1', 1, completed, busy, executor.ready);
     setStageButton('geo-auto-stage-3', 3, completed, busy, executor.ready);
     setStageButton('geo-auto-stage-10', 10, completed, busy, executor.ready);
