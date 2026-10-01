@@ -1,8 +1,11 @@
-"""R8-19 GEO Phase 1 live-field safety gate.
+"""R8-19 GEO live-field safety gate.
 
 Browser validation is the default real external path, local models remain
 C-level only, and paid API is optional. The old API-oriented click-capture gate
 must not be injected because it can intercept the browser-first controls.
+
+This is a cross-phase regression gate: Phase 2 must preserve all Phase 1 live
+validation contracts while allowing the visible build label to advance.
 """
 from pathlib import Path
 
@@ -41,10 +44,10 @@ def main():
         require(marker in ui, f'GEO no-API base UI marker missing: {marker}')
 
     require('phase: "R8-19"' in build, 'visible build identity is not R8-19')
-    require('R8-19 GEO Phase 1' in build, 'visible R8-19 GEO Phase 1 label missing')
+    require('R8-19 GEO Phase ' in build, 'visible R8-19 GEO phase label missing')
     require('R8-18' not in build, 'stale R8-18 identity remains in build_info.js')
 
-    print('PASS: R8-19 browser-first GEO uses one interaction controller, keeps local model C-level, and treats API as optional')
+    print('PASS: R8-19 browser-first GEO cross-phase regression keeps one interaction controller, local model C-level, and API optional')
 
 
 if __name__ == '__main__':
