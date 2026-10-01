@@ -159,7 +159,10 @@ def exercise_seo_geo(page) -> None:
     seo_frame = seo_handle.content_frame() if seo_handle else None
     if seo_frame is None:
         raise AssertionError("SEO iframe did not expose same-origin content")
-    seo_frame.wait_for_selector('text=SEO增长中心', timeout=10000)
+    seo_frame.wait_for_selector('.head h1', state='visible', timeout=10000)
+    seo_heading = seo_frame.locator('.head h1').first.inner_text().strip()
+    if 'SEO' not in seo_heading:
+        raise AssertionError(f"SEO heading missing after embed decoration: {seo_heading!r}")
     seo_frame.wait_for_selector('text=今日自动化作业流水线', timeout=12000)
     assert_embedded_frame_expanded(page, 'r813-seo-frame', 'SEO')
 
