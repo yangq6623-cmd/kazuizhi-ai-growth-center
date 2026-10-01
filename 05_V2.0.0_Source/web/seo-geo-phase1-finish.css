@@ -1,0 +1,68 @@
+/* R8-19 Phase 1 final visual finish. Scope: SEO/GEO only. */
+:root{--kz-finish-blue:#2563eb;--kz-finish-blue-soft:#eef4ff;--kz-finish-green:#16875f;--kz-finish-ink:#14233d;--kz-finish-muted:#708097;--kz-finish-line:#e1e8f2;--kz-finish-card:#fff}
+
+/* Main SEO/GEO switch: quieter, clearer and more like one business workspace. */
+.r813-growth-tabs{padding:10px 12px!important;gap:10px!important;border-radius:12px!important;box-shadow:0 4px 16px rgba(22,45,78,.035)!important}
+.r813-growth-tab{min-width:170px!important;padding:10px 14px!important;border-radius:9px!important;transition:border-color .16s ease,background .16s ease,box-shadow .16s ease,transform .16s ease!important}
+.r813-growth-tab:hover{border-color:#a9bfeb!important;transform:translateY(-1px)}
+.r813-growth-tab.active{background:linear-gradient(180deg,#f5f8ff,#edf3ff)!important;border-color:#7fa3ef!important;box-shadow:0 4px 12px rgba(37,99,235,.08)!important}
+.r813-growth-tab b{font-size:13px!important}.r813-growth-tab span{font-size:10px!important;color:#8190a4!important}
+
+/* Embedded SEO title hierarchy: the outer shell already says SEO/GEO, child page should say SEO only. */
+html.kz-growth-embedded .head h1{font-size:30px!important;letter-spacing:-.02em!important}
+html.kz-growth-embedded .head .muted{font-size:11px!important;color:#718198!important}
+html.kz-growth-embedded .truth-panel,html.kz-growth-embedded .kpi,html.kz-growth-embedded .card{border-color:var(--kz-finish-line)!important;box-shadow:0 5px 18px rgba(24,52,93,.035)!important}
+html.kz-growth-embedded .section{margin-top:18px!important}
+html.kz-growth-embedded .tabs{border-radius:10px!important;padding:8px 0!important}
+
+/* GEO: the larger progress card is the one source of truth; remove the old duplicate strip. */
+#geo-growth-pane #geo-baseline-progress{display:none!important}
+
+/* GEO KPI cards: compact, clickable and consistent. */
+#geo-growth-pane .geo-kpis{gap:9px!important}
+#geo-growth-pane .geo-kpis article{min-height:82px!important;padding:12px 13px!important;border-color:var(--kz-finish-line)!important;border-radius:11px!important;box-shadow:0 4px 14px rgba(20,45,80,.025)!important}
+#geo-growth-pane .geo-kpis article span{font-size:10px!important;color:#64748b!important}
+#geo-growth-pane .geo-kpis article strong{margin-top:4px!important;font-size:20px!important;letter-spacing:-.02em!important}
+#geo-growth-pane .geo-kpis article small{font-size:9px!important;color:#8a97a9!important}
+
+/* Primary browser action always reads as one next-step action despite older helper scripts. */
+#geo-growth-pane #geo-browser-one{font-size:0!important;min-width:142px!important}
+#geo-growth-pane #geo-browser-one::after{content:"开始第1题验证";font-size:11px;font-weight:800}
+#geo-growth-pane:has(.geo-browser-workbench.is-active) #geo-browser-one::after{content:"继续当前验证"}
+
+/* Task ID is traceability metadata, not the main business input. */
+#geo-growth-pane label:has(#geo-browser-task-id){color:#8996a8!important;font-size:9px!important}
+#geo-growth-pane #geo-browser-task-id{background:#f8fafc!important;color:#7a8798!important;border-color:#e6ebf2!important;font-size:9px!important;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+#geo-growth-pane label:has(#geo-browser-task-id)::before{content:"任务编号 · ";color:#9aa6b5;font-weight:700}
+
+/* Workbench: clearer three-step operator flow. */
+#geo-growth-pane .geo-browser-workbench{border-radius:13px!important;box-shadow:0 6px 20px rgba(23,52,91,.04)!important}
+#geo-growth-pane .geo-human-flow{gap:10px!important;margin:9px 0 12px!important}
+#geo-growth-pane .geo-human-flow-step{min-height:58px!important;padding:10px 11px!important;border-radius:10px!important}
+#geo-growth-pane .geo-human-flow-step.active{box-shadow:inset 3px 0 0 var(--kz-finish-blue)!important}
+#geo-growth-pane .geo-human-flow-step.done{box-shadow:inset 3px 0 0 var(--kz-finish-green)!important}
+#geo-growth-pane .geo-browser-actions{display:flex!important;align-items:center!important;gap:10px!important;flex-wrap:wrap!important}
+#geo-growth-pane #geo-browser-submit{min-height:36px!important;border-radius:8px!important;padding:8px 14px!important}
+
+/* Queue + table remain data dense, but visually quieter. */
+#geo-growth-pane .geo-questions-panel,#geo-growth-pane .geo-execution-panel{border-radius:12px!important;border-color:var(--kz-finish-line)!important;box-shadow:0 5px 17px rgba(23,52,91,.03)!important}
+#geo-growth-pane .geo-table th{background:#f8fafc!important;color:#6d7b90!important}
+#geo-growth-pane .geo-table td{border-bottom-color:#edf1f6!important}
+#geo-growth-pane .geo-task{border-radius:9px!important;border-color:#e7ecf3!important;background:#fff!important}
+#geo-growth-pane .geo-task .kz-pause-reason{display:block;margin-top:3px;color:#9a6a12;font-size:9px;line-height:1.35}
+
+/* Technical IDs should stay available without competing with owner-facing information. */
+#geo-growth-pane .geo-control-ids{opacity:.42!important;transform:scale(.96);transform-origin:left center}
+#geo-growth-pane .geo-version{opacity:.72}
+
+/* Section rhythm. */
+#geo-growth-pane .geo-control,#geo-growth-pane .kz-growth-progress,#geo-growth-pane .geo-runner-shell,#geo-growth-pane .geo-browser-workbench,#geo-growth-pane .geo-grid{margin-bottom:12px!important}
+#geo-growth-pane .panel-head h3{letter-spacing:-.01em}
+
+@media(max-width:900px){
+  .r813-growth-tab{min-width:0!important;flex:1}
+  #geo-growth-pane .geo-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:620px){
+  #geo-growth-pane .geo-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
