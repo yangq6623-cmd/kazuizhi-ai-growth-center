@@ -2,7 +2,8 @@
 
 The normal owner workflow is one left-nav entry: SEO/GEO增长 -> internal SEO增长 /
 GEO增长. SEO and GEO run in separate same-origin iframes so a heavy GEO workspace
-cannot resize or mutate the legacy SEO document and freeze Chrome.
+cannot mutate the legacy SEO document. The owner shell is the single page scroller;
+data-heavy tables may keep bounded local scrolling.
 """
 from pathlib import Path
 
@@ -20,6 +21,8 @@ def main():
     workspace = (WEB / "operational-search.js").read_text(encoding="utf-8")
     geo = (WEB / "geo.html").read_text(encoding="utf-8")
     seo = (WEB / "r8_13_seo_geo.html").read_text(encoding="utf-8")
+    final_js = (WEB / "seo-geo-phase1-final.js").read_text(encoding="utf-8")
+    final_css = (WEB / "seo-geo-phase1-final.css").read_text(encoding="utf-8")
 
     require("const PAGE_ID = 'r813-seo-geo'" in bridge, "main SEO/GEO route missing")
     require("SEO/GEO增长" in bridge, "main left-nav label missing")
@@ -33,15 +36,18 @@ def main():
     ):
         require(marker in seo, f"original SEO section missing from source: {marker}")
 
-    # Field-stability contract: no parent/child auto-height observer loop.
+    # Field-stability contract: split frames, lazy GEO, one owner-shell page scroller,
+    # no ResizeObserver/MutationObserver feedback loop in the bridge.
     require("r813-seo-frame" in bridge and "r813-geo-frame" in bridge, "split SEO/GEO frames missing")
     require("data-r813-workspace=\"seo\"" in bridge, "SEO workspace tab missing")
     require("data-r813-workspace=\"geo\"" in bridge, "GEO workspace tab missing")
     require("src=\"about:blank\"" in bridge and "data-src=\"/geo.html?embed=1\"" in bridge, "GEO iframe is not lazy-loaded")
-    require("scrolling=\"auto\"" in bridge, "integrated workspaces need internal scroll fallback")
+    require("scrolling=\"no\"" in bridge, "integrated workspaces must use owner-shell single-scroll mode")
+    require("seo-geo-phase1-final.css" in bridge and "seo-geo-phase1-final.js" in bridge, "final SEO/GEO UX is not injected into both workspaces")
     require("ResizeObserver" not in bridge, "main SEO/GEO bridge must not auto-resize iframe via ResizeObserver")
     require("MutationObserver" not in bridge, "main SEO/GEO bridge must not observe child DOM for frame height")
-    require("style.height" not in bridge, "main SEO/GEO bridge must not continuously rewrite iframe height")
+    require("ResizeObserver" not in final_js and "MutationObserver" not in final_js, "final SEO/GEO UX must use bounded timer/event sync, not DOM observer feedback loops")
+    require("frame.style.height" in final_js and "resizePasses" in final_js, "single-scroll embed needs bounded height synchronization")
 
     require("KZR813SeoGeoBridge" in bridge, "main route API missing")
     require("openGeo" in bridge and "openSeo" in bridge, "main route cannot switch SEO/GEO explicitly")
@@ -55,10 +61,18 @@ def main():
     ):
         require(marker in workspace, f"integrated GEO workspace marker missing: {marker}")
 
+    for marker in (
+        "SEO 今日运行进度", "GEO 今日验证进度", "第一轮真实基线",
+        "领取问题", "打开外部AI", "获取回答", "保存证据", "ChatGPT判断",
+    ):
+        require(marker in final_js, f"human progress flow missing: {marker}")
+
+    require("body.geo-direct-embed #search-growth-switch" in final_css, "embedded GEO duplicate inner SEO/GEO switch is not hidden")
+    require("geo-human-flow" in final_css, "three-step GEO task flow style missing")
     require("operational-search.js" in geo, "GEO embedded route no longer loads operational-search.js")
     require("geo-direct-embed" in geo, "GEO embedded layout mode missing")
 
-    print("PASS: SEO/GEO main route uses stable split frames, preserves full SEO, and lazy-loads GEO without resize feedback loops")
+    print("PASS: SEO/GEO main route preserves full SEO, uses single-scroll split frames, human progress flow, and lazy GEO without observer feedback loops")
 
 
 if __name__ == "__main__":
