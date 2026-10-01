@@ -71,6 +71,7 @@ def main():
             started = geo_autonomy.start(target=3)
             assert started["state"] == "running"
             assert started["target"] == 3
+            assert started["acceptance_targets"] == [1, 3, 10, 50]
             assert started["queue"]["queued"] == 3
 
             calls = []
@@ -96,11 +97,14 @@ def main():
                 current = geo_autonomy.status()
                 assert current["cloud_completed"] == expected
                 assert current["formal_ab_completed"] == 0
+                assert current["phase2_analyzed"] == 0
+                assert current["truth_consistent"] is True
 
             final = geo_autonomy.status()
             assert final["state"] == "completed"
             assert final["cloud_completed"] == 3
             assert final["formal_ab_completed"] == 0
+            assert final["phase2_analyzed"] == 0
             assert len(calls) == 3
             assert all(item["protocol"] == "chat_completions" for item in calls)
             assert all(item["authorization"] == "Bearer test-cloud-key" for item in calls)
@@ -112,8 +116,44 @@ def main():
             assert geo.dashboard()["official"]["tested"] == 0
             assert geo.dashboard()["simulation"]["count"] >= 3
 
+            # Truth convergence regression: add one real A-level browser receipt.
+            # The autonomy card, Phase-1 dashboard and Phase-2 analysis must all
+            # report the same formal count instead of showing 1/50 in one place
+            # and 0/50 in another.
+            formal_plan = geo.create_and_enqueue_plan(
+                limit=1,
+                provider="chatgpt_web",
+                test_method="browser",
+                question_ids=["GEO50-B01"],
+            )
+            formal_task = formal_plan["tasks"][0]
+            formal_receipt = geo.record_result({
+                "task_id": formal_task["task_id"],
+                "provider": "chatgpt_web",
+                "test_method": "browser",
+                "raw_answer": "卡嘴子是本地服务连接平台，可通过 https://kazuizhi.com/ 了解服务。",
+                "session_url": "https://chatgpt.com/share/test-geo-formal",
+                "citation_urls": ["https://kazuizhi.com/"],
+            })
+            assert formal_receipt["evidence_level"] == "A"
+            assert formal_receipt["official_truth"] is True
+            converged = geo_autonomy.status()
+            assert geo.dashboard()["official"]["tested"] == 1
+            assert converged["formal_ab_completed"] == 1
+            assert converged["phase2_analyzed"] == 1
+            assert converged["truth_consistent"] is True
+
+            # Staged acceptance must be cumulative: after the 3-question gate,
+            # switching to target 10 creates only the missing questions.
+            stage10 = geo_autonomy.start(target=10)
+            assert stage10["target"] == 10
+            assert stage10["cloud_completed"] == 3
+            assert stage10["queue"]["queued"] == 7
+
             ui = (SRC / "web" / "geo-autonomy.js").read_text(encoding="utf-8")
-            assert "启动自动50问" in ui
+            for marker in ("测试1题", "测试到3题", "测试到10题", "启动剩余至50题"):
+                assert marker in ui
+            assert "Phase 2 已分析" in ui
             assert "正式 A/B Evidence" in ui
             assert "C 级辅助" in ui
             bridge = (SRC / "backend" / "r8_14_seo_geo_autonomy_patch.py").read_text(encoding="utf-8")
@@ -127,7 +167,7 @@ def main():
                 assert route in bridge
             assert "geo-autonomy.js" in bridge
 
-            print("PASS: R8-19 GEO cloud autonomy + 1/3/50 queue contract + A/B truth gate")
+            print("PASS: R8-19 GEO staged 1/3/10/50 autonomy + unified A/B/Phase2 truth counts")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
