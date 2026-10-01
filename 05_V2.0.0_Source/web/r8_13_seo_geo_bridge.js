@@ -7,6 +7,8 @@
   const WORKSPACE_KEY = 'kz-search-growth-workspace';
   const FINAL_CSS = '/seo-geo-phase1-final.css';
   const FINAL_JS = '/seo-geo-phase1-final.js';
+  const FINISH_CSS = '/seo-geo-phase1-finish.css';
+  const FINISH_JS = '/seo-geo-phase1-finish.js';
   let desiredWorkspace = 'seo';
 
   function installStyle(){
@@ -27,20 +29,27 @@
     document.head.appendChild(style);
   }
 
+  function injectAsset(doc, tag, key, url){
+    if(doc.querySelector(`[data-kz-growth-${key}]`))return;
+    if(tag==='link'){
+      const link=doc.createElement('link');
+      link.rel='stylesheet';link.href=url;link.dataset[`kzGrowth${key[0].toUpperCase()+key.slice(1)}`]='1';
+      doc.head.appendChild(link);
+      return;
+    }
+    const script=doc.createElement('script');
+    script.src=url;script.dataset[`kzGrowth${key[0].toUpperCase()+key.slice(1)}`]='1';
+    doc.body.appendChild(script);
+  }
+
   function injectFinalUx(frame){
     try{
       const doc=frame?.contentDocument;
       if(!doc||!doc.head||!doc.body)return;
-      if(!doc.querySelector('link[data-kz-growth-final]')){
-        const link=doc.createElement('link');
-        link.rel='stylesheet';link.href=FINAL_CSS;link.dataset.kzGrowthFinal='1';
-        doc.head.appendChild(link);
-      }
-      if(!doc.querySelector('script[data-kz-growth-final]')){
-        const script=doc.createElement('script');
-        script.src=FINAL_JS;script.dataset.kzGrowthFinal='1';
-        doc.body.appendChild(script);
-      }
+      injectAsset(doc,'link','final',FINAL_CSS);
+      injectAsset(doc,'script','final',FINAL_JS);
+      injectAsset(doc,'link','finish',FINISH_CSS);
+      injectAsset(doc,'script','finish',FINISH_JS);
     }catch(error){console.warn('SEO/GEO final UX injection deferred',error)}
   }
 
