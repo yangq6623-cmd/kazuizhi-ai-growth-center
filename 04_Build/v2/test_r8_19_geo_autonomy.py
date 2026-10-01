@@ -83,6 +83,17 @@ def main():
             assert migrated["target"] == 1
             assert migrated["queue"]["queued"] == 0
 
+            # Field regression: real users may already have browser/manual tasks
+            # queued from earlier validation. A new cloud staged run must preserve
+            # those tasks but must not be blocked behind them.
+            legacy_plan = geo.create_and_enqueue_plan(
+                limit=1,
+                provider="browser_external_ai",
+                test_method="browser",
+                question_ids=["GEO50-B10"],
+            )
+            legacy_task_id = legacy_plan["tasks"][0]["task_id"]
+
             started = geo_autonomy.start(target=3)
             assert started["state"] == "running"
             assert started["target"] == 3
@@ -123,6 +134,9 @@ def main():
             assert len(calls) == 3
             assert all(item["protocol"] == "chat_completions" for item in calls)
             assert all(item["authorization"] == "Bearer test-cloud-key" for item in calls)
+            preserved = next(item for item in geo.queue_summary()["tasks"] if item.get("task_id") == legacy_task_id)
+            assert preserved["state"] == "queued"
+            assert preserved["provider"] == "browser_external_ai"
 
             receipts = [item for item in geo.receipts(100) if item.get("provider") == geo_cloud_executor.PROVIDER]
             assert len(receipts) == 3
@@ -185,7 +199,7 @@ def main():
                 assert route in bridge
             assert "geo-autonomy.js" in bridge
 
-            print("PASS: R8-19 staged GEO 1/3/10/50 + safe legacy migration + scoped queue + unified truth counts")
+            print("PASS: R8-19 staged GEO 1/3/10/50 + queued-browser coexistence + safe legacy migration + unified truth counts")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
