@@ -13,6 +13,7 @@ def main():
     geo = (WEB / "geo.html").read_text(encoding="utf-8")
     polish = (WEB / "geo-phase1-ui-polish.js").read_text(encoding="utf-8")
     css = (WEB / "geo-phase1-ui-polish.css").read_text(encoding="utf-8")
+    finish = (WEB / "seo-geo-phase1-finish.css").read_text(encoding="utf-8")
     owner_ux = (WEB / "geo-owner-ux.js").read_text(encoding="utf-8")
     owner_css = (WEB / "geo-owner-ux.css").read_text(encoding="utf-8")
     ui = (WEB / "operational-search.js").read_text(encoding="utf-8")
@@ -70,6 +71,17 @@ def main():
     ):
         require(marker in owner_ux, f"GEO owner action/API configuration marker missing: {marker}")
 
+    for marker in (
+        "border:2px solid #9bb9f2!important",
+        ".geo-browser-workbench.is-active{border-color:#6f99eb!important",
+        ".mode-browser{border:2px solid #7fa6ef!important",
+        ".geo-human-flow-step.active{border:2px solid #7fa6ef!important",
+        ".geo-human-flow-step.done{border:2px solid #9fd7bf!important",
+    ):
+        require(marker in finish, f"GEO complete-frame visual marker missing: {marker}")
+    require("border-left:4px solid var(--kz-finish-blue)!important" not in finish, "one-sided GEO workbench blue stripe returned")
+    require("box-shadow:inset 3px 0 0 var(--kz-finish-blue)!important" not in finish, "one-sided GEO blue accents returned")
+
     for button_id in (
         "geo-local-one", "geo-local-ten", "geo-browser-one", "geo-browser-ten",
         "geo-browser-submit", "geo-run-round", "geo-bootstrap", "geo-refresh",
@@ -85,7 +97,7 @@ def main():
     require("'/api/r8-19/geo/browser/prepare'" in polish, "browser prepare repaired click path missing")
     require("'/api/r8-19/geo/browser/receipt'" in polish, "browser receipt repaired click path missing")
 
-    print("PASS: embedded GEO workspace keeps compact B2B polish, actionable mode cards, API setup, and protected browser/local controls")
+    print("PASS: embedded GEO workspace keeps full-frame visual hierarchy, actionable mode cards, API setup, and protected browser/local controls")
 
 
 if __name__ == "__main__":
