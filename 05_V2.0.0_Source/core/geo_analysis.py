@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from core.storage import now_iso, read_json, write_json
 
-ANALYSIS_VERSION = "GEO-ANALYSIS-V1-20261001"
+ANALYSIS_VERSION = "GEO-ANALYSIS-V2-20261002"
 ANALYSIS_PATH = "geo_validation/analysis.json"
 COMPETITOR_CATALOG_PATH = "geo_validation/competitor_catalog.json"
 BRAND = "卡嘴子"
@@ -114,19 +114,12 @@ def _source_domains(urls):
 
 
 def _normalize_candidate_text(value):
-    """Normalize harmless display separators without inventing platform matches.
-
-    Real external AI answers often render names as ``58 同城`` or
-    ``大众　点评``.  Those variants should map to the same catalog entry while
-    preserving the evidence text itself unchanged.
-    """
     text = str(value or "").casefold()
     return _NAME_SEPARATOR_RE.sub("", text)
 
 
 def _candidate_platforms(answer):
-    text = str(answer or "")
-    normalized_text = _normalize_candidate_text(text)
+    normalized_text = _normalize_candidate_text(answer)
     found = []
     for item in _load_catalog().get("candidates") or []:
         for alias in item.get("aliases") or []:
@@ -168,6 +161,28 @@ def _score(receipt, mentioned, recommended, cited, service_match):
         + (weights["cited"] if cited else 0)
         + (weights["service"] if service_match else 0)
     )
+
+
+def _metric_row(group, label=""):
+    tested = len(group)
+    mentioned = sum(bool(item.get("brand_mentioned")) for item in group)
+    recommended = sum(bool(item.get("brand_recommended")) for item in group)
+    cited = sum(bool(item.get("brand_cited")) for item in group)
+    service_matched = sum(bool(item.get("service_match")) for item in group)
+    scores = [int(item.get("visibility_score") or 0) for item in group]
+    return {
+        "label": label,
+        "tested": tested,
+        "mentioned": mentioned,
+        "recommended": recommended,
+        "cited": cited,
+        "service_matched": service_matched,
+        "mention_rate": round(mentioned / tested * 100, 1) if tested else None,
+        "recommendation_rate": round(recommended / tested * 100, 1) if tested else None,
+        "citation_rate": round(cited / tested * 100, 1) if tested else None,
+        "service_match_rate": round(service_matched / tested * 100, 1) if tested else None,
+        "avg_visibility_score": round(sum(scores) / tested, 1) if tested else None,
+    }
 
 
 def analyze_receipt(receipt):
@@ -239,23 +254,44 @@ def _aggregate(items):
     official = [item for item in items if item.get("official_truth")]
     by_type = {}
     for kind, label in (("discovery", "自然发现"), ("commercial", "商业推荐"), ("brand", "品牌认知")):
-        group = [item for item in official if item.get("question_type") == kind]
-        tested = len(group)
-        mentioned = sum(bool(item.get("brand_mentioned")) for item in group)
-        recommended = sum(bool(item.get("brand_recommended")) for item in group)
-        cited = sum(bool(item.get("brand_cited")) for item in group)
-        scores = [int(item.get("visibility_score") or 0) for item in group]
-        by_type[kind] = {
-            "label": label,
-            "tested": tested,
-            "mentioned": mentioned,
-            "recommended": recommended,
-            "cited": cited,
-            "mention_rate": round(mentioned / tested * 100, 1) if tested else None,
-            "recommendation_rate": round(recommended / tested * 100, 1) if tested else None,
-            "citation_rate": round(cited / tested * 100, 1) if tested else None,
-            "avg_visibility_score": round(sum(scores) / tested, 1) if tested else None,
+        by_type[kind] = _metric_row([item for item in official if item.get("question_type") == kind], label)
+
+    intent_keys = sorted({str(item.get("intent") or "未分类") for item in official})
+    by_intent = []
+    for intent in intent_keys:
+        row = _metric_row([item for item in official if str(item.get("intent") or "未分类") == intent], intent)
+        row["intent"] = intent
+        by_intent.append(row)
+    by_intent.sort(key=lambda item: (-item["tested"], item["intent"]))
+
+    providers = {}
+    for item in official:
+        provider = str(item.get("provider") or "unknown")
+        model = str(item.get("model") or "")
+        key = f"{provider}\u0000{model}"
+        providers.setdefault(key, {"provider": provider, "model": model, "items": []})["items"].append(item)
+    provider_comparison = []
+    for value in providers.values():
+        row = _metric_row(value["items"], value["provider"])
+        row.update({"provider": value["provider"], "model": value["model"]})
+        provider_comparison.append(row)
+    provider_comparison.sort(key=lambda item: (-item["tested"], item["provider"], item["model"]))
+
+    domain_counter = Counter()
+    domain_questions = {}
+    for item in official:
+        for domain in item.get("source_domains") or []:
+            domain_counter[domain] += 1
+            domain_questions.setdefault(domain, set()).add(item.get("question_id") or "")
+    source_domains = [
+        {
+            "domain": domain,
+            "appearance_count": count,
+            "question_count": len({qid for qid in domain_questions.get(domain, set()) if qid}),
+            "official_domain": domain == OFFICIAL_DOMAIN or domain.endswith("." + OFFICIAL_DOMAIN),
         }
+        for domain, count in domain_counter.most_common(30)
+    ]
 
     gap_counter = Counter()
     gap_examples = {}
@@ -269,10 +305,7 @@ def _aggregate(items):
     gaps = []
     severity_rank = {"high": 3, "medium": 2, "low": 1}
     for code, count in gap_counter.most_common():
-        example = next(
-            (gap for item in official for gap in item.get("gaps") or [] if gap.get("code") == code),
-            {},
-        )
+        example = next((gap for item in official for gap in item.get("gaps") or [] if gap.get("code") == code), {})
         gaps.append({
             "code": code,
             "label": example.get("label") or code,
@@ -300,16 +333,22 @@ def _aggregate(items):
             if item.get("question_id") and item["question_id"] not in entry["question_ids"]:
                 entry["question_ids"].append(item["question_id"])
 
+    totals = _metric_row(official, "全部正式证据")
     return {
-        "tested": len(official),
-        "mentioned": sum(bool(item.get("brand_mentioned")) for item in official),
-        "recommended": sum(bool(item.get("brand_recommended")) for item in official),
-        "cited": sum(bool(item.get("brand_cited")) for item in official),
-        "mention_rate": round(sum(bool(item.get("brand_mentioned")) for item in official) / len(official) * 100, 1) if official else None,
-        "recommendation_rate": round(sum(bool(item.get("brand_recommended")) for item in official) / len(official) * 100, 1) if official else None,
-        "citation_rate": round(sum(bool(item.get("brand_cited")) for item in official) / len(official) * 100, 1) if official else None,
-        "avg_visibility_score": round(sum(int(item.get("visibility_score") or 0) for item in official) / len(official), 1) if official else None,
+        "tested": totals["tested"],
+        "mentioned": totals["mentioned"],
+        "recommended": totals["recommended"],
+        "cited": totals["cited"],
+        "service_matched": totals["service_matched"],
+        "mention_rate": totals["mention_rate"],
+        "recommendation_rate": totals["recommendation_rate"],
+        "citation_rate": totals["citation_rate"],
+        "service_match_rate": totals["service_match_rate"],
+        "avg_visibility_score": totals["avg_visibility_score"],
         "by_type": by_type,
+        "by_intent": by_intent,
+        "provider_comparison": provider_comparison,
+        "source_domains": source_domains,
         "gaps": gaps[:10],
         "platform_candidates": sorted(platforms.values(), key=lambda item: (-item["question_count"], item["name"]))[:20],
     }
@@ -322,7 +361,7 @@ def refresh(receipts):
     snapshot = {
         "analysis_version": ANALYSIS_VERSION,
         "controller": "chatgpt",
-        "source_policy": "只分析已有A/B Evidence；C级本地辅助不进入正式指标。",
+        "source_policy": "只分析已有A/B Evidence；C级本地/普通云端辅助不进入正式指标。",
         "generated_at": now_iso(),
         "summary": summary,
         "question_results": official_items,
@@ -346,13 +385,17 @@ def snapshot():
 
 def analysis_pack():
     value = snapshot()
+    summary = value.get("summary") or {}
     return {
         "analysis_version": value.get("analysis_version"),
         "controller": "chatgpt",
         "facts_only": True,
-        "summary": value.get("summary") or {},
-        "top_gaps": (value.get("summary") or {}).get("gaps") or [],
-        "platform_candidates": (value.get("summary") or {}).get("platform_candidates") or [],
+        "summary": summary,
+        "top_gaps": summary.get("gaps") or [],
+        "platform_candidates": summary.get("platform_candidates") or [],
+        "provider_comparison": summary.get("provider_comparison") or [],
+        "source_domains": summary.get("source_domains") or [],
+        "intent_comparison": summary.get("by_intent") or [],
         "question_results": value.get("question_results") or [],
         "chatgpt_judgement_required": True,
         "instruction": "只把这些结果作为事实输入；不要把确定性分析直接当成战略决策。",
