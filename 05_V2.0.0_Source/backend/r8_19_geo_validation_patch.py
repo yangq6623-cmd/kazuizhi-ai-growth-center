@@ -1,8 +1,8 @@
-"""R8-19 Phase 1 HTTP bridge for truth-gated GEO validation.
+"""R8-19 GEO Phase 2 HTTP bridge for truth-gated GEO validation.
 
-Browser validation is the default no-API path. Local models can precheck and
-analyse but remain C-level only. Cloud API validation stays optional and may be
-selected later by ChatGPT without changing the GEO evidence model.
+Browser validation remains the default no-API path. Phase 2 adds deterministic
+Evidence analysis and comparison. It never creates evidence, upgrades C-level
+data, or makes strategy decisions; ChatGPT remains the controller.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import json
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
+from core import geo_analysis
 from core import geo_validation as geo_core
 from core.geo_validation import (
     DECISION_PATH,
@@ -104,8 +105,6 @@ def _method_for_provider(provider):
 def _persist_decision_extras(current, providers=None, mission_context=None):
     value = dict(current or {})
     selected = providers or value.get("test_providers") or [DEFAULT_PROVIDER]
-    # Upgrade older installs that were hard-wired to OpenAI but never actually
-    # had a verified API connection. Explicit future OpenAI selections still win.
     if providers is None and selected == ["openai_web_search"]:
         try:
             if not geo_openai_search_executor.status().get("ready"):
@@ -181,6 +180,10 @@ def _migrate_pending_api_tasks_to_browser():
     return changed
 
 
+def _refresh_analysis():
+    return geo_analysis.refresh(receipts(1000))
+
+
 def _dashboard_with_executor():
     value = dashboard()
     value["decision"] = _effective_decision()
@@ -191,6 +194,7 @@ def _dashboard_with_executor():
     value["browser_executor"] = browser
     value["api_executor"] = api
     value["local_precheck"] = local
+    value["analysis"] = geo_analysis.status()
     value["execution_modes"] = {
         "default": "browser",
         "browser": {"ready": True, "requires_api": False, "label": "网页真实验证"},
@@ -210,8 +214,9 @@ def _preflight_status():
         "api": value.get("api_executor"),
         "local_precheck": value.get("local_precheck"),
         "queue": value.get("queue") or {},
+        "analysis": value.get("analysis") or {},
         "recommended_run_size": 1,
-        "next_step": "先本地预检1题，再用真实外部AI网页验证1题",
+        "next_step": "先完成真实外部AI证据，再进入第二阶段自动分析与比较",
         "truth_rule": "API不是必需项；浏览器真实外部AI结果可形成A级Evidence，本地模型固定为C级辅助。",
     }
 
@@ -295,6 +300,12 @@ def install():
         if path == "/api/r8-19/geo/receipts":
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})
             return
+        if path == "/api/r8-19/geo/analysis":
+            handler._json_ok(geo_analysis.snapshot())
+            return
+        if path == "/api/r8-19/geo/analysis/brief":
+            handler._json_ok(geo_analysis.analysis_pack())
+            return
         if path == "/api/r8-19/geo/manual":
             handler._json_ok(manual_requirements())
             return
@@ -327,6 +338,7 @@ def install():
             "/api/r8-19/geo/browser/prepare",
             "/api/r8-19/geo/browser/receipt",
             "/api/r8-19/geo/local-precheck/run",
+            "/api/r8-19/geo/analysis/refresh",
         }
         if path not in supported:
             return original_post(handler)
@@ -357,6 +369,7 @@ def install():
                 result = _prepare_browser_task(payload)
             elif path == "/api/r8-19/geo/browser/receipt":
                 result = geo_browser_validation.record_browser_result(payload)
+                _refresh_analysis()
             elif path == "/api/r8-19/geo/local-precheck/run":
                 result = geo_local_precheck.run(limit=payload.get("limit", 1), question_ids=payload.get("question_ids"))
             elif path == "/api/r8-19/geo/run":
@@ -367,10 +380,15 @@ def install():
                     result = claim_next_task(payload.get("executor") or payload)
                 elif mode == "openai_web_search" and provider == "openai_web_search":
                     result = geo_openai_search_executor.run_once()
+                    if result.get("ok"):
+                        _refresh_analysis()
                 else:
                     raise ValueError("geo_executor_not_selected_by_chatgpt_decision")
             elif path == "/api/r8-19/geo/receipt":
                 result = record_result(payload)
+                _refresh_analysis()
+            elif path == "/api/r8-19/geo/analysis/refresh":
+                result = _refresh_analysis()
             elif path == "/api/r8-19/geo/fail":
                 result = fail_task(_task_id(payload), payload.get("reason") or "execution_failed")
             elif path == "/api/r8-19/geo/pause":
