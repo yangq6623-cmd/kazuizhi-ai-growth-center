@@ -50,7 +50,7 @@
             <div class="geo2-card-head"><div><p>问题结果</p><h3>逐题可见度与缺口</h3></div><span id="geo2-result-count" class="geo2-count">0</span></div>
             <div class="geo2-table-wrap">
               <table class="geo2-table">
-                <thead><tr><th>问题</th><th>状态</th><th>推荐</th><th>官网</th><th>可见度</th><th>缺口</th></tr></thead>
+                <thead><tr><th>问题</th><th>状态</th><th>推荐</th><th>官网</th><th>综合分</th><th>缺口</th></tr></thead>
                 <tbody id="geo2-result-rows"><tr><td colspan="6" class="empty">尚无 A/B Evidence。</td></tr></tbody>
               </table>
             </div>
@@ -96,6 +96,10 @@
     return value == null ? '--' : `${value}%`;
   }
 
+  function score(value) {
+    return value == null ? '--' : `${value} / 100`;
+  }
+
   function render(data) {
     ensurePanel();
     const summary = data?.summary || {};
@@ -104,7 +108,7 @@
       ['品牌提及', rate(summary.mention_rate), `${fmt(summary.mentioned)}题`],
       ['明确推荐', rate(summary.recommendation_rate), `${fmt(summary.recommended)}题`],
       ['官网引用', rate(summary.citation_rate), `${fmt(summary.cited)}题`],
-      ['平均可见度', summary.avg_visibility_score == null ? '--' : `${summary.avg_visibility_score}`, '逐题透明计算'],
+      ['综合 GEO 可见度分', score(summary.avg_visibility_score), '品牌 + 推荐 + 官网 + 服务意图'],
     ];
     document.getElementById('geo2-metrics').innerHTML = metrics.map(item =>
       `<article><span>${esc(item[0])}</span><strong>${esc(item[1])}</strong><small>${esc(item[2])}</small></article>`
@@ -124,7 +128,7 @@
         <div class="geo2-type-line"><span>提及</span><strong>${rate(item.mention_rate)}</strong></div>
         <div class="geo2-type-line"><span>推荐</span><strong>${rate(item.recommendation_rate)}</strong></div>
         <div class="geo2-type-line"><span>官网</span><strong>${rate(item.citation_rate)}</strong></div>
-        <div class="geo2-type-line"><span>平均可见度</span><strong>${item.avg_visibility_score == null ? '--' : esc(item.avg_visibility_score)}</strong></div>
+        <div class="geo2-type-line"><span>综合可见度分</span><strong>${score(item.avg_visibility_score)}</strong></div>
       </div>`;
     }).join('');
 
@@ -139,7 +143,7 @@
         <td><span class="geo2-pill ${cls}">${state}</span></td>
         <td>${item.brand_recommended ? '是' : '否'}</td>
         <td>${item.brand_cited ? '是' : '否'}</td>
-        <td><strong>${esc(item.visibility_score)}</strong></td>
+        <td><strong>${esc(score(item.visibility_score))}</strong></td>
         <td>${esc(gaps || '—')}</td>
       </tr>`;
     }).join('') : '<tr><td colspan="6" class="empty">尚无 A/B Evidence；真实测试完成后自动出现。</td></tr>';
