@@ -18,6 +18,7 @@ def main():
         try:
             # Load additive bridges before the Phase-3 controller, matching the
             # production backend import order.
+            from core import geo_phase2_latest_truth_patch  # noqa: F401
             from core import geo_phase3_job_patch  # noqa: F401
             from core import geo_phase3_seo_bridge  # noqa: F401
             from core import geo_analysis
@@ -87,6 +88,13 @@ def main():
                 "citation_urls": ["https://kazuizhi.com/"],
             })
             assert after["evidence_level"] == "A" and after["official_truth"] is True
+            # Phase-2 current metrics must still say one tested question, while
+            # retaining the two historical A receipts as baseline + retest.
+            refreshed = geo_analysis.refresh(geo.receipts(100))
+            assert refreshed["summary"]["tested"] == 1
+            assert refreshed["official_history_count"] == 2
+            assert refreshed["retest_count"] == 1
+
             final = geo_phase3.sync()
             final_plan = final["plan"]
             assert final_plan["status"] == "completed"
@@ -96,9 +104,8 @@ def main():
 
             # Cloud C-level observations remain excluded from the formal score.
             assert geo.dashboard()["official"]["tested"] == 1
-            # Same question was retested, so official unique-question baseline remains one.
 
-            print("PASS: GEO Phase 3 gap -> authorized AI job -> SEO opportunity -> real A/B retest -> Before/After")
+            print("PASS: Phase2 latest truth + GEO Phase3 gap -> authorized AI job -> SEO opportunity -> real A/B retest -> Before/After")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
