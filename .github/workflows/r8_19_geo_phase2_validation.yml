@@ -15,6 +15,8 @@ on:
       - '04_Build/v2/test_r8_19_geo_phase1.py'
       - '04_Build/v2/test_r8_19_geo_phase2.py'
       - '05_V2.0.0_Source/core/geo_analysis.py'
+      - '05_V2.0.0_Source/integrations/geo_chatgpt_analyzer.py'
+      - '05_V2.0.0_Source/web/geo-phase2-chatgpt.css'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.js'
       - '05_V2.0.0_Source/web/geo-phase2-analysis.css'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
@@ -67,6 +69,7 @@ jobs:
         run: |
           python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
           python -m py_compile 05_V2.0.0_Source/core/geo_analysis.py
+          python -m py_compile 05_V2.0.0_Source/integrations/geo_chatgpt_analyzer.py
           python -m py_compile 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py
           python -m py_compile 05_V2.0.0_Source/integrations/geo_openai_search_executor.py
       - name: Check GEO browser scripts
@@ -111,7 +114,11 @@ jobs:
             if (-not $analysis.Contains($_)) { throw "Missing GEO Phase 2 analysis contract: $_" }
           }
           $phase2 = Get-Content 05_V2.0.0_Source/web/geo-phase2-analysis.js -Raw
-          @('geo-phase2-analysis','/api/r8-19/geo/analysis','/api/r8-19/geo/analysis/refresh','复制 ChatGPT 分析包') | ForEach-Object {
+          @('geo-phase2-analysis','/api/r8-19/geo/analysis','/api/r8-19/geo/analysis/refresh','复制 ChatGPT 分析包','提交总脑分析') | ForEach-Object {
             if (-not $phase2.Contains($_)) { throw "Missing GEO Phase 2 UI contract: $_" }
+          }
+          $advisor = Get-Content 05_V2.0.0_Source/integrations/geo_chatgpt_analyzer.py -Raw
+          @('GEO-CHATGPT-ADVISORY-V1-20261001','store','json_schema','advisory_only') | ForEach-Object {
+            if (-not $advisor.Contains($_)) { throw "Missing ChatGPT advisory contract: $_" }
           }
           Write-Host 'R8-19 Phase 1 regression plus GEO Phase 2 analysis/comparison contracts are present. Live external 50-question completion remains a separate field step.'
