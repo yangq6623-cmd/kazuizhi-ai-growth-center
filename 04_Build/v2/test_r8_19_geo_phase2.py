@@ -47,7 +47,7 @@ def main():
                     "intent": "commercial_compare",
                     "provider": "openai_web_search",
                     "model": "gpt-test",
-                    "raw_answer": "可以先看看58同城和美团的本地服务信息。",
+                    "raw_answer": "可以先看看58 同城、美团和大众　点评的本地服务信息。",
                     "citation_urls": [],
                     "extracted_urls": [],
                     "tested_at": "2026-10-01T10:01:00",
@@ -95,7 +95,7 @@ def main():
             assert summary["by_type"]["commercial"]["recommendation_rate"] == 0.0
             assert summary["gaps"][0]["code"] in {"recommendation_missing", "brand_visibility_missing", "official_citation_missing"}
             platforms = {item["name"] for item in summary["platform_candidates"]}
-            assert {"58同城", "美团"}.issubset(platforms)
+            assert {"58同城", "美团", "大众点评"}.issubset(platforms)
             assert result["auxiliary_count"] == 1
             assert result["chatgpt_judgement"]["required"] is True
 
@@ -104,6 +104,9 @@ def main():
             assert discovery["brand_recommended"] is True
             assert discovery["brand_cited"] is True
             assert discovery["visibility_score"] > 0
+
+            commercial = next(x for x in result["question_results"] if x["question_id"] == "GEO50-C01")
+            assert {x["name"] for x in commercial["platform_candidates"]} >= {"58同城", "美团", "大众点评"}
 
             brand = next(x for x in result["question_results"] if x["question_id"] == "GEO50-B01")
             assert brand["brand_mentioned"] is True
@@ -132,6 +135,12 @@ def main():
             assert "云端模型 " in chatgpt_semantics
             assert "ChatGPT 总控、网页真实验证、云端模型 API 为三个独立状态" in chatgpt_semantics
             assert "不影响 GEO 真实网页验证、Evidence / Receipt 保存与 A/B 正式证据统计" in chatgpt_semantics
+
+            # Field regression: owner UI must not describe service-intent points as brand visibility percentage.
+            phase2_ui = (SRC / "web" / "geo-phase2-analysis.js").read_text(encoding="utf-8")
+            assert "综合 GEO 可见度分" in phase2_ui
+            assert "品牌 + 推荐 + 官网 + 服务意图" in phase2_ui
+            assert " / 100" in phase2_ui
 
             print("PASS: R8-19 GEO Phase 2 analysis/comparison + field truth semantics gate")
         finally:
