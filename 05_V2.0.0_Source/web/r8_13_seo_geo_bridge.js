@@ -23,10 +23,53 @@
       .r813-growth-tab b{display:block;font-size:13px}.r813-growth-tab span{display:block;font-size:11px;color:#7a8ba0;margin-top:2px}
       .r813-growth-tab.active{border-color:#2563eb;background:#eef4ff;color:#1f5dcc;box-shadow:0 0 0 2px rgba(37,99,235,.06)}
       .r813-growth-pane{display:block;overflow:visible}.r813-growth-pane[hidden]{display:none!important}
-      .r813-growth-frame{display:block;width:100%;height:720px;min-height:0;max-height:none;border:0;background:#f4f7fb;border-radius:10px;overflow:hidden}
-      @media(max-width:900px){.r813-growth-tabs{padding:8px}.r813-growth-tab{min-width:0;flex:1}.r813-growth-frame{height:720px}}
+      .r813-growth-frame{display:block;width:100%;height:720px;min-height:720px;max-height:none;border:0;background:#f4f7fb;border-radius:10px;overflow:hidden}
+      @media(max-width:900px){.r813-growth-tabs{padding:8px}.r813-growth-tab{min-width:0;flex:1}.r813-growth-frame{min-height:720px}}
     `;
     document.head.appendChild(style);
+  }
+
+  function measureFrameDocument(frame){
+    try{
+      const doc=frame?.contentDocument;
+      if(!doc?.body||!doc?.documentElement)return 720;
+      const nodes=[doc.body,doc.documentElement,doc.querySelector('.wrap'),doc.querySelector('#search'),doc.querySelector('.geo-direct-main')].filter(Boolean);
+      let expected=720;
+      for(const node of nodes){
+        expected=Math.max(expected,node.scrollHeight||0,node.offsetHeight||0,node.getBoundingClientRect?.().bottom||0);
+      }
+      const pipeline=doc.getElementById('pipeline-section');
+      if(pipeline){
+        const rect=pipeline.getBoundingClientRect();
+        expected=Math.max(expected,Math.ceil(rect.bottom+(doc.defaultView?.scrollY||0)+32));
+      }
+      return Math.min(16000,Math.ceil(expected+8));
+    }catch(_){return 720}
+  }
+
+  function fitFrame(frame){
+    if(!frame||frame.hidden)return 720;
+    const height=measureFrameDocument(frame);
+    const current=Math.round(frame.getBoundingClientRect().height||0);
+    if(Math.abs(current-height)>8)frame.style.height=`${height}px`;
+    try{
+      const doc=frame.contentDocument;
+      if(doc?.documentElement)doc.documentElement.dataset.kzEmbeddedHeight=String(height);
+    }catch(_){}
+    return height;
+  }
+
+  function scheduleFrameFit(frame){
+    if(!frame)return;
+    [0,80,180,360,700,1200,2200,3600,5600,8200,11800].forEach(delay=>{
+      window.setTimeout(()=>fitFrame(frame),delay);
+    });
+  }
+
+  function fitActiveFrame(){
+    const id=desiredWorkspace==='geo'?'r813-geo-frame':'r813-seo-frame';
+    const frame=document.getElementById(id);
+    fitFrame(frame);
   }
 
   function injectAsset(doc, tag, key, url){
@@ -50,6 +93,7 @@
       injectAsset(doc,'script','final',FINAL_JS);
       injectAsset(doc,'link','finish',FINISH_CSS);
       injectAsset(doc,'script','finish',FINISH_JS);
+      scheduleFrameFit(frame);
     }catch(error){console.warn('SEO/GEO final UX injection deferred',error)}
   }
 
@@ -72,6 +116,7 @@
         }
       }
       injectFinalUx(frame);
+      scheduleFrameFit(frame);
     }catch(error){console.warn('SEO legacy decoration deferred',error)}
   }
 
@@ -81,6 +126,11 @@
     frame.setAttribute('scrolling','no');
     frame.addEventListener('load',()=>{
       if(kind==='seo')decorateLegacySeo(frame); else injectFinalUx(frame);
+      scheduleFrameFit(frame);
+      try{
+        frame.contentWindow?.addEventListener('focus',()=>scheduleFrameFit(frame));
+        frame.contentWindow?.addEventListener('resize',()=>scheduleFrameFit(frame));
+      }catch(_){}
     });
   }
 
@@ -110,8 +160,8 @@
     const seoFrame=page.querySelector('#r813-seo-frame');
     const geoFrame=page.querySelector('#r813-geo-frame');
     wireFrame(seoFrame,'seo');wireFrame(geoFrame,'geo');
-    if(seoFrame?.contentDocument?.readyState==='complete')decorateLegacySeo(seoFrame);
-    if(geoFrame?.dataset.kzLoaded==='1'&&geoFrame?.contentDocument?.readyState==='complete')injectFinalUx(geoFrame);
+    if(seoFrame?.contentDocument?.readyState==='complete'){decorateLegacySeo(seoFrame);scheduleFrameFit(seoFrame)}
+    if(geoFrame?.dataset.kzLoaded==='1'&&geoFrame?.contentDocument?.readyState==='complete'){injectFinalUx(geoFrame);scheduleFrameFit(geoFrame)}
 
     const legacy=document.querySelector('aside nav');
     if(legacy&&!legacy.querySelector(`.nav[data-page="${PAGE_ID}"]`)){
@@ -132,7 +182,7 @@
     if(!frame)return;
     wireFrame(frame,'geo');
     const wanted=frame.dataset.src||'/geo.html?embed=1';
-    if(frame.dataset.kzLoaded==='1')return;
+    if(frame.dataset.kzLoaded==='1'){scheduleFrameFit(frame);return}
     frame.dataset.kzLoaded='1';
     frame.src=wanted;
   }
@@ -149,9 +199,11 @@
     if(target==='geo')loadGeoIfNeeded();
     desiredWorkspace=target;
     try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
+    const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
+    scheduleFrameFit(frame);
     window.setTimeout(()=>{
-      const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
       try{frame?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}
+      fitFrame(frame);
     },180);
   }
 
@@ -182,12 +234,14 @@
     const geo=document.getElementById('r813-geo-frame');
     try{seo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO refresh deferred',error)}
     try{geo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('GEO refresh deferred',error)}
+    scheduleFrameFit(seo);scheduleFrameFit(geo);
     window.setTimeout(()=>{
       try{seo?.contentWindow?.__KZ_GROWTH_RESIZE__?.();geo?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}
+      fitFrame(seo);fitFrame(geo);
     },220);
   }
 
-  window.KZR813SeoGeoBridge={open:activate,openGeo:()=>activateWorkspace('geo'),openSeo:()=>activateWorkspace('seo'),refresh};
+  window.KZR813SeoGeoBridge={open:activate,openGeo:()=>activateWorkspace('geo'),openSeo:()=>activateWorkspace('seo'),refresh,fitFrame:fitActiveFrame};
 
   document.addEventListener('click',event=>{
     const button=event.target.closest?.('#geo-decision-open');
@@ -215,6 +269,8 @@
     const target=sourceFrame?.contentDocument?.getElementById(targetId);
     try{target?.scrollIntoView({block:'start',behavior:'smooth'})}catch(_){}
   });
+
+  window.addEventListener('resize',()=>window.setTimeout(fitActiveFrame,140));
 
   function ensureNav(){
     const primary=document.querySelector('.r810-primary-nav');
