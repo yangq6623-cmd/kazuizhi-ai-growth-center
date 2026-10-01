@@ -33,7 +33,7 @@ from core.geo_validation import (
 )
 from core.mission_ledger import snapshot as mission_ledger_snapshot
 from core.storage import now_iso, write_json
-from integrations import geo_browser_validation, geo_local_precheck, geo_openai_search_executor
+from integrations import geo_browser_validation, geo_local_precheck, geo_openai_search_executor, geo_chatgpt_analyzer
 
 _INSTALLED = False
 PHASE1_PROVIDERS = {"browser_external_ai", "openai_web_search"}
@@ -195,6 +195,7 @@ def _dashboard_with_executor():
     value["api_executor"] = api
     value["local_precheck"] = local
     value["analysis"] = geo_analysis.status()
+    value["chatgpt_analysis"] = geo_chatgpt_analyzer.status()
     value["execution_modes"] = {
         "default": "browser",
         "browser": {"ready": True, "requires_api": False, "label": "网页真实验证"},
@@ -306,6 +307,9 @@ def install():
         if path == "/api/r8-19/geo/analysis/brief":
             handler._json_ok(geo_analysis.analysis_pack())
             return
+        if path == "/api/r8-19/geo/analysis/chatgpt":
+            handler._json_ok(geo_chatgpt_analyzer.snapshot())
+            return
         if path == "/api/r8-19/geo/manual":
             handler._json_ok(manual_requirements())
             return
@@ -339,6 +343,7 @@ def install():
             "/api/r8-19/geo/browser/receipt",
             "/api/r8-19/geo/local-precheck/run",
             "/api/r8-19/geo/analysis/refresh",
+            "/api/r8-19/geo/analysis/chatgpt/run",
         }
         if path not in supported:
             return original_post(handler)
@@ -389,6 +394,8 @@ def install():
                 _refresh_analysis()
             elif path == "/api/r8-19/geo/analysis/refresh":
                 result = _refresh_analysis()
+            elif path == "/api/r8-19/geo/analysis/chatgpt/run":
+                result = geo_chatgpt_analyzer.run()
             elif path == "/api/r8-19/geo/fail":
                 result = fail_task(_task_id(payload), payload.get("reason") or "execution_failed")
             elif path == "/api/r8-19/geo/pause":
