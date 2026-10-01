@@ -209,20 +209,46 @@ def _request(question, transport=None):
     }
 
 
+def _promote_next_cloud_task():
+    """Move the next cloud-auto task ahead of unrelated queued browser work.
+
+    The GEO ledger intentionally stores browser/manual and cloud-auto tasks in
+    one historical queue. Old field builds may therefore leave dozens of
+    browser tasks queued ahead of a newly requested 1/3/10/50 cloud acceptance
+    stage. Cloud autonomy must not delete or rewrite those browser tasks, but it
+    also must not be blocked by them. Reordering only queued tasks preserves all
+    receipts, states and manual work while letting the selected cloud stage run.
+    """
+    payload = geo._load_queue()
+    tasks = payload.get("tasks") or []
+    cloud_index = next(
+        (index for index, item in enumerate(tasks) if item.get("state") == "queued" and item.get("provider") == PROVIDER),
+        None,
+    )
+    if cloud_index is None:
+        return None
+    first_queued_index = next((index for index, item in enumerate(tasks) if item.get("state") == "queued"), None)
+    if first_queued_index is None or first_queued_index == cloud_index:
+        return tasks[cloud_index]
+    cloud_task = tasks.pop(cloud_index)
+    tasks.insert(first_queued_index, cloud_task)
+    geo._save_queue(payload)
+    geo._audit(
+        "geo_cloud_task_promoted_ahead_of_other_provider",
+        {
+            "task_id": cloud_task.get("task_id") or "",
+            "question_id": cloud_task.get("question_id") or "",
+            "preserved_blocking_tasks": True,
+        },
+    )
+    return cloud_task
+
+
 def run_once(transport=None):
     current = status()
-    queue = geo.queue_summary().get("tasks") or []
-    first_queued = next((item for item in queue if item.get("state") == "queued"), None)
-    if first_queued is None:
-        return {"ok": True, "skipped": True, "reason": "queue_empty", "executor": current}
-    if first_queued.get("provider") != PROVIDER:
-        return {
-            "ok": True,
-            "skipped": True,
-            "reason": "non_cloud_geo_task_precedes_autonomous_queue",
-            "blocking_task_id": first_queued.get("task_id"),
-            "executor": current,
-        }
+    cloud_task = _promote_next_cloud_task()
+    if cloud_task is None:
+        return {"ok": True, "skipped": True, "reason": "cloud_queue_empty", "executor": current}
 
     claim = geo.claim_next_task(
         {
