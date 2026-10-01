@@ -20,6 +20,7 @@ from integrations import geo_cloud_executor
 
 STORE = "geo_validation/autonomy.json"
 SCHEMA = "kz.geo-autonomy.v1"
+ACCEPTANCE_TARGETS = (1, 3, 10, 50)
 DEFAULT = {
     "schema": SCHEMA,
     "enabled": False,
@@ -123,13 +124,35 @@ def _queue_counts():
     return states
 
 
+def _truth_snapshot():
+    """Return one authoritative formal count and keep Phase-2 analysis aligned.
+
+    Phase-1 dashboard owns the formal A/B truth. Phase-2 is a deterministic
+    projection of the same receipts. If an older snapshot is stale, refresh it
+    from the same receipt ledger before returning status so owner-facing cards
+    cannot disagree about 0/50 versus 1/50.
+    """
+    dashboard = geo.dashboard()
+    formal = int((dashboard.get("official") or {}).get("tested") or 0)
+    analysis = geo_analysis.snapshot()
+    analysed = int((analysis.get("summary") or {}).get("tested") or 0)
+    if analysed != formal:
+        analysis = geo_analysis.refresh(_all_receipts())
+        analysed = int((analysis.get("summary") or {}).get("tested") or 0)
+    return {
+        "formal_ab_completed": formal,
+        "phase2_analyzed": analysed,
+        "consistent": formal == analysed,
+    }
+
+
 def status():
     data = _load()
     target = int(data.get("target") or 50)
     auxiliary_ids = _auto_question_ids()
-    formal_ids = _formal_question_ids()
     counts = _queue_counts()
     executor = geo_cloud_executor.status()
+    truth = _truth_snapshot()
     completed = len(auxiliary_ids & {item.get("question_id") for item in (geo.question_set().get("questions") or [])[:target]})
     state = "idle"
     if data.get("enabled") and data.get("paused"):
@@ -146,10 +169,13 @@ def status():
         "enabled": bool(data.get("enabled")),
         "paused": bool(data.get("paused")),
         "target": target,
+        "acceptance_targets": list(ACCEPTANCE_TARGETS),
         "cloud_completed": completed,
         "cloud_remaining": max(0, target - completed),
-        "formal_ab_completed": len(formal_ids),
-        "formal_ab_remaining": max(0, 50 - len(formal_ids)),
+        "formal_ab_completed": truth["formal_ab_completed"],
+        "formal_ab_remaining": max(0, 50 - truth["formal_ab_completed"]),
+        "phase2_analyzed": truth["phase2_analyzed"],
+        "truth_consistent": truth["consistent"],
         "queue": counts,
         "executor": executor,
         "started_at": data.get("started_at") or "",
@@ -157,7 +183,7 @@ def status():
         "last_run_at": data.get("last_run_at") or "",
         "last_error": data.get("last_error") or "",
         "last_result": deepcopy(data.get("last_result") or {}),
-        "truth_rule": "云端普通回答计入自动扫描进度但固定为C级辅助；正式GEO成绩只统计真实A/B Evidence。",
+        "truth_rule": "云端普通回答计入自动扫描进度但固定为C级辅助；正式GEO成绩只统计真实A/B Evidence；Phase 2 分析题数必须与正式A/B题数一致。",
     }
 
 
@@ -175,7 +201,7 @@ def start(target=50):
     data["last_error"] = ""
     if not data.get("started_at") or len(_auto_question_ids()) == 0:
         data["started_at"] = now_iso()
-    data["last_result"] = {"action": "start", "created": created, "at": now_iso()}
+    data["last_result"] = {"action": "start", "target": target, "created": created, "at": now_iso()}
     _save(data)
     start_worker()
     return status()
@@ -197,7 +223,7 @@ def resume():
     data["enabled"] = True
     data["paused"] = False
     data["last_error"] = ""
-    data["last_result"] = {"action": "resume", "at": now_iso()}
+    data["last_result"] = {"action": "resume", "target": int(data.get("target") or 50), "at": now_iso()}
     _save(data)
     _materialize(int(data.get("target") or 50))
     start_worker()
