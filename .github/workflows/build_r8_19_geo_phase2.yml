@@ -6,7 +6,7 @@ on:
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
-      - '.github/workflows/build_r8_19_geo_phase1.yml'
+      - '.github/workflows/build_r8_19_geo_phase2.yml'
   workflow_dispatch:
 
 permissions:
@@ -131,7 +131,7 @@ jobs:
             work_policy = 'The browser validation contract is designed for manual use now and later ChatGPT Work/browser-agent execution without changing the Evidence/Receipt schema.'
             startup_policy = 'The owner shell never replaces native browser observers. Modules load fail-soft with rendering yields; owner workbench and truth convergence are event-driven and bounded. Real Chrome must keep a 250ms heartbeat alive while owner routes are clicked before artifacts are uploaded; each Chrome gate fails after four minutes instead of hanging CI.'
             acceptance = '48/48 Phase-1 source regression plus Phase-2 deterministic analysis/comparison acceptance plus main-platform integration, browser-first no-API regression, local-precheck truth gate, GEO UI polish gate, GEO field-interaction gate, owner-shell startup resilience gate, real-Chrome source and packaged-runtime responsiveness gates, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live external-AI validation of the first real question remains a separate field acceptance step.'
-          } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
+          } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE2.json
       - name: Upload R8-19 GEO Phase 2 Windows installer
         uses: actions/upload-artifact@v4
         with:
