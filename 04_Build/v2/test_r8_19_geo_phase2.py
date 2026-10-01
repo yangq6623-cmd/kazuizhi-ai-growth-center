@@ -120,7 +120,20 @@ def main():
             assert pack["chatgpt_judgement_required"] is True
             assert all(item["evidence_level"] in {"A", "B"} for item in pack["question_results"])
 
-            print("PASS: R8-19 GEO Phase 2 analysis/comparison gate")
+            # Field regression: cumulative SEO stage state and today's delta must be visibly separated.
+            seo_semantics = (SRC / "web" / "seo-geo-phase1-final.css").read_text(encoding="utf-8")
+            assert "自动作业流水线（累计真实状态）" in seo_semantics
+            assert "累计状态：" in seo_semantics
+            assert "今日增量" in seo_semantics
+            assert "两者不混用" in seo_semantics
+
+            # Field regression: optional cloud API must not be presented as the ChatGPT control-brain state.
+            chatgpt_semantics = (SRC / "web" / "geo-phase2-chatgpt.css").read_text(encoding="utf-8")
+            assert "云端模型 " in chatgpt_semantics
+            assert "ChatGPT 总控、网页真实验证、云端模型 API 为三个独立状态" in chatgpt_semantics
+            assert "不影响 GEO 真实网页验证、Evidence / Receipt 保存与 A/B 正式证据统计" in chatgpt_semantics
+
+            print("PASS: R8-19 GEO Phase 2 analysis/comparison + field truth semantics gate")
         finally:
             sys.path.remove(str(SRC))
             if old is None:

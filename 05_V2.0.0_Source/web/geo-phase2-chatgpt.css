@@ -1,1 +1,7 @@
 .geo2-chatgpt{margin:0 20px 14px;padding:13px 15px;border:1px solid #dfe7f1;border-radius:10px;background:#fbfdff}.geo2-chatgpt-title{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#263954;font-size:12px;font-weight:800}.geo2-chatgpt-content{margin-top:9px;color:#5f7087;font-size:11px;line-height:1.6}.geo2-chatgpt-content p{margin:0 0 8px}.geo2-chatgpt-content ul{margin:5px 0 0 18px;padding:0}.geo2-chatgpt-content li{margin:4px 0}.geo2-chatgpt-content li small{display:block;color:#8a98aa;margin-top:2px}
+
+/* R8-19 Phase 2 field truth semantics fix: distinguish control brain, browser truth, and optional cloud API. */
+#geo2-chatgpt-status::before{content:"云端模型 ";font-weight:800}
+#geo2-chatgpt-box::after{content:"状态说明：ChatGPT 总控、网页真实验证、云端模型 API 为三个独立状态。云端 API 未配置只影响自动结构化总脑分析，不影响 GEO 真实网页验证、Evidence / Receipt 保存与 A/B 正式证据统计。";display:block;margin-top:10px;padding:9px 11px;border:1px solid #d8e6ff;border-radius:8px;background:#eef5ff;color:#315d9f;font-size:10px;line-height:1.55;font-weight:500}
+#geo2-chatgpt:disabled{cursor:not-allowed;opacity:.58}
+#geo2-chatgpt:disabled::after{content:" · API可选";font-weight:600}
