@@ -87,6 +87,9 @@ from backend import final_director_v75_stability_patch as _final_director_v75_st
 # and route the two newest local image references one-per-shot for continuity.
 from backend import short_video_test_patch as _short_video_test_patch  # noqa: E402,F401
 
-# R8-19 Phase 1: GEO validation is deliberately the last HTTP patch so its
-# additive /api/r8-19/geo surface can coexist with all prior R8 routes.
+# R8-19 Phase 1/2: GEO validation is deliberately loaded after prior R8 routes.
 from backend import r8_19_geo_validation_patch as _r8_19_geo_validation_patch  # noqa: E402,F401
+
+# R8-19 Phase 3: add the closed-loop gap -> action -> publish -> retest surface
+# after the Phase-1/2 truth ledger so it can only consume, never redefine, A/B Evidence.
+from backend import r8_19_geo_phase3_patch as _r8_19_geo_phase3_patch  # noqa: E402,F401
