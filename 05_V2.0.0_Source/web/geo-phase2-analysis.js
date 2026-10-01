@@ -30,7 +30,7 @@
           <div>
             <p class="geo2-eyebrow">R8-19 · Phase 2 · 50% → 70%</p>
             <h2>GEO 分析与比较</h2>
-            <p class="geo2-subtitle">只分析已有 A/B Evidence；不创造证据，不把本地模型结果计入正式指标。</p>
+            <p class="geo2-subtitle">只分析已有 A/B Evidence；不创造证据，不把本地/普通云端 C 级结果计入正式指标。</p>
           </div>
           <div class="geo2-actions">
             <span id="geo2-status" class="geo2-status neutral">等待真实证据</span>
@@ -69,6 +69,32 @@
           </article>
         </div>
 
+        <div class="geo2-columns lower">
+          <article class="geo2-card">
+            <div class="geo2-card-head"><div><p>来源结构</p><h3>引用来源域名</h3></div><span class="geo2-count" id="geo2-source-count">0</span></div>
+            <div id="geo2-sources" class="geo2-list"><div class="geo2-empty">暂无可追溯来源域名。</div></div>
+          </article>
+          <article class="geo2-card">
+            <div class="geo2-card-head"><div><p>跨 AI 平台</p><h3>Provider / 模型正式结果对比</h3></div><span class="geo2-count" id="geo2-provider-count">0</span></div>
+            <div class="geo2-table-wrap">
+              <table class="geo2-table">
+                <thead><tr><th>平台 / 模型</th><th>题数</th><th>提及</th><th>推荐</th><th>官网</th><th>综合分</th></tr></thead>
+                <tbody id="geo2-provider-rows"><tr><td colspan="6" class="empty">至少有两个真实 Provider 后才能形成有效跨平台比较。</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <article class="geo2-card">
+          <div class="geo2-card-head"><div><p>意图覆盖</p><h3>按搜索/服务意图拆分</h3></div><span class="geo2-count" id="geo2-intent-count">0</span></div>
+          <div class="geo2-table-wrap">
+            <table class="geo2-table">
+              <thead><tr><th>意图</th><th>题数</th><th>提及</th><th>推荐</th><th>官网</th><th>服务匹配</th><th>综合分</th></tr></thead>
+              <tbody id="geo2-intent-rows"><tr><td colspan="7" class="empty">暂无意图分析结果。</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
         <div id="geo2-chatgpt-box" class="geo2-chatgpt"><div class="geo2-chatgpt-title"><span>ChatGPT 总脑判断</span><span id="geo2-chatgpt-status" class="geo2-status neutral">尚未分析</span></div><div id="geo2-chatgpt-content" class="geo2-chatgpt-content">配置云端API并取得A/B Evidence后，可提交给ChatGPT总脑进行结构化分析。这里的结果仅作为判断依据，不会直接改变Evidence或执行任务。</div></div>
 
         <div class="geo2-footer">
@@ -92,13 +118,8 @@
     return document.getElementById('geo-phase2-analysis');
   }
 
-  function rate(value) {
-    return value == null ? '--' : `${value}%`;
-  }
-
-  function score(value) {
-    return value == null ? '--' : `${value} / 100`;
-  }
+  function rate(value) { return value == null ? '--' : `${value}%`; }
+  function score(value) { return value == null ? '--' : `${value} / 100`; }
 
   function render(data) {
     ensurePanel();
@@ -159,6 +180,24 @@
     document.getElementById('geo2-platforms').innerHTML = platforms.length ? platforms.map(item =>
       `<div class="geo2-list-row"><span class="geo2-platform-dot"></span><div><b>${esc(item.name)}</b><small>出现 ${fmt(item.question_count)} 题 · ${item.confirmed_competitor ? '已确认竞品' : '待ChatGPT确认'}</small></div></div>`
     ).join('') : '<div class="geo2-empty">暂无明确平台候选。</div>';
+
+    const sources = summary.source_domains || [];
+    document.getElementById('geo2-source-count').textContent = fmt(sources.length);
+    document.getElementById('geo2-sources').innerHTML = sources.length ? sources.slice(0,12).map(item =>
+      `<div class="geo2-list-row"><span class="geo2-platform-dot"></span><div><b>${esc(item.domain)}</b><small>${item.official_domain ? '官网来源' : '第三方来源'} · 覆盖 ${fmt(item.question_count)} 题 · 出现 ${fmt(item.appearance_count)} 次</small></div></div>`
+    ).join('') : '<div class="geo2-empty">暂无可追溯来源域名。</div>';
+
+    const providers = summary.provider_comparison || [];
+    document.getElementById('geo2-provider-count').textContent = fmt(providers.length);
+    document.getElementById('geo2-provider-rows').innerHTML = providers.length ? providers.map(item =>
+      `<tr><td><b>${esc(item.provider || 'unknown')}</b><small>${esc(item.model || '—')}</small></td><td>${fmt(item.tested)}</td><td>${rate(item.mention_rate)}</td><td>${rate(item.recommendation_rate)}</td><td>${rate(item.citation_rate)}</td><td><strong>${esc(score(item.avg_visibility_score))}</strong></td></tr>`
+    ).join('') : '<tr><td colspan="6" class="empty">至少有一个真实 Provider 后才会出现比较；两个以上 Provider 才具有跨平台意义。</td></tr>';
+
+    const intents = summary.by_intent || [];
+    document.getElementById('geo2-intent-count').textContent = fmt(intents.length);
+    document.getElementById('geo2-intent-rows').innerHTML = intents.length ? intents.map(item =>
+      `<tr><td><b>${esc(item.intent || item.label || '未分类')}</b></td><td>${fmt(item.tested)}</td><td>${rate(item.mention_rate)}</td><td>${rate(item.recommendation_rate)}</td><td>${rate(item.citation_rate)}</td><td>${rate(item.service_match_rate)}</td><td><strong>${esc(score(item.avg_visibility_score))}</strong></td></tr>`
+    ).join('') : '<tr><td colspan="7" class="empty">暂无意图分析结果。</td></tr>';
 
     document.getElementById('geo2-generated').textContent = data?.generated_at ? `分析时间：${esc(data.generated_at)}` : '尚未生成分析快照';
   }
