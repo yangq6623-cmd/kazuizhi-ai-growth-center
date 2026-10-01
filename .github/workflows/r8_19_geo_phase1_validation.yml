@@ -2,7 +2,7 @@ name: Validate R8-19 GEO Phase 1
 
 on:
   push:
-    branches: ['r8-19-*']
+    branches: ['r8-19-geo-phase1-*']
     paths:
       - '05_V2.0.0_Source/core/geo_validation.py'
       - '05_V2.0.0_Source/backend/r8_18_evidence_ledger_patch.py'
