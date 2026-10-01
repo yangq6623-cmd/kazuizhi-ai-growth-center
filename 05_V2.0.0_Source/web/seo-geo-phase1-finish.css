@@ -21,13 +21,13 @@ html.kz-growth-embedded .tabs{border-radius:10px!important;padding:8px 0!importa
 /* GEO execution cockpit: one clear business flow instead of a narrow left rail + scattered controls. */
 #geo-growth-pane .geo-runner-shell{display:grid!important;grid-template-columns:1fr!important;gap:12px!important;padding:14px!important;border:1px solid #dce5f1!important;border-radius:14px!important;background:linear-gradient(180deg,#fbfcff,#f7f9fc)!important;box-shadow:0 7px 22px rgba(23,52,91,.035)!important}
 #geo-growth-pane .geo-runner-shell>.geo-mode-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;order:2}
-#geo-growth-pane .geo-runner-shell>.geo-mode-grid article{min-height:74px!important;padding:12px 14px!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid article{min-height:74px!important;padding:12px 14px!important;border:1px solid #dfe6f0!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important}
 #geo-growth-pane .geo-runner-shell>.geo-mode-grid article span{font-size:10px!important}
 #geo-growth-pane .geo-runner-shell>.geo-mode-grid article b{font-size:14px!important;margin-top:3px!important}
 #geo-growth-pane .geo-runner-shell>.geo-mode-grid article small{font-size:9px!important;line-height:1.45!important}
 #geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-local{border-color:#d9e1eb!important}
-#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-browser{border-color:#8eb0f4!important;background:linear-gradient(180deg,#f7faff,#fff)!important;box-shadow:inset 3px 0 0 var(--kz-finish-blue)!important}
-#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-api{border-color:#e2e8f0!important;background:#fafbfd!important;opacity:.95!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-browser{border:2px solid #7fa6ef!important;background:linear-gradient(180deg,#f7faff,#fff)!important;box-shadow:0 3px 10px rgba(37,99,235,.06)!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-api{border-color:#ead7a7!important;background:#fffdf7!important;opacity:1!important}
 #geo-growth-pane .geo-runner-shell>.geo-command-deck{order:1;gap:9px!important}
 #geo-growth-pane .geo-runner-shell .geo-command-main{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:16px!important;align-items:center!important;min-height:88px!important;padding:15px 16px!important;border:1px solid #bdd1f8!important;border-radius:11px!important;background:linear-gradient(135deg,#f6f9ff,#edf4ff)!important}
 #geo-growth-pane .geo-runner-shell .geo-command-copy span{font-size:10px!important;color:#3568c9!important}
@@ -53,16 +53,17 @@ html.kz-growth-embedded .tabs{border-radius:10px!important;padding:8px 0!importa
 #geo-growth-pane #geo-browser-task-id{background:#f8fafc!important;color:#7a8798!important;border-color:#e6ebf2!important;font-size:9px!important;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
 #geo-growth-pane label:has(#geo-browser-task-id)::before{content:"任务编号 · ";color:#9aa6b5;font-weight:700}
 
-/* Workbench: clear 'question -> real result -> save evidence' hierarchy. */
-#geo-growth-pane .geo-browser-workbench{padding:16px!important;border:1px solid #d9e3f0!important;border-left:4px solid var(--kz-finish-blue)!important;border-radius:13px!important;background:#fff!important;box-shadow:0 7px 22px rgba(23,52,91,.045)!important}
+/* Workbench: use a complete frame. No one-sided blue stripe. */
+#geo-growth-pane .geo-browser-workbench{padding:16px!important;border:2px solid #9bb9f2!important;border-radius:13px!important;background:#fff!important;box-shadow:0 7px 22px rgba(23,52,91,.045)!important}
+#geo-growth-pane .geo-browser-workbench.is-active{border-color:#6f99eb!important;box-shadow:0 0 0 3px rgba(37,99,235,.05),0 8px 24px rgba(23,52,91,.055)!important}
 #geo-growth-pane .geo-browser-workbench>.panel-head{padding-bottom:9px!important;border-bottom:1px solid #edf1f6!important}
 #geo-growth-pane .geo-browser-workbench>.panel-head h3{font-size:16px!important;color:#17243b!important}
 #geo-growth-pane .geo-browser-workbench>.panel-head p{color:#718198!important}
 #geo-growth-pane .geo-human-flow{gap:10px!important;margin:11px 0 12px!important}
-#geo-growth-pane .geo-human-flow-step{min-height:62px!important;padding:10px 12px!important;border-radius:10px!important;background:#fafbfd!important}
+#geo-growth-pane .geo-human-flow-step{min-height:62px!important;padding:10px 12px!important;border:1px solid #e0e7f0!important;border-radius:10px!important;background:#fafbfd!important}
 #geo-growth-pane .geo-human-flow-step b{font-size:11px!important}
-#geo-growth-pane .geo-human-flow-step.active{border-color:#8fb1f4!important;background:#eef4ff!important;box-shadow:inset 3px 0 0 var(--kz-finish-blue)!important}
-#geo-growth-pane .geo-human-flow-step.done{border-color:#bfe5d3!important;background:#eef9f4!important;box-shadow:inset 3px 0 0 var(--kz-finish-green)!important}
+#geo-growth-pane .geo-human-flow-step.active{border:2px solid #7fa6ef!important;background:#eef4ff!important;box-shadow:none!important}
+#geo-growth-pane .geo-human-flow-step.done{border:2px solid #9fd7bf!important;background:#eef9f4!important;box-shadow:none!important}
 #geo-growth-pane .geo-browser-workbench.is-active{grid-template-columns:minmax(300px,.9fr) minmax(440px,1.1fr)!important;gap:10px 16px!important}
 #geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-meta-grid{grid-column:1!important;grid-row:auto!important}
 #geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-proof-grid{grid-column:2!important;grid-row:auto!important}
