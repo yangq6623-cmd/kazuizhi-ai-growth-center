@@ -31,6 +31,26 @@ def _read_json_body(handler):
     return json.loads(handler.rfile.read(length) or b"{}")
 
 
+def _serve_search_with_geo_autonomy(handler):
+    """Append the small autonomy UI to the already-loaded search workspace.
+
+    Both the normal operational workspace and /geo.html request
+    operational-search.js. Serving the two source files as one response keeps
+    the feature available in both routes without duplicating or replacing the
+    existing GEO page implementation.
+    """
+    web = server.get_web_path()
+    source = (web / "operational-search.js").read_text(encoding="utf-8")
+    autonomy = (web / "geo-autonomy.js").read_text(encoding="utf-8")
+    data = (source + "\n;\n" + autonomy).encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def _combined_status():
     value = _ORIGINAL_SEO_STATUS()
     value["geo_autonomy"] = geo_autonomy.status()
@@ -70,6 +90,12 @@ def install():
 
     def do_get(handler):
         path = urlsplit(handler.path).path
+        if path == "/operational-search.js":
+            try:
+                _serve_search_with_geo_autonomy(handler)
+            except OSError as error:
+                handler._json_error(500, error)
+            return
         if path == "/api/r8-14/seo-geo/autonomy":
             try:
                 handler._json_ok(_combined_status())
