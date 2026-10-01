@@ -19,13 +19,13 @@ from core.storage import now_iso, read_json, write_json
 from integrations import geo_cloud_executor
 
 STORE = "geo_validation/autonomy.json"
-SCHEMA = "kz.geo-autonomy.v1"
+SCHEMA = "kz.geo-autonomy.v2"
 ACCEPTANCE_TARGETS = (1, 3, 10, 50)
 DEFAULT = {
     "schema": SCHEMA,
     "enabled": False,
     "paused": False,
-    "target": 50,
+    "target": 1,
     "started_at": "",
     "completed_at": "",
     "last_run_at": "",
@@ -42,10 +42,19 @@ _WORKER_STOP = None
 def _load():
     value = read_json(STORE, deepcopy(DEFAULT))
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
+        # Safety migration from pre-staged builds: never inherit an old
+        # unattended target=50/enabled=True state. Existing queue/receipts are
+        # preserved in their own ledgers, but owner acceptance restarts at 1.
         value = deepcopy(DEFAULT)
+        value["last_result"] = {
+            "action": "safe_stage_migration",
+            "reason": "legacy autonomous state reset to staged 1-question acceptance",
+            "at": now_iso(),
+        }
+        write_json(STORE, value)
     for key, default in DEFAULT.items():
         value.setdefault(key, deepcopy(default))
-    value["target"] = max(1, min(int(value.get("target") or 50), 50))
+    value["target"] = max(1, min(int(value.get("target") or 1), 50))
     return value
 
 
@@ -81,6 +90,15 @@ def _auto_tasks():
     return [item for item in (geo.queue_summary().get("tasks") or []) if item.get("provider") == geo_cloud_executor.PROVIDER]
 
 
+def _target_question_ids(target):
+    questions = geo.question_set().get("questions") or []
+    return {item.get("question_id") for item in questions[: max(1, min(int(target or 1), 50))] if item.get("question_id")}
+
+
+def _completed_for_target(target):
+    return len(_auto_question_ids() & _target_question_ids(target))
+
+
 def _materialize(target):
     questions = geo.question_set().get("questions") or []
     completed = _auto_question_ids()
@@ -106,8 +124,9 @@ def _materialize(target):
     return created
 
 
-def _queue_counts():
-    tasks = _auto_tasks()
+def _queue_counts(target):
+    allowed = _target_question_ids(target)
+    tasks = [item for item in _auto_tasks() if item.get("question_id") in allowed]
     states = {name: 0 for name in ("queued", "running", "succeeded", "failed", "paused", "authorization_required")}
     for item in tasks:
         state = str(item.get("state") or "")
@@ -121,6 +140,8 @@ def _queue_counts():
         "question_id": current.get("question_id") if current else "",
         "question_text": current.get("question_text") if current else "",
     }
+    states["scope_target"] = int(target)
+    states["historical_unscoped"] = max(0, len(_auto_tasks()) - len(tasks))
     return states
 
 
@@ -148,12 +169,11 @@ def _truth_snapshot():
 
 def status():
     data = _load()
-    target = int(data.get("target") or 50)
-    auxiliary_ids = _auto_question_ids()
-    counts = _queue_counts()
+    target = int(data.get("target") or 1)
+    counts = _queue_counts(target)
     executor = geo_cloud_executor.status()
     truth = _truth_snapshot()
-    completed = len(auxiliary_ids & {item.get("question_id") for item in (geo.question_set().get("questions") or [])[:target]})
+    completed = _completed_for_target(target)
     state = "idle"
     if data.get("enabled") and data.get("paused"):
         state = "paused"
@@ -187,9 +207,9 @@ def status():
     }
 
 
-def start(target=50):
+def start(target=1):
     data = _load()
-    target = max(1, min(int(target or 50), 50))
+    target = max(1, min(int(target or 1), 50))
     current = geo_cloud_executor.status()
     if not current.get("ready"):
         raise ValueError(current.get("reason") or "请先完成云端API连接验证")
@@ -199,7 +219,7 @@ def start(target=50):
     data["target"] = target
     data["completed_at"] = ""
     data["last_error"] = ""
-    if not data.get("started_at") or len(_auto_question_ids()) == 0:
+    if not data.get("started_at") or _completed_for_target(target) == 0:
         data["started_at"] = now_iso()
     data["last_result"] = {"action": "start", "target": target, "created": created, "at": now_iso()}
     _save(data)
@@ -211,7 +231,7 @@ def pause():
     data = _load()
     data["enabled"] = True
     data["paused"] = True
-    data["last_result"] = {"action": "pause", "at": now_iso()}
+    data["last_result"] = {"action": "pause", "target": int(data.get("target") or 1), "at": now_iso()}
     _save(data)
     return status()
 
@@ -223,17 +243,22 @@ def resume():
     data["enabled"] = True
     data["paused"] = False
     data["last_error"] = ""
-    data["last_result"] = {"action": "resume", "target": int(data.get("target") or 50), "at": now_iso()}
+    data["last_result"] = {"action": "resume", "target": int(data.get("target") or 1), "at": now_iso()}
     _save(data)
-    _materialize(int(data.get("target") or 50))
+    _materialize(int(data.get("target") or 1))
     start_worker()
     return status()
 
 
 def retry_failed():
+    data = _load()
+    target = int(data.get("target") or 1)
+    allowed = _target_question_ids(target)
     retried = 0
     errors = []
     for task in _auto_tasks():
+        if task.get("question_id") not in allowed:
+            continue
         if task.get("state") not in {"failed", "authorization_required"}:
             continue
         try:
@@ -241,12 +266,11 @@ def retry_failed():
             retried += 1
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             errors.append({"task_id": task.get("task_id"), "error": str(error)})
-    data = _load()
     if retried:
         data["enabled"] = True
         data["paused"] = False
         data["last_error"] = ""
-    data["last_result"] = {"action": "retry_failed", "retried": retried, "errors": errors[:10], "at": now_iso()}
+    data["last_result"] = {"action": "retry_failed", "target": target, "retried": retried, "errors": errors[:10], "at": now_iso()}
     _save(data)
     start_worker()
     return status()
@@ -262,15 +286,15 @@ def run_once(transport=None):
         if data.get("paused"):
             return {"ok": True, "skipped": True, "reason": "geo_autonomy_paused"}
 
-        target = int(data.get("target") or 50)
+        target = int(data.get("target") or 1)
         _materialize(target)
-        completed_before = len(_auto_question_ids())
+        completed_before = _completed_for_target(target)
         if completed_before >= target:
             data["enabled"] = False
             data["paused"] = False
             data["completed_at"] = data.get("completed_at") or now_iso()
             data["last_error"] = ""
-            data["last_result"] = {"ok": True, "completed": completed_before, "reason": "target_completed", "at": now_iso()}
+            data["last_result"] = {"ok": True, "completed": completed_before, "target": target, "reason": "target_completed", "at": now_iso()}
             _save(data)
             return data["last_result"]
 
@@ -285,7 +309,7 @@ def run_once(transport=None):
         elif result.get("reason") == "non_cloud_geo_task_precedes_autonomous_queue":
             data["last_error"] = "队列前方存在人工/网页GEO任务；自动云端队列暂不抢占该任务。"
 
-        completed_after = len(_auto_question_ids())
+        completed_after = _completed_for_target(target)
         if completed_after >= target:
             data["enabled"] = False
             data["paused"] = False
