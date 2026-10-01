@@ -31,8 +31,12 @@ on:
       - '05_V2.0.0_Source/web/decision_layout_patch.js'
       - '05_V2.0.0_Source/web/geo.html'
       - '04_Build/v2/test_r8_19_geo_phase1.py'
+      - '04_Build/v2/test_r8_19_geo_phase2.py'
+      - '05_V2.0.0_Source/core/geo_analysis.py'
+      - '05_V2.0.0_Source/web/geo-phase2-analysis.js'
+      - '05_V2.0.0_Source/web/geo-phase2-analysis.css'
       - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
-      - '.github/workflows/r8_19_geo_phase1_validation.yml'
+      - '.github/workflows/r8_19_geo_phase2_validation.yml'
 
 permissions:
   contents: read
