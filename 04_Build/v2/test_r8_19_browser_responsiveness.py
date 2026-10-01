@@ -1,9 +1,11 @@
 """Real-browser smoke gate for the R8-19 owner shell.
 
-Static tests can pass while Chromium is trapped in a renderer loop. This gate
-starts either source or packaged runtime, opens real Chrome, verifies the owner
-heartbeat, clicks the main routes, explicitly stress-tests the split SEO/GEO
-workspace, and rejects runaway DOM growth or uncaught page errors.
+Static tests can pass while Chromium is trapped in a renderer loop or while an
+embedded workspace is silently clipped. This gate starts either source or
+packaged runtime, opens real Chrome, verifies the owner heartbeat, clicks the
+main routes, explicitly stress-tests the split SEO/GEO workspace, verifies that
+both embedded pages expand to their complete document height, and rejects
+runaway DOM growth or uncaught page errors.
 """
 
 from __future__ import annotations
@@ -110,6 +112,41 @@ def wait_lazy_bundle(page, target: str) -> None:
         raise AssertionError(f"lazy owner workspace did not finish loading: target={target}, state={current}") from error
 
 
+def assert_embedded_frame_expanded(page, frame_id: str, label: str, *, timeout_ms: int = 14000) -> None:
+    expression = """
+    frameId => {
+      const f = document.getElementById(frameId);
+      const d = f?.contentDocument;
+      if (!f || !d?.body || !d?.documentElement) return false;
+      const candidates = [d.body.scrollHeight || 0, d.documentElement.scrollHeight || 0];
+      const wrap = d.querySelector('.wrap');
+      const search = d.querySelector('#search');
+      const direct = d.querySelector('.geo-direct-main');
+      if (wrap) candidates.push(wrap.scrollHeight || 0);
+      if (search) candidates.push(search.scrollHeight || 0);
+      if (direct) candidates.push(direct.scrollHeight || 0);
+      const expected = Math.max(...candidates);
+      const actual = f.getBoundingClientRect().height;
+      return expected >= 700 && actual >= expected - 90;
+    }
+    """
+    try:
+        page.wait_for_function(expression, arg=frame_id, timeout=timeout_ms)
+    except PlaywrightTimeoutError as error:
+        sizes = page.evaluate(
+            """
+            frameId => {
+              const f=document.getElementById(frameId); const d=f?.contentDocument;
+              if(!f||!d) return {actual:0, expected:0, missing:true};
+              const expected=Math.max(d.body?.scrollHeight||0,d.documentElement?.scrollHeight||0,d.querySelector('.wrap')?.scrollHeight||0,d.querySelector('#search')?.scrollHeight||0,d.querySelector('.geo-direct-main')?.scrollHeight||0);
+              return {actual:Math.round(f.getBoundingClientRect().height),expected,recorded:Number(d.documentElement?.dataset?.kzEmbeddedHeight||0)};
+            }
+            """,
+            frame_id,
+        )
+        raise AssertionError(f"{label} embedded page is clipped instead of fully expanded: {sizes}") from error
+
+
 def exercise_seo_geo(page) -> None:
     seo_tab = page.locator('[data-r813-workspace="seo"]').first
     geo_tab = page.locator('[data-r813-workspace="geo"]').first
@@ -122,11 +159,14 @@ def exercise_seo_geo(page) -> None:
     seo_frame = seo_handle.content_frame() if seo_handle else None
     if seo_frame is None:
         raise AssertionError("SEO iframe did not expose same-origin content")
-    seo_frame.wait_for_selector('text=SEO/GEO增长中心', timeout=10000)
+    seo_frame.wait_for_selector('text=SEO增长中心', timeout=10000)
+    seo_frame.wait_for_selector('text=今日自动化作业流水线', timeout=12000)
+    assert_embedded_frame_expanded(page, 'r813-seo-frame', 'SEO')
 
-    # Field reproduction: SEO -> GEO -> SEO, then long-page scrolling and idle.
+    # Field reproduction: SEO -> GEO -> SEO. Scrolling happens on the owner page,
+    # because embedded frames are intentionally scroll-free.
     geo_tab.click(timeout=4000)
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(700)
     heartbeat(page, min_delta=1, timeout_ms=3000)
 
     geo_frame_element = page.locator('#r813-geo-frame').first
@@ -140,26 +180,31 @@ def exercise_seo_geo(page) -> None:
     if geo_frame is None:
         raise AssertionError("GEO iframe did not expose same-origin content")
     geo_frame.wait_for_selector('#geo-mission', state='attached', timeout=12000)
+    geo_frame.wait_for_selector('.geo-browser-workbench', state='attached', timeout=12000)
+    assert_embedded_frame_expanded(page, 'r813-geo-frame', 'GEO')
     heartbeat(page, min_delta=1, timeout_ms=3000)
 
     seo_tab.click(timeout=4000)
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(1600)
+    assert_embedded_frame_expanded(page, 'r813-seo-frame', 'SEO after GEO -> SEO switch')
     heartbeat(page, min_delta=1, timeout_ms=3000)
-    seo_frame.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
     page.wait_for_timeout(1200)
     heartbeat(page, min_delta=2, timeout_ms=3500)
-    seo_frame.evaluate("() => window.scrollTo(0, 0)")
+    page.evaluate("() => window.scrollTo(0, 0)")
 
     geo_tab.click(timeout=4000)
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(900)
+    assert_embedded_frame_expanded(page, 'r813-geo-frame', 'GEO after SEO -> GEO switch')
     heartbeat(page, min_delta=1, timeout_ms=3000)
-    geo_frame.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
     page.wait_for_timeout(1200)
     heartbeat(page, min_delta=2, timeout_ms=3500)
-    geo_frame.evaluate("() => window.scrollTo(0, 0)")
+    page.evaluate("() => window.scrollTo(0, 0)")
 
     seo_tab.click(timeout=4000)
     page.wait_for_timeout(2200)
+    assert_embedded_frame_expanded(page, 'r813-seo-frame', 'SEO final switch')
     heartbeat(page, min_delta=2, timeout_ms=3500)
 
     seo_nodes = seo_frame.locator('*').count()
@@ -264,7 +309,7 @@ def main() -> None:
                 target_name = "packaged runtime" if args.exe else "source runtime"
                 print(
                     f"PASS: {target_name} stayed responsive in real Chrome; {len(clicked)} owner routes clicked; "
-                    "split SEO/GEO toggled, scrolled and idled without heartbeat loss or runaway DOM"
+                    "split SEO/GEO toggled with complete embedded heights and no heartbeat loss or runaway DOM"
                 )
         finally:
             if process.poll() is None:
