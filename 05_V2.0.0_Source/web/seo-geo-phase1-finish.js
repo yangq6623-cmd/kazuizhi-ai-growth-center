@@ -6,6 +6,50 @@
   const byId = id => document.getElementById(id);
   let passes = 0;
   let timer = null;
+  let heightTimer = null;
+  let lastHeight = 0;
+
+  function isEmbedded() {
+    return window.self !== window.top && Boolean(window.frameElement);
+  }
+
+  function measuredDocumentHeight() {
+    const body = document.body;
+    const root = document.documentElement;
+    const candidates = [
+      body?.scrollHeight || 0,
+      root?.scrollHeight || 0,
+      document.querySelector('.wrap')?.scrollHeight || 0,
+      document.querySelector('#search')?.scrollHeight || 0,
+      document.querySelector('.geo-direct-main')?.scrollHeight || 0,
+    ];
+    document.querySelectorAll('body > *, .wrap > *, .geo-direct-main > *').forEach(node => {
+      const rect = node.getBoundingClientRect?.();
+      if (rect) candidates.push(Math.ceil(rect.bottom + (window.scrollY || 0)));
+    });
+    return Math.min(30000, Math.max(720, ...candidates) + 28);
+  }
+
+  function repairEmbeddedHeight() {
+    if (!isEmbedded()) return;
+    const frame = window.frameElement;
+    const height = measuredDocumentHeight();
+    const current = parseInt(frame.style.height || '0', 10) || frame.getBoundingClientRect().height || 0;
+    if (Math.abs(current - height) > 6) frame.style.height = `${height}px`;
+    frame.style.maxHeight = 'none';
+    frame.style.minHeight = '0';
+    frame.style.overflow = 'hidden';
+    frame.setAttribute('scrolling', 'no');
+    lastHeight = height;
+    document.documentElement.dataset.kzEmbeddedHeight = String(height);
+  }
+
+  function scheduleHeightRepair() {
+    if (!isEmbedded()) return;
+    clearTimeout(heightTimer);
+    heightTimer = setTimeout(repairEmbeddedHeight, 60);
+    [0, 120, 320, 700, 1400, 2600, 4800, 8000, 12000].forEach(delay => setTimeout(repairEmbeddedHeight, delay));
+  }
 
   function polishSeoTitle() {
     if (!document.documentElement.classList.contains('kz-growth-embedded')) return;
@@ -62,7 +106,7 @@
     explainPausedTasks();
     polishWorkbenchHeading();
     passes += 1;
-    try { window.__KZ_GROWTH_RESIZE__?.(); } catch (_) {}
+    repairEmbeddedHeight();
   }
 
   function schedule(delay = 80) {
@@ -70,7 +114,11 @@
     timer = setTimeout(sync, delay);
   }
 
+  window.__KZ_GROWTH_RESIZE__ = repairEmbeddedHeight;
+  window.__KZ_GROWTH_HEIGHT_REPAIR__ = {measure: measuredDocumentHeight, repair: repairEmbeddedHeight, get lastHeight(){ return lastHeight; }};
+
   [0, 160, 500, 1200, 2600, 4800].forEach(delay => setTimeout(sync, delay));
+  scheduleHeightRepair();
   const bounded = setInterval(() => {
     sync();
     if (passes >= 14) clearInterval(bounded);
@@ -80,7 +128,22 @@
     if (event.target?.closest?.('#geo-growth-pane')) schedule(60);
   });
   document.addEventListener('click', event => {
-    if (event.target?.closest?.('#geo-growth-pane,.tabs,.r813-growth-tabs')) schedule(120);
+    if (event.target?.closest?.('#geo-growth-pane,.tabs')) {
+      schedule(120);
+      scheduleHeightRepair();
+    }
   });
-  window.addEventListener('focus', () => schedule(100));
+  window.addEventListener('operational:search-updated', () => {
+    schedule(80);
+    scheduleHeightRepair();
+  });
+  window.addEventListener('load', scheduleHeightRepair, {once:true});
+  window.addEventListener('focus', () => {
+    schedule(100);
+    scheduleHeightRepair();
+  });
+  window.addEventListener('resize', () => {
+    clearTimeout(heightTimer);
+    heightTimer = setTimeout(repairEmbeddedHeight, 140);
+  });
 })();
