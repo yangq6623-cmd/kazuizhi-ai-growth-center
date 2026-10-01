@@ -47,9 +47,9 @@ def main():
                     "intent": "commercial_compare",
                     "provider": "openai_web_search",
                     "model": "gpt-test",
-                    "raw_answer": "可以先看看58 同城、美团和大众　点评的本地服务信息。",
-                    "citation_urls": [],
-                    "extracted_urls": [],
+                    "raw_answer": "可以先看看58 同城、美团和大众　点评的本地服务信息。来源：https://example.com/local-service",
+                    "citation_urls": ["https://example.com/local-service"],
+                    "extracted_urls": ["https://example.com/local-service"],
                     "tested_at": "2026-10-01T10:01:00",
                 },
                 {
@@ -99,6 +99,24 @@ def main():
             assert result["auxiliary_count"] == 1
             assert result["chatgpt_judgement"]["required"] is True
 
+            # Phase-2 completion gates: intent, source and actual AI provider/model
+            # comparison are deterministic projections of the same A/B receipts.
+            intents = {item["intent"]: item for item in summary["by_intent"]}
+            assert intents["local_discovery"]["tested"] == 1
+            assert intents["commercial_compare"]["tested"] == 1
+            assert intents["brand_fact"]["tested"] == 1
+            assert all(item["tested"] >= 1 for item in intents.values())
+
+            providers = {(item["provider"], item["model"]): item for item in summary["provider_comparison"]}
+            assert providers[("chatgpt_web", "browser")]["tested"] == 2
+            assert providers[("openai_web_search", "gpt-test")]["tested"] == 1
+            assert ("local_model", "local") not in providers
+
+            domains = {item["domain"]: item for item in summary["source_domains"]}
+            assert domains["kazuizhi.com"]["official_domain"] is True
+            assert domains["example.com"]["official_domain"] is False
+            assert domains["kazuizhi.com"]["question_count"] == 1
+
             discovery = next(x for x in result["question_results"] if x["question_id"] == "GEO50-D01")
             assert discovery["brand_mentioned"] is True
             assert discovery["brand_recommended"] is True
@@ -122,6 +140,9 @@ def main():
             assert pack["facts_only"] is True
             assert pack["chatgpt_judgement_required"] is True
             assert all(item["evidence_level"] in {"A", "B"} for item in pack["question_results"])
+            assert len(pack["provider_comparison"]) == 2
+            assert len(pack["source_domains"]) == 2
+            assert len(pack["intent_comparison"]) == 3
 
             # Field regression: cumulative SEO stage state and today's delta must be visibly separated.
             seo_semantics = (SRC / "web" / "seo-geo-phase1-final.css").read_text(encoding="utf-8")
@@ -136,13 +157,16 @@ def main():
             assert "ChatGPT 总控、网页真实验证、云端模型 API 为三个独立状态" in chatgpt_semantics
             assert "不影响 GEO 真实网页验证、Evidence / Receipt 保存与 A/B 正式证据统计" in chatgpt_semantics
 
-            # Field regression: owner UI must not describe service-intent points as brand visibility percentage.
+            # Owner UI semantics and the final Phase-2 comparison surfaces.
             phase2_ui = (SRC / "web" / "geo-phase2-analysis.js").read_text(encoding="utf-8")
             assert "综合 GEO 可见度分" in phase2_ui
             assert "品牌 + 推荐 + 官网 + 服务意图" in phase2_ui
             assert " / 100" in phase2_ui
+            assert "引用来源域名" in phase2_ui
+            assert "Provider / 模型正式结果对比" in phase2_ui
+            assert "按搜索/服务意图拆分" in phase2_ui
 
-            print("PASS: R8-19 GEO Phase 2 analysis/comparison + field truth semantics gate")
+            print("PASS: R8-19 GEO Phase 2 complete analysis/comparison + source/provider/intent gates")
         finally:
             sys.path.remove(str(SRC))
             if old is None:
