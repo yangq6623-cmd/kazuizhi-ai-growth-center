@@ -308,7 +308,7 @@ def install():
             handler._json_ok(geo_analysis.analysis_pack())
             return
         if path == "/api/r8-19/geo/analysis/chatgpt":
-            handler._json_ok(geo_chatgpt_analyzer.snapshot())
+            handler._json_ok({"status": geo_chatgpt_analyzer.status(), "snapshot": geo_chatgpt_analyzer.snapshot()})
             return
         if path == "/api/r8-19/geo/manual":
             handler._json_ok(manual_requirements())
