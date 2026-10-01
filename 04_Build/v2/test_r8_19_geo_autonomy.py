@@ -68,6 +68,21 @@ def main():
             # Prevent the real daemon from racing this deterministic test. The
             # controller logic below is still exactly the production start/run path.
             geo_autonomy.start_worker = lambda: {"started": False, "reason": "test_stub"}
+
+            # Upgrade-safety regression: #19/#22 could persist enabled=True,
+            # target=50. A staged build must not inherit that old unattended
+            # state and immediately continue all 50 questions after upgrade.
+            write_json(
+                geo_autonomy.STORE,
+                {"schema": "kz.geo-autonomy.v1", "enabled": True, "paused": False, "target": 50},
+            )
+            migrated = geo_autonomy.status()
+            assert migrated["schema"] == "kz.geo-autonomy.v2"
+            assert migrated["state"] == "idle"
+            assert migrated["enabled"] is False
+            assert migrated["target"] == 1
+            assert migrated["queue"]["queued"] == 0
+
             started = geo_autonomy.start(target=3)
             assert started["state"] == "running"
             assert started["target"] == 3
@@ -144,11 +159,13 @@ def main():
             assert converged["truth_consistent"] is True
 
             # Staged acceptance must be cumulative: after the 3-question gate,
-            # switching to target 10 creates only the missing questions.
+            # switching to target 10 creates only the missing questions and the
+            # owner-facing queue count is scoped to the active stage.
             stage10 = geo_autonomy.start(target=10)
             assert stage10["target"] == 10
             assert stage10["cloud_completed"] == 3
             assert stage10["queue"]["queued"] == 7
+            assert stage10["queue"]["scope_target"] == 10
 
             ui = (SRC / "web" / "geo-autonomy.js").read_text(encoding="utf-8")
             for marker in ("测试1题", "测试到3题", "测试到10题", "启动剩余至50题"):
@@ -156,6 +173,7 @@ def main():
             assert "Phase 2 已分析" in ui
             assert "正式 A/B Evidence" in ui
             assert "C 级辅助" in ui
+            assert "旧队列" in ui
             bridge = (SRC / "backend" / "r8_14_seo_geo_autonomy_patch.py").read_text(encoding="utf-8")
             for route in (
                 "/api/r8-19/geo/autonomy",
@@ -167,7 +185,7 @@ def main():
                 assert route in bridge
             assert "geo-autonomy.js" in bridge
 
-            print("PASS: R8-19 GEO staged 1/3/10/50 autonomy + unified A/B/Phase2 truth counts")
+            print("PASS: R8-19 staged GEO 1/3/10/50 + safe legacy migration + scoped queue + unified truth counts")
         finally:
             sys.path.remove(str(SRC))
             if old_local is None:
