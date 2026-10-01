@@ -27,6 +27,7 @@ _RECOMMEND_POSITIVE = (
 _RECOMMEND_NEGATIVE = ("不推荐", "不建议", "不太建议", "不值得", "不要选择")
 _NUMBERED_ITEM_RE = re.compile(r"(?:^|\n)\s*(\d{1,2})\s*[\.、\)]\s*([^\n]+)", re.M)
 _URL_RE = re.compile(r"https?://[^\s<>'\"\]\)）}，。；;]+", re.I)
+_NAME_SEPARATOR_RE = re.compile(r"[\s\u3000\u00a0·•・._\-—–/\\|:：,，。；;、]+")
 
 _SERVICE_TERMS = {
     "水电安装维修": ("水电", "维修", "安装"),
@@ -112,12 +113,25 @@ def _source_domains(urls):
     return domains
 
 
+def _normalize_candidate_text(value):
+    """Normalize harmless display separators without inventing platform matches.
+
+    Real external AI answers often render names as ``58 同城`` or
+    ``大众　点评``.  Those variants should map to the same catalog entry while
+    preserving the evidence text itself unchanged.
+    """
+    text = str(value or "").casefold()
+    return _NAME_SEPARATOR_RE.sub("", text)
+
+
 def _candidate_platforms(answer):
     text = str(answer or "")
+    normalized_text = _normalize_candidate_text(text)
     found = []
     for item in _load_catalog().get("candidates") or []:
         for alias in item.get("aliases") or []:
-            if alias and alias in text:
+            normalized_alias = _normalize_candidate_text(alias)
+            if alias and normalized_alias and normalized_alias in normalized_text:
                 found.append({
                     "name": item.get("name") or alias,
                     "classification": item.get("classification") or "platform_candidate",
