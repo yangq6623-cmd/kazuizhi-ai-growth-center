@@ -1,4 +1,4 @@
-"""R8-20 SEO/GEO growth operating-loop HTTP and scheduler bridge."""
+"""R8-20/R8-21 SEO/GEO growth operating-loop HTTP and scheduler bridge."""
 from __future__ import annotations
 
 import json
@@ -10,6 +10,7 @@ from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
 from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
+from integrations import seo_geo_connector_router as connector_router
 
 _INSTALLED = False
 _ORIGINAL_RUN = seo_core.run_once
@@ -42,7 +43,13 @@ def _days(handler):
 
 def _serve_operational_search(handler):
     web = server.get_web_path()
-    names = ["operational-search.js", "geo-autonomy.js", "geo-phase3.js", "seo-geo-growth-intelligence.js"]
+    names = [
+        "operational-search.js",
+        "geo-autonomy.js",
+        "geo-phase3.js",
+        "seo-geo-growth-intelligence.js",
+        "seo-geo-connector-matrix.js",
+    ]
     source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
     data = source.encode("utf-8")
     handler.send_response(200)
@@ -57,14 +64,20 @@ def _combined_status():
     value = _ORIGINAL_STATUS()
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
     result["r8_20_growth"] = growth.status(30)
+    result["connector_routes"] = connector_router.snapshot(check_live=False)
     result["runtime_health"] = runtime_resilience.snapshot()
     return result
 
 
 def _combined_run(force=False):
+    # Refresh the connection->capability map before the business loop so every
+    # already-configured route is visible to SEO/GEO without inventing external
+    # success. Slow live probes remain in the background connection workers.
+    connector_routes = connector_router.sync_growth_health(check_live=False)
     value = _ORIGINAL_RUN(force=force)
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
     result["r8_20_growth"] = growth.run_once(force=force)
+    result["connector_routes"] = connector_routes
     result["runtime_health"] = runtime_resilience.snapshot()
     return result
 
@@ -89,8 +102,16 @@ def install():
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())
                 return
+            if path in {"/api/r8-20/seo-geo/connectors", "/api/r8-21/seo-geo/connectors"}:
+                handler._json_ok(connector_router.snapshot(check_live=False))
+                return
+            if path == "/api/r8-21/seo-geo/controller-routes":
+                handler._json_ok(connector_router.route_summary_for_controller(check_live=False))
+                return
             if path == "/api/r8-20/seo-geo":
-                handler._json_ok(growth.status(_days(handler)))
+                payload = growth.status(_days(handler))
+                payload["connector_routes"] = connector_router.snapshot(check_live=False)
+                handler._json_ok(payload)
                 return
             if path == "/api/r8-20/seo-geo/trends":
                 handler._json_ok(growth.trends(_days(handler)))
@@ -102,10 +123,11 @@ def install():
                     "decay": growth.content_decay(),
                     "technical": growth.technical_seo_status(),
                     "sources": growth.third_party_source_gaps(),
+                    "connector_routes": connector_router.snapshot(check_live=False),
                 })
                 return
             if path == "/api/r8-20/seo-geo/features":
-                handler._json_ok({"count": 38, "items": growth.feature_registry()})
+                handler._json_ok({"count": 38, "items": growth.feature_registry(), "r8_21_unified_connector_router": True})
                 return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             handler._json_error(400, error)
@@ -115,10 +137,8 @@ def install():
     def do_post(handler):
         path = urlsplit(handler.path).path
         # The legacy SEO page still posts this route from its primary
-        # "运行一次增长循环" button.  In R8-20 it must invoke the *full*
-        # autonomous controller (Phase3 targeting -> QC -> verified public
-        # deploy -> search receipt -> Phase3 retest), not the old local-only
-        # run_daily_cycle endpoint captured by R8-13.
+        # "运行一次增长循环" button.  In R8-20/R8-21 it invokes the full
+        # autonomous controller, including connector-route synchronization.
         if path == "/api/r8-13/seo-geo/run":
             if not _origin_allowed(handler):
                 handler._json_error(403, "Cross-origin changes are not allowed")
@@ -129,8 +149,9 @@ def install():
                 handler._json_ok({
                     "result": result,
                     "growth": growth.status(int(payload.get("days") or 30)),
+                    "connector_routes": connector_router.snapshot(check_live=False),
                     "runtime_health": runtime_resilience.snapshot(),
-                    "mode": "r8_20_full_autonomous_loop",
+                    "mode": "r8_21_full_autonomous_loop_with_unified_connectors",
                 })
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
@@ -150,6 +171,7 @@ def install():
             "/api/r8-20/seo-geo/refresh-content",
             "/api/r8-20/seo-geo/backup",
             "/api/r8-20/seo-geo/restore",
+            "/api/r8-21/seo-geo/connectors/sync",
         }
         if path not in supported:
             return original_post(handler)
@@ -159,7 +181,10 @@ def install():
         try:
             payload = _read_json(handler)
             if path == "/api/r8-20/seo-geo/refresh":
+                connector_router.sync_growth_health(check_live=False)
                 result = seo_core.run_once(force=bool(payload.get("force", True)))
+            elif path == "/api/r8-21/seo-geo/connectors/sync":
+                result = connector_router.sync_growth_health(check_live=bool(payload.get("check_live", False)))
             elif path == "/api/r8-20/seo-geo/search-observation":
                 result = growth.record_search_observation(payload)
             elif path == "/api/r8-20/seo-geo/attribution":
@@ -187,6 +212,7 @@ def install():
             handler._json_ok({
                 "result": result,
                 "growth": growth.status(int(payload.get("days") or 30)),
+                "connector_routes": connector_router.snapshot(check_live=False),
                 "runtime_health": runtime_resilience.snapshot(),
             })
         except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
@@ -195,6 +221,7 @@ def install():
     server.DashboardHandler.do_GET = do_get
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_20_seo_geo_growth = True
+    server.DashboardHandler._kz_r8_21_unified_connectors = True
     _INSTALLED = True
 
 
