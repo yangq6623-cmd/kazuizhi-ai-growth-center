@@ -37,6 +37,10 @@ from backend import r8_15_seo_public_deploy_patch as _r8_15_seo_public_deploy_pa
 from backend import r8_16_search_submit_patch as _r8_16_search_submit_patch  # noqa: F401,E402
 from backend import r8_17_remote_agent_patch as _r8_17_remote_agent_patch  # noqa: F401,E402
 from backend import r8_18_evidence_ledger_patch as _r8_18_evidence_ledger_patch  # noqa: F401,E402
+# GEO Phase 1-3 and R8-20 must be active in the real desktop entrypoint, not only CI imports.
+from backend import r8_19_geo_validation_patch as _r8_19_geo_validation_patch  # noqa: F401,E402
+from backend import r8_19_geo_phase3_patch as _r8_19_geo_phase3_patch  # noqa: F401,E402
+from backend import r8_20_seo_geo_growth_patch as _r8_20_seo_geo_growth_patch  # noqa: F401,E402
 from promotion import chatgpt_mission_patch as _chatgpt_mission_patch  # noqa: F401,E402
 from core.autonomy import ensure_daily_review
 from core.autonomous_ops import sync_from_runtime as sync_autonomous_ops
@@ -119,7 +123,7 @@ def start_scheduler():
                         # make the UI look frozen.
                         run_seo_technical_audit(seo_geo_dashboard())
             except (OSError, ValueError, RuntimeError) as error:
-                print(f"R7/R8-17 scheduler check failed: {error}", flush=True)
+                print(f"R7/R8-20 scheduler check failed: {error}", flush=True)
 
             if tick % 4 == 0:
                 try:
