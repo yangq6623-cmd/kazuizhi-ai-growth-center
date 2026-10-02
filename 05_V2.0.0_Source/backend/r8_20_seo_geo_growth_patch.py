@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from core import seo_geo_autonomy as seo_core
+from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
 
 _INSTALLED = False
