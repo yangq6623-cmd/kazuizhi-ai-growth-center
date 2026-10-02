@@ -21,14 +21,13 @@ def main():
             from core import geo_validation as geo
             from core import seo_geo_growth
             from core import seo_geo_growth_intelligence as growth
+            from core import r8_20_growth_truth_patch  # noqa: F401
 
-            # 38 locked development items must be represented by executable code capabilities.
             features = growth.feature_registry()
             assert len(features) == 38
             assert [x["id"] for x in features] == list(range(1, 39))
             assert all(x["code_state"] == "implemented" for x in features)
 
-            # Seed truthful SEO assets without claiming public search success.
             seo_geo_growth.ensure_baseline()
             seo_geo_growth.plan_today(limit=3)
             seo_geo_growth.generate_staging(limit=3)
@@ -38,7 +37,6 @@ def main():
             source_id = growth.source_tracking_id(asset)
             assert source_id.startswith("KZSRC-")
 
-            # 1-6: crawl/index/rank/impression/click/CTR all require evidence.
             try:
                 growth.record_search_observation({"kind": "indexed", "asset_id": asset["id"], "engine": "test"})
                 raise AssertionError("index observation without evidence must fail")
@@ -52,7 +50,6 @@ def main():
             search = growth.status(30)["search"]
             assert search["impressions"] == 100 and search["clicks"] == 10 and search["ctr"] == 10.0
 
-            # 8-10: dynamic question discovery, dedupe/version and priority.
             dynamic = growth.discover_dynamic_questions([
                 {"question_text": "涟水半夜水管爆了去哪里找靠谱师傅？", "service": "水管漏水维修", "priority": 95},
                 {"question_text": "涟水半夜水管爆了去哪里找靠谱师傅？", "service": "水管漏水维修", "priority": 20},
@@ -60,11 +57,9 @@ def main():
             assert len(dynamic["added"]) == 1 and dynamic["added"][0]["priority"] == 95
             assert dynamic["version"] == growth.DYNAMIC_VERSION
 
-            # 11: fixed50 scheduling is implemented but truthfully held behind live field acceptance.
             gated = growth.schedule_fixed50_retest(limit=1)
             assert gated["skipped"] is True and gated["reason"] == "field_acceptance_gate"
 
-            # Seed one formal A receipt and one C-level observation; only A enters provider matrix.
             geo.bootstrap_question_set(force=True)
             task = geo.create_and_enqueue_plan(limit=1, provider="doubao_web", test_method="browser", question_ids=["GEO50-D01"])["tasks"][0]
             formal = geo.record_result({
@@ -86,12 +81,10 @@ def main():
             assert any(x["provider"] == "doubao_web" for x in matrix["providers"])
             assert not any(x["provider"] == "doubao_api" for x in matrix["providers"])
 
-            # 15-17: multi-provider validation creates formal-capable browser tasks without fabricating success.
             multi = growth.schedule_multi_provider_validation(["doubao_web", "external_ai_b"], limit=1, include_dynamic=True)
             assert len(multi["providers"]) == 2 and multi["dynamic_candidates"]
             assert "A/B" in multi["truth"]
 
-            # 18-25: clustering/cannibalization/page decision/internal links/orphan/decay/refresh are all callable.
             governance = growth.keyword_governance()
             assert governance["clusters"] and governance["page_decisions"]
             links = growth.internal_link_plan()
@@ -103,7 +96,6 @@ def main():
             refresh = growth.queue_refresh_jobs(limit=3)
             assert "count" in refresh
 
-            # 26-32: attribution is source-ID based, stops at order and rejects money/ROI payloads.
             growth.record_attribution({"stage": "site_visit", "source_tracking_id": source_id, "asset_id": asset["id"]})
             growth.record_attribution({"stage": "mini_program_visit", "source_tracking_id": source_id, "asset_id": asset["id"]})
             growth.record_attribution({"stage": "consultation", "source_tracking_id": source_id, "lead_id": "L1", "evidence": "consult-log"})
@@ -120,18 +112,15 @@ def main():
             priorities = growth.controller_priorities()
             assert priorities["actions"] and "金额" not in priorities["truth"]
 
-            # 33: real-vitals ingest needs source + evidence; absent provider remains explicitly waiting.
             technical_before = growth.technical_seo_status()
             assert technical_before["web_vitals_state"] == "waiting_real_provider"
             growth.ingest_web_vitals({"url":"https://kazuizhi.com/", "source":"pagespeed-real-export", "evidence":"psi-receipt", "lcp_ms":1800, "inp_ms":140, "cls":0.04})
             technical_after = growth.technical_seo_status()
             assert technical_after["web_vitals_state"] == "measured"
 
-            # 34: source-gap actions come only from observed formal evidence and never auto-spam.
             sources = growth.third_party_source_gaps()
             assert all(x.get("auto_post") is False for x in sources.get("actions") or [])
 
-            # 35-36/38: connector health, breaker, dead-letter and budget guards.
             growth.record_connector_health("doubao", False, "timeout")
             growth.record_connector_health("doubao", False, "timeout")
             health = growth.record_connector_health("doubao", False, "timeout")
@@ -141,7 +130,6 @@ def main():
             budget = growth.consume_budget("oversized", 999)
             assert budget["allowed"] is False
 
-            # 37: backup/restore is explicit and confined to SEO/GEO state files.
             backup = growth.create_backup("ci")
             assert backup["backup_id"] and growth.STORE in backup["files"]
             try:
@@ -152,7 +140,6 @@ def main():
             restored = growth.restore_backup(backup["backup_id"], confirm=True)
             assert growth.STORE in restored["restored"]
 
-            # 7/12/13/14 + owner one-glance dashboard.
             growth.capture_trend_snapshot(force=True)
             for window in (7, 30, 90):
                 trend = growth.trends(window)
