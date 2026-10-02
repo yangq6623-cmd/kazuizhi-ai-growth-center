@@ -10,7 +10,7 @@ from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
 from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
-from integrations import seo_geo_connector_router as connector_router
+from integrations import seo_geo_connector_router_v2 as connector_router
 
 _INSTALLED = False
 _ORIGINAL_RUN = seo_core.run_once
@@ -137,7 +137,7 @@ def install():
     def do_post(handler):
         path = urlsplit(handler.path).path
         # The legacy SEO page still posts this route from its primary
-        # "运行一次增长循环" button.  In R8-20/R8-21 it invokes the full
+        # "运行一次增长循环" button. In R8-20/R8-21 it invokes the full
         # autonomous controller, including connector-route synchronization.
         if path == "/api/r8-13/seo-geo/run":
             if not _origin_allowed(handler):
