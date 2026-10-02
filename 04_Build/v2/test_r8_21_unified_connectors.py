@@ -17,14 +17,15 @@ RUNTIME = SRC / "core" / "runtime_resilience.py"
 
 def main():
     old_local = os.environ.get("LOCALAPPDATA")
-    old_relay = {key: os.environ.get(key) for key in (
+    relay_keys = (
         "KAZUIZHI_CHATGPT_RELAY_URL",
         "KAZUIZHI_CHATGPT_CONNECTOR_ID",
         "KAZUIZHI_CHATGPT_RELAY_SECRET",
-    )}
+    )
+    old_relay = {key: os.environ.get(key) for key in relay_keys}
     with tempfile.TemporaryDirectory() as tmp:
         os.environ["LOCALAPPDATA"] = tmp
-        for key in old_relay:
+        for key in relay_keys:
             os.environ.pop(key, None)
         sys.path.insert(0, str(SRC))
         try:
@@ -68,14 +69,28 @@ def main():
             assert "Evidence" in formal["formal_evidence_policy"]
             assert matrix["summary"]["formal_geo_routes"] >= 1
 
+            # Missing Relay config is a truthful blocker.
             relay = rows["chatgpt_relay"]
             assert relay["software_route_ready"] is False
             assert relay["route_state"] == "not_configured"
             assert "Relay" in relay["name"]
 
+            # Configuration alone still is not a live Command -> Receipt route.
+            os.environ["KAZUIZHI_CHATGPT_RELAY_URL"] = "http://127.0.0.1:65530"
+            os.environ["KAZUIZHI_CHATGPT_CONNECTOR_ID"] = "ci-connector"
+            os.environ["KAZUIZHI_CHATGPT_RELAY_SECRET"] = "x" * 40
+            configured_matrix = router.snapshot(check_live=False)
+            configured_relay = next(row for row in configured_matrix["connectors"] if row["id"] == "chatgpt_relay")
+            assert configured_relay["software_route_ready"] is True
+            assert configured_relay["external_verified"] is False
+            assert configured_relay["route_state"] == "configured_waiting_live"
+            for key in relay_keys:
+                os.environ.pop(key, None)
+
             controller = router.route_summary_for_controller(check_live=False)
             assert "bing_indexnow" in controller["seo"]
             assert "geo_external_ai_browser" in controller["formal_geo"]
+            assert controller["live_remote_control"] == []
             assert any(x.get("id") == "chatgpt_relay" for x in controller["blockers"])
 
             runtime_resilience.start_process(keep_awake=True)
