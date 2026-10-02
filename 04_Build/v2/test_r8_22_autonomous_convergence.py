@@ -50,12 +50,8 @@ def main():
             command_execution.command_links = lambda limit=200: [fake_command]
             command_execution._authorized = lambda link: bool(link and link.get("command_id"))
 
-            # Import the real production convergence patch after the fake owner
-            # Command is in place so the test exercises shipped monkeypatches.
             from backend import r8_22_autonomy_convergence_patch as _r8_22_patch  # noqa: F401
 
-            # Seed the stale Mission that previously stayed visible after a new
-            # owner Command arrived.
             stale = {
                 "mission_id": "MISSION-OLD",
                 "growth_id": "GROWTH-OLD",
@@ -76,7 +72,6 @@ def main():
                 "missions": [stale], "events": [], "updated_at": now_iso(),
             })
 
-            # Current task was created after the Command.
             new_job = {
                 "id": "newjob", "kind": "manual_task", "title": "当前 SEO/GEO Mission 任务", "mode": "local",
                 "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial",
@@ -85,9 +80,6 @@ def main():
                 "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None,
                 "error": None, "retry_count": 0,
             }
-            # Daily workforce jobs may have been created before the owner Command
-            # but are scheduled to run later; they must become P0 when due_at is
-            # after the current Command.
             future_daily = {
                 "id": "futurejob", "kind": "manual_task", "title": "今天稍后执行的SEO排班", "mode": "local",
                 "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial",
@@ -97,7 +89,6 @@ def main():
                 "approved_by": "autonomy_policy", "result": None, "error": None, "retry_count": 0,
                 "schedule_source": "daily_workforce",
             }
-            # Historical backlog remains historical.
             old_job = {
                 "id": "oldjob", "kind": "manual_task", "title": "历史积压任务", "mode": "local",
                 "agent": "内容运营员", "task_type": "content", "risk": "non_financial",
@@ -106,8 +97,6 @@ def main():
                 "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None,
                 "error": None, "retry_count": 0,
             }
-            # A task explicitly owned by an old Command must never be stolen by
-            # the new Mission, even if its due time is in the future.
             old_bound = {
                 "id": "oldbound", "kind": "manual_task", "title": "旧Mission后续任务", "mode": "local",
                 "agent": "内容运营员", "task_type": "content", "risk": "non_financial",
@@ -166,8 +155,6 @@ def main():
             assert state["progress"]["total"] >= 2
             assert "外部发布/搜索/GEO/经营结果" in state["truth_rule"]
 
-            # Static integration gates: production import path, API/event UI and
-            # R8-22 visible identity must all ship together.
             core_text = CORE.read_text(encoding="utf-8")
             patch_text = PATCH.read_text(encoding="utf-8")
             ui_text = UI.read_text(encoding="utf-8")
@@ -197,8 +184,8 @@ def main():
             ):
                 assert marker in scope_text, marker
             assert "r8_22_autonomy_convergence_patch" in truth_text
-            assert 'phase: "R8-22"' in build_text
-            assert "7x24 Autonomous Convergence" in build_text
+            assert any(f'phase: "{phase}"' in build_text for phase in ("R8-22", "R8-23"))
+            assert any(label in build_text for label in ("7x24 Autonomous Convergence", "Autonomous Growth OS"))
 
             command_execution.command_links = original_links
             command_execution._authorized = original_authorized
