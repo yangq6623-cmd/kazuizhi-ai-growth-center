@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from backend import server
 from core import geo_phase2_latest_truth_patch as _geo_phase2_latest_truth_patch  # noqa: F401
 from core import geo_phase3_job_patch as _geo_phase3_job_patch  # noqa: F401
-from core import geo_phase3_seo_bridge as _geo_phase3_seo_bridge  # noqa: F401
+from core import geo_phase3_seo_bridge as _geo_phase3_seo_bridge
 from core import geo_phase3
 from core import geo_phase3_retest_patch as _geo_phase3_retest_patch  # noqa: F401
 from core import seo_geo_autonomy as seo_core
@@ -56,9 +56,21 @@ def _combined_status():
 
 
 def _combined_run(force=False):
+    # Converge Phase 3 first so newly completed AI-employee jobs are converted
+    # into their exact SEO assets before the ordinary daily queue consumes the
+    # page limit.  The bridge stops at QC_PASSED.  The existing autonomy cycle
+    # then performs the real verified deployment/search submission.  A final
+    # Phase-3 tick sees the new PUBLISHED receipt and queues the real A/B retest
+    # in the same scheduler pass rather than waiting for another five minutes.
+    phase3_before = geo_phase3.run_once(owner_approved=False)
+    phase3_status = geo_phase3.status()
+    prepared = _geo_phase3_seo_bridge.prepare_phase3_assets((phase3_status.get("plan") or {}))
     base = _ORIGINAL_RUN(force=force)
+    phase3_after = geo_phase3.run_once(owner_approved=False)
     result = dict(base) if isinstance(base, dict) else {"seo_geo": base}
-    result["geo_phase3"] = geo_phase3.run_once(owner_approved=False)
+    result["geo_phase3"] = phase3_after
+    result["geo_phase3_pre"] = phase3_before
+    result["geo_phase3_assets"] = prepared
     return result
 
 
