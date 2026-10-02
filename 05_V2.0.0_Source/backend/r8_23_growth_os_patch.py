@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import time
 from urllib.parse import urlsplit
 
@@ -20,8 +22,11 @@ _ORIGINAL_VIDEO_RUN = video_worker.run_pending
 _ORIGINAL_DEPLOY_RUN = seo_public_deployer.deploy_pending
 _ORIGINAL_SEARCH_RUN = search_engine_submitter.submit_pending
 GROWTH_CYCLE_INTERVAL_SECONDS = 300
+GPU_STATUS_TTL_SECONDS = 60
 _LAST_GROWTH_CYCLE_MONOTONIC = 0.0
 _LAST_GROWTH_PLAN_ID = None
+_GPU_STATUS_AT = 0.0
+_GPU_STATUS_VALUE = None
 
 
 def _origin_allowed(handler):
@@ -49,6 +54,65 @@ def _success(result):
     if int(result.get("failed_count") or 0) > 0 and int(result.get("submitted_count") or result.get("processed") or 0) == 0:
         return False
     return True
+
+
+def _silent_gpu_status():
+    """Probe NVIDIA without ever creating a visible Windows console.
+
+    The owner dashboard polls frequently.  A raw nvidia-smi subprocess on Windows
+    can create a short-lived console window on every poll, so the probe is both
+    hidden and cached.  Capability truth is preserved: this only reports the
+    locally observed GPU and never promotes local execution to external evidence.
+    """
+    global _GPU_STATUS_AT, _GPU_STATUS_VALUE
+    current = time.monotonic()
+    if _GPU_STATUS_VALUE is not None and current - _GPU_STATUS_AT < GPU_STATUS_TTL_SECONDS:
+        return dict(_GPU_STATUS_VALUE)
+
+    binary = shutil.which("nvidia-smi")
+    if not binary:
+        result = {"detected": False, "ready": False, "reason": "nvidia-smi_not_found"}
+        _GPU_STATUS_VALUE = result
+        _GPU_STATUS_AT = current
+        return dict(result)
+
+    kwargs = {
+        "capture_output": True,
+        "text": True,
+        "timeout": 3,
+        "check": False,
+    }
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if create_no_window:
+        kwargs["creationflags"] = create_no_window
+    startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+    if startupinfo_cls is not None:
+        startupinfo = startupinfo_cls()
+        startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+        startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+        kwargs["startupinfo"] = startupinfo
+
+    try:
+        completed = subprocess.run(
+            [binary, "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            **kwargs,
+        )
+        names = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+        ready = completed.returncode == 0 and bool(names)
+        result = {
+            "detected": ready,
+            "ready": ready,
+            "gpus": names[:4],
+            "rtx3060": any("3060" in name for name in names),
+            "probe": "silent_cached_nvidia_smi",
+            "cache_ttl_seconds": GPU_STATUS_TTL_SECONDS,
+        }
+    except (OSError, subprocess.SubprocessError):
+        result = {"detected": False, "ready": False, "reason": "gpu_probe_failed"}
+
+    _GPU_STATUS_VALUE = result
+    _GPU_STATUS_AT = current
+    return dict(result)
 
 
 def _controller_tick():
@@ -153,6 +217,8 @@ def install():
     if _INSTALLED:
         return
 
+    # Replace the raw R8-23 GPU probe before any dashboard or worker can call it.
+    growth_os.gpu_status = _silent_gpu_status
     convergence.controller_tick = _controller_tick
     ai_gateway.run_once = _ai_run
     seo_geo_autonomy.run_once = _seo_geo_run
