@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import traceback
 import webbrowser
 from pathlib import Path
@@ -51,6 +52,11 @@ from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
+from core.runtime_resilience import heartbeat as runtime_heartbeat
+from core.runtime_resilience import record_restart_attempt as runtime_record_restart_attempt
+from core.runtime_resilience import set_worker_enabled as runtime_set_worker_enabled
+from core.runtime_resilience import start_process as runtime_start_process
+from core.runtime_resilience import stop_process as runtime_stop_process
 from core.seo_geo_autonomy import run_once as run_seo_geo_autonomy
 from core.seo_geo_autonomy import status as seo_geo_autonomy_status
 from core.seo_geo_growth import dashboard as seo_geo_dashboard
@@ -69,6 +75,36 @@ from promotion.material_library import scan_material_inbox
 from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
 
+SCHEDULER_INTERVAL_SECONDS = 15
+CONTENT_WORKER_INTERVAL_SECONDS = 60
+VIDEO_WORKER_INTERVAL_SECONDS = 15
+MAX_PROCESS_RESTARTS_10_MIN = 5
+
+
+def _set_keep_awake(enabled):
+    """Prevent Windows system sleep while the owner explicitly keeps the app running.
+
+    The display may still turn off.  Clearing ES_SYSTEM_REQUIRED on shutdown
+    restores the user's normal Windows power policy.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        es_continuous = 0x80000000
+        es_system_required = 0x00000001
+        flags = es_continuous | (es_system_required if enabled else 0)
+        return bool(ctypes.windll.kernel32.SetThreadExecutionState(flags))
+    except (AttributeError, OSError):
+        return False
+
+
+def _runtime_mark(name, *, ok=True, error=None, detail=None, force_persist=False):
+    """Monitoring must never be able to stop the production worker it observes."""
+    try:
+        runtime_heartbeat(name, ok=ok, error=error, detail=detail, force_persist=force_persist)
+    except Exception as monitor_error:
+        print(f"Runtime health monitor deferred: {monitor_error}", flush=True)
+
 
 def _sync_r8_17_remote_agent(*, check_live=True):
     """Import a local pairing file and optionally check the remote deploy route.
@@ -86,12 +122,14 @@ def _sync_r8_17_remote_agent(*, check_live=True):
                 return {"ok": True, "pairing": pairing, "activation": activation}
             return {"ok": False, "pairing": pairing, "activation": activation}
         return {"ok": False, "pairing": pairing, "activation": {}}
-    except (OSError, ValueError, RuntimeError) as error:
+    except Exception as error:
         return {"ok": False, "reason": str(error)}
 
 
 def start_scheduler():
+    """Run the fast control/scheduling lane independently of slow AI/content I/O."""
     stop = threading.Event()
+    runtime_set_worker_enabled("scheduler_core", True, "15s control lane")
 
     def loop():
         tick = 0
@@ -118,32 +156,49 @@ def start_scheduler():
                         and seo_technical_audit_due()
                         and int((seo_geo_dashboard().get("summary") or {}).get("public_pages") or 0) > 0
                     ):
-                        # This worker is intentionally separate from desktop
-                        # startup and the HTTP handler. Network delays must not
-                        # make the UI look frozen.
+                        # Network delay is bounded by provider timeouts; this
+                        # lane remains isolated from AI/video workers below.
                         run_seo_technical_audit(seo_geo_dashboard())
-            except (OSError, ValueError, RuntimeError) as error:
-                print(f"R7/R8-20 scheduler check failed: {error}", flush=True)
-
-            if tick % 4 == 0:
-                try:
-                    scan_material_inbox()
-                    sync_autonomous_ops(autostart=True)
-                    sync_content_plans()
-                    recover_authorized_qc(limit=10)
-                    run_ai_gateway(limit=2)  # optional enhancer only
-                    sync_chatgpt_handoffs()
-                    bridge_sync_once()
-                    run_publish_planning(limit=10)
-                    run_pending_douyin_dry_runs(limit=1)
-                    sync_autonomous_ops(autostart=False)
-                    sync_mission_backbone()
-                except (OSError, ValueError, RuntimeError) as error:
-                    print(f"R7 AI/local-content/publish execution deferred: {error}", flush=True)
-            tick += 1
-            stop.wait(15)
+                _runtime_mark("scheduler_core", ok=True, detail=f"tick={tick}")
+            except Exception as error:
+                _runtime_mark("scheduler_core", ok=False, error=error, detail=f"tick={tick}", force_persist=True)
+                print(f"R7/R8-20 scheduler check failed but will continue: {error}", flush=True)
+            tick = (tick + 1) % 1_000_000
+            stop.wait(SCHEDULER_INTERVAL_SECONDS)
 
     thread = threading.Thread(target=loop, name="r7-local-scheduler", daemon=True)
+    thread.start()
+    return stop
+
+
+def start_content_execution_worker():
+    """Isolate model/network/content work so a slow provider cannot freeze scheduler ticks."""
+    stop = threading.Event()
+    runtime_set_worker_enabled("content_execution", True, "60s AI/content/publish lane")
+
+    def loop():
+        cycle = 0
+        while not stop.is_set():
+            try:
+                scan_material_inbox()
+                sync_autonomous_ops(autostart=True)
+                sync_content_plans()
+                recover_authorized_qc(limit=10)
+                run_ai_gateway(limit=2)  # optional enhancer only; provider calls are timeout-bounded
+                sync_chatgpt_handoffs()
+                bridge_sync_once()
+                run_publish_planning(limit=10)
+                run_pending_douyin_dry_runs(limit=1)
+                sync_autonomous_ops(autostart=False)
+                sync_mission_backbone()
+                _runtime_mark("content_execution", ok=True, detail=f"cycle={cycle}")
+            except Exception as error:
+                _runtime_mark("content_execution", ok=False, error=error, detail=f"cycle={cycle}", force_persist=True)
+                print(f"R7 AI/local-content/publish execution deferred; worker will continue: {error}", flush=True)
+            cycle = (cycle + 1) % 1_000_000
+            stop.wait(CONTENT_WORKER_INTERVAL_SECONDS)
+
+    thread = threading.Thread(target=loop, name="r8-content-execution-worker", daemon=True)
     thread.start()
     return stop
 
@@ -153,13 +208,25 @@ def start_chatgpt_relay_worker():
     stop = threading.Event()
     config = relay_config_status()
     if not config.get("configured"):
+        runtime_set_worker_enabled("chatgpt_relay", False, config.get("reason") or "not configured")
         return stop
+    runtime_set_worker_enabled("chatgpt_relay", True, f"poll={relay_poll_seconds()}s")
 
     def loop():
+        cycle = 0
         while not stop.is_set():
-            result = relay_poll_once()
-            if not result.get("ok") and not result.get("skipped"):
-                print(f"ChatGPT Relay deferred: {result.get('reason')}", flush=True)
+            try:
+                result = relay_poll_once()
+                if not result.get("ok") and not result.get("skipped"):
+                    error = RuntimeError(result.get("reason") or "relay deferred")
+                    _runtime_mark("chatgpt_relay", ok=False, error=error, detail=f"cycle={cycle}")
+                    print(f"ChatGPT Relay deferred: {result.get('reason')}", flush=True)
+                else:
+                    _runtime_mark("chatgpt_relay", ok=True, detail=f"cycle={cycle}; processed={result.get('processed', 0)}")
+            except Exception as error:
+                _runtime_mark("chatgpt_relay", ok=False, error=error, detail=f"cycle={cycle}", force_persist=True)
+                print(f"ChatGPT Relay worker recovered from error: {error}", flush=True)
+            cycle = (cycle + 1) % 1_000_000
             stop.wait(relay_poll_seconds())
 
     thread = threading.Thread(target=loop, name="chatgpt-control-relay-worker", daemon=True)
@@ -170,14 +237,19 @@ def start_chatgpt_relay_worker():
 def start_video_production_worker():
     """Keep GPU/video work isolated so a long render cannot block Mission ticks."""
     stop = threading.Event()
+    runtime_set_worker_enabled("video_worker", True, "15s GPU/video lane")
 
     def loop():
+        cycle = 0
         while not stop.is_set():
             try:
                 run_pending_videos(limit=1)
-            except (OSError, ValueError, RuntimeError) as error:
-                print(f"R8 video worker deferred: {error}", flush=True)
-            stop.wait(15)
+                _runtime_mark("video_worker", ok=True, detail=f"cycle={cycle}")
+            except Exception as error:
+                _runtime_mark("video_worker", ok=False, error=error, detail=f"cycle={cycle}", force_persist=True)
+                print(f"R8 video worker deferred; worker will continue: {error}", flush=True)
+            cycle = (cycle + 1) % 1_000_000
+            stop.wait(VIDEO_WORKER_INTERVAL_SECONDS)
 
     thread = threading.Thread(target=loop, name="r8-video-production-worker", daemon=True)
     thread.start()
@@ -243,22 +315,23 @@ def main():
             ctypes.windll.user32.MessageBoxW(0, message, "Kazuizhi AI V2.2.2 自治运营核心", 0x30)
         raise SystemExit(2)
 
+    keep_awake = _set_keep_awake(True)
+    runtime_start_process(keep_awake=keep_awake)
     with server:
         migrate_r6()
         migrate_to_v2_2()
         recover_interrupted()
         # Recover only persisted local ChatGPT handoff state before first paint.
         # This is a filesystem operation, not an external probe; all network,
-        # AI and SEO work remains on the scheduler below.
+        # AI and SEO work remains on the workers below.
         try:
             sync_chatgpt_handoffs(force=True)
-        except (OSError, ValueError, RuntimeError) as error:
+        except Exception as error:
             print(f"Initial handoff recovery deferred: {error}", flush=True)
-        # The HTTP shell is deliberately available before background
-        # convergence. Remote deploy probes, AI Gateway calls and SEO public
-        # checks can be slow or offline; none may delay the first dashboard
-        # paint. start_scheduler owns the identical convergence work below.
+        # Keep the HTTP shell responsive while slow model/network/render work is
+        # isolated in its own fail-soft workers.
         scheduler_stop = start_scheduler()
+        content_worker_stop = start_content_execution_worker()
         relay_stop = start_chatgpt_relay_worker()
         video_worker_stop = start_video_production_worker()
         AIEngine().start()
@@ -268,15 +341,47 @@ def main():
         if not args.no_browser:
             webbrowser.open(url)
         try:
+            _runtime_mark("http_server", ok=True, detail=f"port={server.server_port}", force_persist=True)
             server.serve_forever()
+        except Exception as error:
+            _runtime_mark("http_server", ok=False, error=error, detail=f"port={server.server_port}", force_persist=True)
+            raise
         finally:
             scheduler_stop.set()
+            content_worker_stop.set()
             relay_stop.set()
             video_worker_stop.set()
+            runtime_stop_process()
+            _set_keep_awake(False)
+
+
+def _run_main_with_recovery():
+    """Recover from an unexpected main-loop exception without infinite crash loops."""
+    restart_times = []
+    while True:
+        try:
+            main()
+            return
+        except KeyboardInterrupt:
+            return
+        except SystemExit:
+            raise
+        except Exception as error:
+            now = time.monotonic()
+            restart_times = [stamp for stamp in restart_times if now - stamp < 600]
+            restart_times.append(now)
+            attempt = len(restart_times)
+            try:
+                runtime_record_restart_attempt(attempt, error)
+            except Exception:
+                pass
+            print(f"Kazuizhi runtime unexpected error; restart attempt {attempt}: {error}", flush=True)
+            traceback.print_exc()
+            if attempt > MAX_PROCESS_RESTARTS_10_MIN:
+                print("Runtime restart circuit breaker opened after repeated crashes.", flush=True)
+                raise
+            time.sleep(min(5 * attempt, 30))
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    _run_main_with_recovery()
