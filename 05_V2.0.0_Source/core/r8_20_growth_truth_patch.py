@@ -6,6 +6,8 @@ from copy import deepcopy
 from core import geo_analysis, geo_validation
 from core import seo_geo_growth_intelligence as growth
 
+_ORIGINAL_CONTROLLER_PRIORITIES = growth.controller_priorities
+
 
 def _snapshot():
     snap = geo_analysis.snapshot()
@@ -47,5 +49,12 @@ def third_party_source_gaps():
     }
 
 
+def controller_priorities():
+    result = dict(_ORIGINAL_CONTROLLER_PRIORITIES())
+    result["truth"] = "优先级只依据真实搜索、咨询、任务和订单信号。"
+    return result
+
+
 growth.provider_matrix = provider_matrix
 growth.third_party_source_gaps = third_party_source_gaps
+growth.controller_priorities = controller_priorities
