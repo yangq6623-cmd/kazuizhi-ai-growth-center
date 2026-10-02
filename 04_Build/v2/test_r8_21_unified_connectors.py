@@ -46,8 +46,6 @@ def main():
             rows = {row["id"]: row for row in matrix["connectors"]}
             assert expected_channels <= set(rows), set(rows)
 
-            # Concrete existing connectors must be visible to SEO/GEO rather than
-            # hidden behind the generic connection center.
             for connector_id in (
                 "baidu_search_resource_api", "bing_indexnow", "google_search_console",
                 "seo_public_deployer", "remote_agent", "model_cloud", "model_local",
@@ -64,17 +62,12 @@ def main():
                 assert rows[social]["use_for_distribution"] is True
                 assert rows[social]["formal_geo_evidence"] is False
 
-            # Formal GEO is a real external-AI evidence route. Merely exposing it
-            # must not fabricate a receipt or tested result.
             formal = rows["geo_external_ai_browser"]
             assert formal["software_route_ready"] is True
             assert formal["formal_geo_evidence"] is True
             assert "Evidence" in formal["formal_evidence_policy"]
             assert matrix["summary"]["formal_geo_routes"] >= 1
 
-            # Historical ChatGPT control verification must never silently stand
-            # in for the live outbound Relay. Without Relay config it remains a
-            # truthful blocker and local SEO/GEO autonomy can continue.
             relay = rows["chatgpt_relay"]
             assert relay["software_route_ready"] is False
             assert relay["route_state"] == "not_configured"
@@ -85,8 +78,6 @@ def main():
             assert "geo_external_ai_browser" in controller["formal_geo"]
             assert any(x.get("id") == "chatgpt_relay" for x in controller["blockers"])
 
-            # The 24h health page must not falsely mark the intentionally blocking
-            # HTTP serve_forever loop stale merely because it has no periodic tick.
             runtime_resilience.start_process(keep_awake=True)
             runtime_resilience.heartbeat("http_server", ok=True, detail="port=8876", force_persist=True)
             old_stamp = (datetime.now().astimezone() - timedelta(hours=2)).isoformat()
@@ -107,7 +98,7 @@ def main():
             ui = UI.read_text(encoding="utf-8")
             for marker in (
                 "SEO / GEO 统一连接路由矩阵", "软件可路由", "外部已验证", "SEO路由", "GEO路由",
-                "同步并检查服务器通道", "ChatGPT 安全 Relay", "普通API或本地模型输出",
+                "同步并检查服务器通道", "ChatGPT 安全 Relay", "模型/API普通输出",
             ):
                 assert marker in ui, marker
 
