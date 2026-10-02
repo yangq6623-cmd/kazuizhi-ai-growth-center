@@ -1,8 +1,8 @@
-name: Build Kazuizhi R8-20 SEO GEO Growth Final
+name: Build Kazuizhi R8-21 SEO GEO Unified Connectors
 
 on:
   push:
-    branches: ['r8-20-seo-geo-growth-*']
+    branches: ['r8-21-seo-geo-unified-connectors-*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -41,7 +41,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           python -m pip install playwright==1.55.0
-      - name: Verify R7 R8 GEO Phase 1-3 and all R8-20 38 upgrades
+      - name: Verify R7 R8 GEO Phase 1-3 R8-20 and R8-21 connector routing
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -75,15 +75,16 @@ jobs:
           python 04_Build/v2/test_r8_20_seo_geo_growth.py
           python 04_Build/v2/test_r8_20_phase3_publish_bridge.py
           python 04_Build/v2/test_r8_20_24h_runtime.py
-      - name: Verify production entrypoint activates R8-19 and R8-20
+          python 04_Build/v2/test_r8_21_unified_connectors.py
+      - name: Verify production entrypoint activates R8-19 R8-20 and R8-21
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
           foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
             if (-not $run.Contains($marker)) { throw "Production entrypoint missing $marker" }
           }
           $patch = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py' -Raw
-          foreach ($marker in @('seo-geo-growth-intelligence.js','/api/r8-20/seo-geo','seo_geo_source_tracking_patch','/api/r8-13/seo-geo/run','/api/r8-20/runtime-health')) {
-            if (-not $patch.Contains($marker)) { throw "R8-20 runtime integration missing $marker" }
+          foreach ($marker in @('seo-geo-growth-intelligence.js','seo-geo-connector-matrix.js','seo_geo_connector_router_v2','/api/r8-20/seo-geo','/api/r8-21/seo-geo/connectors','/api/r8-21/seo-geo/controller-routes','seo_geo_source_tracking_patch','/api/r8-13/seo-geo/run','/api/r8-20/runtime-health')) {
+            if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
           }
       - name: Integrate unified model connection center into packaged web
         run: |
@@ -127,35 +128,35 @@ jobs:
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install launch overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-20 final installer provenance
+      - name: Record R8-21 final installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-20 SEO/GEO Real Growth Operating Loop Final'
+            version = '2.2.2 R8-21 SEO/GEO Unified Connector Operating Loop'
             commit = '${{ github.sha }}'
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            development_items = 38
-            target_autonomy = '90-95%'
-            runtime_resilience = @('5760-cycle 24h-equivalent soak','Windows sleep prevention','isolated scheduler/content/video/relay workers','fail-soft worker exceptions','bounded process restart circuit breaker','runtime health heartbeat API')
-            owner_dashboard = @('SEO trend 7/30/90','GEO trend 7/30/90','business funnel through order','multi-AI A/B matrix','alerts','ChatGPT controller brief')
-            truth_policy = 'Search crawl/index/rank and GEO A/B metrics require real evidence. Business attribution stops at order and excludes financial metrics.'
-            field_acceptance = @('Phase2 live 1->3->10->50','Phase3 real publish->new A/B retest->Before/After','24h real Windows unattended soak')
-          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_20_SEO_GEO_GROWTH_FINAL.json
+            inherited_development_items = 38
+            connector_upgrade = @('unified SEO/GEO capability router','all 16 channel registry routes surfaced','Baidu/Bing/GSC concrete search connectors','Remote Agent/public deployer','cloud/local model execution routes','formal external-AI browser Evidence route','ChatGPT control vs live Relay separation','connector matrix in SEO and GEO','24h http_server false-stale fix')
+            target_autonomy = '90-95% when required real credentials/login routes are available'
+            runtime_resilience = @('5760-cycle 24h-equivalent soak','Windows sleep prevention','isolated scheduler/content/video/relay workers','fail-soft worker exceptions','bounded process restart circuit breaker','runtime health heartbeat API','blocking HTTP server health classification')
+            truth_policy = 'A connection being routed does not claim publication, submission, indexing, ranking or GEO success. Formal GEO still requires A/B Evidence; cloud/local model outputs remain auxiliary unless a verified formal route produces proof.'
+            field_acceptance = @('unified connector matrix on owner Windows','Remote Agent live health','Phase3 real publish->new A/B retest->Before/After','24h real Windows unattended soak','ChatGPT Relay only after trusted relay credentials exist')
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_21_SEO_GEO_UNIFIED_CONNECTORS.json
       - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_20_SEO_GEO_Growth_Final
+          name: Kazuizhi_AI_Enterprise_R8_21_SEO_GEO_Unified_Connectors_Final
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload final portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_20_SEO_GEO_Growth_Final_Portable
+          name: Kazuizhi_AI_Enterprise_R8_21_SEO_GEO_Unified_Connectors_Final_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
