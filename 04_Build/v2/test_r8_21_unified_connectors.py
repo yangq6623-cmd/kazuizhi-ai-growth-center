@@ -69,13 +69,11 @@ def main():
             assert "Evidence" in formal["formal_evidence_policy"]
             assert matrix["summary"]["formal_geo_routes"] >= 1
 
-            # Missing Relay config is a truthful blocker.
             relay = rows["chatgpt_relay"]
             assert relay["software_route_ready"] is False
             assert relay["route_state"] == "not_configured"
             assert "Relay" in relay["name"]
 
-            # Configuration alone still is not a live Command -> Receipt route.
             os.environ["KAZUIZHI_CHATGPT_RELAY_URL"] = "http://127.0.0.1:65530"
             os.environ["KAZUIZHI_CHATGPT_CONNECTOR_ID"] = "ci-connector"
             os.environ["KAZUIZHI_CHATGPT_RELAY_SECRET"] = "x" * 40
@@ -118,8 +116,9 @@ def main():
                 assert marker in ui, marker
 
             build = BUILD_INFO.read_text(encoding="utf-8")
-            assert ('phase: "R8-21"' in build) or ('phase: "R8-22"' in build)
-            assert ("SEO/GEO Unified Connectors" in build) or ("Autonomous Convergence" in build)
+            supported = ('R8-21', 'R8-22', 'R8-23')
+            assert any(f'phase: "{phase}"' in build for phase in supported)
+            assert any(label in build for label in ("SEO/GEO Unified Connectors", "Autonomous Convergence", "Autonomous Growth OS"))
             assert "blocking_main_loop" in RUNTIME.read_text(encoding="utf-8")
 
             print("PASS: R8-21 unified connection center -> SEO/GEO capability routes + truth gates + runtime health fix")
