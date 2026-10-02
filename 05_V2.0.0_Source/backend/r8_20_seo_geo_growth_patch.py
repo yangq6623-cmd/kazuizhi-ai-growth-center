@@ -8,6 +8,7 @@ from backend import server
 from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
+from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
 
 _INSTALLED = False
 _ORIGINAL_RUN = seo_core.run_once
@@ -70,7 +71,6 @@ def install():
     if _INSTALLED:
         return
 
-    # Wrap the current R8-19 combined scheduler instead of creating a competing daemon.
     seo_core.run_once = _combined_run
     seo_core.status = _combined_status
 
