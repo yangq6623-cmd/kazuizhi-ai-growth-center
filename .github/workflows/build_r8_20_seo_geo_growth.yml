@@ -1,0 +1,158 @@
+name: Build Kazuizhi R8-20 SEO GEO Growth Final
+
+on:
+  push:
+    branches: ['r8-20-seo-geo-growth-*']
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/**'
+      - '.github/workflows/build_r8_20_seo_geo_growth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stamp visible build number and commit
+        run: |
+          $path = '05_V2.0.0_Source/web/build_info.js'
+          $text = Get-Content -LiteralPath $path -Raw
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $text = $text.Replace('__GITHUB_SHA__', $shortSha)
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+      - name: Install pinned dependencies and browser test driver
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+          python -m pip install playwright==1.55.0
+      - name: Verify R7 R8 GEO Phase 1-3 and all R8-20 38 upgrades
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r7_block_a.py
+          python 04_Build/v2/test_r7_block_b.py
+          python 04_Build/v2/test_r8_identity.py
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_11_backbone.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_remote_agent.py
+          python 04_Build/v2/test_ai_gateway.py
+          python 04_Build/v2/test_r8_18_model_connection_center.py
+          python 04_Build/v2/test_r8_18_model_gateway_routes.py
+          python 04_Build/v2/test_r8_18_evidence_ledger.py
+          python 04_Build/v2/test_r8_19_geo_phase1.py
+          python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
+          python 04_Build/v2/test_r8_19_geo_main_platform_integration.py
+          python 04_Build/v2/test_r8_19_model_connection_ui.py
+          python 04_Build/v2/test_r8_19_geo_live_gate.py
+          python 04_Build/v2/test_r8_19_geo_browser_first.py
+          python 04_Build/v2/test_r8_19_geo_ui_polish.py
+          python 04_Build/v2/test_r8_19_geo_field_fix.py
+          python 04_Build/v2/test_r8_19_startup_resilience.py
+          python 04_Build/v2/test_r8_19_geo_phase2.py
+          python 04_Build/v2/test_r8_19_geo_autonomy.py
+          python 04_Build/v2/test_r8_19_geo_phase3.py
+          python 04_Build/v2/test_r8_20_seo_geo_growth.py
+      - name: Verify production entrypoint activates R8-19 and R8-20
+        run: |
+          $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
+          foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch')) {
+            if (-not $run.Contains($marker)) { throw "Production entrypoint missing $marker" }
+          }
+          $patch = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py' -Raw
+          foreach ($marker in @('seo-geo-growth-intelligence.js','/api/r8-20/seo-geo','seo_geo_source_tracking_patch')) {
+            if (-not $patch.Contains($marker)) { throw "R8-20 runtime integration missing $marker" }
+          }
+      - name: Integrate unified model connection center into packaged web
+        run: |
+          $targets = @(
+            '05_V2.0.0_Source/web/index.html',
+            '05_V2.0.0_Source/web/operational.html'
+          )
+          foreach ($path in $targets) {
+            $text = Get-Content -LiteralPath $path -Raw
+            if (-not $text.Contains('model-connection-center.css')) {
+              $text = $text.Replace('</head>', '<link rel="stylesheet" href="model-connection-center.css"></head>')
+            }
+            if (-not $text.Contains('model-connection-center.js')) {
+              $text = $text.Replace('</body>', '<script src="model-connection-center.js"></script></body>')
+            }
+            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css')) {
+              throw "Unified model connection center injection failed: $path"
+            }
+            Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          }
+      - name: Check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+      - name: Real Chrome source responsiveness gate
+        timeout-minutes: 4
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py
+      - name: Verify packaged source contract
+        run: |
+          python 04_Build/v2/verify_v2_autonomous.py --source
+          python 04_Build/v2/verify_r8_operational.py --source
+      - name: Build packaged runtime and installer
+        run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
+      - name: Real Chrome packaged-runtime responsiveness gate
+        timeout-minutes: 4
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+      - name: Scan final installer with Microsoft Defender when available
+        run: ./04_Build/v2/test_windows_security.ps1
+      - name: Test silent install launch overwrite upgrade and uninstall
+        run: ./04_Build/v2/test_installer.ps1
+      - name: Record R8-20 final installer provenance
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          @{
+            version = '2.2.2 R8-20 SEO/GEO Real Growth Operating Loop Final'
+            commit = '${{ github.sha }}'
+            run_number = '${{ github.run_number }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha256 = $hash
+            development_items = 38
+            target_autonomy = '90-95%'
+            owner_dashboard = @('SEO trend 7/30/90','GEO trend 7/30/90','business funnel through order','multi-AI A/B matrix','alerts','ChatGPT controller brief')
+            truth_policy = 'Search crawl/index/rank and GEO A/B metrics require real evidence. Business attribution stops at order and excludes financial metrics.'
+            field_acceptance = @('Phase2 live 1->3->10->50','Phase3 real publish->new A/B retest->Before/After')
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_20_SEO_GEO_GROWTH_FINAL.json
+      - name: Upload final Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_20_SEO_GEO_Growth_Final
+          path: installer_output_v2/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload final portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_20_SEO_GEO_Growth_Final_Portable
+          path: dist_v2/
+          if-no-files-found: error
+          retention-days: 90
