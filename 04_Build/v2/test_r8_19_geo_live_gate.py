@@ -4,9 +4,9 @@ Browser validation is the default real external path, local models remain
 C-level only, and paid API is optional. The old API-oriented click-capture gate
 must not be injected because it can intercept the browser-first controls.
 
-This is a cross-phase regression gate: later R8-20/R8-21/R8-22 releases must
-preserve all R8-19 live validation contracts while allowing the visible build
-label to advance beyond R8-19.
+This is a cross-phase regression gate: later R8-20/R8-21/R8-22/R8-23 releases
+must preserve all R8-19 live validation contracts while allowing the visible
+build label to advance beyond R8-19.
 """
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def main():
     for marker in ('本地预检1题', '网页真实验证1题', '准备10题', '保存真实网页 Evidence / Receipt', 'API执行本轮 GEO 测试（可选）'):
         require(marker in ui, f'GEO no-API base UI marker missing: {marker}')
 
-    supported_visible_phases = ('R8-19', 'R8-20', 'R8-21', 'R8-22')
+    supported_visible_phases = ('R8-19', 'R8-20', 'R8-21', 'R8-22', 'R8-23')
     require(any(f'phase: "{phase}"' in build for phase in supported_visible_phases), 'visible build identity is older than R8-19 or untraceable')
     require(any(phase in build for phase in supported_visible_phases), 'visible R8-19+ release label missing')
     require('R8-18' not in build, 'stale R8-18 identity remains in build_info.js')
