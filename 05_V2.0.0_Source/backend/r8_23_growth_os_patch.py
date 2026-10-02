@@ -54,7 +54,6 @@ def _controller_tick():
     try:
         result["r8_23"] = growth_os.decision_cycle(mission, plan, reason="controller_tick")
     except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError) as error:
-        # R8-23 governance must fail-soft and never stop the R8-22 control plane.
         result["r8_23"] = {"degraded": True, "reason": str(error)}
     return result
 
@@ -95,7 +94,6 @@ def _video_run(*args, **kwargs):
         raise
     gpu = growth_os.gpu_status()
     if gpu.get("rtx3060") and isinstance(result, dict) and not result.get("skipped"):
-        # Record only when the worker actually had work and the real 3060 was detected.
         growth_os.record_utilization("rtx3060", success=_success(result), result=result, reason="video_worker_with_3060_detected", context={"source": "video_worker", "gpus": gpu.get("gpus")})
     return result
 
@@ -120,6 +118,23 @@ def _search_run(*args, **kwargs):
     return result
 
 
+def _serve_autonomous_ops(handler):
+    """Keep one browser entry while layering R8-22 + R8-23 owner views."""
+    web = server.get_web_path()
+    source = "\n;\n".join([
+        (web / "autonomous-ops.js").read_text(encoding="utf-8"),
+        (web / "r8_22_autonomy.js").read_text(encoding="utf-8"),
+        (web / "r8_23_growth_os.js").read_text(encoding="utf-8"),
+    ])
+    data = source.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -138,6 +153,9 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path == "/autonomous-ops.js":
+                _serve_autonomous_ops(handler)
+                return
             if path == "/api/r8-23/growth-os":
                 handler._json_ok(growth_os.snapshot())
                 return
