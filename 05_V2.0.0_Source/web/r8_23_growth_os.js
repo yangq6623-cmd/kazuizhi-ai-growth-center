@@ -109,8 +109,23 @@
     return `<div class="kz23-metric ${klass}"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(note||'')}</small></div>`;
   }
 
+  function findLedger(){
+    const headings = [...document.querySelectorAll('h1,h2,h3,h4')];
+    const heading = headings.find(node => String(node.textContent||'').includes('MISSION CONTROL LEDGER'));
+    if(!heading) return null;
+    let container = heading.closest('article,.panel,.wide');
+    if(!container) container = heading.parentElement;
+    if(!container || container.id === 'kz-r8-23-growth-os' || container.contains(byId('kz-r8-23-growth-os'))) return null;
+    return container;
+  }
+
   function render(growth, autonomy, seo){
     const panel = host();
+    const preservedR22 = byId('kz-r8-22-autonomy');
+    const preservedLedger = findLedger();
+    if(preservedR22 && panel.contains(preservedR22)) preservedR22.remove();
+    if(preservedLedger && panel.contains(preservedLedger)) preservedLedger.remove();
+
     const command = autonomy.command || {};
     const mission = autonomy.mission || {};
     const plan = autonomy.plan || {};
@@ -156,18 +171,13 @@
         <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth)}</div></details>
         <details class="kz23-details" id="kz-r8-23-legacy"><summary>技术主线与历史审计 · 默认收起，不再占满老板工作台</summary><div class="kz23-details-content kz23-legacy-slot"><div id="kz-r8-23-r22-slot"></div><div id="kz-r8-23-ledger-slot"></div></div></details>
       </div>`;
+
+    const r22slot = byId('kz-r8-23-r22-slot');
+    const ledgerslot = byId('kz-r8-23-ledger-slot');
+    if(preservedR22 && r22slot){ r22slot.appendChild(preservedR22); preservedR22.classList.add('kz23-embedded-legacy'); }
+    if(preservedLedger && ledgerslot){ preservedLedger.classList.add('kz23-legacy-ledger'); ledgerslot.appendChild(preservedLedger); }
     foldLegacy();
     polishSeo();
-  }
-
-  function findLedger(){
-    const headings = [...document.querySelectorAll('h1,h2,h3,h4')];
-    const heading = headings.find(node => String(node.textContent||'').includes('MISSION CONTROL LEDGER'));
-    if(!heading) return null;
-    let container = heading.closest('article,.panel,.wide');
-    if(!container) container = heading.parentElement;
-    if(!container || container.id === 'kz-r8-23-growth-os' || container.contains(byId('kz-r8-23-growth-os'))) return null;
-    return container;
   }
 
   function foldLegacy(){
