@@ -84,7 +84,7 @@ MAX_PROCESS_RESTARTS_10_MIN = 5
 def _set_keep_awake(enabled):
     """Prevent Windows system sleep while the owner explicitly keeps the app running.
 
-    The display may still turn off.  Clearing ES_SYSTEM_REQUIRED on shutdown
+    The display may still turn off. Clearing ES_SYSTEM_REQUIRED on shutdown
     restores the user's normal Windows power policy.
     """
     if os.name != "nt":
@@ -109,7 +109,7 @@ def _runtime_mark(name, *, ok=True, error=None, detail=None, force_persist=False
 def _sync_r8_17_remote_agent(*, check_live=True):
     """Import a local pairing file and optionally check the remote deploy route.
 
-    The desktop must paint its first page from local state.  A public-network
+    The desktop must paint its first page from local state. A public-network
     probe may take many seconds on an unreliable network, so startup only
     discovers local pairing data; the background scheduler performs the live
     route check after the owner shell is ready.
@@ -142,11 +142,7 @@ def start_scheduler():
                 if tick % 20 == 0:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
-                    # R8-17: periodically discover a pairing file copied to this
-                    # PC and keep the lightweight server execution channel live.
                     _sync_r8_17_remote_agent()
-                    # Local SEO/GEO work remains autonomous. PUBLISHED requires
-                    # public verification; SUBMITTED requires a search receipt.
                     run_seo_geo_autonomy(force=False)
                     audit_policy = seo_geo_autonomy_status()
                     if (
@@ -156,8 +152,6 @@ def start_scheduler():
                         and seo_technical_audit_due()
                         and int((seo_geo_dashboard().get("summary") or {}).get("public_pages") or 0) > 0
                     ):
-                        # Network delay is bounded by provider timeouts; this
-                        # lane remains isolated from AI/video workers below.
                         run_seo_technical_audit(seo_geo_dashboard())
                 _runtime_mark("scheduler_core", ok=True, detail=f"tick={tick}")
             except Exception as error:
@@ -184,7 +178,7 @@ def start_content_execution_worker():
                 sync_autonomous_ops(autostart=True)
                 sync_content_plans()
                 recover_authorized_qc(limit=10)
-                run_ai_gateway(limit=2)  # optional enhancer only; provider calls are timeout-bounded
+                run_ai_gateway(limit=2)
                 sync_chatgpt_handoffs()
                 bridge_sync_once()
                 run_publish_planning(limit=10)
@@ -317,42 +311,43 @@ def main():
 
     keep_awake = _set_keep_awake(True)
     runtime_start_process(keep_awake=keep_awake)
-    with server:
-        migrate_r6()
-        migrate_to_v2_2()
-        recover_interrupted()
-        # Recover only persisted local ChatGPT handoff state before first paint.
-        # This is a filesystem operation, not an external probe; all network,
-        # AI and SEO work remains on the workers below.
-        try:
-            sync_chatgpt_handoffs(force=True)
-        except Exception as error:
-            print(f"Initial handoff recovery deferred: {error}", flush=True)
-        # Keep the HTTP shell responsive while slow model/network/render work is
-        # isolated in its own fail-soft workers.
-        scheduler_stop = start_scheduler()
-        content_worker_stop = start_content_execution_worker()
-        relay_stop = start_chatgpt_relay_worker()
-        video_worker_stop = start_video_production_worker()
-        AIEngine().start()
-        url = f"http://127.0.0.1:{server.server_port}/?build={BUILD_ID}"
-        print(PRODUCT_NAME, flush=True)
-        print(f"Dashboard URL: {url}", flush=True)
-        if not args.no_browser:
-            webbrowser.open(url)
-        try:
-            _runtime_mark("http_server", ok=True, detail=f"port={server.server_port}", force_persist=True)
-            server.serve_forever()
-        except Exception as error:
-            _runtime_mark("http_server", ok=False, error=error, detail=f"port={server.server_port}", force_persist=True)
-            raise
-        finally:
-            scheduler_stop.set()
-            content_worker_stop.set()
-            relay_stop.set()
-            video_worker_stop.set()
-            runtime_stop_process()
-            _set_keep_awake(False)
+    worker_stops = []
+    try:
+        with server:
+            migrate_r6()
+            migrate_to_v2_2()
+            recover_interrupted()
+            try:
+                sync_chatgpt_handoffs(force=True)
+            except Exception as error:
+                print(f"Initial handoff recovery deferred: {error}", flush=True)
+
+            worker_stops = [
+                start_scheduler(),
+                start_content_execution_worker(),
+                start_chatgpt_relay_worker(),
+                start_video_production_worker(),
+            ]
+            AIEngine().start()
+            url = f"http://127.0.0.1:{server.server_port}/?build={BUILD_ID}"
+            print(PRODUCT_NAME, flush=True)
+            print(f"Dashboard URL: {url}", flush=True)
+            if not args.no_browser:
+                webbrowser.open(url)
+            try:
+                _runtime_mark("http_server", ok=True, detail=f"port={server.server_port}", force_persist=True)
+                server.serve_forever()
+            except Exception as error:
+                _runtime_mark("http_server", ok=False, error=error, detail=f"port={server.server_port}", force_persist=True)
+                raise
+    finally:
+        for stop in worker_stops:
+            try:
+                stop.set()
+            except Exception:
+                pass
+        runtime_stop_process()
+        _set_keep_awake(False)
 
 
 def _run_main_with_recovery():
