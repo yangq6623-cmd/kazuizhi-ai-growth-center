@@ -108,6 +108,27 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
+        # The legacy SEO page still posts this route from its primary
+        # "运行一次增长循环" button.  In R8-20 it must invoke the *full*
+        # autonomous controller (Phase3 targeting -> QC -> verified public
+        # deploy -> search receipt -> Phase3 retest), not the old local-only
+        # run_daily_cycle endpoint captured by R8-13.
+        if path == "/api/r8-13/seo-geo/run":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                result = seo_core.run_once(force=bool(payload.get("force", True)))
+                handler._json_ok({
+                    "result": result,
+                    "growth": growth.status(int(payload.get("days") or 30)),
+                    "mode": "r8_20_full_autonomous_loop",
+                })
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
         supported = {
             "/api/r8-20/seo-geo/refresh",
             "/api/r8-20/seo-geo/search-observation",
@@ -131,7 +152,7 @@ def install():
         try:
             payload = _read_json(handler)
             if path == "/api/r8-20/seo-geo/refresh":
-                result = growth.run_once(force=bool(payload.get("force", True)))
+                result = seo_core.run_once(force=bool(payload.get("force", True)))
             elif path == "/api/r8-20/seo-geo/search-observation":
                 result = growth.record_search_observation(payload)
             elif path == "/api/r8-20/seo-geo/attribution":
