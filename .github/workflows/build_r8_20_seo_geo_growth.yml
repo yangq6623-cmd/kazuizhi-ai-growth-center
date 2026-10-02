@@ -1,8 +1,8 @@
-name: Build Kazuizhi R8-22 7x24 Autonomous Convergence
+name: Build Kazuizhi R8-23 Final Autonomous Growth OS
 
 on:
   push:
-    branches: ['r8-22-autonomous-convergence-*']
+    branches: ['r8-23-final-autonomous-growth-os-*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -41,7 +41,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           python -m pip install playwright==1.55.0
-      - name: Verify R7 R8 GEO Phase 1-3 R8-20 R8-21 and R8-22 autonomous convergence
+      - name: Verify R7 R8 GEO Phase 1-3 R8-20 R8-21 R8-22 and R8-23 Growth OS
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -77,7 +77,8 @@ jobs:
           python 04_Build/v2/test_r8_20_24h_runtime.py
           python 04_Build/v2/test_r8_21_unified_connectors.py
           python 04_Build/v2/test_r8_22_autonomous_convergence.py
-      - name: Verify production entrypoint activates R8-19 through R8-22
+          python 04_Build/v2/test_r8_23_final_growth_os.py
+      - name: Verify production entrypoint activates R8-19 through R8-23
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
           foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
@@ -88,10 +89,16 @@ jobs:
             if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
           }
           $truthPatch = Get-Content -LiteralPath '05_V2.0.0_Source/core/r8_20_growth_truth_patch.py' -Raw
-          if (-not $truthPatch.Contains('r8_22_autonomy_convergence_patch')) { throw 'R8-22 production activation missing' }
+          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch')) {
+            if (-not $truthPatch.Contains($marker)) { throw "Production activation missing $marker" }
+          }
           $r822 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_22_autonomy_convergence_patch.py' -Raw
           foreach ($marker in @('/api/r8-22/autonomy','/api/r8-22/autonomy/events','/api/r8-22/autonomy/receipt','command_execution.reconcile_jobs','autonomous_ops.sync_from_runtime','r7_engine.run_due_jobs')) {
             if (-not $r822.Contains($marker)) { throw "R8-22 runtime integration missing $marker" }
+          }
+          $r823 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_growth_os_patch.py' -Raw
+          foreach ($marker in @('/api/r8-23/growth-os','/api/r8-23/growth-os/utilization','r8_23_growth_operating_system','r8_23_growth_os.js','convergence.controller_tick')) {
+            if (-not $r823.Contains($marker)) { throw "R8-23 runtime integration missing $marker" }
           }
       - name: Integrate unified model connection center into packaged web
         run: |
@@ -135,36 +142,36 @@ jobs:
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install launch overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-22 final installer provenance
+      - name: Record R8-23 final installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-22 7x24 Autonomous Convergence'
+            version = '2.2.2 R8-23 Final 7x24 Autonomous Growth OS'
             commit = '${{ github.sha }}'
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
             inherited_development_items = 38
-            inherited_connector_router = 'R8-21 unified SEO/GEO connector router preserved'
-            convergence_upgrade = @('latest verified Command auto-promotes to current Mission','Command objective auto-compiles Controller Plan','P0 current Mission before legacy backlog','legacy backlog demoted without deletion','optional offline social channels deferred without blocking website SEO/GEO','15-minute truthful phase Receipt','unified owner event stream','legacy Mission ledger clearly marked historical','human-only blockers restricted to real authorization/high-risk boundaries')
-            target = 'owner sets objective; ChatGPT/controller plans; AI employees/models execute; truthful receipts drive next cycle; 7x24 event-driven autonomy'
-            runtime_resilience = @('5760-cycle 24h-equivalent soak inherited','Windows sleep prevention','isolated scheduler/content/video/relay workers','fail-soft worker exceptions','bounded process restart circuit breaker','runtime health heartbeat API')
-            truth_policy = 'No local/model completion claims external publication, submission, indexing, ranking, formal GEO or business conversion. Formal GEO still requires real A/B Evidence; finance/identity/captcha/core permissions remain human-only.'
-            field_acceptance = @('real owner Command becomes active Mission on Windows','Controller Plan appears without a second owner click','current Mission work progresses ahead of historical backlog','optional offline channel does not block SEO/GEO','15-minute phase receipts/events visible','24h then 7-day real Windows unattended soak')
-          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_22_AUTONOMOUS_CONVERGENCE.json
+            inherited_r8_22 = 'Command -> Mission -> Controller Plan -> P0 Task -> 15-minute truthful Receipt preserved'
+            growth_os = @('ChatGPT sole strategic controller','two business engines: repair services + personal tasks','eight AI employee work owners','local model low-risk high-volume route','RTX 3060 eligible GPU/image/video route','Doubao cloud augmentation route','explicit capability trigger/fallback/return path','capability utilization ledger separate from connection state','graded L1-L4 external authority','single capability failure degrades locally without blocking core Mission')
+            outcome_scope = 'site visit -> mini-program visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI'
+            truth_policy = 'Configured does not mean invoked; invoked does not mean external success. Model/local output is not formal external evidence. Formal GEO still requires real A/B Evidence and external publish/search/business outcomes require real Receipt/Evidence.'
+            operating_target = '7x24 event-driven autonomous growth for Kazuizhi local repair integrated service platform with ChatGPT controller and minimal human gates'
+            field_acceptance = @('24h Windows unattended run','72h run','7-day soak','model/API/channel loss degradation','restart resumes last valid Mission','one real social platform closed loop before copying to the next')
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_FINAL_AUTONOMOUS_GROWTH_OS.json
       - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_22_Autonomous_Convergence_Final
+          name: Kazuizhi_AI_Enterprise_R8_23_Final_Autonomous_Growth_OS
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload final portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_22_Autonomous_Convergence_Final_Portable
+          name: Kazuizhi_AI_Enterprise_R8_23_Final_Autonomous_Growth_OS_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
