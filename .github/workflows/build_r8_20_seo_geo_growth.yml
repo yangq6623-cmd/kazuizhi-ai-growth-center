@@ -73,6 +73,7 @@ jobs:
           python 04_Build/v2/test_r8_19_geo_autonomy.py
           python 04_Build/v2/test_r8_19_geo_phase3.py
           python 04_Build/v2/test_r8_20_seo_geo_growth.py
+          python 04_Build/v2/test_r8_20_phase3_publish_bridge.py
       - name: Verify production entrypoint activates R8-19 and R8-20
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
@@ -80,7 +81,7 @@ jobs:
             if (-not $run.Contains($marker)) { throw "Production entrypoint missing $marker" }
           }
           $patch = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py' -Raw
-          foreach ($marker in @('seo-geo-growth-intelligence.js','/api/r8-20/seo-geo','seo_geo_source_tracking_patch')) {
+          foreach ($marker in @('seo-geo-growth-intelligence.js','/api/r8-20/seo-geo','seo_geo_source_tracking_patch','/api/r8-13/seo-geo/run')) {
             if (-not $patch.Contains($marker)) { throw "R8-20 runtime integration missing $marker" }
           }
       - name: Integrate unified model connection center into packaged web
