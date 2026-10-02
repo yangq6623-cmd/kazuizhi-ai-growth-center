@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from urllib.parse import urlsplit
 
 from backend import server
@@ -18,6 +19,9 @@ _ORIGINAL_SEO_GEO_RUN = seo_geo_autonomy.run_once
 _ORIGINAL_VIDEO_RUN = video_worker.run_pending
 _ORIGINAL_DEPLOY_RUN = seo_public_deployer.deploy_pending
 _ORIGINAL_SEARCH_RUN = search_engine_submitter.submit_pending
+GROWTH_CYCLE_INTERVAL_SECONDS = 300
+_LAST_GROWTH_CYCLE_MONOTONIC = 0.0
+_LAST_GROWTH_PLAN_ID = None
 
 
 def _origin_allowed(handler):
@@ -48,11 +52,21 @@ def _success(result):
 
 
 def _controller_tick():
+    global _LAST_GROWTH_CYCLE_MONOTONIC, _LAST_GROWTH_PLAN_ID
     result = _ORIGINAL_CONTROLLER_TICK()
     mission = convergence.ensure_command_mission() or {}
     plan = convergence.ensure_controller_plan(mission) if mission else {}
+    plan_id = str(plan.get("plan_id") or "")
+    current = time.monotonic()
+    due = bool(plan_id and (plan_id != _LAST_GROWTH_PLAN_ID or current - _LAST_GROWTH_CYCLE_MONOTONIC >= GROWTH_CYCLE_INTERVAL_SECONDS))
+    if not due:
+        result["r8_23"] = {"deferred": True, "reason": "stable_growth_cycle_throttle", "plan_id": plan_id}
+        return result
     try:
         result["r8_23"] = growth_os.decision_cycle(mission, plan, reason="controller_tick")
+        growth_os.record_utilization("chatgpt_controller", success=True, reason="controller_cycle", context={"mission_id": mission.get("mission_id"), "plan_id": plan_id})
+        _LAST_GROWTH_CYCLE_MONOTONIC = current
+        _LAST_GROWTH_PLAN_ID = plan_id
     except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError) as error:
         result["r8_23"] = {"degraded": True, "reason": str(error)}
     return result
@@ -119,7 +133,6 @@ def _search_run(*args, **kwargs):
 
 
 def _serve_autonomous_ops(handler):
-    """Keep one browser entry while layering R8-22 + R8-23 owner views."""
     web = server.get_web_path()
     source = "\n;\n".join([
         (web / "autonomous-ops.js").read_text(encoding="utf-8"),
