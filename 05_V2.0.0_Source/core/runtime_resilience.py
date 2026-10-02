@@ -20,7 +20,7 @@ STORE = "r8_20/runtime_health.json"
 SCHEMA = "kz.runtime-health.v1"
 PERSIST_INTERVAL_SECONDS = 60
 # AI/model calls are timeout-bounded but may legitimately take up to ~90 seconds
-# each.  Five minutes distinguishes a slow provider from a dead worker without
+# each. Five minutes distinguishes a slow provider from a dead worker without
 # producing false alarms during two-item gateway batches.
 STALE_AFTER_SECONDS = 300
 _LOCK = threading.RLock()
@@ -204,6 +204,13 @@ def snapshot(stale_after_seconds=STALE_AFTER_SECONDS):
             elif int(worker.get("consecutive_failures") or 0) >= 3:
                 worker["state"] = "degraded"
                 unhealthy.append(name)
+            elif name == "http_server" and process.get("running"):
+                # serve_forever() is intentionally a blocking main-loop call.
+                # It records a heartbeat when it starts and an explicit failure
+                # if it exits abnormally; lack of periodic heartbeats is not a
+                # stale condition while the process itself is still running.
+                worker["state"] = "healthy"
+                worker["blocking_main_loop"] = True
             elif age is not None and age > int(stale_after_seconds):
                 worker["state"] = "stale"
                 unhealthy.append(name)
