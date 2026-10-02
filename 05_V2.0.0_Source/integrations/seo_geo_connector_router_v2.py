@@ -2,7 +2,7 @@
 
 Keeps the base channel/model/control mapping small while adding the concrete
 search submission adapters already present in R8-16 plus the formal external-AI
-browser route used by R8-19.  Capability availability is not a success claim.
+browser route used by R8-19. Capability availability is not a success claim.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def _search_rows() -> list[dict]:
         }
 
     deploy_ready = bool(deploy.get("ready"))
-    rows = [
+    return [
         search_row("baidu_search_resource_api", "baidu", "百度搜索资源平台 API"),
         search_row("bing_indexnow", "bing", "Bing / IndexNow"),
         search_row("google_search_console", "google", "Google Search Console"),
@@ -97,12 +97,43 @@ def _search_rows() -> list[dict]:
             "next_action": "作为GEO正式验收与Phase3复测通道；遇到登录/验证码时转待处理，其他自治任务继续。",
         },
     ]
-    return rows
+
+
+def _correct_live_transport_truth(rows: list[dict]) -> None:
+    """Configuration is not the same as a live remote transport round trip."""
+    try:
+        from core.runtime_resilience import snapshot as runtime_snapshot
+        runtime = runtime_snapshot()
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
+        runtime = {}
+    workers = runtime.get("workers") if isinstance(runtime.get("workers"), dict) else {}
+    relay_worker = workers.get("chatgpt_relay") if isinstance(workers.get("chatgpt_relay"), dict) else {}
+    for row in rows:
+        if row.get("id") != "chatgpt_relay":
+            continue
+        configured = bool(row.get("software_route_ready"))
+        live = bool(
+            configured
+            and relay_worker.get("enabled")
+            and relay_worker.get("state") == "healthy"
+            and int(relay_worker.get("cycles") or 0) > 0
+            and relay_worker.get("last_ok_at")
+        )
+        row["external_verified"] = live
+        if live:
+            row["route_state"] = "ready"
+            row["next_action"] = "安全 Relay 已有实时成功心跳，可承载远程 Command→Receipt。"
+        elif configured:
+            row["route_state"] = "configured_waiting_live"
+            row["next_action"] = "Relay 参数已配置，但还没有当前进程的成功轮询心跳；不能把配置状态当作远程通道已在线。"
+        else:
+            row["route_state"] = "not_configured"
 
 
 def snapshot(*, check_live=False) -> dict:
     data = base.snapshot(check_live=check_live)
     rows = list(data.get("connectors") or []) + _search_rows()
+    _correct_live_transport_truth(rows)
     summary = {
         "total": len(rows),
         "software_ready": sum(1 for row in rows if row.get("software_route_ready")),
@@ -117,14 +148,13 @@ def snapshot(*, check_live=False) -> dict:
     }
     blockers = [
         {"id": row.get("id"), "name": row.get("name"), "state": row.get("route_state"), "next_action": row.get("next_action")}
-        for row in rows if not row.get("software_route_ready")
+        for row in rows if not row.get("software_route_ready") or row.get("route_state") in {"configured_waiting_live", "configured_waiting_external"}
     ]
     data.update({"schema": "kz.seo-geo-connector-router.v2", "summary": summary, "connectors": rows, "blockers": blockers})
     return data
 
 
 def sync_growth_health(*, check_live=False) -> dict:
-    # Keep base route health semantics, then add only active concrete connectors.
     base.sync_growth_health(check_live=check_live)
     matrix = snapshot(check_live=check_live)
     try:
@@ -133,7 +163,6 @@ def sync_growth_health(*, check_live=False) -> dict:
             if not row.get("software_route_ready"):
                 continue
             detail = f"state={row.get('route_state')}; caps={','.join(row.get('capabilities') or [])}"
-            # A route may be operational before an external success exists.
             growth.record_connector_health(f"route:{row.get('id')}", True, detail)
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
         pass
@@ -151,6 +180,7 @@ def route_summary_for_controller(*, check_live=False) -> dict:
         "ai_execution": [row.get("id") for row in rows if row.get("use_for_ai_execution") and row.get("software_route_ready")],
         "business_attribution": [row.get("id") for row in rows if row.get("use_for_business_attribution") and row.get("software_route_ready")],
         "formal_geo": [row.get("id") for row in rows if row.get("formal_geo_evidence") and row.get("software_route_ready")],
+        "live_remote_control": [row.get("id") for row in rows if row.get("id") == "chatgpt_relay" and row.get("external_verified")],
         "blockers": matrix.get("blockers") or [],
         "truth_rule": matrix.get("truth_rule"),
     }
