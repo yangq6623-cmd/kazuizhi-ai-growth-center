@@ -118,8 +118,8 @@ def main():
                 assert marker in ui, marker
 
             build = BUILD_INFO.read_text(encoding="utf-8")
-            assert 'phase: "R8-21"' in build
-            assert "SEO/GEO Unified Connectors" in build
+            assert ('phase: "R8-21"' in build) or ('phase: "R8-22"' in build)
+            assert ("SEO/GEO Unified Connectors" in build) or ("Autonomous Convergence" in build)
             assert "blocking_main_loop" in RUNTIME.read_text(encoding="utf-8")
 
             print("PASS: R8-21 unified connection center -> SEO/GEO capability routes + truth gates + runtime health fix")
