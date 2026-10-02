@@ -19,7 +19,10 @@ from core.storage import now_iso, read_json, write_json
 STORE = "r8_20/runtime_health.json"
 SCHEMA = "kz.runtime-health.v1"
 PERSIST_INTERVAL_SECONDS = 60
-STALE_AFTER_SECONDS = 180
+# AI/model calls are timeout-bounded but may legitimately take up to ~90 seconds
+# each.  Five minutes distinguishes a slow provider from a dead worker without
+# producing false alarms during two-item gateway batches.
+STALE_AFTER_SECONDS = 300
 _LOCK = threading.RLock()
 _STATE = None
 _LAST_PERSIST_MONOTONIC = 0.0
