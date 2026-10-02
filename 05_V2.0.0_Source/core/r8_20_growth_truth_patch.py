@@ -58,3 +58,9 @@ def controller_priorities():
 growth.provider_matrix = provider_matrix
 growth.third_party_source_gaps = third_party_source_gaps
 growth.controller_priorities = controller_priorities
+
+# R8-22 is an additive control-plane closure, not a replacement for the
+# R8-20/R8-21 SEO/GEO stack.  Importing it here guarantees that the real
+# desktop entrypoint activates Command->Mission->Plan convergence before
+# run.py captures scheduler function references.
+from backend import r8_22_autonomy_convergence_patch as _r8_22_autonomy_convergence_patch  # noqa: E402,F401
