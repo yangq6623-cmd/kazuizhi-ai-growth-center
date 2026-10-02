@@ -15,6 +15,7 @@ _ORIGINAL_AUTONOMOUS_SYNC = autonomous_ops.sync_from_runtime
 _ORIGINAL_ACTIVE_AUTHORIZATION = command_execution.active_authorization
 _ORIGINAL_RECONCILE = command_execution.reconcile
 _ORIGINAL_RUN_DUE_JOBS = r7_engine.run_due_jobs
+_ORIGINAL_ENSURE_COMMAND_MISSION = convergence.ensure_command_mission
 
 
 def _origin_allowed(handler):
@@ -30,6 +31,40 @@ def _read_json(handler):
     if length < 0 or length > 128 * 1024:
         raise ValueError("请求内容过大")
     return json.loads(handler.rfile.read(length) or b"{}") if length else {}
+
+
+def _ensure_command_mission():
+    """Avoid rewriting stable Mission state on every 5/15-second UI/scheduler poll."""
+    link = convergence._latest_authorized_command()
+    if not link:
+        return None
+    command_id = str(link.get("command_id") or "")
+    state = convergence._load_state()
+    data = autonomous_ops._load()
+    mission = autonomous_ops._find_mission(data, mission_id=state.get("active_mission_id"))
+    if (
+        mission
+        and data.get("active_mission_id") == mission.get("mission_id")
+        and str(mission.get("command_id") or "") == command_id
+        and str(mission.get("command_status") or "") == str(link.get("status") or "")
+        and str(mission.get("command_receipt_id") or "") == str(link.get("control_receipt_id") or "")
+    ):
+        return mission
+    return _ORIGINAL_ENSURE_COMMAND_MISSION()
+
+
+def _job_after_command(job, command):
+    """Future scheduled daily work belongs to a new owner Command even when the
+    daily schedule row itself was created earlier in the morning.
+    """
+    command_time = convergence._parse_time(command.get("created_at"))
+    effective = convergence._parse_time(job.get("due_at")) or convergence._parse_time(job.get("created_at"))
+    if not command_time or not effective:
+        return False
+    try:
+        return effective >= command_time
+    except TypeError:
+        return str(job.get("due_at") or job.get("created_at") or "") >= str(command.get("created_at") or "")
 
 
 def _active_authorization(mission_id=None):
@@ -58,10 +93,11 @@ def _reconcile():
     result = _ORIGINAL_RECONCILE()
     convergence.controller_tick()
     if isinstance(result, dict):
+        state = convergence._load_state()
         result["r8_22"] = {
-            "active_command_id": (convergence._load_state()).get("active_command_id"),
-            "active_mission_id": (convergence._load_state()).get("active_mission_id"),
-            "controller_plan": bool((convergence._load_state()).get("plan")),
+            "active_command_id": state.get("active_command_id"),
+            "active_mission_id": state.get("active_mission_id"),
+            "controller_plan": bool(state.get("plan")),
         }
     return result
 
@@ -88,7 +124,7 @@ def _run_due_jobs():
         "processed": len(ids),
         "at": convergence.now_iso(),
         "priority": "current_mission_first",
-        "current_mission": (convergence._load_state()).get("active_mission_id"),
+        "current_mission": convergence._load_state().get("active_mission_id"),
     }
 
 
@@ -112,6 +148,8 @@ def install():
     if _INSTALLED:
         return
 
+    convergence.ensure_command_mission = _ensure_command_mission
+    convergence._job_after_command = _job_after_command
     command_execution.active_authorization = _active_authorization
     command_execution.reconcile_jobs = _reconcile_jobs
     command_execution.reconcile = _reconcile
