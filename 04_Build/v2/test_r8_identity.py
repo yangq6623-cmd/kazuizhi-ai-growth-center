@@ -12,7 +12,7 @@ EXPECTED_DISPLAY = "V2.2.2 自治运营核心"
 EXPECTED_RUNTIME = "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
 EXPECTED_CORE_PHASE = "R8-09"
 EXPECTED_WEB_PHASE = "R8-17"
-EXPECTED_CANDIDATE_PHASE = "R8-19"
+EXPECTED_CANDIDATE_PHASE = "R8-21"
 EXPECTED_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
 EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core"
 
@@ -46,7 +46,7 @@ for value in ("V2.2.2 Autonomous Mission Core", EXPECTED_RUNTIME, EXPECTED_WEB_P
 if EXPECTED_RUNTIME not in identity or EXPECTED_DISPLAY not in identity or EXPECTED_CORE_PHASE not in identity:
     raise AssertionError("R8 core visible identity patch mismatch")
 if EXPECTED_CANDIDATE_PHASE not in build_info:
-    raise AssertionError("R8-19 candidate phase missing from build provenance")
+    raise AssertionError("R8-21 candidate phase missing from build provenance")
 if "build_info.js" not in forms or "r8_identity.js" not in forms:
     raise AssertionError("R8 visible identity scripts are not loaded")
 if "runNumber" not in build_info or "commit" not in build_info:
@@ -77,4 +77,4 @@ if "2.2.2.22" not in windows_version or EXPECTED_PRODUCT not in windows_version:
 if EXPECTED_INSTALLER not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-19 candidate provenance and R7 compatibility are traceable")
+print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-21 candidate provenance and R7 compatibility are traceable")
