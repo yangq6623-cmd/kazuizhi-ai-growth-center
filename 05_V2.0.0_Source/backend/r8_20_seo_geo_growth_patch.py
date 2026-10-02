@@ -5,6 +5,7 @@ import json
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
+from core import runtime_resilience
 from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
@@ -56,6 +57,7 @@ def _combined_status():
     value = _ORIGINAL_STATUS()
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
     result["r8_20_growth"] = growth.status(30)
+    result["runtime_health"] = runtime_resilience.snapshot()
     return result
 
 
@@ -63,6 +65,7 @@ def _combined_run(force=False):
     value = _ORIGINAL_RUN(force=force)
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
     result["r8_20_growth"] = growth.run_once(force=force)
+    result["runtime_health"] = runtime_resilience.snapshot()
     return result
 
 
@@ -82,6 +85,9 @@ def install():
         try:
             if path == "/operational-search.js":
                 _serve_operational_search(handler)
+                return
+            if path == "/api/r8-20/runtime-health":
+                handler._json_ok(runtime_resilience.snapshot())
                 return
             if path == "/api/r8-20/seo-geo":
                 handler._json_ok(growth.status(_days(handler)))
@@ -123,6 +129,7 @@ def install():
                 handler._json_ok({
                     "result": result,
                     "growth": growth.status(int(payload.get("days") or 30)),
+                    "runtime_health": runtime_resilience.snapshot(),
                     "mode": "r8_20_full_autonomous_loop",
                 })
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
@@ -177,7 +184,11 @@ def install():
                 result = growth.create_backup(payload.get("label") or "owner")
             else:
                 result = growth.restore_backup(payload.get("backup_id"), confirm=bool(payload.get("confirm")))
-            handler._json_ok({"result": result, "growth": growth.status(int(payload.get("days") or 30))})
+            handler._json_ok({
+                "result": result,
+                "growth": growth.status(int(payload.get("days") or 30)),
+                "runtime_health": runtime_resilience.snapshot(),
+            })
         except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
