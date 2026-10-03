@@ -30,9 +30,6 @@ def main():
             assert release["funds_policy"] == "human_only"
             assert "formal_external_evidence" in release["truth_policy"]
 
-            # Field regression: an old accepted Command must not become unusable merely
-            # because its original created_at is >24h old while the real controller has
-            # continued producing recent convergence/phase receipts.
             now = datetime.now().astimezone()
             old_command = (now - timedelta(days=7)).isoformat()
             fresh_receipt = (now - timedelta(minutes=2)).isoformat()
@@ -50,10 +47,8 @@ def main():
                     "created_at": now.isoformat(),
                 }
                 candidate._state = lambda: {
-                    "active_command_id": "CMD-ACTIVE",
-                    "active_mission_id": "MISSION-ACTIVE",
-                    "last_phase_receipt_at": fresh_receipt,
-                    "updated_at": fresh_receipt,
+                    "active_command_id": "CMD-ACTIVE", "active_mission_id": "MISSION-ACTIVE",
+                    "last_phase_receipt_at": fresh_receipt, "updated_at": fresh_receipt,
                     "plan": {"plan_id": "PLAN-ACTIVE", "command_id": "CMD-ACTIVE", "mission_id": "MISSION-ACTIVE"},
                 }
                 candidate._mission = lambda: {
@@ -88,7 +83,7 @@ def main():
             for marker in (
                 "controller_lease", "active_command_id", "pending_command_id",
                 "execution_stalled", "attention_summary", "DUE_JOB_EXECUTION_STALL",
-                "SEO/GEO关键语义节点", "正式GEO成绩只认真实外部AI/浏览器A/B Evidence",
+                "required_on_seo_geo_critical_semantic_steps", "正式GEO成绩只认真实外部AI/浏览器A/B Evidence",
             ):
                 assert marker in core, marker
             for marker in (
