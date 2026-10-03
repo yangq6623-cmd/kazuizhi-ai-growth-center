@@ -10,6 +10,19 @@
   "built_at": "__GITHUB_BUILD_TIME__",
   "api_contract": "r8-23.2/v1",
   "db_schema": "r8-compatible-no-destructive-migration",
+  "baseline": {
+    "installed_release": "R8-17 #76",
+    "github_run": "#76",
+    "commit": "6e8270e",
+    "package_status": "installed_baseline"
+  },
+  "candidate": {
+    "release": "R8-18 Phase 1 candidate",
+    "scope": "统一版本身份、增长证据总账与模型接入中心",
+    "package_status": "not_packaged",
+    "external_model_configured": false,
+    "local_model_deployed": false
+  },
   "runtime": {
     "product_version": "2.2.2",
     "release": "R8-23.2 Pilot RC1",
