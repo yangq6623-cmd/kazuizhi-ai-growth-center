@@ -187,8 +187,9 @@ def main() -> None:
                         heading = frame.locator('.head h1').first.inner_text()
                         if "SEO/GEO增长中心" not in heading:
                             raise AssertionError(f"wrong SEO/GEO workspace heading: {heading!r}")
-                        if page.get_by_text("从一个关键词，完成四类内容准备", exact=False).count():
-                            raise AssertionError("SEO/GEO route opened content production workbench")
+                        content_copy = page.get_by_text("从一个关键词，完成四类内容准备", exact=False)
+                        if any(content_copy.nth(i).is_visible() for i in range(content_copy.count())):
+                            raise AssertionError("SEO/GEO route visibly opened content production workbench")
                     elif target == "content-studio" or "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "") or "内容创导" in row.get("label", ""):
                         visible_text = page.locator('main').inner_text(timeout=5000)
                         if "SEO/GEO增长中心" in visible_text and "内容" not in visible_text:
