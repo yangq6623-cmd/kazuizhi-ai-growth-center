@@ -59,9 +59,10 @@ def main():
             for marker in (
                 "/api/ping", "/api/version", "/api/r8-20/seo-geo",
                 "r8_13_seo_geo_bridge.js", "r8_23_4_recovery.js",
-                "R8-23.4 Runtime & Route Recovery", "formal GEO",
+                "R8-23.4 Runtime & Route Recovery", "formal_geo_truth",
             ):
                 assert marker in patch, marker
+            assert "real external A/B Evidence only" in patch
             assert '"r8_23_3_candidate.js"' not in patch.split("def _serve_autonomous_ops", 1)[1].split("def install", 1)[0]
             for marker in (
                 "内容生产与发布", "r813-seo-geo", "SEO/GEO增长",
