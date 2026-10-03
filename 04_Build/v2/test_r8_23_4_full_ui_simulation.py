@@ -110,7 +110,6 @@ def main() -> None:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(channel="chrome", headless=True)
 
-                # Fail-open: backend version check may fail, but the owner shell must still open.
                 degraded = browser.new_page(viewport={"width": 1500, "height": 950})
                 degraded.route("**/api/version", lambda route: route.abort())
                 degraded.goto(base + "/", wait_until="domcontentloaded", timeout=12000)
@@ -131,7 +130,6 @@ def main() -> None:
                 if page.locator("#kz-r8233-boot").count():
                     raise AssertionError("blocking Candidate boot overlay returned")
 
-                # Hidden legacy route may exist for compatibility; labels must still be correct.
                 legacy_content = page.locator('aside nav button.nav[data-page="promotion"]').first
                 if legacy_content.count() and "内容生产与发布" not in legacy_content.inner_text():
                     raise AssertionError(f"promotion route mislabeled: {legacy_content.inner_text()!r}")
@@ -139,7 +137,6 @@ def main() -> None:
                 if legacy_seo.count() and "SEO/GEO增长" not in legacy_seo.inner_text():
                     raise AssertionError(f"SEO/GEO route mislabeled: {legacy_seo.inner_text()!r}")
 
-                # Authoritative owner navigation is the visible R8 primary navigation.
                 primary = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]')
                 primary_rows = primary.evaluate_all(
                     "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
@@ -150,17 +147,18 @@ def main() -> None:
                 if len(primary_targets) != len(set(primary_targets)):
                     raise AssertionError(f"duplicate primary route targets: {primary_targets}")
 
-                # SEO/GEO and content production must both be visible and separate.
-                seo_rows = [row for row in primary_rows if "SEO/GEO" in row.get("label", "")]
-                content_rows = [row for row in primary_rows if "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "")]
+                def classify(rows):
+                    seo = [row for row in rows if row.get("target") == "r813-seo-geo" or "SEO/GEO" in row.get("label", "")]
+                    content = [row for row in rows if row.get("target") == "content-studio" or "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "") or "内容创导" in row.get("label", "")]
+                    return seo, content
+
+                seo_rows, content_rows = classify(primary_rows)
                 if not seo_rows:
-                    # R8-23.4 may inject the fixed route after late bundle initialization.
                     page.wait_for_timeout(2500)
                     primary_rows = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]').evaluate_all(
                         "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
                     )
-                    seo_rows = [row for row in primary_rows if "SEO/GEO" in row.get("label", "")]
-                    content_rows = [row for row in primary_rows if "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "")]
+                    seo_rows, content_rows = classify(primary_rows)
                 if not seo_rows:
                     raise AssertionError(f"visible SEO/GEO owner route missing: {primary_rows}")
                 if not content_rows:
@@ -191,14 +189,13 @@ def main() -> None:
                             raise AssertionError(f"wrong SEO/GEO workspace heading: {heading!r}")
                         if page.get_by_text("从一个关键词，完成四类内容准备", exact=False).count():
                             raise AssertionError("SEO/GEO route opened content production workbench")
-                    elif "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", ""):
+                    elif target == "content-studio" or "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "") or "内容创导" in row.get("label", ""):
                         visible_text = page.locator('main').inner_text(timeout=5000)
-                        if "SEO/GEO增长中心" in visible_text and "内容生产" not in visible_text:
+                        if "SEO/GEO增长中心" in visible_text and "内容" not in visible_text:
                             raise AssertionError("content production route incorrectly became SEO/GEO dashboard")
                     page.screenshot(path=str(screenshots / f"primary_{index+1:02d}_{safe_name(target)}.png"), full_page=True)
                     opened.append(target)
 
-                # Diagnostics must settle or explicitly timeout; never spin forever.
                 diagnostic_row = next((row for row in primary_rows if "连接" in row.get("label", "") or row.get("target") == "connections"), None)
                 if diagnostic_row:
                     button = page.locator(f'.r810-primary-nav .r810-nav-button[data-target="{diagnostic_row["target"]}"]').first
