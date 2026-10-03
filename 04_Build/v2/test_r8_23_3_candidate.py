@@ -67,7 +67,7 @@ def main():
                 assert pack["command_id"] == "CMD-ACTIVE"
                 assert pack["plan_id"] == "PLAN-ACTIVE"
                 assert "human_only" == release["funds_policy"]
-                assert "真实外部A/B Evidence" in candidate.snapshot()["formal_geo_rule"]
+                assert "正式GEO成绩只认真实外部AI/浏览器A/B Evidence" in candidate.snapshot()["formal_geo_rule"]
             finally:
                 candidate._active_link = original_active
                 candidate._pending_link = original_pending
