@@ -122,11 +122,11 @@ def main() -> None:
                 page = browser.new_page(viewport={"width": 1600, "height": 1000})
                 errors: list[str] = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
+                started_ui = time.perf_counter()
                 page.goto(base + "/", wait_until="domcontentloaded", timeout=12000)
                 page.locator("body > .layout").wait_for(state="visible", timeout=2500)
                 page.wait_for_function("() => document.readyState === 'complete'", timeout=12000)
                 page.wait_for_function("() => document.documentElement.dataset.kzR8234Ui === 'ready'", timeout=7000)
-                page.wait_for_timeout(1600)
                 if page.locator("#kz-r8233-boot").count():
                     raise AssertionError("blocking Candidate boot overlay returned")
 
@@ -137,10 +137,25 @@ def main() -> None:
                 if legacy_seo.count() and "SEO/GEO增长" not in legacy_seo.inner_text():
                     raise AssertionError(f"SEO/GEO route mislabeled: {legacy_seo.inner_text()!r}")
 
-                primary = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]')
+                primary_selector = '.r810-primary-nav .r810-nav-button[data-target]:visible'
+                try:
+                    page.wait_for_function(
+                        "() => Array.from(document.querySelectorAll('.r810-primary-nav .r810-nav-button[data-target]')).filter(n => { const s=getComputedStyle(n); const r=n.getBoundingClientRect(); return s.display!=='none' && s.visibility!=='hidden' && r.width>0 && r.height>0; }).length >= 5",
+                        timeout=5000,
+                    )
+                except PlaywrightTimeoutError as error:
+                    rows = page.locator(primary_selector).evaluate_all(
+                        "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
+                    )
+                    raise AssertionError(f"primary owner navigation not ready within 5s: {rows}") from error
+                nav_ready_elapsed = time.perf_counter() - started_ui
+                if nav_ready_elapsed > 6.0:
+                    raise AssertionError(f"primary owner navigation too slow: {nav_ready_elapsed:.3f}s")
+
+                primary = page.locator(primary_selector)
                 primary_rows = primary.evaluate_all(
                     "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
-                ) if primary.count() else []
+                )
                 if len(primary_rows) < 5:
                     raise AssertionError(f"too few visible primary owner routes: {primary_rows}")
                 primary_targets = [row["target"] for row in primary_rows if row.get("target")]
@@ -154,8 +169,8 @@ def main() -> None:
 
                 seo_rows, content_rows = classify(primary_rows)
                 if not seo_rows:
-                    page.wait_for_timeout(2500)
-                    primary_rows = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]').evaluate_all(
+                    page.wait_for_timeout(1200)
+                    primary_rows = page.locator(primary_selector).evaluate_all(
                         "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
                     )
                     seo_rows, content_rows = classify(primary_rows)
@@ -226,8 +241,8 @@ def main() -> None:
 
             print(
                 f"PASS: R8-23.4 full UI simulation opened {len(opened)} visible owner routes; "
-                f"fail-open startup, distinct SEO/GEO + content routes, diagnostics, version and growth APIs passed. "
-                f"Screenshots: {screenshots}"
+                f"primary nav ready in {nav_ready_elapsed:.2f}s; fail-open startup, distinct SEO/GEO + content routes, "
+                f"diagnostics, version and growth APIs passed. Screenshots: {screenshots}"
             )
         finally:
             if process.poll() is None:
