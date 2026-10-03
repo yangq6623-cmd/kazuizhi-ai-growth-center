@@ -211,6 +211,61 @@
     });
   }
 
+  function reconcileDecisionStats() {
+    const plannedEl = $("#decision-planned");
+    if (!plannedEl || typeof r7Jobs === "undefined" || !Array.isArray(r7Jobs) || !r7Jobs.length) return;
+    const assigned = typeof r7TodayAssigned === "function" ? r7Jobs.filter(r7TodayAssigned) : [];
+    if (!assigned.length) return;
+    const completed = assigned.filter((job) => job && job.state === "completed");
+    const queued = assigned.filter((job) => job && ["queued", "awaiting_approval", "human_required"].includes(job.state));
+    const failed = assigned.filter((job) => job && job.state === "failed");
+    const rate = Math.round(completed.length * 100 / assigned.length);
+    plannedEl.textContent = String(assigned.length);
+    const completedEl = $("#decision-completed");
+    const queuedEl = $("#decision-queued");
+    const failedEl = $("#decision-failed");
+    const rateEl = $("#decision-rate");
+    if (completedEl) completedEl.textContent = String(completed.length);
+    if (queuedEl) queuedEl.textContent = String(queued.length);
+    if (failedEl) failedEl.textContent = String(failed.length);
+    if (rateEl) rateEl.textContent = `${rate}%`;
+    const headline = $("#decision-headline");
+    if (headline && /8\s*个\s*AI\s*员工今日计划/.test(headline.textContent || "")) {
+      headline.textContent = `8 个 AI 员工今日计划 ${assigned.length} 项，已完成 ${completed.length} 项，完成度 ${rate}%`;
+    }
+  }
+
+  function normalizeOwnerSemantics() {
+    const social = $$(".page").find((page) => /社媒中心/.test((page.querySelector("h1,h2") || {}).textContent || ""));
+    if (social && /真实手机\s*0/.test(social.textContent || "") && !social.querySelector("[data-kz-social-empty]")) {
+      const target = social.querySelector("article,section,.wide");
+      if (target) {
+        const note = document.createElement("div");
+        note.dataset.kzSocialEmpty = "1";
+        note.style.cssText = "margin:10px 0;padding:9px 12px;border-radius:9px;background:#f6f8fc;color:#66758a;font-size:12px";
+        note.textContent = "当前社媒真机/账号未接入：属于未启用状态，不计为失败，也不阻断官网 SEO/GEO 核心自治。";
+        target.appendChild(note);
+      }
+    }
+    $$("article,section,div").forEach((el) => {
+      const text = el.textContent || "";
+      if (text.length > 700 || !/发布准备/.test(text) || !/尚未建立账号/.test(text)) return;
+      Array.from(el.querySelectorAll("span,b,strong,label")).forEach((node) => {
+        if ((node.textContent || "").trim() === "已就绪") node.textContent = "准备完成 · 未授权";
+      });
+    });
+  }
+
+  function settleConnectionLoading() {
+    if (!lastSnapshot) return;
+    $$("body *").forEach((node) => {
+      if (node.children.length) return;
+      const text = (node.textContent || "").trim();
+      if (text === "正在检查服务...") node.textContent = "本地服务已响应；连接结果按实测状态显示。";
+      if (text === "体检中...") node.textContent = "可重新体检";
+    });
+  }
+
   function cleanPilotStrip() {
     const old = $("#kz-r8-23-2-pilot");
     if (old) old.hidden = true;
@@ -224,6 +279,9 @@
     const boot = $("#kz-r8233-boot");
     if (boot) boot.remove();
     document.querySelectorAll(".layout").forEach((el) => { el.style.visibility = ""; });
+    if (/build=KZ-ENTERPRISE-V2\.2-R8-OPERATIONAL-20260920/.test(location.search)) {
+      history.replaceState(null, document.title, `${location.pathname}${location.hash || ""}`);
+    }
   }
 
   function showBootError(error) {
@@ -244,10 +302,13 @@
     if (lastSnapshot) {
       unifiedAttention(lastSnapshot);
       ensureCandidateStrip(lastSnapshot);
+      settleConnectionLoading();
     }
     foldLegacyLedger();
     foldGeoAdvanced();
     labelTechnicalProgress();
+    reconcileDecisionStats();
+    normalizeOwnerSemantics();
     cleanPilotStrip();
   }
 
