@@ -8,10 +8,15 @@ try {
     # CI runs the full source acceptance gate immediately before this script.
     # Local/manual builds still keep the same source verification by default.
     if (-not $SkipSourceVerification) {
-        & $Python '04_Build/v2/verify_v2_autonomous.py' --source
-        if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 source verification failed' }
-        & $Python '04_Build/v2/verify_r8_operational.py' --source
-        if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational source verification failed' }
+        $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY = '1'
+        try {
+            & $Python '04_Build/v2/verify_v2_autonomous.py' --source
+            if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 source verification failed' }
+            & $Python '04_Build/v2/verify_r8_operational.py' --source
+            if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational source verification failed' }
+        } finally {
+            Remove-Item Env:KAZUIZHI_LEGACY_IDENTITY_VERIFY -ErrorAction SilentlyContinue
+        }
     } else {
         Write-Host 'Source verification already passed in the CI gate; skipping duplicate long-running source execution before packaging.'
     }
@@ -34,19 +39,29 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd') -PathType Leaf)) { throw 'R8-17 root discovery CMD bootstrap missing from portable package' }
 
     $exe = 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
-    & $Python '04_Build/v2/verify_v2_autonomous.py' --exe $exe
-    if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 packaged verification failed' }
 
-    # Hosted Windows runners occasionally need a second cold-start attempt for
-    # the packaged FFmpeg/content worker to finish its first no-asset render.
-    # Keep the gate strict: a retry is allowed once, and the build still fails
-    # if the same packaged operational flow does not reach ChatGPT QC twice.
-    & $Python '04_Build/v2/verify_r8_operational.py' --exe $exe
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning 'First packaged operational verification did not finish; retrying once after hosted-runner warmup.'
-        Start-Sleep -Seconds 5
+    # These two programs are historical R7/R8 compatibility regressions. They
+    # deliberately assert the old protocol identity while exercising the newly
+    # packaged binary. Keep that assertion isolated to the verifier process;
+    # an installed R8-23.2 runtime exposes the canonical release manifest.
+    $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY = '1'
+    try {
+        & $Python '04_Build/v2/verify_v2_autonomous.py' --exe $exe
+        if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 packaged verification failed' }
+
+        # Hosted Windows runners occasionally need a second cold-start attempt for
+        # the packaged FFmpeg/content worker to finish its first no-asset render.
+        # Keep the gate strict: a retry is allowed once, and the build still fails
+        # if the same packaged operational flow does not reach ChatGPT QC twice.
         & $Python '04_Build/v2/verify_r8_operational.py' --exe $exe
-        if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational packaged verification failed after retry' }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'First packaged operational verification did not finish; retrying once after hosted-runner warmup.'
+            Start-Sleep -Seconds 5
+            & $Python '04_Build/v2/verify_r8_operational.py' --exe $exe
+            if ($LASTEXITCODE -ne 0) { throw 'V2.2 Operational packaged verification failed after retry' }
+        }
+    } finally {
+        Remove-Item Env:KAZUIZHI_LEGACY_IDENTITY_VERIFY -ErrorAction SilentlyContinue
     }
 
     & '04_Build/installer/build_installer_v2.ps1'
