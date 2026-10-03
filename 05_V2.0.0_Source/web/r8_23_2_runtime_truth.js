@@ -1,5 +1,7 @@
 (() => {
   'use strict';
+  if (window.__KZ_R8232_RUNTIME_TRUTH_UI_LOADED__) return;
+  window.__KZ_R8232_RUNTIME_TRUTH_UI_LOADED__ = true;
 
   const API = '/api/r8-23-2/runtime-truth';
   const labels = {
@@ -28,9 +30,7 @@
   document.head.appendChild(style);
 
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-
   function mainContainer(){ return document.querySelector('main') || document.body; }
-  function activePage(){ return document.querySelector('.page.active') || document.querySelector('[data-page].active') || null; }
 
   function ensureStrip(){
     let el = document.getElementById('kz-runtime-truth-strip');
@@ -92,6 +92,6 @@
 
   const observer=new MutationObserver(()=>{ translateRawStates(); compactLegacy(); });
   observer.observe(document.documentElement,{subtree:true,childList:true});
-  window.addEventListener('DOMContentLoaded',()=>{refresh(); setInterval(refresh,15000);});
-  if(document.readyState!=='loading'){refresh(); setInterval(refresh,15000);}
+  const start=()=>{refresh(); setInterval(refresh,15000);};
+  if(document.readyState==='loading') window.addEventListener('DOMContentLoaded',start,{once:true}); else start();
 })();
