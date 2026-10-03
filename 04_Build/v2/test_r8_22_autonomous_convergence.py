@@ -169,9 +169,9 @@ def main():
             ):
                 assert marker in scope_text, marker
             assert "r8_22_autonomy_convergence_patch" in truth_text
-            assert any(f'phase: "{phase}"' in build_text for phase in ("R8-22", "R8-23", "R8-23.3 Candidate"))
+            assert any(f'phase: "{phase}"' in build_text for phase in ("R8-22", "R8-23", "R8-23.3 Candidate", "R8-23.4 Candidate"))
             assert any(label in build_text for label in (
-                "7x24 Autonomous Convergence", "Autonomous Growth OS", "Runtime Execution & UI Convergence",
+                "7x24 Autonomous Convergence", "Autonomous Growth OS", "Runtime Execution & UI Convergence", "Runtime & Route Recovery",
             ))
 
             command_execution.command_links = original_links
