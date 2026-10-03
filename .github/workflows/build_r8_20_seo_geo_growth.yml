@@ -154,8 +154,13 @@ jobs:
 
       - name: Verify packaged source contract
         run: |
-          python 04_Build/v2/verify_v2_autonomous.py --source
-          python 04_Build/v2/verify_r8_operational.py --source
+          $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY = '1'
+          try {
+            python 04_Build/v2/verify_v2_autonomous.py --source
+            python 04_Build/v2/verify_r8_operational.py --source
+          } finally {
+            Remove-Item Env:KAZUIZHI_LEGACY_IDENTITY_VERIFY -ErrorAction SilentlyContinue
+          }
 
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
