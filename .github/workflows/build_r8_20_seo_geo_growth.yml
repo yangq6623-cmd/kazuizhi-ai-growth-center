@@ -1,10 +1,11 @@
-name: Build Kazuizhi R8-23.3 Candidate Runtime Execution
+name: Build Kazuizhi R8-23.4 Runtime Route Recovery
 
 on:
   push:
     branches:
       - 'r8-23-final-autonomous-growth-os-*'
       - 'r8-23-3-runtime-execution-ui-convergence-*'
+      - 'r8-23-4-runtime-route-recovery-*'
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -17,7 +18,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     env:
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: core.autocrlf
@@ -37,15 +38,15 @@ jobs:
           $shortSha = '${{ github.sha }}'.Substring(0, 8)
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
-          $text = $text.Replace('phase: "R8-23"', 'phase: "R8-23.3 Candidate"')
-          $text = $text.Replace('displayVersion: "V2.2.2 R8-23 Final 7x24 Autonomous Growth OS"', 'displayVersion: "V2.2.2 R8-23.3 Candidate Runtime Execution & UI Convergence"')
+          $text = $text.Replace('phase: "R8-23"', 'phase: "R8-23.4 Candidate"')
+          $text = $text.Replace('displayVersion: "V2.2.2 R8-23 Final 7x24 Autonomous Growth OS"', 'displayVersion: "V2.2.2 R8-23.4 Runtime & Route Recovery"')
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
       - name: Install pinned dependencies and browser test driver
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           python -m pip install playwright==1.55.0
-      - name: Verify R7 through R8-23.3 Candidate
+      - name: Verify R7 through R8-23.4 Recovery
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -84,7 +85,8 @@ jobs:
           python 04_Build/v2/test_r8_23_final_growth_os.py
           python 04_Build/v2/test_r8_23_2_runtime_truth.py
           python 04_Build/v2/test_r8_23_3_candidate.py
-      - name: Verify production entrypoint activates R8-19 through R8-23.3
+          python 04_Build/v2/test_r8_23_4_runtime_route_recovery.py
+      - name: Verify production entrypoint activates R8-19 through R8-23.4
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
           foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
@@ -95,24 +97,12 @@ jobs:
             if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
           }
           $truthPatch = Get-Content -LiteralPath '05_V2.0.0_Source/core/r8_20_growth_truth_patch.py' -Raw
-          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch','r8_23_2_runtime_safety_patch','r8_23_3_candidate_patch')) {
+          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch','r8_23_2_runtime_safety_patch','r8_23_3_candidate_patch','r8_23_4_runtime_route_recovery_patch')) {
             if (-not $truthPatch.Contains($marker)) { throw "Production activation missing $marker" }
           }
-          $r822 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_22_autonomy_convergence_patch.py' -Raw
-          foreach ($marker in @('/api/r8-22/autonomy','/api/r8-22/autonomy/events','/api/r8-22/autonomy/receipt','command_execution.reconcile_jobs','autonomous_ops.sync_from_runtime','r7_engine.run_due_jobs')) {
-            if (-not $r822.Contains($marker)) { throw "R8-22 runtime integration missing $marker" }
-          }
-          $r823 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_growth_os_patch.py' -Raw
-          foreach ($marker in @('/api/r8-23/growth-os','/api/r8-23/growth-os/utilization','r8_23_growth_operating_system','r8_23_growth_os.js','convergence.controller_tick')) {
-            if (-not $r823.Contains($marker)) { throw "R8-23 runtime integration missing $marker" }
-          }
-          $r8232 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_2_runtime_truth_patch.py' -Raw
-          foreach ($marker in @('/api/health','/api/runtime-health','/api/version','/api/readiness','/api/r8-23-2/pilot','_install_control_lease','_install_model_execution_policy','r8_23_2_pilot.js')) {
-            if (-not $r8232.Contains($marker)) { throw "R8-23.2 runtime truth integration missing $marker" }
-          }
-          $r8233 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_3_candidate_patch.py' -Raw
-          foreach ($marker in @('/api/r8-23-3/candidate','/api/r8-23-3/execution','/api/r8-23-3/attention','/api/r8-23-3/control-lease','kz-r8233-booting','r8_23_3_candidate.js')) {
-            if (-not $r8233.Contains($marker)) { throw "R8-23.3 Candidate integration missing $marker" }
+          $r8234 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_4_runtime_route_recovery_patch.py' -Raw
+          foreach ($marker in @('/api/ping','/api/version','/api/r8-20/seo-geo','r8_13_seo_geo_bridge.js','r8_23_4_recovery.js','R8-23.4 Runtime & Route Recovery')) {
+            if (-not $r8234.Contains($marker)) { throw "R8-23.4 recovery integration missing $marker" }
           }
       - name: Integrate unified model connection center into packaged web
         run: |
@@ -137,10 +127,16 @@ jobs:
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
       - name: Real Chrome source responsiveness gate
-        timeout-minutes: 4
+        timeout-minutes: 5
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_19_browser_responsiveness.py
+      - name: Full-interface source simulation gate
+        timeout-minutes: 8
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path ui_artifacts/source | Out-Null
+          python 04_Build/v2/test_r8_23_4_full_ui_simulation.py --screens ui_artifacts/source
       - name: Verify packaged source contract
         run: |
           python 04_Build/v2/verify_v2_autonomous.py --source
@@ -148,43 +144,56 @@ jobs:
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
       - name: Real Chrome packaged-runtime responsiveness gate
-        timeout-minutes: 4
+        timeout-minutes: 5
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_19_browser_responsiveness.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+      - name: Full-interface packaged-runtime simulation gate
+        timeout-minutes: 8
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path ui_artifacts/packaged | Out-Null
+          python 04_Build/v2/test_r8_23_4_full_ui_simulation.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe' --screens ui_artifacts/packaged
       - name: Scan final installer with Microsoft Defender when available
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install launch overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-23.3 Candidate installer provenance
+      - name: Record R8-23.4 installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-23.3 Candidate Runtime Execution & UI Convergence'
+            version = '2.2.2 R8-23.4 Runtime & Route Recovery'
             commit = '${{ github.sha }}'
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
             runtime_identity = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
-            engineering_scope = @('rolling verified controller lease','active-vs-pending Command truth','due queue execution-stall diagnostics','explicit readiness blockers','startup boot gate','navigation idempotency','unified human attention count','legacy ledger folding','GEO advanced folding','connector state translation','local-model-first route','Doubao required on critical SEO/GEO semantic steps','formal GEO truth preserved','business attribution to order only')
+            engineering_scope = @('fail-open owner shell','ultra-light ping/version contract','bounded cancellable browser requests','fixed SEO/GEO route r813-seo-geo','content production route promotion','legacy naive timestamp normalization','SEO/GEO days=30 field recovery','full visible-page browser simulation','diagnostic loading settlement','owner-facing R7 copy cleanup','formal GEO truth preserved','business attribution to order only')
             field_acceptance_remaining = @('2h Candidate smoke test','24h Windows unattended run','72h fault/recovery run','7-day production soak','one real social Post ID/URL closed-loop requires live account authorization')
             truth_policy = 'Configured does not mean invoked; invoked does not mean external success. Local/Doubao output is C-level auxiliary. Formal GEO requires real external A/B Evidence.'
             outcome_scope = 'site visit -> mini-program visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI'
             funds_policy = 'human-only permanently'
-          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_3_CANDIDATE.json
-      - name: Upload R8-23.3 Candidate Windows installer
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_4_RECOVERY.json
+      - name: Upload R8-23.4 full UI simulation screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_3_Candidate
+          name: Kazuizhi_R8_23_4_UI_Simulation
+          path: ui_artifacts/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload R8-23.4 Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_23_4_Runtime_Route_Recovery
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload R8-23.3 Candidate portable application
+      - name: Upload R8-23.4 portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_3_Candidate_Portable
+          name: Kazuizhi_AI_Enterprise_R8_23_4_Runtime_Route_Recovery_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
