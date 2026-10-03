@@ -315,8 +315,26 @@ def business_source_status(analytics=None):
     status = _status_config()
     key_present = bool(_read_key())
     remote = read_json(REMOTE_SUMMARY_PATH, None) or {}
+    # A locally configured official WeChat source can safely fill only the
+    # Mini Program aggregate visit fields.  It never replaces orders, users,
+    # or any other production business aggregate from the server source.
+    try:
+        from integrations.wechat_mini_program import wechat_mini_program_status
+        wechat = wechat_mini_program_status()
+    except (ImportError, OSError, ValueError):
+        wechat = {"status": "not_configured", "summary": {}}
     quality = remote.get("data_quality") if isinstance(remote, dict) else {}
     connected = bool(key_present and status.get("last_ok") and remote.get("source") and remote.get("as_of"))
+    summary = {
+        "users": remote.get("users") or {}, "orders": remote.get("orders") or {},
+        "technicians": remote.get("technicians") or {}, "partners": remote.get("partners") or {},
+        "promotion": remote.get("promotion") or {}, "funnel": dict(remote.get("funnel") or {}),
+        "mini_program": dict(remote.get("mini_program") or {}),
+    }
+    if wechat.get("status") == "connected":
+        mini = dict(wechat.get("summary") or {})
+        summary["mini_program"] = mini
+        summary["funnel"]["mini_program_visits"] = mini.get("visit_uv")
     return {
         "id": "business_source",
         "endpoint": ENDPOINT,
@@ -329,15 +347,8 @@ def business_source_status(analytics=None):
         "remote_as_of": remote.get("as_of"),
         "source": remote.get("source"),
         "data_quality": quality or {},
-        "summary": {
-            "users": remote.get("users") or {},
-            "orders": remote.get("orders") or {},
-            "technicians": remote.get("technicians") or {},
-            "partners": remote.get("partners") or {},
-            "promotion": remote.get("promotion") or {},
-            "funnel": remote.get("funnel") or {},
-            "mini_program": remote.get("mini_program") or {},
-        },
+        "summary": summary,
+        "wechat_mini_program": wechat,
         "message": "生产经营数据只读接口已验证；R7 每 5 分钟自动刷新。" if connected else
                    status.get("last_error") or ("密钥已保存，等待连接验证。" if key_present else "服务器接口已部署；粘贴一次只读密钥即可接入。"),
         "analytics_status": (analytics or {}).get("status") if isinstance(analytics, dict) else None,

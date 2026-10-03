@@ -1,0 +1,97 @@
+name: Validate R8-19 GEO Phase 1
+
+on:
+  push:
+    branches: ['r8-19-geo-phase1-*']
+    paths:
+      - '05_V2.0.0_Source/core/geo_validation.py'
+      - '05_V2.0.0_Source/backend/r8_18_evidence_ledger_patch.py'
+      - '05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py'
+      - '05_V2.0.0_Source/integrations/geo_openai_search_executor.py'
+      - '05_V2.0.0_Source/web/operational-search.js'
+      - '05_V2.0.0_Source/web/operational-search.css'
+      - '05_V2.0.0_Source/web/decision_layout_patch.js'
+      - '05_V2.0.0_Source/web/geo.html'
+      - '04_Build/v2/test_r8_19_geo_phase1.py'
+      - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
+      - '.github/workflows/r8_19_geo_phase1_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/geo_validation.py'
+      - '05_V2.0.0_Source/backend/r8_18_evidence_ledger_patch.py'
+      - '05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py'
+      - '05_V2.0.0_Source/integrations/geo_openai_search_executor.py'
+      - '05_V2.0.0_Source/web/operational-search.js'
+      - '05_V2.0.0_Source/web/operational-search.css'
+      - '05_V2.0.0_Source/web/decision_layout_patch.js'
+      - '05_V2.0.0_Source/web/geo.html'
+      - '04_Build/v2/test_r8_19_geo_phase1.py'
+      - '04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py'
+      - '.github/workflows/r8_19_geo_phase1_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-geo-phase1:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify R8-19 GEO Phase 1 truth gates and workspace
+        run: python 04_Build/v2/test_r8_19_geo_phase1.py
+      - name: Verify all agreed 48 Phase-1 details
+        run: python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
+      - name: Verify existing SEO growth regression
+        run: python 04_Build/v2/test_r8_13_seo_geo_growth.py
+      - name: Compile R8-19 backend modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py
+          python -m py_compile 05_V2.0.0_Source/integrations/geo_openai_search_executor.py
+      - name: Check GEO browser scripts
+        run: |
+          node --check 05_V2.0.0_Source/web/operational-search.js
+          node --check 05_V2.0.0_Source/web/decision_layout_patch.js
+      - name: Verify Phase 1 source contracts
+        run: |
+          $core = Get-Content 05_V2.0.0_Source/core/geo_validation.py -Raw
+          @('CONTROLLER = "chatgpt"','GEO50-V2-20260930','authorization_required','MAX_RETRIES = 2','local_model_cannot_be_official_geo_executor','question_set_hash','official_truth') | ForEach-Object {
+            if (-not $core.Contains($_)) { throw "Missing GEO core contract: $_" }
+          }
+          $bridge = Get-Content 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py -Raw
+          @('failed_question_requires_chatgpt_retry','_eligible_question_ids','/api/r8-19/geo/retry','openai_web_search','_active_mission_context','provider_selection_controller','platform_self_polling_allowed') | ForEach-Object {
+            if (-not $bridge.Contains($_)) { throw "Missing GEO execution integrity contract: $_" }
+          }
+          $runtime = Get-Content 05_V2.0.0_Source/backend/r8_18_evidence_ledger_patch.py -Raw
+          if (-not $runtime.Contains('r8_19_geo_validation_patch')) { throw 'R8-19 patch is not loaded by packaged runtime' }
+          $executor = Get-Content 05_V2.0.0_Source/integrations/geo_openai_search_executor.py -Raw
+          @('api.openai.com/v1/responses','"web_search"','web_search_call','response_id','evidence_level') | ForEach-Object {
+            if (-not $executor.Contains($_)) { throw "Missing external GEO executor contract: $_" }
+          }
+          $ui = Get-Content 05_V2.0.0_Source/web/operational-search.js -Raw
+          @('SEO 增长','GEO 增长','ChatGPT GEO 总控','执行本轮 GEO 测试','固定 50 问','GEO Evidence / Receipt','待我处理','/api/search-growth') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing GEO workspace contract: $_" }
+          }
+          $direct = Get-Content 05_V2.0.0_Source/web/geo.html -Raw
+          @("changePage('search')",'data-growth-tab="geo"','kz-search-growth-workspace') | ForEach-Object {
+            if (-not $direct.Contains($_)) { throw "Missing direct GEO route contract: $_" }
+          }
+          $decision = Get-Content 05_V2.0.0_Source/web/decision_layout_patch.js -Raw
+          @('今日 GEO 决策 · ChatGPT 总脑','geo-decision-progress','geo-decision-blockers','下一决策条件','kz-search-growth-workspace',"window.location.href = '/geo.html'") | ForEach-Object {
+            if (-not $decision.Contains($_)) { throw "Missing GEO decision-center bridge: $_" }
+          }
+          $css = Get-Content 05_V2.0.0_Source/web/operational-search.css -Raw
+          @('font-variant-numeric:tabular-nums','is-running','is-success','is-waiting','is-danger','is-neutral') | ForEach-Object {
+            if (-not $css.Contains($_)) { throw "Missing B2B visual semantic contract: $_" }
+          }
+          Write-Host 'R8-19 Phase 1 validates all 48 agreed details at code/contract level. Live external 50-question completion still requires a real verified external provider.'

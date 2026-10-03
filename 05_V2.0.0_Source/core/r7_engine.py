@@ -214,6 +214,20 @@ def _run(job_id):
         job = _find(data, job_id)
         if job["state"] != "queued" or job["mode"] != "local" or not job.get("approved_by"):
             return
+        # R8-18: role definitions and a local queue are not sufficient
+        # authority.  Scheduled growth work must carry a verified ChatGPT
+        # Command binding; this does not apply to a manually started local job.
+        if job.get("schedule_source") == "daily_workforce":
+            from core.command_execution import job_is_authorized
+            if not job_is_authorized(job):
+                job.update(
+                    authorization_state="waiting_for_chatgpt",
+                    authorization_note="等待 ChatGPT Command 绑定；未绑定前不会自动执行。",
+                    updated_at=now_iso(),
+                )
+                write_json(JOBS, data)
+                _audit("job_waiting_for_chatgpt", job_id, "scheduler", {})
+                return
         job["state"] = "running"
         job["updated_at"] = now_iso()
         kind = job["kind"]
@@ -251,16 +265,33 @@ def _run(job_id):
             write_json(JOBS, data)
             _audit("job_auto_retry", job_id, "scheduler", {"error": error, "retry_count": retry_count + 1})
             return
+        receipt = {
+            "receipt_id": f"LOCAL-EXEC-{job_id[:10].upper()}-{datetime.now().astimezone():%H%M%S}",
+            "task_id": job_id,
+            "mission_id": job.get("mission_id"),
+            "command_id": job.get("command_id"),
+            "status": state,
+            "proof_type": "local_execution_receipt",
+            "created_at": now_iso(),
+            "source_note": "仅证明本地非资金任务已执行完成；不代表外部发布、搜索收录、曝光、咨询或成交。",
+            "result_summary": (result or {}).get("summary") if isinstance(result, dict) else None,
+        }
         job.update(state=state, result=result, error=error, updated_at=now_iso(),
                    completed_steps=1 if state == "completed" else 0,
                    progress=100 if state == "completed" else 0,
-                   retry_count=retry_count)
+                   retry_count=retry_count, execution_receipt=receipt)
         write_json(JOBS, data)
-        _audit("job_" + state, job_id, "scheduler", {"error": error})
+        _audit("job_" + state, job_id, "scheduler", {"error": error, "receipt_id": receipt["receipt_id"]})
         learn_from_job(job)
 
 
 def run_due_jobs():
+    # Bind newly created daily tasks before deciding which ones can run.
+    try:
+        from core.command_execution import reconcile_jobs
+        reconcile_jobs()
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        pass
     now = datetime.now().astimezone()
     with LOCK:
         if audit_history()["integrity"] != "verified":

@@ -211,7 +211,8 @@ with tempfile.TemporaryDirectory() as temp_dir:
     try:
         with urlopen(base + "/api/status", timeout=5) as response:
             http_status = json.loads(response.read().decode("utf-8"))
-        assert http_status["r8_phase"] == "R8-08"
+        assert http_status["r8_phase"] == "R8-09"
+        assert http_status["runtime_build"] == "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922"
         assert "r8_complete_growth_operations_center" in http_status["capabilities"]
         with urlopen(base + "/api/r8/growth/summary", timeout=5) as response:
             http_summary = json.loads(response.read().decode("utf-8"))
@@ -232,4 +233,4 @@ with tempfile.TemporaryDirectory() as temp_dir:
         server.shutdown()
         server.server_close()
 
-print("PASS: R8-00 through R8-08 complete truthful growth loop, guardrails, audit and durable state")
+print("PASS: R8-00 through R8-08 truthful growth loop runs under the R8-09 autonomous Mission core")

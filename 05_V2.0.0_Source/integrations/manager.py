@@ -128,6 +128,24 @@ def save_ai_config(payload):
 
 
 def _ai_status():
+    # R8-18 model connection centre is the preferred source of truth.  Keep
+    # the legacy R7-compatible form below as a migration fallback only.
+    try:
+        from integrations.ai_gateway import gateway_status
+        centre = gateway_status()
+        if centre.get("configured"):
+            active = ((centre.get("routes") or {}).get(centre.get("active_route")) or {})
+            return {
+                "id": "external_ai", "name": "外部大模型", "configured": True,
+                "status": "connected" if active.get("verified") else "configured",
+                "status_label": "连接已验证" if active.get("verified") else "等待连接测试",
+                "provider": active.get("provider"), "base_url": active.get("endpoint", ""),
+                "model": active.get("model", ""), "has_key": bool(active.get("credential_source") != "none"),
+                "last_test": {"ok": bool(active.get("verified")), "tested_at": active.get("last_test_at")},
+                "message": f"当前使用：{active.get('label') or '模型路线'}。云端与本地模型可在模型接入中心切换；发布仍需人工审核。",
+            }
+    except (OSError, ValueError, RuntimeError, ImportError):
+        pass
     config = _config()
     has_key = bool(_read_key())
     configured = bool(config.get("base_url") and config.get("model") and has_key)
@@ -163,17 +181,48 @@ def integration_status():
 
 
 def model_routes():
-    """Expose only usable model routes; never imply ChatGPT web access."""
-    ai = _ai_status()
+    """Expose only verified model routes; never imply ChatGPT web access.
+
+    A saved endpoint is not a working model.  The R7 work queue must retain its
+    offline rule route until the selected cloud or local runtime has passed the
+    small `/models` health check exposed by the Model Connection Centre.
+    """
     routes = [{"id": "local_rules", "label": "本地规则引擎", "status": "ready",
                "uses_external_data": False, "purpose": "离线复盘、任务和内容草稿"}]
-    if ai["status"] == "connected":
-        routes.append({"id": "external_compatible", "label": ai["model"],
-                       "status": "ready", "uses_external_data": True,
-                       "purpose": "经用户主动提交的 AI 建议"})
-    return {"default": "local_rules", "routes": routes,
-            "external_status": ai["status"],
-            "note": "ChatGPT 网页会话不是本机连接；双向运营桥用于交换结构化运营状态和待审批计划。"}
+    try:
+        from integrations.ai_gateway import gateway_status
+        centre = gateway_status()
+        verified_routes = []
+        for route_id in ("cloud", "local"):
+            route = (centre.get("routes") or {}).get(route_id) or {}
+            if not route.get("verified"):
+                continue
+            verified_routes.append(route_id)
+            routes.append({
+                "id": f"model_{route_id}",
+                "label": route.get("label") or ("云端模型" if route_id == "cloud" else "本地开源模型"),
+                "status": "ready", "uses_external_data": route_id == "cloud",
+                "purpose": "仅用于研究、草稿和质检建议；发布仍需审核",
+                "route": route_id, "model": route.get("model"),
+            })
+        active = str(centre.get("active_route") or "")
+        default = f"model_{active}" if active in verified_routes else "local_rules"
+        return {
+            "default": default, "routes": routes,
+            "external_status": centre.get("status"),
+            "active_route": active,
+            "fallback_enabled": bool(centre.get("fallback_enabled")),
+            "note": "只有通过连接测试的云端或本地模型才会进入任务路线；否则自动使用本地规则引擎。ChatGPT 网页会话不是本机 API 连接。",
+        }
+    except (OSError, ValueError, RuntimeError, ImportError):
+        ai = _ai_status()
+        if ai["status"] == "connected":
+            routes.append({"id": "external_compatible", "label": ai["model"],
+                           "status": "ready", "uses_external_data": True,
+                           "purpose": "经用户主动提交的 AI 建议"})
+        return {"default": "local_rules", "routes": routes,
+                "external_status": ai["status"],
+                "note": "ChatGPT 网页会话不是本机连接；双向运营桥用于交换结构化运营状态和待审批计划。"}
 
 
 def _request_json(url, *, method="GET", payload=None, key="", timeout=12):

@@ -1,0 +1,147 @@
+name: Build Kazuizhi R8-19 GEO Phase 1
+
+on:
+  push:
+    branches: ['r8-19-geo-phase1-*']
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/**'
+      - '.github/workflows/build_r8_19_geo_phase1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stamp visible build number and commit
+        run: |
+          $path = '05_V2.0.0_Source/web/build_info.js'
+          $text = Get-Content -LiteralPath $path -Raw
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $text = $text.Replace('__GITHUB_SHA__', $shortSha)
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+      - name: Install pinned dependencies and browser test driver
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+          python -m pip install playwright==1.55.0
+      - name: Verify R7/R8 compatibility and GEO Phase 1
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r7_block_a.py
+          python 04_Build/v2/test_r7_block_b.py
+          python 04_Build/v2/test_r8_identity.py
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_11_backbone.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_remote_agent.py
+          python 04_Build/v2/test_ai_gateway.py
+          python 04_Build/v2/test_r8_18_model_connection_center.py
+          python 04_Build/v2/test_r8_18_model_gateway_routes.py
+          python 04_Build/v2/test_r8_18_evidence_ledger.py
+          python 04_Build/v2/test_r8_19_geo_phase1.py
+          python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
+          python 04_Build/v2/test_r8_19_geo_main_platform_integration.py
+          python 04_Build/v2/test_r8_19_model_connection_ui.py
+          python 04_Build/v2/test_r8_19_geo_live_gate.py
+          python 04_Build/v2/test_r8_19_geo_browser_first.py
+          python 04_Build/v2/test_r8_19_geo_ui_polish.py
+          python 04_Build/v2/test_r8_19_geo_field_fix.py
+          python 04_Build/v2/test_r8_19_startup_resilience.py
+      - name: Integrate unified model connection center into packaged web
+        run: |
+          $targets = @(
+            '05_V2.0.0_Source/web/index.html',
+            '05_V2.0.0_Source/web/operational.html'
+          )
+          foreach ($path in $targets) {
+            $text = Get-Content -LiteralPath $path -Raw
+            if (-not $text.Contains('model-connection-center.css')) {
+              $text = $text.Replace('</head>', '<link rel="stylesheet" href="model-connection-center.css"></head>')
+            }
+            if (-not $text.Contains('model-connection-center.js')) {
+              $text = $text.Replace('</body>', '<script src="model-connection-center.js"></script></body>')
+            }
+            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css')) {
+              throw "Unified model connection center injection failed: $path"
+            }
+            Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          }
+          Write-Host 'Unified local/cloud AI model center integrated into index.html and operational.html.'
+      - name: Check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+      - name: Real Chrome source responsiveness gate
+        timeout-minutes: 4
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py
+      - name: Verify packaged source contract
+        run: |
+          python 04_Build/v2/verify_v2_autonomous.py --source
+          python 04_Build/v2/verify_r8_operational.py --source
+      - name: Build packaged runtime and installer
+        run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
+      - name: Real Chrome packaged-runtime responsiveness gate
+        timeout-minutes: 4
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+      - name: Scan final installer with Microsoft Defender when available
+        run: ./04_Build/v2/test_windows_security.ps1
+      - name: Test silent install, launch, overwrite upgrade and uninstall
+        run: ./04_Build/v2/test_installer.ps1
+      - name: Record R8-19 GEO Phase 1 installer provenance
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          @{
+            version = '2.2.2 R8-19 GEO Phase 1 Browser-First Candidate'
+            commit = '${{ github.sha }}'
+            run_number = '${{ github.run_number }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha256 = $hash
+            scope = @('GEO merged into normal main-platform SEO/GEO route', 'SEO/GEO internal first-level tabs', 'ChatGPT GEO control bridge', 'versioned GEO50 baseline', 'browser-first no-API external AI validation', 'local-model C-level GEO precheck', 'optional API validation', 'compact B2B GEO command layout', 'field-tested button interaction repair', 'KPI drill-down controls', 'active-task external AI open/copy helper', 'duplicate-running-task recovery', 'AI employee manager ordered startup', 'native-observer owner-shell startup', 'bounded owner-workbench maintenance without mutation feedback loop', 'bounded truth convergence without mutation feedback loop', 'real-Chrome source responsiveness gate', 'real-Chrome packaged-runtime responsiveness gate', 'SEO/GEO duplicate reduced to read-only linkage', 'GEO Evidence/Receipt', '48/48 Phase-1 acceptance gate', 'main-platform field integration gate', 'unified local/cloud AI model connection center')
+            seo_policy = 'SEO feature development frozen; existing SEO runtime and regression retained. Legacy GEO summary remains read-only and links to the dedicated GEO workspace.'
+            local_model_policy = 'Local model may precheck and analyse GEO through a verified localhost OpenAI-compatible route, but it is always C-level auxiliary evidence and never changes official GEO A/B metrics'
+            api_policy = 'Paid API is optional. Browser validation is the default Phase-1 path; APIs remain an optional future acceleration channel.'
+            work_policy = 'The browser validation contract is designed for manual use now and later ChatGPT Work/browser-agent execution without changing the Evidence/Receipt schema.'
+            startup_policy = 'The owner shell never replaces native browser observers. Modules load fail-soft with rendering yields; owner workbench and truth convergence are event-driven and bounded. Real Chrome must keep a 250ms heartbeat alive while owner routes are clicked before artifacts are uploaded; each Chrome gate fails after four minutes instead of hanging CI.'
+            acceptance = '48/48 Phase-1 source acceptance plus main-platform integration, browser-first no-API regression, local-precheck truth gate, GEO UI polish gate, GEO field-interaction gate, owner-shell startup resilience gate, real-Chrome source and packaged-runtime responsiveness gates, installer, launch, overwrite-upgrade and uninstall gates must pass. /geo.html remains backup only. Live external-AI validation of the first real question remains a separate field acceptance step.'
+          } | ConvertTo-Json -Depth 5 | Set-Content installer_output_v2/BUILD_RECORD_R8_19_GEO_PHASE1.json
+      - name: Upload R8-19 GEO Phase 1 Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_19_GEO_Phase1
+          path: installer_output_v2/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload R8-19 GEO Phase 1 portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_19_GEO_Phase1_Portable
+          path: dist_v2/
+          if-no-files-found: error
+          retention-days: 90

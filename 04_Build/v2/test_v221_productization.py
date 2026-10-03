@@ -3,13 +3,18 @@
 The goal is not pixel-perfect testing. It prevents the known R8 UI/UX issues
 from silently returning: inconsistent device state, background mirror polling,
 technical-first navigation, unsupported owner controls, skeleton workbenches,
-and unverifiable business metrics.
+unverifiable business metrics, duplicate primary actions, dead buttons, split
+Growth IDs, user-written verification state, and manual media classification.
 """
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WEB = ROOT / "05_V2.0.0_Source" / "web"
-INTEGRATIONS = ROOT / "05_V2.0.0_Source" / "integrations"
+SRC = ROOT / "05_V2.0.0_Source"
+WEB = SRC / "web"
+INTEGRATIONS = SRC / "integrations"
 
 
 def read(path):
@@ -22,6 +27,72 @@ def require(text, tokens, label, failures):
             failures.append(f"{label} missing: {token}")
 
 
+def runtime_contract(failures):
+    """Prove the deep rules work against isolated durable state, not just source text."""
+    old_local = os.environ.get("LOCALAPPDATA")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["LOCALAPPDATA"] = tmp
+        sys.path.insert(0, str(SRC))
+        try:
+            from backend import content_factory_patch  # noqa: F401
+            from promotion import content_factory_v2_extensions  # noqa: F401
+            from backend import deep_productization_patch  # noqa: F401
+            from backend import growth_chain_patch  # noqa: F401
+            from promotion import content_factory as cf
+            from promotion.asset_intake import infer_kind
+            from core import r8_growth_ops
+
+            campaign = cf.create_campaign({
+                "region": "涟水县",
+                "service": "家电安装维修",
+                "title": "空调不制冷，用户担心上门后乱收费",
+                "evidence": "真实本地高频咨询问题，用于隔离测试",
+                "goal": "获得可追溯的本地咨询或小程序需求",
+            })
+            dashboard = cf.dashboard()
+            if dashboard.get("active_campaign_id") != campaign["id"]:
+                failures.append("runtime: newly created campaign must become durable active Growth ID")
+            growth_state = r8_growth_ops._state()
+            if not any(x.get("growth_id") == campaign["id"] for x in growth_state.get("growth_cases", [])):
+                failures.append("runtime: content campaign Growth ID not mirrored into R8 growth ledger")
+
+            first = cf.create_video({"campaign_id": campaign["id"]})
+            try:
+                cf.create_video({"campaign_id": campaign["id"]})
+                failures.append("runtime: duplicate active video task was accepted")
+            except ValueError as error:
+                if "已有生产任务" not in str(error):
+                    failures.append(f"runtime: duplicate task rejected with unclear reason: {error}")
+            if first.get("status") != "等待ChatGPT策划":
+                failures.append("runtime: zero-material task should enter ChatGPT planning")
+
+            account = cf.save_account({
+                "platform": "抖音",
+                "account_name": "测试账号",
+                "region": "涟水县",
+                "service": "家电安装维修",
+                "connection_status": "已验证可发布",
+            })
+            if account.get("connection_status") == "已验证可发布":
+                failures.append("runtime: manual account metadata illegally claimed verified publish state")
+
+            if infer_kind("scene.mp4") != "真实现场视频":
+                failures.append("runtime: video material auto classification failed")
+            if infer_kind("photo.jpg") != "真实现场照片":
+                failures.append("runtime: image material auto classification failed")
+            if infer_kind("voice.m4a") != "师傅讲解":
+                failures.append("runtime: audio material auto classification failed")
+        finally:
+            try:
+                sys.path.remove(str(SRC))
+            except ValueError:
+                pass
+            if old_local is None:
+                os.environ.pop("LOCALAPPDATA", None)
+            else:
+                os.environ["LOCALAPPDATA"] = old_local
+
+
 def main():
     failures = []
     operational = read(WEB / "operational.js")
@@ -29,10 +100,19 @@ def main():
     product = read(WEB / "operational-productization.js")
     final = read(WEB / "operational-finalization.js")
     final_css = read(WEB / "operational-finalization.css")
+    ui_polish = read(WEB / "operational-ui-polish.js")
+    ui_polish_css = read(WEB / "operational-ui-polish.css")
+    deep_ui = read(WEB / "operational-deep-productization.js")
+    deep_css = read(WEB / "operational-deep-productization.css")
+    workbench = read(WEB / "operational-workbench.js")
     main_js = read(WEB / "main-productization.js")
     main_css = read(WEB / "main-productization.css")
     forms = read(WEB / "forms.js")
     b3 = read(INTEGRATIONS / "android_device_b3.py")
+    deep_backend = read(SRC / "backend" / "deep_productization_patch.py")
+    growth_chain = read(SRC / "backend" / "growth_chain_patch.py")
+    asset_intake = read(SRC / "promotion" / "asset_intake.py")
+    run = read(SRC / "run.py")
 
     require(operational, [
         "deviceSnapshot",
@@ -54,11 +134,18 @@ def main():
 
     require(product, [
         "待我处理",
+        "action_center",
         "health-normal",
         "health-config",
         "health-human",
         "loadFinalization",
         "operational-finalization.js",
+        "loadUiPolish",
+        "operational-ui-polish.css",
+        "operational-ui-polish.js",
+        "loadDeepProductization",
+        "operational-deep-productization.js",
+        "operational-deep-productization.css",
     ], "productization layer", failures)
 
     require(final, [
@@ -88,6 +175,95 @@ def main():
         ".ops-table",
         ".health-filter-bar",
     ], "final operational visual system", failures)
+
+    require(ui_polish, [
+        "ui-owner-todo",
+        "action_center",
+        "ACTIVE_VIDEO_STATES",
+        "创建战役并自动开始",
+        "本地素材投递箱",
+        "不上传也能正常生产",
+        "开始 AI 自动生产",
+        "setButtonState",
+        "请先创建或选择增长战役",
+        "quietSamePageStep",
+        "ui-engine-strip",
+    ], "R8 UI polish behavior", failures)
+    if "MutationObserver" in ui_polish:
+        failures.append("R8 UI polish must use explicit events, not a global DOM MutationObserver")
+    require(ui_polish_css, [
+        ".ui-owner-todo",
+        ".campaign-main",
+        ".campaign-side",
+        ".content-workspace",
+        ".content-review",
+        ".optional-materials",
+        "button:disabled",
+        ".ui-engine-strip",
+    ], "R8 UI polish visual system", failures)
+
+    require(deep_backend, [
+        "active_campaign_id",
+        "ACTIVE_VIDEO_STATES",
+        "该增长战役已有生产任务",
+        "action_center",
+        "human_count",
+        "sync_accounts_from_control",
+        "r8_social_control",
+        "不能人工选择",
+        "/api/content-factory/active-campaign",
+    ], "deep productization backend", failures)
+    require(growth_chain, [
+        "growth_case_linked",
+        "内容工厂增长ID已与R8咨询/归因账本统一",
+        "conversion_summary",
+        "metric_snapshots",
+        "source_system",
+        "growth_id",
+    ], "unified Growth ID conversion bridge", failures)
+    require(asset_intake, [
+        "infer_kind",
+        "VIDEO_EXTENSIONS",
+        "IMAGE_EXTENSIONS",
+        "AUDIO_EXTENSIONS",
+        "auto_classified",
+    ], "automatic material classification", failures)
+    require(deep_ui, [
+        "activeGrowthId",
+        "setActiveGrowthId",
+        "renderUnifiedOwnerActions",
+        "action_center",
+        "activeVideo",
+        "当前任务：",
+        "uploadFiles",
+        "input.multiple=true",
+        "无需手工分类",
+        "submitRealAccount",
+        "/api/r8/social/account",
+        "真实连接状态",
+        "不能通过下拉框自行标记",
+        "更多设备控制",
+        "待接入 / 50",
+    ], "deep productization UI", failures)
+    if "localStorage" in deep_ui:
+        failures.append("global Growth ID must come from durable backend state, not localStorage")
+    if "MutationObserver" in deep_ui:
+        failures.append("deep productization must use explicit events, not a global DOM MutationObserver")
+    require(deep_css, [
+        ".deep-task-lock",
+        ".deep-drop-zone",
+        ".deep-account-truth",
+        ".deep-device-more",
+        ".deep-system-link",
+    ], "deep productization visual system", failures)
+    require(workbench, [
+        "conversion_summary",
+        "当前增长ID",
+        "真实咨询 / 线索",
+        "真实验证通过",
+        "不会让用户手工勾选",
+    ], "truthful conversion/account workbench", failures)
+    require(run, ["deep_productization_patch", "growth_chain_patch"], "deep productization runtime install", failures)
 
     require(main_js, [
         "真实运营工作台",
@@ -122,9 +298,10 @@ def main():
         "未验证",
     ], "truthful empty-state contract", failures)
 
+    runtime_contract(failures)
     if failures:
         raise SystemExit("\n".join(failures))
-    print("PASS: V2.2.1 productization regression contract")
+    print("PASS: V2.2.1 deep productization regression contract")
 
 
 if __name__ == "__main__":

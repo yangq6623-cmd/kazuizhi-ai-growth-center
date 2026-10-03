@@ -1,0 +1,61 @@
+name: Validate R8-14 SEO GEO Autonomy
+
+on:
+  push:
+    branches: ['r8-14-*']
+    paths:
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/backend/r8_14_seo_geo_autonomy_patch.py'
+      - '05_V2.0.0_Source/web/r8_14_seo_geo_autonomy_ui.js'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_14_seo_geo_autonomy.py'
+      - '.github/workflows/r8_14_seo_geo_autonomy_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/seo_geo_autonomy.py'
+      - '05_V2.0.0_Source/backend/r8_14_seo_geo_autonomy_patch.py'
+      - '05_V2.0.0_Source/web/r8_14_seo_geo_autonomy_ui.js'
+      - '05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js'
+      - '05_V2.0.0_Source/run.py'
+      - '04_Build/v2/test_r8_14_seo_geo_autonomy.py'
+      - '.github/workflows/r8_14_seo_geo_autonomy_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-autonomy:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: python -m pip install -r 05_V2.0.0_Source/requirements.txt
+      - name: Verify autonomy modes and truth gates
+        run: python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+      - name: Compile R8-14 runtime modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/seo_geo_autonomy.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_14_seo_geo_autonomy_patch.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+          node --check 05_V2.0.0_Source/web/r8_14_seo_geo_autonomy_ui.js
+          node --check 05_V2.0.0_Source/web/r8_13_seo_geo_bridge.js
+      - name: Verify owner autonomy contract
+        run: |
+          $core = Get-Content 05_V2.0.0_Source/core/seo_geo_autonomy.py -Raw
+          @('observe','assisted','autonomous','never_fake_publication','never_fake_indexing','never_fake_geo_visibility','seo_public_deploy_connector','seo_search_connector') | ForEach-Object {
+            if (-not $core.Contains($_)) { throw "Missing autonomy contract: $_" }
+          }
+          $ui = Get-Content 05_V2.0.0_Source/web/r8_14_seo_geo_autonomy_ui.js -Raw
+          @('观察模式','半自动','自治模式','待人工处理','立即执行自治循环') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing autonomy UI: $_" }
+          }
+          Write-Host 'R8-14 SEO/GEO autonomy validates local-first execution while preserving real external evidence gates.'

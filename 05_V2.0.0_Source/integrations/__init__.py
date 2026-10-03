@@ -9,3 +9,8 @@ from . import android_device_b3 as _android_device_b3  # noqa: F401,E402
 # screenrecord H.264 producer for low-latency live mirroring. The stable device
 # status API is patched in place so every page continues to read one truth.
 from . import android_live_mirror as _android_live_mirror  # noqa: F401,E402
+
+# R8-17 production host compatibility: mirror managed SEO index.html files to
+# default.htm so Windows Server 2012 R2 / IIS can resolve /seo/<slug>/ even when
+# index.html is not present in the site's effective Default Document list.
+from . import r8_17_iis_static_compat as _r8_17_iis_static_compat  # noqa: F401,E402

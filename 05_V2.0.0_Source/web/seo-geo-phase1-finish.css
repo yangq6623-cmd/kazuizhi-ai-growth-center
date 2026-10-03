@@ -1,0 +1,113 @@
+/* R8-19 Phase 1 final visual finish. Scope: SEO/GEO only. */
+:root{--kz-finish-blue:#2563eb;--kz-finish-blue-dark:#1d4ed8;--kz-finish-blue-soft:#eef4ff;--kz-finish-green:#16875f;--kz-finish-green-soft:#eef9f4;--kz-finish-amber:#b7791f;--kz-finish-ink:#14233d;--kz-finish-muted:#708097;--kz-finish-line:#e1e8f2;--kz-finish-card:#fff}
+
+/* Embedded SEO title hierarchy: the outer shell already says SEO/GEO, child page should say SEO only. */
+html.kz-growth-embedded .head h1{font-size:30px!important;letter-spacing:-.02em!important}
+html.kz-growth-embedded .head .muted{font-size:11px!important;color:#718198!important}
+html.kz-growth-embedded .truth-panel,html.kz-growth-embedded .kpi,html.kz-growth-embedded .card{border-color:var(--kz-finish-line)!important;box-shadow:0 5px 18px rgba(24,52,93,.035)!important}
+html.kz-growth-embedded .section{margin-top:18px!important}
+html.kz-growth-embedded .tabs{border-radius:10px!important;padding:8px 0!important}
+
+/* GEO: the larger progress card is the one source of truth; remove the old duplicate strip. */
+#geo-growth-pane #geo-baseline-progress{display:none!important}
+
+/* GEO KPI cards: compact, clickable and consistent. */
+#geo-growth-pane .geo-kpis{gap:9px!important}
+#geo-growth-pane .geo-kpis article{min-height:82px!important;padding:12px 13px!important;border-color:var(--kz-finish-line)!important;border-radius:11px!important;box-shadow:0 4px 14px rgba(20,45,80,.025)!important}
+#geo-growth-pane .geo-kpis article span{font-size:10px!important;color:#64748b!important}
+#geo-growth-pane .geo-kpis article strong{margin-top:4px!important;font-size:20px!important;letter-spacing:-.02em!important}
+#geo-growth-pane .geo-kpis article small{font-size:9px!important;color:#8a97a9!important}
+
+/* GEO execution cockpit: one clear business flow instead of a narrow left rail + scattered controls. */
+#geo-growth-pane .geo-runner-shell{display:grid!important;grid-template-columns:1fr!important;gap:12px!important;padding:14px!important;border:1px solid #dce5f1!important;border-radius:14px!important;background:linear-gradient(180deg,#fbfcff,#f7f9fc)!important;box-shadow:0 7px 22px rgba(23,52,91,.035)!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;order:2}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid article{min-height:74px!important;padding:12px 14px!important;border:1px solid #dfe6f0!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid article span{font-size:10px!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid article b{font-size:14px!important;margin-top:3px!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid article small{font-size:9px!important;line-height:1.45!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-local{border-color:#d9e1eb!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-browser{border:2px solid #7fa6ef!important;background:linear-gradient(180deg,#f7faff,#fff)!important;box-shadow:0 3px 10px rgba(37,99,235,.06)!important}
+#geo-growth-pane .geo-runner-shell>.geo-mode-grid .mode-api{border-color:#ead7a7!important;background:#fffdf7!important;opacity:1!important}
+#geo-growth-pane .geo-runner-shell>.geo-command-deck{order:1;gap:9px!important}
+#geo-growth-pane .geo-runner-shell .geo-command-main{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:16px!important;align-items:center!important;min-height:88px!important;padding:15px 16px!important;border:1px solid #bdd1f8!important;border-radius:11px!important;background:linear-gradient(135deg,#f6f9ff,#edf4ff)!important}
+#geo-growth-pane .geo-runner-shell .geo-command-copy span{font-size:10px!important;color:#3568c9!important}
+#geo-growth-pane .geo-runner-shell .geo-command-copy strong{font-size:17px!important;color:#16243c!important}
+#geo-growth-pane .geo-runner-shell .geo-command-copy small{font-size:10px!important;color:#68778e!important;line-height:1.5!important}
+#geo-growth-pane .geo-runner-shell .geo-command-main [data-slot="main"]{justify-content:flex-end!important}
+#geo-growth-pane .geo-runner-shell .geo-command-main #geo-browser-one{min-width:148px!important;min-height:38px!important;border-radius:8px!important;background:linear-gradient(180deg,#2f6deb,#2563eb)!important;border-color:#2563eb!important;box-shadow:0 6px 14px rgba(37,99,235,.18)!important}
+#geo-growth-pane .geo-runner-shell .geo-command-main #geo-browser-one:hover{background:linear-gradient(180deg,#2563eb,#1d4ed8)!important}
+#geo-growth-pane .geo-runner-shell .geo-command-main .geo-executor-state{padding:6px 8px!important;border:1px solid #ccebdc!important;border-radius:7px!important;background:#f0faf5!important;color:#167653!important;font-size:9px!important}
+#geo-growth-pane .geo-runner-shell .geo-command-tools{grid-template-columns:1fr 1fr!important;gap:10px!important}
+#geo-growth-pane .geo-runner-shell .geo-command-tools details{padding:0 12px!important;border:1px solid #e2e8f0!important;border-radius:9px!important;background:#fff!important}
+#geo-growth-pane .geo-runner-shell .geo-command-tools summary{padding:9px 0!important;color:#506078!important}
+#geo-growth-pane .geo-runner-shell .geo-action-feedback{min-height:32px!important;padding:8px 10px!important;border-radius:8px!important}
+#geo-growth-pane .geo-runner-shell>.geo-truth-banner{grid-column:auto!important;order:3;margin:0!important;padding:8px 10px!important;border-color:#e3e9f1!important;background:#fff!important;color:#64748b!important;font-size:10px!important}
+
+/* Primary browser action always reads as one next-step action despite older helper scripts. */
+#geo-growth-pane #geo-browser-one{font-size:0!important;min-width:142px!important}
+#geo-growth-pane #geo-browser-one::after{content:"开始第1题验证";font-size:11px;font-weight:800}
+#geo-growth-pane:has(.geo-browser-workbench.is-active) #geo-browser-one::after{content:"继续当前验证"}
+
+/* Task ID is traceability metadata, not the main business input. */
+#geo-growth-pane label:has(#geo-browser-task-id){color:#8996a8!important;font-size:9px!important}
+#geo-growth-pane #geo-browser-task-id{background:#f8fafc!important;color:#7a8798!important;border-color:#e6ebf2!important;font-size:9px!important;font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important}
+#geo-growth-pane label:has(#geo-browser-task-id)::before{content:"任务编号 · ";color:#9aa6b5;font-weight:700}
+
+/* Workbench: use a complete frame. No one-sided blue stripe. */
+#geo-growth-pane .geo-browser-workbench{padding:16px!important;border:2px solid #9bb9f2!important;border-radius:13px!important;background:#fff!important;box-shadow:0 7px 22px rgba(23,52,91,.045)!important}
+#geo-growth-pane .geo-browser-workbench.is-active{border-color:#6f99eb!important;box-shadow:0 0 0 3px rgba(37,99,235,.05),0 8px 24px rgba(23,52,91,.055)!important}
+#geo-growth-pane .geo-browser-workbench>.panel-head{padding-bottom:9px!important;border-bottom:1px solid #edf1f6!important}
+#geo-growth-pane .geo-browser-workbench>.panel-head h3{font-size:16px!important;color:#17243b!important}
+#geo-growth-pane .geo-browser-workbench>.panel-head p{color:#718198!important}
+#geo-growth-pane .geo-human-flow{gap:10px!important;margin:11px 0 12px!important}
+#geo-growth-pane .geo-human-flow-step{min-height:62px!important;padding:10px 12px!important;border:1px solid #e0e7f0!important;border-radius:10px!important;background:#fafbfd!important}
+#geo-growth-pane .geo-human-flow-step b{font-size:11px!important}
+#geo-growth-pane .geo-human-flow-step.active{border:2px solid #7fa6ef!important;background:#eef4ff!important;box-shadow:none!important}
+#geo-growth-pane .geo-human-flow-step.done{border:2px solid #9fd7bf!important;background:#eef9f4!important;box-shadow:none!important}
+#geo-growth-pane .geo-browser-workbench.is-active{grid-template-columns:minmax(300px,.9fr) minmax(440px,1.1fr)!important;gap:10px 16px!important}
+#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-meta-grid{grid-column:1!important;grid-row:auto!important}
+#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-proof-grid{grid-column:2!important;grid-row:auto!important}
+#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-question-field{grid-column:1!important;grid-row:auto!important}
+#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-answer-field{grid-column:2!important;grid-row:auto!important}
+#geo-growth-pane .geo-browser-workbench input,#geo-growth-pane .geo-browser-workbench select,#geo-growth-pane .geo-browser-workbench textarea{border-color:#d5dfeb!important;border-radius:8px!important;background:#fff!important}
+#geo-growth-pane .geo-browser-workbench input:focus,#geo-growth-pane .geo-browser-workbench select:focus,#geo-growth-pane .geo-browser-workbench textarea:focus{outline:none!important;border-color:#7ea5ef!important;box-shadow:0 0 0 3px rgba(37,99,235,.08)!important}
+#geo-growth-pane .geo-task-actions{grid-column:1/-1!important;margin-top:2px!important;padding:9px 10px!important;border-color:#e5ebf3!important;background:#f8fafc!important}
+#geo-growth-pane .geo-task-actions button{min-height:34px!important;border-radius:7px!important}
+#geo-growth-pane .geo-task-actions button:not(.primary){border-color:#c9d6e7!important;background:#fff!important;color:#3c5e8f!important}
+#geo-growth-pane .geo-task-actions button.primary{border-color:#2563eb!important;background:#2563eb!important;color:#fff!important;box-shadow:0 4px 10px rgba(37,99,235,.14)!important}
+#geo-growth-pane .geo-browser-actions{grid-column:1/-1!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;flex-wrap:wrap!important;margin-top:4px!important;padding-top:10px!important;border-top:1px solid #edf1f6!important}
+#geo-growth-pane #geo-browser-submit{min-width:158px!important;min-height:36px!important;border:1px solid var(--kz-finish-green)!important;border-radius:8px!important;background:var(--kz-finish-green)!important;color:#fff!important;padding:8px 14px!important;font-weight:800!important;box-shadow:0 4px 11px rgba(22,135,95,.14)!important}
+#geo-growth-pane #geo-browser-submit:hover{background:#117652!important;border-color:#117652!important}
+#geo-growth-pane .geo-evidence-advanced{background:#fbfcfe!important}
+
+/* Queue + table remain data dense, but visually quieter. */
+#geo-growth-pane .geo-questions-panel,#geo-growth-pane .geo-execution-panel{border-radius:12px!important;border-color:var(--kz-finish-line)!important;box-shadow:0 5px 17px rgba(23,52,91,.03)!important}
+#geo-growth-pane .geo-table th{background:#f8fafc!important;color:#6d7b90!important}
+#geo-growth-pane .geo-table td{border-bottom-color:#edf1f6!important}
+#geo-growth-pane .geo-task{border-radius:9px!important;border-color:#e7ecf3!important;background:#fff!important}
+#geo-growth-pane .geo-task .kz-pause-reason{display:block;margin-top:3px;color:#9a6a12;font-size:9px;line-height:1.35}
+
+/* Technical IDs should stay available without competing with owner-facing information. */
+#geo-growth-pane .geo-control-ids{opacity:.42!important;transform:scale(.96);transform-origin:left center}
+#geo-growth-pane .geo-version{opacity:.72}
+
+/* Section rhythm. */
+#geo-growth-pane .geo-control,#geo-growth-pane .kz-growth-progress,#geo-growth-pane .geo-runner-shell,#geo-growth-pane .geo-browser-workbench,#geo-growth-pane .geo-grid{margin-bottom:12px!important}
+#geo-growth-pane .panel-head h3{letter-spacing:-.01em}
+
+@media(max-width:1100px){
+  #geo-growth-pane .geo-runner-shell .geo-command-main{grid-template-columns:1fr!important}
+  #geo-growth-pane .geo-runner-shell .geo-command-main [data-slot="main"]{justify-content:flex-start!important}
+  #geo-growth-pane .geo-browser-workbench.is-active{grid-template-columns:1fr!important}
+  #geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-meta-grid,#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-proof-grid,#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-question-field,#geo-growth-pane .geo-browser-workbench.is-active>.geo-browser-answer-field{grid-column:1!important}
+}
+@media(max-width:900px){
+  #geo-growth-pane .geo-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  #geo-growth-pane .geo-runner-shell>.geo-mode-grid{grid-template-columns:1fr!important}
+  #geo-growth-pane .geo-runner-shell .geo-command-tools{grid-template-columns:1fr!important}
+}
+@media(max-width:620px){
+  #geo-growth-pane .geo-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #geo-growth-pane .geo-browser-actions{align-items:stretch!important;flex-direction:column!important}
+  #geo-growth-pane #geo-browser-submit{width:100%!important}
+}

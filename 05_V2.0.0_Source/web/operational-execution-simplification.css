@@ -1,0 +1,29 @@
+/* R8-18: The USB mirror is an optional manual aid, never a production prerequisite. */
+.nav[data-page="device"], #device { display: none !important; }
+
+/* 顶层 Mission 已经固定显示，执行页不再重复放一张大幅蓝色目标横幅。 */
+.r8-execution-simplified .hero { display: none !important; }
+
+.execution-local-strip {
+  display:grid;
+  grid-template-columns:1.35fr repeat(3,1fr);
+  gap:10px;
+  margin:14px 0 18px;
+  padding:14px;
+  border:1px solid #bcd4ff;
+  border-radius:14px;
+  background:linear-gradient(120deg,#123e9e,#2d69df);
+  color:#fff;
+}
+.execution-local-strip article { min-width:0; padding:4px 9px; border-left:1px solid rgba(255,255,255,.25); }
+.execution-local-strip article:first-child { border-left:0; }
+.execution-local-strip small { display:block; color:#dceaff; font-size:12px; }
+.execution-local-strip b { display:block; margin-top:4px; font-size:15px; }
+.execution-local-strip span { display:block; margin-top:4px; color:#e9f1ff; font-size:12px; line-height:1.5; }
+.execution-local-note { margin:10px 0 14px; padding:10px 12px; border-radius:10px; background:#edf6ff; color:#245084; font-size:13px; line-height:1.65; }
+.execution-local-note b { color:#123e9e; }
+
+@media (max-width: 800px) {
+  .execution-local-strip { grid-template-columns:1fr 1fr; }
+  .execution-local-strip article:nth-child(3) { border-left:0; }
+}

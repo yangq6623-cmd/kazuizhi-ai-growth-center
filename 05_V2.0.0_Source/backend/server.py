@@ -45,6 +45,13 @@ from integrations.business_data import (
     business_source_status, configure_business_source, refresh_business_source,
     refresh_if_due as refresh_business_if_due, test_business_source,
 )
+from integrations.wechat_mini_program import (
+    configure_wechat_mini_program, refresh_wechat_mini_program,
+    test_wechat_mini_program, wechat_mini_program_status,
+)
+from integrations.ai_gateway import (
+    clear_gateway, configure_gateway, gateway_status, test_gateway,
+)
 from integrations.manager import (
     ask_ai, control_center, integration_status, model_routes, save_ai_config,
     system_diagnostics, test_ai_connection,
@@ -177,6 +184,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return import_template()
         if path == "/api/business-source/status":
             return business_source_status(build_analytics())
+        if path == "/api/wechat-mini-program/status":
+            return wechat_mini_program_status()
+        if path == "/api/ai-gateway/status":
+            return gateway_status()
         if path == "/api/promotion/keywords":
             return list_keywords()
         if path == "/api/promotion/history":
@@ -373,6 +384,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
             "/api/business-source/configure", "/api/business-source/test", "/api/business-source/refresh",
+            "/api/wechat-mini-program/configure", "/api/wechat-mini-program/test", "/api/wechat-mini-program/refresh",
+            "/api/ai-gateway/config", "/api/ai-gateway/test", "/api/ai-gateway/clear",
             "/api/promotion/seo-content", "/api/promotion/geo-plan",
             "/api/promotion/ad-copy", "/api/promotion/video-script",
             "/api/operations/tasks", "/api/operations/tasks/update",
@@ -414,6 +427,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = test_business_source()
             elif path == "/api/business-source/refresh":
                 result = refresh_business_source(force=True)
+            elif path == "/api/wechat-mini-program/configure":
+                result = configure_wechat_mini_program(payload)
+            elif path == "/api/wechat-mini-program/test":
+                result = test_wechat_mini_program()
+            elif path == "/api/wechat-mini-program/refresh":
+                result = refresh_wechat_mini_program(force=True)
+            elif path == "/api/ai-gateway/config":
+                result = configure_gateway(payload)
+            elif path == "/api/ai-gateway/test":
+                result = test_gateway(payload.get("route"))
+            elif path == "/api/ai-gateway/clear":
+                result = clear_gateway(payload.get("route"))
             elif path == "/api/promotion/keywords":
                 result = add_keyword(payload)
             elif path == "/api/promotion/seo-content":

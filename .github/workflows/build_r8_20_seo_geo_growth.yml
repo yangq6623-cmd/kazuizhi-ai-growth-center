@@ -1,0 +1,199 @@
+name: Build Kazuizhi R8-23.4 Runtime Route Recovery
+
+on:
+  push:
+    branches:
+      - 'r8-23-final-autonomous-growth-os-*'
+      - 'r8-23-3-runtime-execution-ui-convergence-*'
+      - 'r8-23-4-runtime-route-recovery-*'
+    paths:
+      - '05_V2.0.0_Source/**'
+      - '04_Build/**'
+      - '.github/workflows/build_r8_20_seo_geo_growth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stamp visible build number and commit
+        run: |
+          $path = '05_V2.0.0_Source/web/build_info.js'
+          $text = Get-Content -LiteralPath $path -Raw
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $text = $text.Replace('__GITHUB_SHA__', $shortSha)
+          $text = $text.Replace('phase: "R8-23"', 'phase: "R8-23.4 Candidate"')
+          $text = $text.Replace('displayVersion: "V2.2.2 R8-23 Final 7x24 Autonomous Growth OS"', 'displayVersion: "V2.2.2 R8-23.4 Runtime & Route Recovery"')
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+      - name: Install pinned dependencies and browser test driver
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+          python -m pip install playwright==1.55.0
+      - name: Verify R7 through R8-23.4 Recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r7_block_a.py
+          python 04_Build/v2/test_r7_block_b.py
+          python 04_Build/v2/test_r8_identity.py
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_11_backbone.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_remote_agent.py
+          python 04_Build/v2/test_ai_gateway.py
+          python 04_Build/v2/test_r8_18_model_connection_center.py
+          python 04_Build/v2/test_r8_18_model_gateway_routes.py
+          python 04_Build/v2/test_r8_18_evidence_ledger.py
+          python 04_Build/v2/test_r8_19_geo_phase1.py
+          python 04_Build/v2/test_r8_19_geo_phase1_48_acceptance.py
+          python 04_Build/v2/test_r8_19_geo_main_platform_integration.py
+          python 04_Build/v2/test_r8_19_model_connection_ui.py
+          python 04_Build/v2/test_r8_19_geo_live_gate.py
+          python 04_Build/v2/test_r8_19_geo_browser_first.py
+          python 04_Build/v2/test_r8_19_geo_ui_polish.py
+          python 04_Build/v2/test_r8_19_geo_field_fix.py
+          python 04_Build/v2/test_r8_19_startup_resilience.py
+          python 04_Build/v2/test_r8_19_geo_phase2.py
+          python 04_Build/v2/test_r8_19_geo_autonomy.py
+          python 04_Build/v2/test_r8_19_geo_phase3.py
+          python 04_Build/v2/test_r8_20_seo_geo_growth.py
+          python 04_Build/v2/test_r8_20_phase3_publish_bridge.py
+          python 04_Build/v2/test_r8_20_24h_runtime.py
+          python 04_Build/v2/test_r8_21_unified_connectors.py
+          python 04_Build/v2/test_r8_22_autonomous_convergence.py
+          python 04_Build/v2/test_r8_23_final_growth_os.py
+          python 04_Build/v2/test_r8_23_2_runtime_truth.py
+          python 04_Build/v2/test_r8_23_3_candidate.py
+          python 04_Build/v2/test_r8_23_4_runtime_route_recovery.py
+      - name: Verify production entrypoint activates R8-19 through R8-23.4
+        run: |
+          $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
+          foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
+            if (-not $run.Contains($marker)) { throw "Production entrypoint missing $marker" }
+          }
+          $patch = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py' -Raw
+          foreach ($marker in @('seo-geo-growth-intelligence.js','seo-geo-connector-matrix.js','seo_geo_connector_router_v2','/api/r8-20/seo-geo','/api/r8-21/seo-geo/connectors','/api/r8-21/seo-geo/controller-routes','seo_geo_source_tracking_patch','/api/r8-13/seo-geo/run','/api/r8-20/runtime-health')) {
+            if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
+          }
+          $truthPatch = Get-Content -LiteralPath '05_V2.0.0_Source/core/r8_20_growth_truth_patch.py' -Raw
+          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch','r8_23_2_runtime_safety_patch','r8_23_3_candidate_patch','r8_23_4_runtime_route_recovery_patch')) {
+            if (-not $truthPatch.Contains($marker)) { throw "Production activation missing $marker" }
+          }
+          $r8234 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_4_runtime_route_recovery_patch.py' -Raw
+          foreach ($marker in @('/api/ping','/api/version','/api/r8-20/seo-geo','r8_13_seo_geo_bridge.js','r8_23_4_recovery.js','R8-23.4 Runtime & Route Recovery')) {
+            if (-not $r8234.Contains($marker)) { throw "R8-23.4 recovery integration missing $marker" }
+          }
+      - name: Integrate unified model connection center into packaged web
+        run: |
+          $targets = @(
+            '05_V2.0.0_Source/web/index.html',
+            '05_V2.0.0_Source/web/operational.html'
+          )
+          foreach ($path in $targets) {
+            $text = Get-Content -LiteralPath $path -Raw
+            if (-not $text.Contains('model-connection-center.css')) {
+              $text = $text.Replace('</head>', '<link rel="stylesheet" href="model-connection-center.css"></head>')
+            }
+            if (-not $text.Contains('model-connection-center.js')) {
+              $text = $text.Replace('</body>', '<script src="model-connection-center.js"></script></body>')
+            }
+            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css')) {
+              throw "Unified model connection center injection failed: $path"
+            }
+            Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          }
+      - name: Check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+      - name: Real Chrome source responsiveness gate
+        timeout-minutes: 5
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py
+      - name: Full-interface source simulation gate
+        timeout-minutes: 8
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path ui_artifacts/source | Out-Null
+          python 04_Build/v2/test_r8_23_4_full_ui_simulation.py --screens ui_artifacts/source
+      - name: Verify packaged source contract
+        run: |
+          python 04_Build/v2/verify_v2_autonomous.py --source
+          python 04_Build/v2/verify_r8_operational.py --source
+      - name: Build packaged runtime and installer
+        run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
+      - name: Real Chrome packaged-runtime responsiveness gate
+        timeout-minutes: 5
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_19_browser_responsiveness.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+      - name: Full-interface packaged-runtime simulation gate
+        timeout-minutes: 8
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path ui_artifacts/packaged | Out-Null
+          python 04_Build/v2/test_r8_23_4_full_ui_simulation.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe' --screens ui_artifacts/packaged
+      - name: Scan final installer with Microsoft Defender when available
+        run: ./04_Build/v2/test_windows_security.ps1
+      - name: Test silent install launch overwrite upgrade and uninstall
+        run: ./04_Build/v2/test_installer.ps1
+      - name: Record R8-23.4 installer provenance
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          @{
+            version = '2.2.2 R8-23.4 Runtime & Route Recovery'
+            commit = '${{ github.sha }}'
+            run_number = '${{ github.run_number }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            sha256 = $hash
+            runtime_identity = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
+            engineering_scope = @('fail-open owner shell','ultra-light ping/version contract','bounded cancellable browser requests','fixed SEO/GEO route r813-seo-geo','content production route promotion','legacy naive timestamp normalization','SEO/GEO days=30 field recovery','full visible-page browser simulation','diagnostic loading settlement','owner-facing R7 copy cleanup','formal GEO truth preserved','business attribution to order only')
+            field_acceptance_remaining = @('2h Candidate smoke test','24h Windows unattended run','72h fault/recovery run','7-day production soak','one real social Post ID/URL closed-loop requires live account authorization')
+            truth_policy = 'Configured does not mean invoked; invoked does not mean external success. Local/Doubao output is C-level auxiliary. Formal GEO requires real external A/B Evidence.'
+            outcome_scope = 'site visit -> mini-program visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI'
+            funds_policy = 'human-only permanently'
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_4_RECOVERY.json
+      - name: Upload R8-23.4 full UI simulation screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_R8_23_4_UI_Simulation
+          path: ui_artifacts/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload R8-23.4 Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_23_4_Runtime_Route_Recovery
+          path: installer_output_v2/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload R8-23.4 portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_AI_Enterprise_R8_23_4_Runtime_Route_Recovery_Portable
+          path: dist_v2/
+          if-no-files-found: error
+          retention-days: 90

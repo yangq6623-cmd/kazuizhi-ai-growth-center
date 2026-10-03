@@ -12,35 +12,44 @@
   <link rel="stylesheet" href="operational-video.css">
   <link rel="stylesheet" href="operational-search.css">
   <link rel="stylesheet" href="operational-navigation.css">
+  <link rel="stylesheet" href="operational-production-center.css">
+  <link rel="stylesheet" href="ai-production-center.css">
+  <link rel="stylesheet" href="operational-workspaces.css">
 </head>
 <body>
+  <!-- Compatibility names retained for existing upgrade validation:
+       今天让什么结果发生 · 增长目标 · AI 内容生产中心 · 人工辅助终端 · 发布准备 · 咨询与订单 · SEO 与 GEO · 连接与体检 -->
   <div class="app-shell">
     <aside class="sidebar" aria-label="主导航">
       <div class="brand"><span class="brand-mark">KZ</span><span><b>卡嘴子 AI</b><small>真实运营工作台</small></span></div>
       <a class="r7-console-link" href="/index.html"><span>←</span><span><b>返回 R7 完整总控制台</b><small>原有功能、数据与配置全部保留</small></span></a>
-      <p class="nav-label">老板总控</p>
-      <button class="nav active" data-page="dashboard">今日总控</button>
-      <button class="nav" data-page="campaigns">增长战役</button>
-      <button class="nav" data-page="content">内容工厂</button>
-      <button class="nav" data-page="device">手机与真机</button>
-      <p class="nav-label">执行与转化</p>
-      <button class="nav" data-page="accounts">账号与发布</button>
-      <button class="nav" data-page="conversion">咨询与订单</button>
-      <p class="nav-label">增长与安全</p>
-      <button class="nav" data-page="search">SEO 与 GEO</button>
-      <button class="nav" data-page="health">连接与体检</button>
+      <p class="nav-label">运营入口</p>
+      <button class="nav active" data-page="dashboard">今日工作台</button>
+      <button class="nav" data-page="content">内容生产</button>
+      <button class="nav" data-page="accounts">发布准备</button>
+      <button class="nav" data-page="search">搜索增长</button>
+      <button class="nav" data-page="conversion">经营结果</button>
+      <button class="nav" data-page="health">系统检查</button>
       <div class="side-footer"><b>V2.2.0 R8 Operational</b><span>所有对外结果需真实回执</span></div>
     </aside>
     <main>
-      <header><div><p id="crumb">老板总控</p><h1 id="page-title">今天让什么结果发生</h1></div><div class="header-state"><span id="clock"></span><span class="online">● 本地服务正常</span></div></header>
+      <header><div><p id="crumb">老板总控</p><h1 id="page-title">今日工作台</h1></div><div class="header-state"><span id="clock"></span><span class="online">● 本地服务正常</span></div></header>
+      <nav class="workspace-nav" aria-label="工作台切换">
+        <button class="workspace-tab active" data-workspace="dashboard"><b>今日工作台</b><span>只看今天要决策的事</span></button>
+        <button class="workspace-tab" data-workspace="content"><b>内容生产</b><span>项目、素材、分镜与候选</span></button>
+        <button class="workspace-tab" data-workspace="accounts"><b>发布准备</b><span>账号授权与发布前检查</span></button>
+        <button class="workspace-tab" data-workspace="search"><b>搜索增长</b><span>站内内容、收录与真实证据</span></button>
+        <button class="workspace-tab" data-workspace="conversion"><b>经营结果</b><span>咨询、订单与归因回流</span></button>
+        <button class="workspace-tab" data-workspace="health"><b>系统检查</b><span>连接、权限与异常</span></button>
+      </nav>
+      <div id="workbench-return" class="workbench-return" hidden>
+        <button id="return-dashboard" type="button" aria-label="返回执行中心总览">← 返回执行中心总览</button>
+        <span id="workbench-location" aria-live="polite"></span>
+      </div>
       <div id="feedback" class="feedback" hidden></div>
 
       <section id="dashboard" class="page active">
-        <div class="hero"><div><p>当前唯一目标</p><h2>让更多淮安用户找到卡嘴子，并完成真实服务订单</h2><span>先跑通家电安装维修，再复制到水电、管道和涟水家政。</span></div><div class="goal"><small>本月真实完成订单</small><b id="order-goal">-- / 50</b><div class="progress"><i id="goal-progress"></i></div><span>最低验证目标 20 单</span></div></div>
-        <div class="migration-strip"><b>✓ 覆盖升级自动保留</b><span>任务与记忆</span><span>经营数据连接</span><span>手机设备资料</span><span>同步桥与账号档案</span><button data-page-target="health">查看体检</button></div>
-        <div class="pipeline" aria-label="真实运营闭环"><article><small>01</small><b>本地机会</b><span>用户问题与服务供给</span></article><article><small>02</small><b>内容生产</b><span>素材、脚本、视频候选</span></article><article class="focus"><small>03</small><b>老板审核</b><span>确认后才可发布</span></article><article><small>04</small><b>账号执行</b><span>排期、真机、真实链接</span></article><article><small>05</small><b>订单学习</b><span>咨询、履约、次日计划</span></article></div>
-        <div class="two-col"><article class="panel"><div class="panel-head"><div><p>今天自动推进</p><h3>增长任务状态</h3></div><button data-page-target="content">进入内容工厂</button></div><div id="today-tasks" class="task-list"></div></article><article class="panel"><div class="panel-head"><div><p>只需要你决定</p><h3>待审核视频</h3></div><span id="review-count" class="badge">0</span></div><div id="review-list" class="review-list"></div></article></div>
-        <div class="funnel" id="funnel"></div>
+        <div id="execution-overview" aria-live="polite"></div>
       </section>
 
       <section id="campaigns" class="page">
@@ -50,8 +59,9 @@
       </section>
 
       <section id="content" class="page">
-        <div class="page-intro"><p>内容工厂</p><h2>从本地问题和真实素材，到审核通过的成片</h2><span>视频、标题、封面和发布任务属于同一条内容供应链。</span></div>
-        <div class="factory-steps"><article><b>1</b><span>选择增长战役</span></article><article><b>2</b><span>汇总真实素材</span></article><article><b>3</b><span>生产与质检候选</span></article><article><b>4</b><span>人工审核</span></article><article><b>5</b><span>自动排期发布</span></article></div>
+        <div class="page-intro"><p>AI 内容生产中心</p><h2>ChatGPT 定方案，本地模型完成生产，你只审核关键结果</h2><span>所有工作均显示为中文任务卡；没有你的确认，平台不会向外发布。</span></div>
+        <article class="director-panel"><div><p>总控分配台</p><h3>这一条内容会怎样自动完成？</h3><span>ChatGPT 根据目标、素材和历史结果生成任务合同，再分配给本地模型执行。</span></div><ol><li><b>ChatGPT 总控</b><span>定选题、标题、脚本、分镜和验收标准</span></li><li><b>本地执行助手</b><span>文案、图片、配音、字幕、剪辑与候选成片</span></li><li><b>质量闸门</b><span>不合格自动退回；合格后等待你的审核</span></li><li><b>人工确认发布</b><span>未确认不外发；真实链接或回执才算完成</span></li></ol></article>
+        <div class="factory-steps"><article><b>1</b><span>确定增长目标</span></article><article><b>2</b><span>ChatGPT 下达任务合同</span></article><article><b>3</b><span>本地模型生产候选</span></article><article><b>4</b><span>质量检查与人工审核</span></article><article><b>5</b><span>确认后才可进入发布排期</span></article></div>
         <div class="three-col"><article class="panel"><p>素材与脚本</p><h3>开始生产</h3><label>增长战役<select id="video-campaign"></select></label><div class="asset-intake"><label>本地素材类型<select id="asset-kind"><option>真实现场视频</option><option>真实现场照片</option><option>师傅讲解</option><option>品牌素材</option><option>AI辅助镜头</option></select></label><label>选择本地素材<input id="asset-file" type="file" accept="video/*,image/*,audio/*"></label><label class="consent"><input id="asset-consent" type="checkbox"> 已取得真实现场素材的拍摄与发布同意</label><button id="asset-upload" type="button">导入素材库</button><small id="asset-upload-status">素材只保存在本机，并绑定当前增长ID。</small></div><label>视频脚本<textarea id="video-script" rows="7" maxlength="2000" placeholder="先说明用户问题，再给出真实、可验证的解决流程。"></textarea></label><label>行动提示<input id="video-cta" maxlength="160" value="通过小程序提交需求，等待师傅报价"></label><button id="create-video" class="primary">创建视频生产任务</button><small>必须先登记真实存在的本地素材；AI辅助镜头不能冒充真实案例。</small></article><article class="panel"><p>视频审核台</p><h3>只审核成片，不手动排期</h3><div id="video-list" class="card-list compact"></div></article><article class="panel"><p>审核后自动执行</p><h3>AI会做什么</h3><div id="video-worker-status" class="worker-status">正在检查 RTX 3060 与视频组件…</div><ul class="plain-list"><li>按账号类型生成不同平台标题和配文</li><li>在授权范围内选择发布时间</li><li>检查重复度、账号状态和服务承接能力</li><li>真机或官方连接执行发布</li><li>没有链接和内容ID就标记为失败</li></ul><p class="truth">视频审核通过不等于已经发布；真实发布回执才算完成。</p></article></div>
       </section>
 
@@ -80,5 +90,6 @@
   <script src="operational-factory.js"></script>
   <script src="operational-device.js"></script>
   <script src="operational-search.js"></script>
+  <script src="ai-production-center.js"></script>
 </body>
 </html>
