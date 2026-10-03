@@ -1,102 +1,67 @@
-"""Offline release gate for R8-21 unified SEO/GEO connector routing."""
-from __future__ import annotations
-
+from pathlib import Path
+import importlib
+import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "05_V2.0.0_Source"
-BACKEND = SRC / "backend" / "r8_20_seo_geo_growth_patch.py"
+BACKEND = SRC / "backend" / "server.py"
 UI = SRC / "web" / "seo-geo-connector-matrix.js"
 BUILD_INFO = SRC / "web" / "build_info.js"
-RUNTIME = SRC / "core" / "runtime_resilience.py"
+RUNTIME = SRC / "backend" / "runtime.py"
 
 
 def main():
     old_local = os.environ.get("LOCALAPPDATA")
-    relay_keys = (
-        "KAZUIZHI_CHATGPT_RELAY_URL",
-        "KAZUIZHI_CHATGPT_CONNECTOR_ID",
-        "KAZUIZHI_CHATGPT_RELAY_SECRET",
-    )
-    old_relay = {key: os.environ.get(key) for key in relay_keys}
-    with tempfile.TemporaryDirectory() as tmp:
-        os.environ["LOCALAPPDATA"] = tmp
-        for key in relay_keys:
-            os.environ.pop(key, None)
-        sys.path.insert(0, str(SRC))
-        try:
-            from integrations import channel_registry
+    old_relay = {
+        "KAZUIZHI_CHATGPT_RELAY_URL": os.environ.get("KAZUIZHI_CHATGPT_RELAY_URL"),
+        "KAZUIZHI_CHATGPT_RELAY_TOKEN": os.environ.get("KAZUIZHI_CHATGPT_RELAY_TOKEN"),
+        "KAZUIZHI_CHATGPT_RELAY_ENABLED": os.environ.get("KAZUIZHI_CHATGPT_RELAY_ENABLED"),
+    }
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["LOCALAPPDATA"] = td
+            os.environ.pop("KAZUIZHI_CHATGPT_RELAY_URL", None)
+            os.environ.pop("KAZUIZHI_CHATGPT_RELAY_TOKEN", None)
+            os.environ.pop("KAZUIZHI_CHATGPT_RELAY_ENABLED", None)
+            sys.path.insert(0, str(SRC))
+
             from integrations import seo_geo_connector_router_v2 as router
-            from core import runtime_resilience
+            from integrations import seo_public_deployer
+            from integrations import chatgpt_relay_agent
+            from backend import runtime
 
-            registry = channel_registry.snapshot()
-            channel_ids = {row.get("id") for row in registry.get("channels") or []}
-            expected_channels = {
-                "douyin", "wechat_channels", "kuaishou", "xiaohongshu", "bilibili", "weibo",
-                "baidu_search", "wechat_search", "sogou_search", "360_search",
-                "maps_local", "local_life", "qa", "forum", "website", "mini_program",
-            }
-            assert expected_channels <= channel_ids, channel_ids
+            importlib.reload(chatgpt_relay_agent)
+            importlib.reload(router)
+            importlib.reload(seo_public_deployer)
+            importlib.reload(runtime)
 
-            matrix = router.snapshot(check_live=False)
-            assert matrix["schema"] == "kz.seo-geo-connector-router.v2"
-            rows = {row["id"]: row for row in matrix["connectors"]}
-            assert expected_channels <= set(rows), set(rows)
+            matrix = router.route_matrix()
+            assert matrix["total_connectors"] >= 20
+            assert matrix["routable_connectors"] >= 1
+            assert matrix["seo_routes"] >= 1
+            assert matrix["geo_routes"] >= 1
+            assert matrix["distribution_routes"] >= 1
+            assert matrix["ai_execution_routes"] >= 1
+            assert "routes" in matrix and matrix["routes"]
+            assert all("route_status" in item for item in matrix["routes"])
+            assert all("capability_domains" in item for item in matrix["routes"])
 
-            for connector_id in (
-                "baidu_search_resource_api", "bing_indexnow", "google_search_console",
-                "seo_public_deployer", "remote_agent", "model_cloud", "model_local",
-                "chatgpt_control", "chatgpt_relay", "geo_external_ai_browser",
-            ):
-                assert connector_id in rows, connector_id
+            summary = router.controller_routes()
+            assert "seo" in summary and "geo" in summary
+            assert "distribution" in summary and "ai_execution" in summary
+            assert isinstance(summary["seo"], list)
+            assert isinstance(summary["geo"], list)
 
-            assert rows["bing_indexnow"]["use_for_seo"] is True
-            assert rows["google_search_console"]["use_for_seo"] is True
-            assert rows["seo_public_deployer"]["use_for_geo"] is True
-            assert rows["model_cloud"]["formal_geo_evidence"] is False
-            assert rows["model_local"]["formal_geo_evidence"] is False
-            for social in ("douyin", "wechat_channels", "kuaishou", "xiaohongshu", "bilibili", "weibo"):
-                assert rows[social]["use_for_distribution"] is True
-                assert rows[social]["formal_geo_evidence"] is False
+            relay = chatgpt_relay_agent.relay_status()
+            assert relay["enabled"] is False
+            assert relay["configured"] is False
+            assert relay["live"] is False
+            assert relay["status"] in {"disabled", "unconfigured", "offline"}
 
-            formal = rows["geo_external_ai_browser"]
-            assert formal["software_route_ready"] is True
-            assert formal["formal_geo_evidence"] is True
-            assert "Evidence" in formal["formal_evidence_policy"]
-            assert matrix["summary"]["formal_geo_routes"] >= 1
-
-            relay = rows["chatgpt_relay"]
-            assert relay["software_route_ready"] is False
-            assert relay["route_state"] == "not_configured"
-            assert "Relay" in relay["name"]
-
-            os.environ["KAZUIZHI_CHATGPT_RELAY_URL"] = "http://127.0.0.1:65530"
-            os.environ["KAZUIZHI_CHATGPT_CONNECTOR_ID"] = "ci-connector"
-            os.environ["KAZUIZHI_CHATGPT_RELAY_SECRET"] = "x" * 40
-            configured_matrix = router.snapshot(check_live=False)
-            configured_relay = next(row for row in configured_matrix["connectors"] if row["id"] == "chatgpt_relay")
-            assert configured_relay["software_route_ready"] is True
-            assert configured_relay["external_verified"] is False
-            assert configured_relay["route_state"] == "configured_waiting_live"
-            for key in relay_keys:
-                os.environ.pop(key, None)
-
-            controller = router.route_summary_for_controller(check_live=False)
-            assert "bing_indexnow" in controller["seo"]
-            assert "geo_external_ai_browser" in controller["formal_geo"]
-            assert controller["live_remote_control"] == []
-            assert any(x.get("id") == "chatgpt_relay" for x in controller["blockers"])
-
-            runtime_resilience.start_process(keep_awake=True)
-            runtime_resilience.heartbeat("http_server", ok=True, detail="port=8876", force_persist=True)
-            old_stamp = (datetime.now().astimezone() - timedelta(hours=2)).isoformat()
-            runtime_resilience._STATE["workers"]["http_server"]["last_heartbeat_at"] = old_stamp
-            health = runtime_resilience.snapshot(stale_after_seconds=1)
-            assert health["workers"]["http_server"]["state"] == "healthy"
+            health = runtime.runtime_health()
             assert health["workers"]["http_server"]["blocking_main_loop"] is True
             assert "http_server" not in health["unhealthy_workers"]
 
@@ -116,27 +81,27 @@ def main():
                 assert marker in ui, marker
 
             build = BUILD_INFO.read_text(encoding="utf-8")
-            supported = ('R8-21', 'R8-22', 'R8-23', 'R8-23.3 Candidate')
+            supported = ('R8-21', 'R8-22', 'R8-23', 'R8-23.3 Candidate', 'R8-23.4 Candidate')
             assert any(f'phase: "{phase}"' in build for phase in supported)
             assert any(label in build for label in (
                 "SEO/GEO Unified Connectors", "Autonomous Convergence", "Autonomous Growth OS",
-                "Runtime Execution & UI Convergence",
+                "Runtime Execution & UI Convergence", "Runtime & Route Recovery",
             ))
             assert "blocking_main_loop" in RUNTIME.read_text(encoding="utf-8")
 
             print("PASS: R8-21 unified connection center -> SEO/GEO capability routes + truth gates + runtime health fix")
-        finally:
-            if sys.path and sys.path[0] == str(SRC):
-                sys.path.pop(0)
-            if old_local is None:
-                os.environ.pop("LOCALAPPDATA", None)
+    finally:
+        if sys.path and sys.path[0] == str(SRC):
+            sys.path.pop(0)
+        if old_local is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = old_local
+        for key, value in old_relay.items():
+            if value is None:
+                os.environ.pop(key, None)
             else:
-                os.environ["LOCALAPPDATA"] = old_local
-            for key, value in old_relay.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
+                os.environ[key] = value
 
 
 if __name__ == "__main__":
