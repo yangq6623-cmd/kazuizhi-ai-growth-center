@@ -62,11 +62,12 @@ growth.controller_priorities = controller_priorities
 # R8-22 closes Command -> Mission -> Plan. R8-23 assigns every triggered work
 # package to one of the eight AI employees plus an explicit model/tool/connector
 # route. R8-23.2 adds runtime truth and model policy. R8-23.3 fixes the field-
-# observed execution stall by using a rolling verified controller lease and
-# converges the startup/owner UI. None of these imports weaken earlier GEO,
-# external Receipt or finance truth gates.
+# observed execution stall. R8-23.4 recovers the fail-open owner shell, restores
+# the real SEO/GEO route, and normalizes legacy timestamp truth. None of these
+# imports weaken earlier GEO, external Receipt or finance truth gates.
 from backend import r8_22_autonomy_convergence_patch as _r8_22_autonomy_convergence_patch  # noqa: E402,F401
 from backend import r8_23_growth_os_patch as _r8_23_growth_os_patch  # noqa: E402,F401
 from backend import r8_23_2_runtime_truth_patch as _r8_23_2_runtime_truth_patch  # noqa: E402,F401
 from backend import r8_23_2_runtime_safety_patch as _r8_23_2_runtime_safety_patch  # noqa: E402,F401
 from backend import r8_23_3_candidate_patch as _r8_23_3_candidate_patch  # noqa: E402,F401
+from backend import r8_23_4_runtime_route_recovery_patch as _r8_23_4_runtime_route_recovery_patch  # noqa: E402,F401
