@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
 Version: V2.2.2 Autonomous Mission Core
-R8 Phase: R8-23.1 UI Scope Layout Fix
+R8 Phase: R8-23.2 Pilot Runtime Truth & Closed-Loop Acceptance
 Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
 Dashboard: FULL_ENTERPRISE_DASHBOARD
@@ -14,6 +14,16 @@ Modules:
 - R8-23.1 Owner Cockpit Scoped to Boss Monitor Only
 - R8-23.1 Compact Boss Monitor Layout
 - R8-23.1 GEO Advanced Panels Folded into Progressive Disclosure Sections
+- R8-23.2 Canonical Runtime Version / Health / Readiness Contract
+- R8-23.2 Command -> Mission -> Plan Single Truth Diagnostics
+- R8-23.2 Decision Pack 24h Control Lease
+- R8-23.2 Explainable Waiting Queue and Timeout Diagnostics
+- R8-23.2 Task Idempotency and Stale Running Recovery
+- R8-23.2 Local-model-first Execution with RTX3060 Preference
+- R8-23.2 Doubao Required on Critical SEO/GEO Semantic Steps
+- R8-23.2 Receipt/Evidence State Semantics (Configured != Invoked != External Success)
+- R8-23.2 One-real-social-platform-first Pilot Policy
+- R8-23.2 Metric Windows Today / 7d / 30d / All-time Contract
 - Direct ChatGPT AI Gateway with Windows DPAPI Credential Storage
 - Filesystem Operations Bridge as Fallback Transport
 - R7 Decision Context into R8 ChatGPT Planning
