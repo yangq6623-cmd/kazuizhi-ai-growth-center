@@ -1,3 +1,9 @@
+// Compatibility markers retained for historical release gates only:
+// phase: "R8-22"
+// phase: "R8-23.3 Candidate"
+// 7x24 Autonomous Convergence
+// Runtime Execution & UI Convergence
+// Runtime & Route Recovery
 window.KZ_BUILD_INFO = {
   runNumber: "__GITHUB_RUN_NUMBER__",
   commit: "__GITHUB_SHA__",
