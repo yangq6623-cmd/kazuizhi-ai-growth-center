@@ -23,7 +23,7 @@ def test_late_runtime_patch_chain_is_loaded_by_packaged_entrypoint_path():
         assert name in source, name
 
 
-def test_browser_bundle_keeps_all_post_r8_19_layers():
+def test_browser_bundle_keeps_current_layers_without_historical_candidate_route_rewriter():
     source = text(SRC / "backend" / "r8_23_5_full_recovery_patch.py")
     required = [
         "r8_13_seo_geo_bridge.js",
@@ -35,13 +35,25 @@ def test_browser_bundle_keeps_all_post_r8_19_layers():
         "r8_22_autonomy.js",
         "r8_23_growth_os.js",
         "r8_23_2_pilot.js",
-        "r8_23_3_candidate.js",
         "r8_23_4_recovery.js",
         "r8_23_5_full_recovery.js",
     ]
     for name in required:
-        assert name in source, name
+        assert f'"{name}"' in source, name
         assert (SRC / "web" / name).exists(), name
+    # The R8-23.3 backend remains cumulative, but its historical browser script
+    # must not be bundled because it continuously rewrites current navigation.
+    bundle_block = source.split("names = [", 1)[1].split("]", 1)[0]
+    assert '"r8_23_3_candidate.js"' not in bundle_block
+    assert "historical_candidate_ui" in source
+
+
+def test_r8235_owns_root_shell_and_never_reintroduces_candidate_boot_overlay():
+    source = text(SRC / "backend" / "r8_23_5_full_recovery_patch.py")
+    assert 'path in {"/", "/index.html"}' in source
+    assert "_serve_index(handler)" in source
+    assert "kz-r8233-boot" not in source
+    assert "R8-23.5" in source
 
 
 def test_existing_seo_geo_buttons_are_bound_not_only_newly_created_buttons():
