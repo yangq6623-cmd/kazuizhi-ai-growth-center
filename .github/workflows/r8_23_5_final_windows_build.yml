@@ -40,10 +40,11 @@ jobs:
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
 
-      - name: Install build dependencies
+      - name: Install build and browser-test dependencies
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt pytest
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt pytest playwright
+          python -m playwright install chromium
 
       - name: Verify R8-23.5 regression recovery
         run: |
