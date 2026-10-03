@@ -1,19 +1,42 @@
 {
-  "schema": "kz.release-manifest.v1",
+  "schema": "kz.release-manifest.v2",
   "product": "Kazuizhi AI Enterprise",
   "product_version": "2.2.2",
-  "baseline": {
-    "installed_release": "R8-17 #76",
-    "github_run": "#76",
-    "commit": "6e8270e",
-    "package_status": "installed_baseline"
+  "release": "R8-23.2 Pilot RC1",
+  "phase": "Runtime Truth & Closed-Loop Acceptance",
+  "runtime_build": "KZ-ENTERPRISE-V2.2.2-R8-23.2-PILOT-RC1",
+  "build_number": "__GITHUB_RUN_NUMBER__",
+  "commit": "__GITHUB_SHA__",
+  "built_at": "__GITHUB_BUILD_TIME__",
+  "api_contract": "r8-23.2/v1",
+  "db_schema": "r8-compatible-no-destructive-migration",
+  "runtime": {
+    "product_version": "2.2.2",
+    "release": "R8-23.2 Pilot RC1",
+    "phase": "Runtime Truth & Closed-Loop Acceptance",
+    "runtime_build": "KZ-ENTERPRISE-V2.2.2-R8-23.2-PILOT-RC1",
+    "build_number": "__GITHUB_RUN_NUMBER__",
+    "commit": "__GITHUB_SHA__",
+    "built_at": "__GITHUB_BUILD_TIME__"
   },
-  "candidate": {
-    "release": "R8-18 Phase 1 candidate",
-    "scope": "统一版本身份、增长证据总账与模型接入中心",
-    "package_status": "not_packaged",
-    "external_model_configured": false,
-    "local_model_deployed": false
+  "controller": {
+    "strategic_brain": "ChatGPT",
+    "execution": "deterministic local scheduler/workers",
+    "decision_pack_ttl_hours": 24,
+    "two_growth_engines": ["repair_services", "personal_tasks"],
+    "ai_employees": 8
   },
-  "truth_rule": "安装包身份、外部回执、抓取、收录、排名、AI引用和经营结果必须分别记录；候选源码不代表已经安装或已产生外部结果。"
+  "model_policy": {
+    "local_model": "preferred_for_high_frequency_low_risk_batch_work",
+    "rtx3060": "preferred_local_compute_when_eligible",
+    "doubao": "required_for_selected_high_value_SEO_GEO_stages_and_important_content_QC; otherwise augmentation/fallback",
+    "formal_geo": "ordinary model/API output is C-level auxiliary; formal GEO requires real external A/B Evidence"
+  },
+  "truth_rule": "Configured != invoked != generated != QC passed != published != submitted != crawled != indexed != ranked. Every promotion requires its own real Receipt/Evidence.",
+  "business_scope": "site_visit -> mini_program_visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI automation",
+  "field_acceptance": {
+    "24h": "pending_real_field_run",
+    "72h": "pending_real_fault_recovery_run",
+    "7d": "pending_real_production_run"
+  }
 }
