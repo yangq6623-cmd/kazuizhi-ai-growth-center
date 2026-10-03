@@ -24,7 +24,6 @@ def main():
         try:
             from core import r8_23_growth_operating_system as growth
 
-            # Organization: exactly eight persistent employee roles, not generic lanes.
             assert len(growth.AI_EMPLOYEES) == 8
             names = {x["name"] for x in growth.AI_EMPLOYEES}
             assert names == {"市场情报员", "SEO/GEO 增长员", "内容运营员", "社媒运营员", "短视频运营员", "本地增长员", "用户转化员", "数据复盘员"}
@@ -58,7 +57,6 @@ def main():
             assert all("Receipt/Evidence" in x.get("expected_return", "") for x in packages)
             assert all(set(x.get("business_engines") or []) == engines for x in packages)
 
-            # Utilization is evidence of invocation, separate from connector readiness.
             first = growth.record_utilization("local_model", success=True, result={"processed": 2}, reason="ci")
             second = growth.record_utilization("local_model", success=False, reason="ci_failure")
             assert first["invoke_count"] == 1
@@ -83,25 +81,19 @@ def main():
                 assert marker in core, marker
             for marker in ("/api/r8-23/growth-os", "/api/r8-23/growth-os/utilization", "convergence.controller_tick", "r8_23_growth_operating_system", "r8_23_growth_os.js"):
                 assert marker in patch, marker
-            # Windows owner UI must never flash a console window for the frequent
-            # NVIDIA capability probe.  The probe is hidden and cached, while the
-            # original truth semantics remain unchanged.
             for marker in ("GPU_STATUS_TTL_SECONDS", "CREATE_NO_WINDOW", "STARTF_USESHOWWINDOW", "SW_HIDE", "growth_os.gpu_status = _silent_gpu_status"):
                 assert marker in patch, marker
             for marker in ("R8-23 · FINAL 7×24 AUTONOMOUS GROWTH OS", "ChatGPT 总脑", "双增长引擎", "8个AI员工", "能力利用情况"):
                 assert marker in ui, marker
-            # R8-23.1 collapses duplicated technical/legacy surfaces and reads
-            # SEO/GEO truth into the same owner cockpit instead of stacking more
-            # full-size dashboards.
             for marker in ("R8-23.1 · 老板运营总览", "/api/r8-22/autonomy", "/api/r8-20/seo-geo?days=30", "kz-r8-23-legacy", "高级分析、内容治理与运行保障", "只显示真实分配/调用"):
                 assert marker in ui, marker
             assert "r8_23_growth_os_patch" in truth_patch
-            assert 'phase: "R8-23"' in build
-            assert "Autonomous Growth OS" in build
+            assert 'phase: "R8-23' in build
+            assert "Autonomous Growth OS" in build or "Runtime Execution & UI Convergence" in build
             for marker in ("ChatGPT is the only strategic controller", "Two business growth engines", "Eight AI employees", "Funds remain permanently human-only"):
                 assert marker in scope, marker
 
-            print("PASS: R8-23 keeps ChatGPT as sole controller, preserves truth gates, suppresses GPU console flashing, and converges owner UI into a compact truthful cockpit")
+            print("PASS: R8-23 keeps ChatGPT as sole controller, preserves truth gates, suppresses GPU console flashing, and remains compatible with the R8-23.3 Candidate metadata")
         finally:
             if sys.path and sys.path[0] == str(SRC):
                 sys.path.pop(0)
