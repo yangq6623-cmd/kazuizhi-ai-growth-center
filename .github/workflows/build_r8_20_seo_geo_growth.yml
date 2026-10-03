@@ -1,4 +1,4 @@
-name: Build Kazuizhi R8-23 Final Autonomous Growth OS
+name: Build Kazuizhi R8-23.2 Runtime Truth Closed Loop Pilot RC1
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     env:
       GIT_CONFIG_COUNT: '1'
       GIT_CONFIG_KEY_0: core.autocrlf
@@ -28,20 +28,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Stamp visible build number and commit
+
+      - name: Stamp canonical build identity
         run: |
+          $shortSha = '${{ github.sha }}'.Substring(0, 8)
+          $buildTime = (Get-Date).ToUniversalTime().ToString('o')
+
           $path = '05_V2.0.0_Source/web/build_info.js'
           $text = Get-Content -LiteralPath $path -Raw
-          $shortSha = '${{ github.sha }}'.Substring(0, 8)
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+
+          $manifestPath = '05_V2.0.0_Source/core/release_manifest.json'
+          $manifestText = Get-Content -LiteralPath $manifestPath -Raw
+          $manifestText = $manifestText.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
+          $manifestText = $manifestText.Replace('__GITHUB_SHA__', $shortSha)
+          $manifestText = $manifestText.Replace('__GITHUB_BUILD_TIME__', $buildTime)
+          Set-Content -LiteralPath $manifestPath -Value $manifestText -NoNewline -Encoding UTF8
+
       - name: Install pinned dependencies and browser test driver
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           python -m pip install playwright==1.55.0
-      - name: Verify R7 R8 GEO Phase 1-3 R8-20 R8-21 R8-22 and R8-23 Growth OS
+
+      - name: Verify R7 R8 GEO Phase 1-3 R8-20 R8-21 R8-22 R8-23 and R8-23.2
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -78,7 +90,9 @@ jobs:
           python 04_Build/v2/test_r8_21_unified_connectors.py
           python 04_Build/v2/test_r8_22_autonomous_convergence.py
           python 04_Build/v2/test_r8_23_final_growth_os.py
-      - name: Verify production entrypoint activates R8-19 through R8-23
+          python 04_Build/v2/test_r8_23_2_runtime_truth.py
+
+      - name: Verify production entrypoint activates R8-19 through R8-23.2
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
           foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
@@ -89,7 +103,7 @@ jobs:
             if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
           }
           $truthPatch = Get-Content -LiteralPath '05_V2.0.0_Source/core/r8_20_growth_truth_patch.py' -Raw
-          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch')) {
+          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch')) {
             if (-not $truthPatch.Contains($marker)) { throw "Production activation missing $marker" }
           }
           $r822 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_22_autonomy_convergence_patch.py' -Raw
@@ -100,7 +114,12 @@ jobs:
           foreach ($marker in @('/api/r8-23/growth-os','/api/r8-23/growth-os/utilization','r8_23_growth_operating_system','r8_23_growth_os.js','convergence.controller_tick')) {
             if (-not $r823.Contains($marker)) { throw "R8-23 runtime integration missing $marker" }
           }
-      - name: Integrate unified model connection center into packaged web
+          $r8232 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_2_runtime_truth_patch.py' -Raw
+          foreach ($marker in @('/api/health','/api/runtime-health','/api/version','/api/readiness','/api/r8-23-2/runtime-truth','/api/r8-23-2/decision-pack','r8_23_2_runtime_truth.js')) {
+            if (-not $r8232.Contains($marker)) { throw "R8-23.2 runtime truth integration missing $marker" }
+          }
+
+      - name: Integrate owner runtime truth and model connection center into packaged web
         run: |
           $targets = @(
             '05_V2.0.0_Source/web/index.html',
@@ -114,64 +133,98 @@ jobs:
             if (-not $text.Contains('model-connection-center.js')) {
               $text = $text.Replace('</body>', '<script src="model-connection-center.js"></script></body>')
             }
-            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css')) {
-              throw "Unified model connection center injection failed: $path"
+            if (-not $text.Contains('r8_23_2_runtime_truth.js')) {
+              $text = $text.Replace('</body>', '<script src="r8_23_2_runtime_truth.js"></script></body>')
+            }
+            if (-not $text.Contains('model-connection-center.js') -or -not $text.Contains('model-connection-center.css') -or -not $text.Contains('r8_23_2_runtime_truth.js')) {
+              throw "R8-23.2 UI injection failed: $path"
             }
             Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
           }
+
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
+
       - name: Real Chrome source responsiveness gate
         timeout-minutes: 4
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_19_browser_responsiveness.py
+
       - name: Verify packaged source contract
         run: |
           python 04_Build/v2/verify_v2_autonomous.py --source
           python 04_Build/v2/verify_r8_operational.py --source
+
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1 -SkipSourceVerification
+
+      - name: Optional Authenticode signing
+        env:
+          KZ_CODESIGN_PFX_B64: ${{ secrets.KZ_CODESIGN_PFX_B64 }}
+          KZ_CODESIGN_PFX_PASSWORD: ${{ secrets.KZ_CODESIGN_PFX_PASSWORD }}
+        run: |
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $statusPath = 'installer_output_v2/AUTHENTICODE_STATUS.json'
+          if ([string]::IsNullOrWhiteSpace($env:KZ_CODESIGN_PFX_B64)) {
+            @{ signed = $false; status = 'certificate_not_configured'; truth = 'Unsigned build must not claim Authenticode trust.' } | ConvertTo-Json | Set-Content $statusPath
+            Write-Host 'Authenticode certificate not configured; keeping truthful unsigned status.'
+          } else {
+            $pfxPath = Join-Path $env:RUNNER_TEMP 'kazuizhi-signing.pfx'
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:KZ_CODESIGN_PFX_B64))
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $env:KZ_CODESIGN_PFX_PASSWORD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+            $sig = Set-AuthenticodeSignature -FilePath $setup -Certificate $cert -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
+            if ($sig.Status -ne 'Valid') { throw "Authenticode signing failed: $($sig.Status) $($sig.StatusMessage)" }
+            @{ signed = $true; status = 'Valid'; subject = $cert.Subject; thumbprint = $cert.Thumbprint } | ConvertTo-Json | Set-Content $statusPath
+            Remove-Item $pfxPath -Force
+          }
+
       - name: Real Chrome packaged-runtime responsiveness gate
         timeout-minutes: 4
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_19_browser_responsiveness.py --exe 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+
       - name: Scan final installer with Microsoft Defender when available
         run: ./04_Build/v2/test_windows_security.ps1
+
       - name: Test silent install launch overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-23 final installer provenance
+
+      - name: Record R8-23.2 Pilot RC1 installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-23 Final 7x24 Autonomous Growth OS'
+            version = '2.2.2 R8-23.2 Pilot RC1 Runtime Truth & Closed-Loop Acceptance'
             commit = '${{ github.sha }}'
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            inherited_development_items = 38
-            inherited_r8_22 = 'Command -> Mission -> Controller Plan -> P0 Task -> 15-minute truthful Receipt preserved'
-            growth_os = @('ChatGPT sole strategic controller','two business engines: repair services + personal tasks','eight AI employee work owners','local model low-risk high-volume route','RTX 3060 eligible GPU/image/video route','Doubao cloud augmentation route','explicit capability trigger/fallback/return path','capability utilization ledger separate from connection state','graded L1-L4 external authority','single capability failure degrades locally without blocking core Mission')
+            engineering_scope = 19
+            controller = 'ChatGPT sole strategic controller -> bounded Decision Pack -> deterministic local scheduler/workers'
+            model_policy = @('local model preferred for high-frequency low-risk batch work','RTX 3060 preferred local compute when eligible','Doubao required for selected high-value SEO/GEO stages and important content QC','ordinary local/Doubao output never formal GEO evidence')
+            truth_policy = 'Configured != invoked != generated != QC passed != published != submitted != crawled != indexed != ranked. Promotion requires real Receipt/Evidence.'
             outcome_scope = 'site visit -> mini-program visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI'
-            truth_policy = 'Configured does not mean invoked; invoked does not mean external success. Model/local output is not formal external evidence. Formal GEO still requires real A/B Evidence and external publish/search/business outcomes require real Receipt/Evidence.'
-            operating_target = '7x24 event-driven autonomous growth for Kazuizhi local repair integrated service platform with ChatGPT controller and minimal human gates'
-            field_acceptance = @('24h Windows unattended run','72h run','7-day soak','model/API/channel loss degradation','restart resumes last valid Mission','one real social platform closed loop before copying to the next')
-          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_FINAL_AUTONOMOUS_GROWTH_OS.json
-      - name: Upload final Windows installer
+            social_policy = 'one real social platform Post ID/URL/Receipt closed loop before copying to another platform'
+            field_acceptance = @('24h real field run PENDING','72h real fault/recovery run PENDING','7-day real production run PENDING')
+            ci_note = 'CI regression/synthetic soak is engineering evidence only and does not claim physical-time field acceptance.'
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_2_PILOT_RC1.json
+
+      - name: Upload R8-23.2 Pilot RC1 Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_Final_Autonomous_Growth_OS
+          name: Kazuizhi_AI_Enterprise_R8_23_2_Pilot_RC1
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload final portable application
+
+      - name: Upload R8-23.2 Pilot RC1 portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_Final_Autonomous_Growth_OS_Portable
+          name: Kazuizhi_AI_Enterprise_R8_23_2_Pilot_RC1_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
