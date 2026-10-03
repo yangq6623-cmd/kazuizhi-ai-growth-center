@@ -94,13 +94,15 @@ def main():
             for marker in (
                 "dedupeNavigation", "foldLegacyLedger", "foldGeoAdvanced",
                 "waiting_external_validation", "待确认Command", "bootHandshake",
+                "ensureSeoGeoNavigation", "BOOT_MAX_WAIT_MS", "backgroundRuntimeSync",
+                "Promise.allSettled", "SEO/GEO增长",
             ):
                 assert marker in ui, marker
             assert "r8_23_3_candidate_patch" in truth_patch
             assert "R8-23.3 Candidate Runtime Execution & UI Convergence" in web_version
             assert "Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922" in web_version
 
-            print("PASS: R8-23.3 restores due execution with a rolling verified control lease, separates active/pending Command truth, exposes explicit blockers, and prevents legacy first-paint/duplicate owner UI without weakening formal Evidence or finance gates")
+            print("PASS: R8-23.3 restores due execution, fast non-blocking startup, canonical SEO/GEO navigation, rolling verified control lease and owner-facing truth without weakening formal Evidence or finance gates")
         finally:
             if sys.path and sys.path[0] == str(SRC):
                 sys.path.pop(0)
