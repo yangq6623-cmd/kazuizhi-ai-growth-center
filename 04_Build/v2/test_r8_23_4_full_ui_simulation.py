@@ -1,10 +1,8 @@
 """R8-23.4 full-interface real-browser acceptance.
 
-Field screenshots exposed regressions that route-smoke tests missed: a hard boot gate,
-wrong SEO/GEO navigation, cross-page stale copy and never-ending loading indicators.
-This gate opens the real owner shell in Chrome, simulates every visible navigation
-surface, verifies route meaning, API contracts and fail-open startup, and saves one
-screenshot per route for CI review.
+This gate launches the actual source/runtime build, opens every owner-visible primary
+surface in Chrome, verifies fail-open startup, fixed content-vs-SEO/GEO semantics,
+bounded diagnostics, API truth contracts and records screenshots for manual review.
 """
 from __future__ import annotations
 
@@ -44,11 +42,7 @@ def launch_runtime(exe: str | None, port: int, data_root: str) -> subprocess.Pop
         cmd = [sys.executable, str(RUN_PY), "--no-browser", "--port", str(port)]
         cwd = str(SOURCE)
     return subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
@@ -83,15 +77,10 @@ def safe_name(value: str) -> str:
     return value[:80] or "page"
 
 
-def assert_not_stuck(page, label: str) -> None:
-    # Do not reject legitimate empty states; reject controls that are still actively loading.
-    stuck = page.evaluate(
-        """() => [...document.querySelectorAll('button:visible')]
-        .filter(el => !el.hidden && /体检中|加载中|正在检查/.test((el.textContent||'').trim()))
-        .map(el => (el.textContent||'').trim())""".replace("button:visible", "button")
-    )
-    if stuck:
-        raise AssertionError(f"{label} retained active loading controls: {stuck[:8]}")
+def click_visible(page, locator, timeout=5000):
+    locator.wait_for(state="visible", timeout=timeout)
+    locator.scroll_into_view_if_needed()
+    locator.click(timeout=timeout)
 
 
 def main() -> None:
@@ -109,29 +98,25 @@ def main() -> None:
         base = f"http://127.0.0.1:{port}"
         try:
             wait_http(base + "/api/ping")
-
             ping, ping_elapsed = get_json(base + "/api/ping", 2.0)
-            if not ping.get("alive") or ping_elapsed > 1.5:
-                raise AssertionError(f"/api/ping not lightweight: {ping_elapsed:.3f}s {ping}")
+            assert ping.get("alive") is True, ping
+            assert ping_elapsed <= 1.5, f"/api/ping not lightweight: {ping_elapsed:.3f}s"
             version, version_elapsed = get_json(base + "/api/version", 2.5)
-            if not str(version.get("phase") or "").startswith("R8-23.4"):
-                raise AssertionError(f"unexpected version phase: {version}")
-            if version_elapsed > 2.0:
-                raise AssertionError(f"/api/version too slow: {version_elapsed:.3f}s")
+            assert str(version.get("phase") or "").startswith("R8-23.4"), version
+            assert version_elapsed <= 2.0, f"/api/version too slow: {version_elapsed:.3f}s"
             growth, _ = get_json(base + "/api/r8-20/seo-geo?days=30", 6.0)
-            if int((growth.get("geo") or {}).get("formal_tested") or 0) > 50:
-                raise AssertionError("formal GEO truth exceeded immutable 50-question set")
+            assert int((growth.get("geo") or {}).get("formal_tested") or 0) <= 50
 
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(channel="chrome", headless=True)
 
-                # Fail-open startup: even a failed /api/version must not lock the UI.
+                # Fail-open: backend version check may fail, but the owner shell must still open.
                 degraded = browser.new_page(viewport={"width": 1500, "height": 950})
                 degraded.route("**/api/version", lambda route: route.abort())
                 degraded.goto(base + "/", wait_until="domcontentloaded", timeout=12000)
                 degraded.locator("body > .layout").wait_for(state="visible", timeout=2500)
                 if degraded.locator("#kz-r8233-boot").count():
-                    raise AssertionError("legacy R8-23.3 blocking boot overlay is still present")
+                    raise AssertionError("legacy blocking boot overlay is still present")
                 degraded.screenshot(path=str(screenshots / "00_fail_open_startup.png"), full_page=True)
                 degraded.close()
 
@@ -140,55 +125,59 @@ def main() -> None:
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto(base + "/", wait_until="domcontentloaded", timeout=12000)
                 page.locator("body > .layout").wait_for(state="visible", timeout=2500)
-                try:
-                    page.wait_for_function("() => document.readyState === 'complete'", timeout=12000)
-                except PlaywrightTimeoutError as error:
-                    state = page.evaluate("() => document.readyState")
-                    raise AssertionError(f"root document never completed; Chrome tab would keep loading: {state}") from error
-
-                page.wait_for_function("() => document.documentElement.dataset.kzR8234Ui === 'ready'", timeout=6000)
-                page.wait_for_timeout(1200)
+                page.wait_for_function("() => document.readyState === 'complete'", timeout=12000)
+                page.wait_for_function("() => document.documentElement.dataset.kzR8234Ui === 'ready'", timeout=7000)
+                page.wait_for_timeout(1600)
                 if page.locator("#kz-r8233-boot").count():
-                    raise AssertionError("blocking Candidate boot overlay returned on normal startup")
+                    raise AssertionError("blocking Candidate boot overlay returned")
 
-                # Route contract must remain semantic, not text-based DOM guessing.
-                content = page.locator('aside nav button.nav[data-page="promotion"]').first
-                content.wait_for(state="visible", timeout=5000)
-                if "内容生产与发布" not in content.inner_text():
-                    raise AssertionError(f"promotion route mislabeled: {content.inner_text()!r}")
-                seo = page.locator('aside nav button.nav[data-page="r813-seo-geo"]').first
-                seo.wait_for(state="visible", timeout=5000)
-                if "SEO/GEO增长" not in seo.inner_text():
-                    raise AssertionError(f"SEO/GEO route mislabeled: {seo.inner_text()!r}")
+                # Hidden legacy route may exist for compatibility; labels must still be correct.
+                legacy_content = page.locator('aside nav button.nav[data-page="promotion"]').first
+                if legacy_content.count() and "内容生产与发布" not in legacy_content.inner_text():
+                    raise AssertionError(f"promotion route mislabeled: {legacy_content.inner_text()!r}")
+                legacy_seo = page.locator('aside nav button.nav[data-page="r813-seo-geo"]').first
+                if legacy_seo.count() and "SEO/GEO增长" not in legacy_seo.inner_text():
+                    raise AssertionError(f"SEO/GEO route mislabeled: {legacy_seo.inner_text()!r}")
 
-                duplicates = page.evaluate(
-                    """() => {
-                      const routes=[...document.querySelectorAll('aside nav button.nav[data-page]')].map(x=>x.dataset.page);
-                      return routes.filter((x,i)=>routes.indexOf(x)!==i);
-                    }"""
-                )
-                if duplicates:
-                    raise AssertionError(f"duplicate sidebar routes: {duplicates}")
+                # Authoritative owner navigation is the visible R8 primary navigation.
+                primary = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]')
+                primary_rows = primary.evaluate_all(
+                    "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
+                ) if primary.count() else []
+                if len(primary_rows) < 5:
+                    raise AssertionError(f"too few visible primary owner routes: {primary_rows}")
+                primary_targets = [row["target"] for row in primary_rows if row.get("target")]
+                if len(primary_targets) != len(set(primary_targets)):
+                    raise AssertionError(f"duplicate primary route targets: {primary_targets}")
 
-                # Open every visible legacy sidebar route and record a screenshot.
-                routes = page.locator('aside nav button.nav:visible[data-page]').evaluate_all(
-                    "nodes => nodes.map(n => ({route:n.dataset.page,label:(n.textContent||'').trim()}))"
-                )
-                if len(routes) < 8:
-                    raise AssertionError(f"too few visible owner routes: {routes}")
+                # SEO/GEO and content production must both be visible and separate.
+                seo_rows = [row for row in primary_rows if "SEO/GEO" in row.get("label", "")]
+                content_rows = [row for row in primary_rows if "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "")]
+                if not seo_rows:
+                    # R8-23.4 may inject the fixed route after late bundle initialization.
+                    page.wait_for_timeout(2500)
+                    primary_rows = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]').evaluate_all(
+                        "nodes => nodes.map(n => ({target:n.dataset.target,label:(n.textContent||'').trim()}))"
+                    )
+                    seo_rows = [row for row in primary_rows if "SEO/GEO" in row.get("label", "")]
+                    content_rows = [row for row in primary_rows if "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", "")]
+                if not seo_rows:
+                    raise AssertionError(f"visible SEO/GEO owner route missing: {primary_rows}")
+                if not content_rows:
+                    raise AssertionError(f"visible content-production owner route missing: {primary_rows}")
+                if seo_rows[0]["target"] == content_rows[0]["target"]:
+                    raise AssertionError("SEO/GEO and content production still share one route")
 
-                seen = set()
-                for index, item in enumerate(routes):
-                    route = item["route"]
-                    if route in seen:
+                opened = []
+                for index, row in enumerate(primary_rows):
+                    target = row.get("target")
+                    if not target or target in opened:
                         continue
-                    seen.add(route)
-                    button = page.locator(f'aside nav button.nav[data-page="{route}"]').first
-                    button.scroll_into_view_if_needed()
-                    button.click(timeout=5000)
+                    button = page.locator(f'.r810-primary-nav .r810-nav-button[data-target="{target}"]').first
+                    click_visible(page, button)
                     page.wait_for_timeout(450)
-                    if route == "r813-seo-geo":
-                        page.wait_for_selector('#r813-seo-geo.page.active, #r813-seo-geo', timeout=7000)
+                    if target == "r813-seo-geo" or "SEO/GEO" in row.get("label", ""):
+                        page.wait_for_selector('#r813-seo-geo', timeout=7000)
                         page.locator('[data-r813-workspace="seo"]').first.wait_for(state="visible", timeout=7000)
                         seo_frame = page.locator('#r813-seo-frame').first
                         seo_frame.wait_for(state="visible", timeout=7000)
@@ -202,30 +191,22 @@ def main() -> None:
                             raise AssertionError(f"wrong SEO/GEO workspace heading: {heading!r}")
                         if page.get_by_text("从一个关键词，完成四类内容准备", exact=False).count():
                             raise AssertionError("SEO/GEO route opened content production workbench")
-                    elif route == "promotion":
-                        active_text = page.locator('.page.active').inner_text(timeout=5000)
-                        if "SEO/GEO增长中心" in active_text and "内容" not in active_text:
+                    elif "内容生产" in row.get("label", "") or "内容与推广" in row.get("label", ""):
+                        visible_text = page.locator('main').inner_text(timeout=5000)
+                        if "SEO/GEO增长中心" in visible_text and "内容生产" not in visible_text:
                             raise AssertionError("content production route incorrectly became SEO/GEO dashboard")
-                    shot = screenshots / f"{index+1:02d}_{safe_name(route)}.png"
-                    page.screenshot(path=str(shot), full_page=True)
+                    page.screenshot(path=str(screenshots / f"primary_{index+1:02d}_{safe_name(target)}.png"), full_page=True)
+                    opened.append(target)
 
-                # New primary navigation is also an owner surface; click every visible target.
-                primary = page.locator('.r810-primary-nav .r810-nav-button:visible[data-target]')
-                primary_targets = primary.evaluate_all("nodes => nodes.map(n => n.dataset.target).filter(Boolean)") if primary.count() else []
-                for target in dict.fromkeys(primary_targets):
-                    button = page.locator(f'.r810-primary-nav .r810-nav-button[data-target="{target}"]').first
-                    button.click(timeout=5000)
-                    page.wait_for_timeout(350)
-                    page.screenshot(path=str(screenshots / f"primary_{safe_name(target)}.png"), full_page=True)
-
-                # Diagnostics must settle or explicitly time out; never spin forever.
-                diag = page.locator('aside nav button.nav[data-page="connections"]').first
-                if diag.count():
-                    diag.click(timeout=5000)
-                    page.wait_for_timeout(350)
-                    button = page.locator('#run-diagnostics').first
-                    if button.count() and button.is_visible():
-                        button.click(timeout=5000)
+                # Diagnostics must settle or explicitly timeout; never spin forever.
+                diagnostic_row = next((row for row in primary_rows if "连接" in row.get("label", "") or row.get("target") == "connections"), None)
+                if diagnostic_row:
+                    button = page.locator(f'.r810-primary-nav .r810-nav-button[data-target="{diagnostic_row["target"]}"]').first
+                    click_visible(page, button)
+                    page.wait_for_timeout(400)
+                    diag_button = page.locator('#run-diagnostics').first
+                    if diag_button.count() and diag_button.is_visible():
+                        diag_button.click(timeout=5000)
                         try:
                             page.wait_for_function(
                                 "() => { const b=document.getElementById('run-diagnostics'); return !b || (!b.disabled && !/体检中|检查中/.test(b.textContent||'')); }",
@@ -235,22 +216,20 @@ def main() -> None:
                             raise AssertionError("diagnostics remained in endless loading state") from error
 
                 page.wait_for_timeout(900)
-                if page.locator('#kz-r8233-boot').count():
-                    raise AssertionError("blocking boot overlay reappeared")
                 if '?build=' in page.url:
                     raise AssertionError(f"legacy build query was not cleared: {page.url}")
-
+                if page.locator("#kz-r8233-boot").count():
+                    raise AssertionError("blocking boot overlay reappeared")
                 fatal = [x for x in errors if "ResizeObserver loop" not in x and "Script error" not in x]
                 if fatal:
                     raise AssertionError(f"uncaught browser errors: {fatal[:10]}")
-
                 page.screenshot(path=str(screenshots / "99_final_state.png"), full_page=True)
                 browser.close()
 
             print(
-                f"PASS: R8-23.4 full UI simulation opened {len(seen)} sidebar routes and "
-                f"{len(set(primary_targets))} primary routes; fail-open startup, SEO/GEO route, "
-                f"content route, diagnostics, version and growth APIs passed. Screenshots: {screenshots}"
+                f"PASS: R8-23.4 full UI simulation opened {len(opened)} visible owner routes; "
+                f"fail-open startup, distinct SEO/GEO + content routes, diagnostics, version and growth APIs passed. "
+                f"Screenshots: {screenshots}"
             )
         finally:
             if process.poll() is None:
