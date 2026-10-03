@@ -39,8 +39,6 @@ def _controller_tick():
 
 
 def _run_due_jobs():
-    # Governance is bounded and fail-soft; the inherited R7/R8 executor still
-    # owns the actual task transition and local execution receipt.
     try:
         truth.govern_queue()
     except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
@@ -85,6 +83,20 @@ def _status_payload(handler):
     return base
 
 
+def _serve_autonomous_ops(handler):
+    """Serve one owner UI bundle with the R8-23.2 truth strip last."""
+    web = server.get_web_path()
+    names = ("autonomous-ops.js", "r8_22_autonomy.js", "r8_23_growth_os.js", "r8_23_2_runtime_truth.js")
+    source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
+    data = source.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -99,6 +111,9 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path == "/autonomous-ops.js":
+                _serve_autonomous_ops(handler)
+                return
             if path == "/api/status":
                 handler._json_ok(_status_payload(handler))
                 return
