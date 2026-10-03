@@ -150,7 +150,7 @@ def main():
             assert "test_r8_23_2_runtime_truth.py" in workflow
             for marker in (
                 "19 engineering work packages", "24h", "72h", "7-day",
-                "Doubao", "single active Command", "one real social platform",
+                "Doubao", "single active Command", "One real social platform",
             ):
                 assert marker in scope, marker
 
