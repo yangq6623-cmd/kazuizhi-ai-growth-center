@@ -39,10 +39,13 @@ _BOOT_SCRIPT = "<script>document.documentElement.classList.add('kz-r8233-booting
 
 
 def _patch_runtime_truth():
-    """Keep old R8-23.2 API contracts but make all of them read Candidate truth."""
+    """Make the existing R8-23.2 job authorization wrapper use the rolling lease.
+
+    We intentionally keep the original Pilot release_manifest function untouched so
+    Candidate.release_manifest can safely inherit the legacy compatibility identity.
+    Canonical HTTP endpoints below are intercepted to expose Candidate truth.
+    """
     pilot.PILOT_VERSION = candidate.CANDIDATE_VERSION
-    pilot.release_manifest = candidate.release_manifest
-    pilot.single_truth = candidate.single_truth
     pilot.decision_pack = candidate.decision_pack
     pilot.queue_diagnostics = candidate.queue_diagnostics
     pilot.readiness = candidate.readiness
@@ -51,11 +54,7 @@ def _patch_runtime_truth():
 
 def _serve_candidate_index(handler):
     source = (server.get_web_path() / "index.html").read_text(encoding="utf-8")
-    source = source.replace(
-        "<head>",
-        "<head>" + _BOOT_SCRIPT + _BOOT_STYLE,
-        1,
-    )
+    source = source.replace("<head>", "<head>" + _BOOT_SCRIPT + _BOOT_STYLE, 1)
     source = source.replace(
         "<title>卡嘴子 AI 增长运营中心 V2.0.0 Beta R7 Final</title>",
         "<title>卡嘴子 AI 自治运营 · R8-23.3 Candidate</title>",
@@ -96,7 +95,6 @@ def install():
     if _INSTALLED:
         return
     _patch_runtime_truth()
-
     original_get = server.DashboardHandler.do_GET
 
     def do_get(handler):
@@ -108,17 +106,49 @@ def install():
             if path == "/autonomous-ops.js":
                 _serve_autonomous_ops(handler)
                 return
-            if path in {"/api/r8-23-3/candidate", "/api/r8-23-3/runtime-truth"}:
+            if path == "/api/version":
+                handler._json_ok(candidate.release_manifest())
+                return
+            if path == "/api/readiness":
+                handler._json_ok(candidate.readiness())
+                return
+            if path == "/api/health":
+                ready = candidate.readiness()
+                handler._json_ok({
+                    "alive": True,
+                    "http": "ok",
+                    "status": "ok" if ready.get("state") != "BLOCKED" else "blocked",
+                    "phase": candidate.CANDIDATE_VERSION,
+                    "readiness": ready.get("state"),
+                    "blockers": ready.get("blockers") or [],
+                    "generated_at": candidate.now_iso(),
+                })
+                return
+            if path in {"/api/runtime-health", "/api/r8-23-2/runtime-health", "/api/r8-23-3/runtime-health"}:
+                snap = candidate.snapshot()
+                handler._json_ok({
+                    "alive": True,
+                    "readiness": snap.get("readiness"),
+                    "truth": snap.get("truth"),
+                    "queue": snap.get("queue"),
+                    "release": snap.get("release"),
+                    "generated_at": candidate.now_iso(),
+                })
+                return
+            if path in {"/api/r8-23-2/pilot", "/api/r8-23-2/runtime-truth", "/api/r8-23-3/candidate", "/api/r8-23-3/runtime-truth"}:
                 handler._json_ok(candidate.snapshot())
                 return
-            if path == "/api/r8-23-3/execution":
+            if path in {"/api/r8-23-2/queue", "/api/r8-23-3/execution"}:
                 handler._json_ok(candidate.queue_diagnostics())
+                return
+            if path in {"/api/r8-23-2/decision-pack", "/api/r8-23-3/control-lease"}:
+                if path.endswith("control-lease"):
+                    handler._json_ok(candidate.controller_lease())
+                else:
+                    handler._json_ok(candidate.decision_pack())
                 return
             if path == "/api/r8-23-3/attention":
                 handler._json_ok(candidate.attention_summary())
-                return
-            if path == "/api/r8-23-3/control-lease":
-                handler._json_ok(candidate.controller_lease())
                 return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError) as error:
             handler._json_error(400, error)
