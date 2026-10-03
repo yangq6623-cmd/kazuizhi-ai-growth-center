@@ -1,7 +1,7 @@
 Kazuizhi AI Growth Center
 Version: V2.2.2 Autonomous Mission Core
 R8 Phase: R8-23.1 UI Scope Layout Fix
-Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20261003
+Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
 Dashboard: FULL_ENTERPRISE_DASHBOARD
 Source: 05_V2.0.0_Source/web
@@ -9,6 +9,7 @@ Modules:
 - R7 Final Core Preserved
 - R7/R8 Shared Mission Identity
 - Boss Goal and Mission Timeline
+- R8-17 Compatibility Preserved
 - R8-23.1 Owner Mission Strip Scoped to Boss Monitor Only
 - R8-23.1 Owner Cockpit Scoped to Boss Monitor Only
 - R8-23.1 Compact Boss Monitor Layout
