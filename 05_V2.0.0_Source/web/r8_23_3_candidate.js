@@ -2,10 +2,12 @@
   "use strict";
 
   const CANDIDATE = "R8-23.3 Candidate";
+  const BOOT_MAX_WAIT_MS = 3000;
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   let lastSnapshot = null;
   let scheduled = false;
+  let bootReleased = false;
 
   function esc(value) {
     return String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[ch]);
@@ -29,19 +31,39 @@
     return String(value || "").replace(/\s+/g, "").replace(/[0-9]+$/g, "").trim();
   }
 
+  function ensureSeoGeoNavigation() {
+    const nav = $("aside nav");
+    if (!nav) return;
+    const canonical = $("button.nav[data-page='promotion']", nav);
+    if (!canonical) return;
+    canonical.dataset.title = "SEO/GEO增长";
+    canonical.dataset.subtitle = "关键词、技术SEO、搜索收录、GEO问题池与正式Evidence";
+    canonical.dataset.kzSeoGeoCanonical = "1";
+    if (!/SEO\/GEO增长/.test(canonical.textContent || "")) {
+      const icon = canonical.querySelector("span");
+      canonical.innerHTML = `${icon ? icon.outerHTML : "<span>搜</span>"}SEO/GEO增长`;
+    }
+  }
+
   function dedupeNavigation() {
+    ensureSeoGeoNavigation();
     const buttons = $$("aside nav button, aside .nav");
     const seen = new Map();
     for (const button of buttons) {
       const raw = normalizeText(button.textContent);
       let key = button.dataset && button.dataset.page ? `page:${button.dataset.page}` : `text:${raw}`;
-      if (/SEO\/GEO增长/i.test(raw)) key = "owner:seo-geo-growth";
+      if ((button.dataset && button.dataset.page === "promotion") || /SEO\/GEO增长/i.test(raw)) key = "owner:seo-geo-growth";
       if (!seen.has(key)) {
         seen.set(key, button);
         continue;
       }
       const kept = seen.get(key);
-      if (button.classList.contains("active") && !kept.classList.contains("active")) {
+      const buttonCanonical = button.dataset && button.dataset.kzSeoGeoCanonical === "1";
+      const keptCanonical = kept.dataset && kept.dataset.kzSeoGeoCanonical === "1";
+      if (buttonCanonical && !keptCanonical) {
+        kept.remove();
+        seen.set(key, button);
+      } else if (button.classList.contains("active") && !kept.classList.contains("active") && !keptCanonical) {
         kept.remove();
         seen.set(key, button);
       } else {
@@ -195,6 +217,8 @@
   }
 
   function releaseBoot() {
+    if (bootReleased) return;
+    bootReleased = true;
     document.documentElement.classList.remove("kz-r8233-booting");
     document.documentElement.classList.add("kz-r8233-ready");
     const boot = $("#kz-r8233-boot");
@@ -213,6 +237,7 @@
 
   function applyConvergence(snapshot) {
     lastSnapshot = snapshot || lastSnapshot;
+    ensureSeoGeoNavigation();
     dedupeNavigation();
     normalizeVersionLabels();
     translateConnectorStates(document);
@@ -246,16 +271,27 @@
     }
   }
 
+  async function backgroundRuntimeSync() {
+    const results = await Promise.allSettled([
+      json("/api/health"),
+      json("/api/r8-23-3/candidate")
+    ]);
+    const health = results[0].status === "fulfilled" ? results[0].value : null;
+    const snapshot = results[1].status === "fulfilled" ? results[1].value : null;
+    if (health && !health.alive) console.warn("R8-23.3 runtime health is not alive", health);
+    if (snapshot) applyConvergence(snapshot);
+  }
+
   async function bootHandshake() {
     try {
-      const [version, health, snapshot] = await Promise.all([
-        json("/api/version"), json("/api/health"), json("/api/r8-23-3/candidate")
-      ]);
+      const versionPromise = json("/api/version");
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("版本握手超过3秒，请重新检查本地服务")), BOOT_MAX_WAIT_MS));
+      const version = await Promise.race([versionPromise, timeoutPromise]);
       if (!String(version.phase || "").startsWith("R8-23.3")) throw new Error(`前后端版本未收口：${version.phase || "unknown"}`);
-      if (!health.alive) throw new Error("本地HTTP服务尚未就绪");
-      applyConvergence(snapshot);
+      applyConvergence(null);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       releaseBoot();
+      backgroundRuntimeSync();
     } catch (error) {
       showBootError(error);
     }
