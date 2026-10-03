@@ -59,9 +59,10 @@ growth.provider_matrix = provider_matrix
 growth.third_party_source_gaps = third_party_source_gaps
 growth.controller_priorities = controller_priorities
 
-# R8-22 closes Command -> Mission -> Plan. R8-23 sits above that convergence
-# layer and assigns every triggered work package to one of the eight AI
-# employees plus an explicit model/tool/connector route. Neither import replaces
-# the SEO/GEO truth gates established by R8-19/R8-20/R8-21.
+# R8-22 closes Command -> Mission -> Plan. R8-23 assigns every triggered work
+# package to an AI employee/tool route. R8-23.2 is the final convergence layer:
+# one runtime identity, one active control chain, bounded ChatGPT Decision Pack,
+# truthful queue reasons and non-promotable Receipt/Evidence states.
 from backend import r8_22_autonomy_convergence_patch as _r8_22_autonomy_convergence_patch  # noqa: E402,F401
 from backend import r8_23_growth_os_patch as _r8_23_growth_os_patch  # noqa: E402,F401
+from backend import r8_23_2_runtime_truth_patch as _r8_23_2_runtime_truth_patch  # noqa: E402,F401
