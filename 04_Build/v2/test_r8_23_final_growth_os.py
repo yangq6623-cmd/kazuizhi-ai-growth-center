@@ -89,11 +89,11 @@ def main():
                 assert marker in ui, marker
             assert "r8_23_growth_os_patch" in truth_patch
             assert 'phase: "R8-23' in build
-            assert "Autonomous Growth OS" in build or "Runtime Execution & UI Convergence" in build
+            assert any(label in build for label in ("Autonomous Growth OS", "Runtime Execution & UI Convergence", "Runtime & Route Recovery"))
             for marker in ("ChatGPT is the only strategic controller", "Two business growth engines", "Eight AI employees", "Funds remain permanently human-only"):
                 assert marker in scope, marker
 
-            print("PASS: R8-23 keeps ChatGPT as sole controller, preserves truth gates, suppresses GPU console flashing, and remains compatible with the R8-23.3 Candidate metadata")
+            print("PASS: R8-23 keeps ChatGPT as sole controller, preserves truth gates, suppresses GPU console flashing, and remains compatible with the current R8-23 Candidate metadata")
         finally:
             if sys.path and sys.path[0] == str(SRC):
                 sys.path.pop(0)
