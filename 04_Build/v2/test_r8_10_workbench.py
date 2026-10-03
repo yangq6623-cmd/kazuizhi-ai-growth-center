@@ -46,7 +46,10 @@ def main() -> None:
         require(js, label, f"secondary navigation {label}")
 
     # R7/R8 remain internal capabilities; the owner gets one embedded execution center.
-    require(js, "不再出现第二套工作台", "single-workbench product copy")
+    # Final #40 expresses the single-shell contract in the persistent release
+    # marker rather than the earlier temporary wording.  Verify the behavior
+    # contract, not a superseded sentence.
+    require(js, "单工作台 · 真实执行 · 真实回执", "single-workbench product copy")
     require(js, "switchExecutionPage", "embedded R8 execution navigation")
     require(css, "#operational-open-window{display:none", "hide second-workbench window action")
 
@@ -68,7 +71,8 @@ def main() -> None:
     require(product, "operational:refreshed", "explicit operational refresh event")
     require(product, "r810:workbench-ready", "explicit workbench ready event")
     forbid(product, "MutationObserver", "unbounded productization mutation watcher")
-    require(startup, "FiniteStartupObserver", "bounded legacy observer startup policy")
+    require(startup, "SCRIPT_TIMEOUT_MS", "bounded startup module timeout")
+    require(startup, "loadScriptFailSoft", "fail-soft startup module policy")
     require(product, "r810-legacy-route", "legacy navigation hidden class")
     forbid(product, "function addOperationalEntry", "legacy second-workbench entry creator")
     forbid(product, "function simplifyNavigation", "legacy nav-more rebuild")

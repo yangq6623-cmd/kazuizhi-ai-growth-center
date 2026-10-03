@@ -1,9 +1,9 @@
-name: Build Kazuizhi AI Enterprise V2.2.2 R8 Autonomous
+name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*']
-    tags: ['v2.2.2-r8-autonomous*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*']
+    tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -95,6 +95,14 @@ jobs:
           python 04_Build/v2/test_r8_15_seo_public_deploy.py
           python 04_Build/v2/test_r8_15_server_bootstrap.py
           python 04_Build/v2/test_r8_16_search_submitters.py
+      - name: Verify R8-20 through R8-23 complete workbench release gates
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_20_seo_geo_growth.py
+          python 04_Build/v2/test_r8_21_unified_connectors.py
+          python 04_Build/v2/test_r8_22_autonomous_convergence.py
+          python 04_Build/v2/test_r8_23_final_growth_os.py
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
@@ -116,15 +124,15 @@ jobs:
           endpoint: ${{ vars.KZ_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.KZ_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.KZ_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe
+          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: 卡嘴子 AI 自治运营核心
+          description: 卡嘴子 AI R8-23 完整运营工作台
           description-url: https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center
       - name: Verify final installer signature
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
           $signature = Get-AuthenticodeSignature -LiteralPath $setup
           if ('${{ vars.KZ_ARTIFACT_SIGNING_ENABLED }}' -eq 'true' -and $signature.Status -ne 'Valid') {
             throw "Artifact Signing was enabled but the installer signature is not valid: $($signature.Status)"
@@ -136,11 +144,11 @@ jobs:
         run: ./04_Build/v2/test_installer.ps1
       - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8 Autonomous Mission Core'
+            version = '2.2.2 R8-23 Final Complete Workbench'
             build = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
@@ -153,26 +161,26 @@ jobs:
       - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core_Portable
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Publish final installer to GitHub Releases
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.2-r8-autonomous')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.2-r8-23-final-workbench')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.2-r8-autonomous' }
+          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.2-r8-23-final-workbench' }
           gh release view $tag --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag installer_output_v2/* --clobber
           } else {
-            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.2 R8 Autonomous Mission Core' --generate-notes
+            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.2 R8-23 完整运营工作台' --generate-notes
           }

@@ -7,6 +7,8 @@
   const byId = id => document.getElementById(id);
   let timer = null;
   let observer = null;
+  let latestSeo = {};
+  let seoRequest = null;
 
   function style(){
     if(byId('kz-r8-23-style')) return;
@@ -318,12 +320,31 @@
   async function refresh(){
     try{
       scopeOwnerPanels();
-      const [growth, autonomy, seo] = await Promise.all([
+      // The complete SEO/GEO truth snapshot can be expensive on an established
+      // installation because it assembles history, governance and evidence.
+      // It must not make the owner workbench look unavailable while that
+      // independent report is still loading.  Render the Mission and employee
+      // control plane first, retain the last verified SEO snapshot, then update
+      // the SEO metrics when the report arrives.
+      const [growth, autonomy] = await Promise.all([
         json('/api/r8-23/growth-os'),
         json('/api/r8-22/autonomy'),
-        json('/api/r8-20/seo-geo?days=30'),
       ]);
-      render(growth||{},autonomy||{},seo||{});
+      render(growth||{},autonomy||{},latestSeo);
+      if(!seoRequest){
+        seoRequest = json('/api/r8-20/seo-geo?days=30')
+          .then(seo => {
+            latestSeo = seo || {};
+            render(growth||{},autonomy||{},latestSeo);
+          })
+          .catch(error => {
+            // SEO/GEO has its own detailed workspace and retry loop.  Keep the
+            // owner cockpit usable if that optional overview refresh is slow or
+            // temporarily unavailable.
+            console.warn('SEO/GEO overview refresh deferred', error);
+          })
+          .finally(() => { seoRequest = null; });
+      }
     }catch(error){
       const panel = host();
       panel.innerHTML = `<div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · OWNER COCKPIT</div><h3>运营总览暂不可读</h3><p>${esc(error.message||error)}</p></div><span class="kz23-live"><i></i>等待恢复</span></div>`;

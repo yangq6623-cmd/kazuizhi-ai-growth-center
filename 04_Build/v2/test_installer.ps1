@@ -1,7 +1,7 @@
 param([string]$Python = 'python')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+$setup = Join-Path $root 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
 $baseTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $baseTemp = (Resolve-Path $baseTemp).Path.TrimEnd('\')
 $testRoot = Join-Path $baseTemp ('KazuizhiV2InstallerTest-' + [guid]::NewGuid().ToString('N'))
@@ -32,7 +32,7 @@ try {
     Install-R8
     $exe = Join-Path $testRoot $name
     $version = (Get-Item -LiteralPath $exe).VersionInfo
-    if ($version.FileVersion -ne '2.2.2.22' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core') { throw 'Windows EXE version mismatch' }
+    if ($version.FileVersion -ne '2.2.2.23' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench') { throw 'Windows EXE version mismatch' }
     foreach ($serverTool in @('R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1', 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd')) {
         if (-not (Test-Path -LiteralPath (Join-Path $testRoot $serverTool) -PathType Leaf)) { throw "Installed server root-discovery tool missing: $serverTool" }
     }
@@ -81,7 +81,7 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data' }
     Assert-PersistentFiles $persistentFiles $false
-    Write-Host 'PASS: V2.2.2 autonomous install, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
+    Write-Host 'PASS: R8-23 Final Workbench install, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
     $env:LOCALAPPDATA = $oldLocalAppData
     if (Test-Path -LiteralPath $testRoot) {
