@@ -37,13 +37,10 @@ def main():
             now = datetime.now().astimezone()
             command_time = (now - timedelta(minutes=2)).isoformat()
             fake_command = {
-                "command_id": "CMD-R822-OWNER-001",
-                "status": "accepted",
-                "created_at": command_time,
+                "command_id": "CMD-R822-OWNER-001", "status": "accepted", "created_at": command_time,
                 "transport": "kz_local_control",
                 "objective": "未来2小时持续执行SEO/GEO增长、内容QC、公网页面发布、搜索提交和真实复测准备；社媒离线不得阻断核心任务。",
-                "control_receipt_id": "RECEIPT-CMD-001",
-                "source": "owner_workbench",
+                "control_receipt_id": "RECEIPT-CMD-001", "source": "owner_workbench",
             }
             original_links = command_execution.command_links
             original_authorized = command_execution._authorized
@@ -53,19 +50,11 @@ def main():
             from backend import r8_22_autonomy_convergence_patch as _r8_22_patch  # noqa: F401
 
             stale = {
-                "mission_id": "MISSION-OLD",
-                "growth_id": "GROWTH-OLD",
-                "created_at": (now - timedelta(days=1)).isoformat(),
-                "updated_at": (now - timedelta(days=1)).isoformat(),
-                "source": "r7_r8_shared_pipeline",
-                "title": "旧 Mission",
-                "goal": "旧目标",
-                "priority": "P1",
-                "state": "active",
-                "stage": "自动发布",
-                "user_state": "自动处理中",
-                "children": {"video_ids": [], "publish_plan_ids": [], "receipt_ids": []},
-                "verified_publications": 0,
+                "mission_id": "MISSION-OLD", "growth_id": "GROWTH-OLD",
+                "created_at": (now - timedelta(days=1)).isoformat(), "updated_at": (now - timedelta(days=1)).isoformat(),
+                "source": "r7_r8_shared_pipeline", "title": "旧 Mission", "goal": "旧目标", "priority": "P1",
+                "state": "active", "stage": "自动发布", "user_state": "自动处理中",
+                "children": {"video_ids": [], "publish_plan_ids": [], "receipt_ids": []}, "verified_publications": 0,
             }
             write_json(autonomous_ops.OPS_FILE, {
                 "schema": 1, "owner_goal": None, "active_mission_id": "MISSION-OLD",
@@ -74,37 +63,34 @@ def main():
 
             new_job = {
                 "id": "newjob", "kind": "manual_task", "title": "当前 SEO/GEO Mission 任务", "mode": "local",
-                "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial",
-                "execution": "autonomous", "state": "queued", "progress": 0, "completed_steps": 0,
-                "total_steps": 1, "due_at": "", "created_at": (now - timedelta(minutes=1)).isoformat(),
-                "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None,
-                "error": None, "retry_count": 0,
+                "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial", "execution": "autonomous",
+                "state": "queued", "progress": 0, "completed_steps": 0, "total_steps": 1, "due_at": "",
+                "created_at": (now - timedelta(minutes=1)).isoformat(), "updated_at": now_iso(),
+                "approved_by": "autonomy_policy", "result": None, "error": None, "retry_count": 0,
             }
             future_daily = {
                 "id": "futurejob", "kind": "manual_task", "title": "今天稍后执行的SEO排班", "mode": "local",
-                "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial",
-                "execution": "autonomous", "state": "queued", "progress": 0, "completed_steps": 0,
-                "total_steps": 1, "due_at": (now + timedelta(minutes=20)).isoformat(),
-                "created_at": (now - timedelta(hours=5)).isoformat(), "updated_at": now_iso(),
-                "approved_by": "autonomy_policy", "result": None, "error": None, "retry_count": 0,
-                "schedule_source": "daily_workforce",
+                "agent": "SEO/GEO 增长员", "task_type": "seo", "risk": "non_financial", "execution": "autonomous",
+                "state": "queued", "progress": 0, "completed_steps": 0, "total_steps": 1,
+                "due_at": (now + timedelta(minutes=20)).isoformat(), "created_at": (now - timedelta(hours=5)).isoformat(),
+                "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None, "error": None,
+                "retry_count": 0, "schedule_source": "daily_workforce",
             }
             old_job = {
                 "id": "oldjob", "kind": "manual_task", "title": "历史积压任务", "mode": "local",
-                "agent": "内容运营员", "task_type": "content", "risk": "non_financial",
-                "execution": "autonomous", "state": "queued", "progress": 0, "completed_steps": 0,
-                "total_steps": 1, "due_at": "", "created_at": (now - timedelta(hours=4)).isoformat(),
-                "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None,
-                "error": None, "retry_count": 0,
+                "agent": "内容运营员", "task_type": "content", "risk": "non_financial", "execution": "autonomous",
+                "state": "queued", "progress": 0, "completed_steps": 0, "total_steps": 1, "due_at": "",
+                "created_at": (now - timedelta(hours=4)).isoformat(), "updated_at": now_iso(),
+                "approved_by": "autonomy_policy", "result": None, "error": None, "retry_count": 0,
             }
             old_bound = {
                 "id": "oldbound", "kind": "manual_task", "title": "旧Mission后续任务", "mode": "local",
-                "agent": "内容运营员", "task_type": "content", "risk": "non_financial",
-                "execution": "autonomous", "state": "queued", "progress": 0, "completed_steps": 0,
-                "total_steps": 1, "due_at": (now + timedelta(minutes=30)).isoformat(),
-                "created_at": (now - timedelta(hours=3)).isoformat(), "updated_at": now_iso(),
-                "approved_by": "autonomy_policy", "result": None, "error": None, "retry_count": 0,
-                "command_id": "CMD-OLD", "mission_id": "MISSION-OLD-CMD", "priority_class": converge.CURRENT_PRIORITY,
+                "agent": "内容运营员", "task_type": "content", "risk": "non_financial", "execution": "autonomous",
+                "state": "queued", "progress": 0, "completed_steps": 0, "total_steps": 1,
+                "due_at": (now + timedelta(minutes=30)).isoformat(), "created_at": (now - timedelta(hours=3)).isoformat(),
+                "updated_at": now_iso(), "approved_by": "autonomy_policy", "result": None, "error": None,
+                "retry_count": 0, "command_id": "CMD-OLD", "mission_id": "MISSION-OLD-CMD",
+                "priority_class": converge.CURRENT_PRIORITY,
             }
             write_json(r7_engine.JOBS, {"schema": 1, "items": [new_job, future_daily, old_job, old_bound]})
 
@@ -162,9 +148,8 @@ def main():
             build_text = BUILD_INFO.read_text(encoding="utf-8")
             scope_text = SCOPE.read_text(encoding="utf-8")
             for marker in (
-                "ensure_command_mission", "ensure_controller_plan", "P0_current_mission",
-                "PHASE_RECEIPT_SECONDS", "defer_channel_and_continue_core_mission",
-                "priority_due_job_ids", "event_stream",
+                "ensure_command_mission", "ensure_controller_plan", "P0_current_mission", "PHASE_RECEIPT_SECONDS",
+                "defer_channel_and_continue_core_mission", "priority_due_job_ids", "event_stream",
             ):
                 assert marker in core_text, marker
             for marker in (
@@ -184,8 +169,10 @@ def main():
             ):
                 assert marker in scope_text, marker
             assert "r8_22_autonomy_convergence_patch" in truth_text
-            assert any(f'phase: "{phase}"' in build_text for phase in ("R8-22", "R8-23"))
-            assert any(label in build_text for label in ("7x24 Autonomous Convergence", "Autonomous Growth OS"))
+            assert any(f'phase: "{phase}"' in build_text for phase in ("R8-22", "R8-23", "R8-23.3 Candidate"))
+            assert any(label in build_text for label in (
+                "7x24 Autonomous Convergence", "Autonomous Growth OS", "Runtime Execution & UI Convergence",
+            ))
 
             command_execution.command_links = original_links
             command_execution._authorized = original_authorized
