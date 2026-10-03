@@ -1,6 +1,6 @@
 Kazuizhi AI Growth Center
 Version: V2.2.2 Autonomous Mission Core
-R8 Phase: R8-23.2 Pilot Runtime Truth & Closed-Loop Acceptance
+R8 Phase: R8-23.3 Candidate Runtime Execution & UI Convergence
 Runtime Build: KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922
 Frontend Compatibility Build: KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920
 Dashboard: FULL_ENTERPRISE_DASHBOARD
@@ -10,20 +10,21 @@ Modules:
 - R7/R8 Shared Mission Identity
 - Boss Goal and Mission Timeline
 - R8-17 Compatibility Preserved
-- R8-23.1 Owner Mission Strip Scoped to Boss Monitor Only
-- R8-23.1 Owner Cockpit Scoped to Boss Monitor Only
-- R8-23.1 Compact Boss Monitor Layout
-- R8-23.1 GEO Advanced Panels Folded into Progressive Disclosure Sections
+- R8-23 Owner Cockpit and Eight AI Employees
+- R8-23.1 Owner Cockpit Scoped to Boss Monitor
 - R8-23.2 Canonical Runtime Version / Health / Readiness Contract
-- R8-23.2 Command -> Mission -> Plan Single Truth Diagnostics
-- R8-23.2 Decision Pack 24h Control Lease
-- R8-23.2 Explainable Waiting Queue and Timeout Diagnostics
-- R8-23.2 Task Idempotency and Stale Running Recovery
 - R8-23.2 Local-model-first Execution with RTX3060 Preference
 - R8-23.2 Doubao Required on Critical SEO/GEO Semantic Steps
-- R8-23.2 Receipt/Evidence State Semantics (Configured != Invoked != External Success)
-- R8-23.2 One-real-social-platform-first Pilot Policy
-- R8-23.2 Metric Windows Today / 7d / 30d / All-time Contract
+- R8-23.2 Receipt/Evidence Truth Gates Preserved
+- R8-23.3 Rolling Verified Controller Lease for Continuous Authorized Execution
+- R8-23.3 Active Command vs Pending Command Truth Separation
+- R8-23.3 Due Queue / Overdue Execution-Stall Diagnostics
+- R8-23.3 Unified Human Attention vs Auto-resolvable / Deferred External Work
+- R8-23.3 Startup Boot Gate; Old R7 Shell Never Visible During Initialization
+- R8-23.3 Navigation Idempotency / Duplicate SEO-GEO Menu Removal
+- R8-23.3 Legacy Ledger Folded into Advanced Audit
+- R8-23.3 GEO Advanced Engineering Surfaces Folded by Default
+- R8-23.3 Connector Raw States Translated to Owner-facing Chinese Labels
 - Direct ChatGPT AI Gateway with Windows DPAPI Credential Storage
 - Filesystem Operations Bridge as Fallback Transport
 - R7 Decision Context into R8 ChatGPT Planning
@@ -32,15 +33,12 @@ Modules:
 - ChatGPT Structured Production Contract
 - ChatGPT Post-Render Content QC
 - Owner Final Video Approval Gate
-- R8-01 Real Android Device Center
 - RTX 3060 / NVENC Local Production with CPU Fallback
 - Platform Rule Center and Verified Publish Receipts
 - SEO/GEO Content and Verification Center
 - R8-15 Guarded IIS SEO Public Deployment
 - Public URL HTTP / Content / Canonical / Schema / Robots Verification
-- R8-15 One-click Server Bootstrap Package
 - R8-17 Desktop Remote Agent Pairing and Remote Deployment Bridge
 - R8-17 Remote SEO Publish / IndexNow Key Hosting
-- Consultation / Order Attribution with Truthful Source Boundaries
-- Unified Boss / Execution Shell
-- Human Attention Only for Login, Verification, Owner Approval, Finance and True Exceptions
+- Consultation / Task / Order Attribution with Truthful Source Boundaries
+- Funds Actions Permanently Human-only
