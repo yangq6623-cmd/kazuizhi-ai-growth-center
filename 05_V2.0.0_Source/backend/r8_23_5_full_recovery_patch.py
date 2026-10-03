@@ -14,6 +14,17 @@ _INSTALLED = False
 RECOVERY_VERSION = "R8-23.5 Full Regression Recovery"
 
 
+def _send_text(handler, text, content_type):
+    data = text.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Pragma", "no-cache")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def _serve_index(handler):
     """Always paint the usable shell directly; no historical blocking boot overlay."""
     source = (server.get_web_path() / "index.html").read_text(encoding="utf-8")
@@ -24,14 +35,16 @@ def _serve_index(handler):
     )
     if "autonomous-ops.js" not in source:
         source = source.replace("</body>", '<script src="/autonomous-ops.js"></script></body>', 1)
-    data = source.encode("utf-8")
-    handler.send_response(200)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Pragma", "no-cache")
-    handler.send_header("Content-Length", str(len(data)))
-    handler.end_headers()
-    handler.wfile.write(data)
+    _send_text(handler, source, "text/html; charset=utf-8")
+
+
+def _serve_web_html(handler, name):
+    """Serve critical embedded workspaces explicitly instead of relying on a
+    historical handler chain. This prevents an older wrapper from swallowing an
+    iframe route and leaving a blank SEO/GEO workspace.
+    """
+    source = (server.get_web_path() / name).read_text(encoding="utf-8")
+    _send_text(handler, source, "text/html; charset=utf-8")
 
 
 def _serve_autonomous_ops(handler):
@@ -56,14 +69,7 @@ def _serve_autonomous_ops(handler):
         "r8_23_5_full_recovery.js",
     ]
     source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
-    data = source.encode("utf-8")
-    handler.send_response(200)
-    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Pragma", "no-cache")
-    handler.send_header("Content-Length", str(len(data)))
-    handler.end_headers()
-    handler.wfile.write(data)
+    _send_text(handler, source, "application/javascript; charset=utf-8")
 
 
 def install():
@@ -80,6 +86,12 @@ def install():
             except Exception as error:
                 handler._json_error(503, f"R8-23.5 owner shell recovery failed: {type(error).__name__}: {error}")
             return
+        if path in {"/r8_13_seo_geo.html", "/geo.html"}:
+            try:
+                _serve_web_html(handler, path.lstrip("/"))
+            except Exception as error:
+                handler._json_error(503, f"R8-23.5 embedded growth workspace failed: {type(error).__name__}: {error}")
+            return
         if path == "/autonomous-ops.js":
             try:
                 _serve_autonomous_ops(handler)
@@ -95,6 +107,8 @@ def install():
                     "owner_cockpit": "kz-r8-23-growth-os",
                     "seo_geo_route": "r813-seo-geo",
                     "seo_geo_bridge": "KZR813SeoGeoBridge.open",
+                    "seo_workspace": "/r8_13_seo_geo.html",
+                    "geo_workspace": "/geo.html",
                     "historical_candidate_ui": "disabled_to_prevent_route_rewrite",
                 },
                 "truth_policy": "formal external Receipt/Evidence only",
