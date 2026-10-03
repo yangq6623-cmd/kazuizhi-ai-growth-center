@@ -124,6 +124,23 @@ def _install_growth_os_policy():
     growth_os.work_packages = work_packages
 
 
+def _serve_autonomous_ops(handler):
+    web = server.get_web_path()
+    source = "\n;\n".join([
+        (web / "autonomous-ops.js").read_text(encoding="utf-8"),
+        (web / "r8_22_autonomy.js").read_text(encoding="utf-8"),
+        (web / "r8_23_growth_os.js").read_text(encoding="utf-8"),
+        (web / "r8_23_2_pilot.js").read_text(encoding="utf-8"),
+    ])
+    data = source.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -139,6 +156,9 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path == "/autonomous-ops.js":
+                _serve_autonomous_ops(handler)
+                return
             if path in {"/api/r8-23-2/pilot", "/api/r8-23-2/runtime-truth"}:
                 handler._json_ok(runtime_truth.snapshot())
                 return
@@ -199,6 +219,7 @@ def install():
 
     server.DashboardHandler.do_GET = do_get
     server.DashboardHandler.do_POST = do_post
+    server.DashboardHandler._kz_r8_23_2_runtime_truth = True
     _INSTALLED = True
 
 
