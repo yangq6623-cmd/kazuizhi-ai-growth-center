@@ -83,16 +83,17 @@ def install():
 
 install()
 
-# R8-22 through R8-23.4 are cumulative production patches.  The desktop
+# R8-22 through R8-23.5 are cumulative production patches. The desktop
 # entrypoint historically stopped importing at R8-20, which allowed a newer
 # package to paint the recovery shell while silently falling back to older
-# runtime/API behavior.  Load the later patches here because this module is the
+# runtime/API behavior. Load the later patches here because this module is the
 # final side-effect patch imported by run.py before the server is created.
 # Import order is intentional: convergence -> growth OS -> runtime truth/safety
-# -> candidate -> route recovery.
+# -> candidate -> route recovery -> cumulative regression recovery.
 from backend import r8_22_autonomy_convergence_patch as _r8_22_autonomy_convergence_patch  # noqa: F401,E402
 from backend import r8_23_growth_os_patch as _r8_23_growth_os_patch  # noqa: F401,E402
 from backend import r8_23_2_runtime_truth_patch as _r8_23_2_runtime_truth_patch  # noqa: F401,E402
 from backend import r8_23_2_runtime_safety_patch as _r8_23_2_runtime_safety_patch  # noqa: F401,E402
 from backend import r8_23_3_candidate_patch as _r8_23_3_candidate_patch  # noqa: F401,E402
 from backend import r8_23_4_runtime_route_recovery_patch as _r8_23_4_runtime_route_recovery_patch  # noqa: F401,E402
+from backend import r8_23_5_full_recovery_patch as _r8_23_5_full_recovery_patch  # noqa: F401,E402
