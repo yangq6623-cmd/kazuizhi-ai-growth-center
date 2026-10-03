@@ -1,8 +1,10 @@
-name: Build Kazuizhi R8-23.2 Pilot Runtime Truth
+name: Build Kazuizhi R8-23.3 Candidate Runtime Execution
 
 on:
   push:
-    branches: ['r8-23-final-autonomous-growth-os-*']
+    branches:
+      - 'r8-23-final-autonomous-growth-os-*'
+      - 'r8-23-3-runtime-execution-ui-convergence-*'
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
@@ -35,13 +37,15 @@ jobs:
           $shortSha = '${{ github.sha }}'.Substring(0, 8)
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
+          $text = $text.Replace('phase: "R8-23"', 'phase: "R8-23.3 Candidate"')
+          $text = $text.Replace('displayVersion: "V2.2.2 R8-23 Final 7x24 Autonomous Growth OS"', 'displayVersion: "V2.2.2 R8-23.3 Candidate Runtime Execution & UI Convergence"')
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
       - name: Install pinned dependencies and browser test driver
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           python -m pip install playwright==1.55.0
-      - name: Verify R7 R8 GEO Phase 1-3 R8-20 R8-21 R8-22 R8-23 and R8-23.2 Pilot
+      - name: Verify R7 through R8-23.3 Candidate
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
@@ -79,7 +83,8 @@ jobs:
           python 04_Build/v2/test_r8_22_autonomous_convergence.py
           python 04_Build/v2/test_r8_23_final_growth_os.py
           python 04_Build/v2/test_r8_23_2_runtime_truth.py
-      - name: Verify production entrypoint activates R8-19 through R8-23.2
+          python 04_Build/v2/test_r8_23_3_candidate.py
+      - name: Verify production entrypoint activates R8-19 through R8-23.3
         run: |
           $run = Get-Content -LiteralPath '05_V2.0.0_Source/run.py' -Raw
           foreach ($marker in @('r8_19_geo_validation_patch','r8_19_geo_phase3_patch','r8_20_seo_geo_growth_patch','runtime_resilience','SetThreadExecutionState','start_content_execution_worker')) {
@@ -90,7 +95,7 @@ jobs:
             if (-not $patch.Contains($marker)) { throw "R8-21 runtime integration missing $marker" }
           }
           $truthPatch = Get-Content -LiteralPath '05_V2.0.0_Source/core/r8_20_growth_truth_patch.py' -Raw
-          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch','r8_23_2_runtime_safety_patch')) {
+          foreach ($marker in @('r8_22_autonomy_convergence_patch','r8_23_growth_os_patch','r8_23_2_runtime_truth_patch','r8_23_2_runtime_safety_patch','r8_23_3_candidate_patch')) {
             if (-not $truthPatch.Contains($marker)) { throw "Production activation missing $marker" }
           }
           $r822 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_22_autonomy_convergence_patch.py' -Raw
@@ -104,6 +109,10 @@ jobs:
           $r8232 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_2_runtime_truth_patch.py' -Raw
           foreach ($marker in @('/api/health','/api/runtime-health','/api/version','/api/readiness','/api/r8-23-2/pilot','_install_control_lease','_install_model_execution_policy','r8_23_2_pilot.js')) {
             if (-not $r8232.Contains($marker)) { throw "R8-23.2 runtime truth integration missing $marker" }
+          }
+          $r8233 = Get-Content -LiteralPath '05_V2.0.0_Source/backend/r8_23_3_candidate_patch.py' -Raw
+          foreach ($marker in @('/api/r8-23-3/candidate','/api/r8-23-3/execution','/api/r8-23-3/attention','/api/r8-23-3/control-lease','kz-r8233-booting','r8_23_3_candidate.js')) {
+            if (-not $r8233.Contains($marker)) { throw "R8-23.3 Candidate integration missing $marker" }
           }
       - name: Integrate unified model connection center into packaged web
         run: |
@@ -147,35 +156,35 @@ jobs:
         run: ./04_Build/v2/test_windows_security.ps1
       - name: Test silent install launch overwrite upgrade and uninstall
         run: ./04_Build/v2/test_installer.ps1
-      - name: Record R8-23.2 Pilot installer provenance
+      - name: Record R8-23.3 Candidate installer provenance
         run: |
           $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.2 R8-23.2 Pilot Runtime Truth & Closed-Loop Acceptance'
+            version = '2.2.2 R8-23.3 Candidate Runtime Execution & UI Convergence'
             commit = '${{ github.sha }}'
             run_number = '${{ github.run_number }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
             runtime_identity = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
-            engineering_scope = @('single runtime version truth','Command-Mission-Plan truth diagnostics','24h Decision Pack control lease','explainable queue and timeout diagnostics','task idempotency','stale-running restart recovery','local capability degradation','AI employee/model route visibility','human-attention purification','SEO real receipt truth preserved','GEO formal A/B truth preserved','one-real-social-platform pilot','business attribution to order only','health/readiness/version API contract','DPAPI and audit guardrails','compact owner UI','metric time/status semantics','local-model-first route','Doubao required on critical SEO/GEO semantic steps')
-            field_acceptance_remaining = @('24h Windows unattended run','72h fault/recovery run','7-day production soak','one real social Post ID/URL closed-loop requires live account authorization')
+            engineering_scope = @('rolling verified controller lease','active-vs-pending Command truth','due queue execution-stall diagnostics','explicit readiness blockers','startup boot gate','navigation idempotency','unified human attention count','legacy ledger folding','GEO advanced folding','connector state translation','local-model-first route','Doubao required on critical SEO/GEO semantic steps','formal GEO truth preserved','business attribution to order only')
+            field_acceptance_remaining = @('2h Candidate smoke test','24h Windows unattended run','72h fault/recovery run','7-day production soak','one real social Post ID/URL closed-loop requires live account authorization')
             truth_policy = 'Configured does not mean invoked; invoked does not mean external success. Local/Doubao output is C-level auxiliary. Formal GEO requires real external A/B Evidence.'
             outcome_scope = 'site visit -> mini-program visit -> consultation -> task -> order; no money/amount/revenue/profit/ROI'
             funds_policy = 'human-only permanently'
-          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_2_PILOT.json
-      - name: Upload R8-23.2 Pilot Windows installer
+          } | ConvertTo-Json -Depth 6 | Set-Content installer_output_v2/BUILD_RECORD_R8_23_3_CANDIDATE.json
+      - name: Upload R8-23.3 Candidate Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_2_Pilot
+          name: Kazuizhi_AI_Enterprise_R8_23_3_Candidate
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
-      - name: Upload R8-23.2 Pilot portable application
+      - name: Upload R8-23.3 Candidate portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_R8_23_2_Pilot_Portable
+          name: Kazuizhi_AI_Enterprise_R8_23_3_Candidate_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
