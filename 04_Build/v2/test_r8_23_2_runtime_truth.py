@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "05_V2.0.0_Source"
 CORE = SRC / "core" / "r8_23_2_runtime_truth.py"
 PATCH = SRC / "backend" / "r8_23_2_runtime_truth_patch.py"
+COLLAB = SRC / "integrations" / "seo_geo_model_collaboration.py"
 UI = SRC / "web" / "r8_23_2_runtime_truth.js"
 MANIFEST = SRC / "core" / "release_manifest.json"
 TRUTH_PATCH = SRC / "core" / "r8_20_growth_truth_patch.py"
@@ -25,6 +26,7 @@ def main():
         sys.path.insert(0, str(SRC))
         try:
             from core import r8_23_2_runtime_truth as truth
+            from integrations import seo_geo_model_collaboration as collab
 
             identity = truth.release_identity()
             assert identity["release"] == "R8-23.2 Pilot RC1"
@@ -32,7 +34,6 @@ def main():
             assert identity["api_contract"] == "r8-23.2/v1"
             assert identity["complete"] is True
 
-            # Model policy is task-based, not a fake fixed percentage.
             local = truth.model_route_for("batch_tagging", local_ready=True, doubao_ready=True)
             seo = truth.model_route_for("seo_semantic_qc", local_ready=True, doubao_ready=True)
             geo = truth.model_route_for("geo_gap_analysis", local_ready=True, doubao_ready=True)
@@ -42,8 +43,43 @@ def main():
             assert "geo_gap_analysis" in truth.DOUBAO_REQUIRED_STAGES
             assert "seo_semantic_qc" in truth.DOUBAO_REQUIRED_STAGES
 
-            # ChatGPT issues a bounded Decision Pack; local scheduler can execute
-            # already-authorized low-risk work inside the lease.
+            # Prove the Doubao collaboration code sends a real OpenAI-compatible
+            # request for an SEO/GEO stage rather than only displaying a route.
+            original_status = collab.status
+            original_key = collab._cloud_key
+            original_profile = collab.ai_gateway._profile
+            original_validate = collab.ai_gateway._validate_endpoint
+            try:
+                collab.status = lambda: {
+                    "ready": True, "model": "doubao-test", "label": "豆包测试路由",
+                    "evidence_level": "C_auxiliary",
+                }
+                collab._cloud_key = lambda: ("test-key", "test")
+                collab.ai_gateway._profile = lambda route: {
+                    "endpoint": "https://example.invalid/v1/chat/completions",
+                    "protocol": "chat_completions", "model": "doubao-test",
+                }
+                collab.ai_gateway._validate_endpoint = lambda endpoint, route: endpoint
+                captured = {}
+
+                def transport(body, headers, endpoint, protocol):
+                    captured.update(body=body, headers=headers, endpoint=endpoint, protocol=protocol)
+                    return {
+                        "id": "resp-doubao-ci", "model": "doubao-test",
+                        "choices": [{"message": {"content": '{"summary":"SEO复核完成","findings":["意图明确"],"actions":["补FAQ"],"quality_score":88,"risks":[]}'}}],
+                    }
+
+                answer = collab._request("seo_semantic_qc", {"assets": [{"title": "涟水维修"}]}, transport=transport)
+                assert captured["protocol"] == "chat_completions"
+                assert captured["headers"]["Authorization"] == "Bearer test-key"
+                assert "SEO复核完成" in answer["raw_text"]
+                assert answer["response_id"] == "resp-doubao-ci"
+            finally:
+                collab.status = original_status
+                collab._cloud_key = original_key
+                collab.ai_gateway._profile = original_profile
+                collab.ai_gateway._validate_endpoint = original_validate
+
             control = {
                 "consistent": True,
                 "command_id": "CMD-R8232",
@@ -60,7 +96,6 @@ def main():
             assert set(pack["allowed_business_engines"]) == {"repair_services", "personal_tasks"}
             assert len(pack["allowed_ai_employees"]) == 8
 
-            # Local completion cannot silently become external success.
             local_receipt = truth.receipt_truth({
                 "state": "completed",
                 "execution_receipt": {"receipt_id": "LOCAL-1"},
@@ -83,9 +118,11 @@ def main():
             assert manifest["field_acceptance"]["24h"] == "pending_real_field_run"
             assert manifest["field_acceptance"]["72h"] == "pending_real_fault_recovery_run"
             assert manifest["field_acceptance"]["7d"] == "pending_real_production_run"
+            assert manifest["baseline"]["github_run"] == "#76"
 
             core = CORE.read_text(encoding="utf-8")
             patch = PATCH.read_text(encoding="utf-8")
+            collaboration = COLLAB.read_text(encoding="utf-8")
             ui = UI.read_text(encoding="utf-8")
             truth_patch = TRUTH_PATCH.read_text(encoding="utf-8")
             workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -100,11 +137,15 @@ def main():
             for marker in (
                 "/api/health", "/api/runtime-health", "/api/version", "/api/readiness",
                 "/api/r8-23-2/runtime-truth", "/api/r8-23-2/decision-pack",
-                "/api/r8-23-2/model-routing", "r8_23_2_runtime_truth.js",
+                "/api/r8-23-2/model-routing", "/api/r8-23-2/doubao-collaboration",
+                "model_collaboration.run_cycle", "r8_23_2_runtime_truth.js",
             ):
                 assert marker in patch, marker
+            for marker in ("REQUIRED_STAGES", "seo_semantic_qc", "geo_gap_analysis", "C_auxiliary", "run_cycle", "Authorization"):
+                assert marker in collaboration, marker
             for marker in ("当前 Command", "控制租约", "真正需要老板", "Receipt / Evidence", "计划等待"):
                 assert marker in ui, marker
+            assert "__KZ_R8232_RUNTIME_TRUTH_UI_LOADED__" in ui
             assert "r8_23_2_runtime_truth_patch" in truth_patch
             assert "test_r8_23_2_runtime_truth.py" in workflow
             for marker in (
@@ -113,7 +154,7 @@ def main():
             ):
                 assert marker in scope, marker
 
-            print("PASS: R8-23.2 locks runtime identity/control truth, Decision Pack lease, queue recovery, truthful evidence states and local+Doubao SEO/GEO routing")
+            print("PASS: R8-23.2 locks runtime/control truth and performs real Doubao SEO/GEO collaboration without weakening Evidence gates")
         finally:
             if sys.path and sys.path[0] == str(SRC):
                 sys.path.pop(0)
