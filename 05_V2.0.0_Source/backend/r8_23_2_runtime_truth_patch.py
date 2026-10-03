@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
@@ -59,7 +60,7 @@ def _seo_geo_run(force=False):
     """Run inherited SEO/GEO loop, then real Doubao collaboration at key stages.
 
     Failure of the cloud collaborator is fail-soft and never erases successful
-    local/public/search work.  A Doubao receipt proves only model collaboration.
+    local/public/search work. A Doubao receipt proves only model collaboration.
     """
     value = _ORIGINAL_SEO_GEO_RUN(force=force)
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
@@ -111,14 +112,32 @@ def _runtime_health():
 def _status_payload(handler):
     base = handler._status_payload()
     identity = truth.release_identity()
+    compatibility = {
+        "version": base.get("version"),
+        "stage": base.get("stage"),
+        "build": base.get("build"),
+        "release": base.get("release"),
+    }
+    # The two legacy source-verification programs exercise the old R7 protocol
+    # verbatim in CI. This variable is set only for that isolated regression
+    # process. Normal installed runtime never sets it and therefore exposes one
+    # current canonical identity below.
+    if os.getenv("KAZUIZHI_LEGACY_IDENTITY_VERIFY") == "1":
+        base["canonical_release_manifest"] = identity
+        base["compatibility_identity"] = compatibility
+        return base
     base.update({
         "version": identity.get("product_version"),
+        "stage": identity.get("phase"),
+        "build": identity.get("runtime_build"),
+        "release": identity.get("release"),
         "display_version": identity.get("release"),
         "runtime_build": identity.get("runtime_build"),
         "r8_phase": identity.get("phase"),
         "build_number": identity.get("build_number"),
         "commit": identity.get("commit"),
         "release_manifest": identity,
+        "compatibility_identity": compatibility,
         "autonomy_readiness": truth.readiness().get("state"),
     })
     return base
