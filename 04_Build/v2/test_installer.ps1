@@ -13,10 +13,20 @@ function Install-R8 {
     if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
 }
 function Verify-Runtime([string]$Exe) {
-    & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $Exe
-    if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 runtime verification failed' }
-    & $Python (Join-Path $PSScriptRoot 'verify_r8_operational.py') --exe $Exe
-    if ($LASTEXITCODE -ne 0) { throw 'V2.2 autonomous runtime verification failed' }
+    # These are historical compatibility verifiers.  Keep the legacy handshake
+    # isolated to their child runtime.  A normally installed R8-23.2 instance
+    # does not set this variable and exposes the canonical release manifest.
+    $oldLegacy = $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY
+    $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY = '1'
+    try {
+        & $Python (Join-Path $PSScriptRoot 'verify_v2_autonomous.py') --exe $Exe
+        if ($LASTEXITCODE -ne 0) { throw 'Inherited R8 runtime verification failed' }
+        & $Python (Join-Path $PSScriptRoot 'verify_r8_operational.py') --exe $Exe
+        if ($LASTEXITCODE -ne 0) { throw 'V2.2 autonomous runtime verification failed' }
+    } finally {
+        if ($null -eq $oldLegacy) { Remove-Item Env:KAZUIZHI_LEGACY_IDENTITY_VERIFY -ErrorAction SilentlyContinue }
+        else { $env:KAZUIZHI_LEGACY_IDENTITY_VERIFY = $oldLegacy }
+    }
 }
 function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     foreach ($relative in $Expected.Keys) {
