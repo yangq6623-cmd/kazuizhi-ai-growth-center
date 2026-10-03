@@ -36,10 +36,9 @@
   function clearLegacyBuildQuery() {
     try {
       const url = new URL(location.href);
-      if (url.searchParams.has('build')) {
-        url.searchParams.delete('build');
-        history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
-      }
+      if (!url.searchParams.has('build')) return;
+      url.searchParams.delete('build');
+      history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
     } catch (_) {}
   }
 
@@ -54,20 +53,20 @@
   function normalizeVersionCopy() {
     const info = buildInfo();
     const baseline = $('.baseline');
-    if (baseline) {
+    if (baseline && baseline.dataset.kzR8234Version !== `${info.run}|${info.commit}`) {
+      baseline.dataset.kzR8234Version = `${info.run}|${info.commit}`;
       baseline.innerHTML = `<b>R8-23.4 Candidate${info.run ? ` · #${esc(info.run)}` : ''}</b><br><span>运行恢复 · 路由收口 · 真实回执</span>${info.commit ? `<code>${esc(info.commit.slice(0,8))}</code>` : ''}`;
     }
-    document.title = '卡嘴子 AI 自治运营 · R8-23.4';
+    if (document.title !== '卡嘴子 AI 自治运营 · R8-23.4') document.title = '卡嘴子 AI 自治运营 · R8-23.4';
     $$('body *').forEach(node => {
       if (node.children.length) return;
       const text = node.textContent || '';
-      if (text === '员工汇报，R7 汇总，ChatGPT 做战略判断') {
-        node.textContent = 'AI员工汇报 → 运营经理汇总 → ChatGPT战略复盘';
-      } else if (/R7\s*经理报告/.test(text)) {
-        node.textContent = text.replace(/R7\s*经理报告/g, '运营经理报告');
-      } else if (/R7\s*经理/.test(text)) {
-        node.textContent = text.replace(/R7\s*经理/g, '运营经理');
-      }
+      let next = text;
+      if (text === '员工汇报，R7 汇总，ChatGPT 做战略判断') next = 'AI员工汇报 → 运营经理汇总 → ChatGPT战略复盘';
+      else if (/R7\s*经理报告/.test(text)) next = text.replace(/R7\s*经理报告/g, '运营经理报告');
+      else if (/R7\s*经理/.test(text)) next = text.replace(/R7\s*经理/g, '运营经理');
+      else if (/R7\s*汇总/.test(text)) next = text.replace(/R7\s*汇总/g, '运营经理汇总');
+      if (next !== text) node.textContent = next;
     });
   }
 
@@ -78,14 +77,15 @@
     if (!button) return null;
     button.dataset.title = '内容生产与发布';
     button.dataset.subtitle = 'SEO/GEO、广告、短视频等内容生产、质检与发布准备';
-    const icon = button.querySelector('span');
-    button.innerHTML = `${icon ? icon.outerHTML : '<span>创</span>'}内容生产与发布`;
     button.dataset.kzRouteRole = 'content-production';
+    if (!/内容生产与发布/.test(button.textContent || '')) {
+      const icon = button.querySelector('span');
+      button.innerHTML = `${icon ? icon.outerHTML : '<span>创</span>'}内容生产与发布`;
+    }
     return button;
   }
 
   function ensureSeoGeoRoute() {
-    // R8-13 bridge is the sole owner of the real SEO/GEO workspace.
     const primary = $('.r810-primary-nav');
     if (primary && !primary.querySelector('[data-target="r813-seo-geo"]') && window.KZR813SeoGeoBridge) {
       const button = document.createElement('button');
@@ -120,21 +120,22 @@
     seo.hidden = false;
     seo.dataset.kzRouteRole = 'seo-geo';
 
-    // Remove only actual duplicate SEO/GEO route buttons. Never remove promotion/content.
-    const duplicates = $$('button.nav[data-page="r813-seo-geo"], .r810-primary-nav .r810-nav-button[data-target="r813-seo-geo"]');
-    const byContainer = new Map();
-    duplicates.forEach(button => {
-      const container = button.closest('nav,.r810-primary-nav') || button.parentElement;
-      if (!byContainer.has(container)) byContainer.set(container, button);
-      else button.remove();
-    });
+    const groups = [
+      $$('button.nav[data-page="r813-seo-geo"]'),
+      $$('.r810-primary-nav .r810-nav-button[data-target="r813-seo-geo"]'),
+    ];
+    groups.forEach(group => group.slice(1).forEach(button => button.remove()));
   }
 
   function routeContract() {
     ensureContentRoute();
     ensureSeoGeoRoute();
-    const wrong = $$('button.nav[data-page="promotion"]').filter(el => /SEO\/GEO增长/.test(el.textContent || ''));
-    wrong.forEach(el => ensureContentRoute());
+    $$('button.nav[data-page="promotion"]').forEach(el => {
+      if (/SEO\/GEO增长/.test(el.textContent || '')) {
+        el.dataset.kzRouteRole = '';
+        ensureContentRoute();
+      }
+    });
   }
 
   function ensureRuntimeBanner() {
@@ -156,11 +157,12 @@
     const state = readiness?.state || health?.readiness || (error ? 'DEGRADED' : 'CHECKING');
     const color = state === 'READY' ? '#14805c' : state === 'BLOCKED' ? '#b63434' : state === 'DEGRADED' ? '#a36812' : '#52647e';
     const blockers = (readiness?.blockers || health?.blockers || []).map(x => x?.label || x?.code || x).filter(Boolean);
-    banner.innerHTML = `<b>R8-23.4 运行状态</b><span style="color:${color};font-weight:700">${esc(state)}</span>` +
+    const html = `<b>R8-23.4 运行状态</b><span style="color:${color};font-weight:700">${esc(state)}</span>` +
       `<span>本地服务 ${ping?.alive ? '在线' : error ? '检查超时' : '检查中'}</span>` +
       `<span>版本 ${esc(version?.phase || '后台核验中')}</span>` +
       (blockers.length ? `<span style="color:#b63434">阻塞：${blockers.map(esc).join('；')}</span>` : '') +
       (error ? `<span style="color:#a36812">后台检查可重试，不阻断界面查看</span>` : '');
+    if (banner.innerHTML !== html) banner.innerHTML = html;
   }
 
   function candidateStrip(snapshot) {
@@ -169,47 +171,41 @@
     const truth = snapshot.truth || {};
     const queue = snapshot.queue || {};
     const readiness = snapshot.readiness || {};
-    let strip = $('#kz-r8234-truth-strip');
     const dashboard = $('#dashboard');
     if (!dashboard) return;
+    let strip = $('#kz-r8234-truth-strip');
     if (!strip) {
       strip = document.createElement('section');
       strip.id = 'kz-r8234-truth-strip';
       strip.style.cssText = 'margin:10px 0 14px;padding:10px 14px;border:1px solid #dce5f3;border-radius:12px;background:#fff;font-size:12px';
       dashboard.prepend(strip);
     }
-    strip.innerHTML = `<b>R8-23.4 · 单一运行真值</b>　` +
-      `<span>自治 ${esc(readiness.state || 'UNKNOWN')}</span>　` +
+    const html = `<b>R8-23.4 · 单一运行真值</b>　<span>自治 ${esc(readiness.state || 'UNKNOWN')}</span>　` +
       `<span>Command ${esc(truth.active_command_id || '—')}</span>　` +
       (truth.pending_command_id ? `<span style="color:#a36812">待确认 ${esc(truth.pending_command_id)}</span>　` : '') +
       `<span>Mission ${esc(truth.mission_id || '—')}</span>　` +
       `<span>队列 ${Number(queue.waiting || 0)}等待 / ${Number(queue.running || 0)}运行 / ${Number(queue.timed_out || 0)}超时</span>`;
+    if (strip.innerHTML !== html) strip.innerHTML = html;
     $('#kz-r8-23-2-pilot')?.setAttribute('hidden','hidden');
     $('#kz-r8-23-3-candidate-strip')?.setAttribute('hidden','hidden');
   }
 
   function reconcileDecisionStats() {
-    if (typeof window.r7Jobs === 'undefined' || !Array.isArray(window.r7Jobs) || !window.r7Jobs.length) return;
+    if (!Array.isArray(window.r7Jobs) || !window.r7Jobs.length) return;
     const assigned = typeof window.r7TodayAssigned === 'function' ? window.r7Jobs.filter(window.r7TodayAssigned) : [];
     if (!assigned.length) return;
     const completed = assigned.filter(job => job?.state === 'completed');
     const queued = assigned.filter(job => ['queued','awaiting_approval','human_required'].includes(job?.state));
     const failed = assigned.filter(job => job?.state === 'failed');
     const rate = Math.round(completed.length * 100 / assigned.length);
-    const map = {
-      'decision-planned': assigned.length,
-      'decision-completed': completed.length,
-      'decision-queued': queued.length,
-      'decision-failed': failed.length,
-      'decision-rate': `${rate}%`,
-    };
-    Object.entries(map).forEach(([id, value]) => { const el = document.getElementById(id); if (el) el.textContent = String(value); });
+    const map = {'decision-planned':assigned.length,'decision-completed':completed.length,'decision-queued':queued.length,'decision-failed':failed.length,'decision-rate':`${rate}%`};
+    Object.entries(map).forEach(([id,value]) => { const el=document.getElementById(id); if (el && el.textContent !== String(value)) el.textContent=String(value); });
     const headline = $('#decision-headline');
-    if (headline) headline.textContent = `8 个 AI 员工今日执行 ${assigned.length} 项，已完成 ${completed.length} 项，执行完成度 ${rate}%`;
+    const copy = `8 个 AI 员工今日执行 ${assigned.length} 项，已完成 ${completed.length} 项，执行完成度 ${rate}%`;
+    if (headline && headline.textContent !== copy) headline.textContent = copy;
   }
 
   function normalizeOwnerSemantics() {
-    // Social not configured is a deferred optional channel, not a core failure.
     const social = $$('.page').find(page => /社媒中心/.test(page.querySelector('h1,h2')?.textContent || ''));
     if (social && /真实手机\s*0/.test(social.textContent || '') && !social.querySelector('[data-kz-social-unconfigured]')) {
       const note = document.createElement('div');
@@ -218,13 +214,6 @@
       note.textContent = '社媒真机/账号尚未接入：属于未启用，不计为失败；只有 Mission 明确要求社媒发布时才进入人工授权。官网 SEO/GEO 不受阻断。';
       social.querySelector('article,section,.wide')?.appendChild(note);
     }
-
-    $$('body *').forEach(node => {
-      if (node.children.length) return;
-      const text = node.textContent || '';
-      if (text.trim() === 'R7 经理') node.textContent = '运营经理';
-      if (/R7\s*汇总/.test(text)) node.textContent = text.replace(/R7\s*汇总/g, '运营经理汇总');
-    });
   }
 
   function settleDiagnostics() {
@@ -241,9 +230,7 @@
           button.disabled = false;
           button.textContent = '重新体检';
           const summary = $('#diagnostic-summary');
-          if (summary && /体检中|检查中|正在/.test(summary.textContent || '')) {
-            summary.textContent = '体检请求超过8秒，已结束等待；可重新体检。界面不会无限转圈。';
-          }
+          if (summary && /体检中|检查中|正在/.test(summary.textContent || '')) summary.textContent = '体检请求超过8秒，已结束等待；可重新体检。界面不会无限转圈。';
         }
       }, 300);
     }, {capture:true});
@@ -265,9 +252,9 @@
       fetchJson('/api/health', {timeout:4500}),
       fetchJson('/api/readiness', {timeout:4500}),
     ]);
-    const value = index => results[index].status === 'fulfilled' ? results[index].value : null;
+    const value = i => results[i].status === 'fulfilled' ? results[i].value : null;
     const rejected = results.find(item => item.status === 'rejected');
-    showRuntimeState({ping:value(0), version:value(1), health:value(2), readiness:value(3), error:rejected?.reason});
+    showRuntimeState({ping:value(0),version:value(1),health:value(2),readiness:value(3),error:rejected?.reason});
   }
 
   async function refreshCandidate() {
@@ -291,9 +278,8 @@
 
   function scheduleRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(async () => {
-      await Promise.allSettled([refreshCandidate(), backgroundChecks()]);
-      applyUiContract();
+    refreshTimer = setInterval(() => {
+      Promise.allSettled([refreshCandidate(), backgroundChecks()]).finally(applyUiContract);
     }, REFRESH_MS);
   }
 
@@ -301,11 +287,10 @@
     clearLegacyBuildQuery();
     document.documentElement.dataset.kzR8234Ui = 'ready';
     applyUiContract();
-    // The shell is usable immediately; checks can never lock the owner out of the UI.
-    Promise.allSettled([backgroundChecks(), refreshCandidate()]).finally(() => applyUiContract());
+    Promise.allSettled([backgroundChecks(), refreshCandidate()]).finally(applyUiContract);
+    // Late R8 modules are finite; re-apply only at bounded checkpoints instead of observing every DOM mutation.
+    [250, 900, 1800, 3500, 6000].forEach(ms => setTimeout(applyUiContract, ms));
     scheduleRefresh();
-    const observer = new MutationObserver(() => requestAnimationFrame(applyUiContract));
-    observer.observe(document.body || document.documentElement, {childList:true, subtree:true});
     window.addEventListener('kz:app-ready', applyUiContract);
     window.addEventListener('r810:workbench-ready', applyUiContract);
   }
