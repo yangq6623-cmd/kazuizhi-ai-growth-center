@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import json
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from core import r7_engine
 from core import r8_22_autonomous_convergence as convergence
 from core import r8_23_2_runtime_truth as truth
+from core import seo_geo_autonomy as seo_core
+from integrations import seo_geo_model_collaboration as model_collaboration
 
 _INSTALLED = False
 _ORIGINAL_CONTROLLER_TICK = convergence.controller_tick
 _ORIGINAL_RUN_DUE_JOBS = r7_engine.run_due_jobs
+_ORIGINAL_SEO_GEO_RUN = seo_core.run_once
+_ORIGINAL_SEO_GEO_STATUS = seo_core.status
 
 
 def _origin_allowed(handler):
@@ -51,6 +55,43 @@ def _run_due_jobs():
     return result
 
 
+def _seo_geo_run(force=False):
+    """Run inherited SEO/GEO loop, then real Doubao collaboration at key stages.
+
+    Failure of the cloud collaborator is fail-soft and never erases successful
+    local/public/search work.  A Doubao receipt proves only model collaboration.
+    """
+    value = _ORIGINAL_SEO_GEO_RUN(force=force)
+    result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
+    try:
+        collaboration = model_collaboration.run_cycle(force=bool(force))
+    except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, AttributeError) as error:
+        collaboration = {"skipped": False, "completed": 0, "failed": 1, "error": str(error)[:500], "evidence_level": "C_auxiliary"}
+    result["doubao_collaboration"] = collaboration
+    try:
+        from core import r8_23_growth_operating_system as growth_os
+        for row in collaboration.get("results") or []:
+            if not isinstance(row, dict):
+                continue
+            success = row.get("status") == "completed"
+            growth_os.record_utilization(
+                "doubao_cloud",
+                success=success,
+                result={"stage": row.get("stage"), "receipt_id": row.get("receipt_id"), "evidence_level": "C_auxiliary"},
+                reason="R8-23.2 SEO/GEO关键协作" if success else str(row.get("error") or "SEO/GEO协作失败")[:300],
+            )
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
+        pass
+    return result
+
+
+def _seo_geo_status():
+    value = _ORIGINAL_SEO_GEO_STATUS()
+    result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
+    result["doubao_collaboration"] = model_collaboration.status()
+    return result
+
+
 def _runtime_health():
     ready = truth.readiness()
     try:
@@ -84,7 +125,6 @@ def _status_payload(handler):
 
 
 def _serve_autonomous_ops(handler):
-    """Serve one owner UI bundle with the R8-23.2 truth strip last."""
     web = server.get_web_path()
     names = ("autonomous-ops.js", "r8_22_autonomy.js", "r8_23_growth_os.js", "r8_23_2_runtime_truth.js")
     source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
@@ -104,6 +144,8 @@ def install():
 
     convergence.controller_tick = _controller_tick
     r7_engine.run_due_jobs = _run_due_jobs
+    seo_core.run_once = _seo_geo_run
+    seo_core.status = _seo_geo_status
 
     original_get = server.DashboardHandler.do_GET
     original_post = server.DashboardHandler.do_POST
@@ -138,6 +180,7 @@ def install():
             if path == "/api/r8-23-2/model-routing":
                 handler._json_ok({
                     "policy": truth.snapshot(reconcile=False).get("model_routing"),
+                    "collaboration": model_collaboration.status(),
                     "examples": {
                         "batch": truth.model_route_for("batch_tagging"),
                         "seo": truth.model_route_for("seo_semantic_qc"),
@@ -146,6 +189,14 @@ def install():
                     "truth": "豆包是SEO/GEO关键协作模型，但普通API结果仍是C级辅助，不能成为正式GEO Evidence。",
                 })
                 return
+            if path == "/api/r8-23-2/doubao-collaboration":
+                query = parse_qs(urlsplit(handler.path).query)
+                try:
+                    limit = int((query.get("limit") or [50])[0])
+                except (TypeError, ValueError):
+                    limit = 50
+                handler._json_ok({"status": model_collaboration.status(), "receipts": model_collaboration.receipts(limit)})
+                return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError) as error:
             handler._json_error(500, error)
             return
@@ -153,13 +204,16 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
-        if path != "/api/r8-23-2/controller-tick":
+        if path not in {"/api/r8-23-2/controller-tick", "/api/r8-23-2/doubao-collaboration/run"}:
             return original_post(handler)
         if not _origin_allowed(handler):
             handler._json_error(403, "Cross-origin changes are not allowed")
             return
         try:
-            _read_json(handler)
+            payload = _read_json(handler)
+            if path == "/api/r8-23-2/doubao-collaboration/run":
+                handler._json_ok(model_collaboration.run_cycle(force=bool(payload.get("force", True))))
+                return
             result = convergence.controller_tick()
             handler._json_ok({"result": result, "snapshot": truth.snapshot(reconcile=False)})
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError, json.JSONDecodeError) as error:
