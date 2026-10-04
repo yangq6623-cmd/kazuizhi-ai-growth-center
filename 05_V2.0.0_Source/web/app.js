@@ -27,4 +27,40 @@ $('today-label').textContent=new Intl.DateTimeFormat('zh-CN',{month:'long',day:'
 (async()=>{try{const s=await api('/api/status');if(s.build!==BUILD)throw new Error('前后端构建版本不一致，请重新安装最新版本');document.querySelector('.service').classList.add('ok');$('service-text').textContent='本地服务正常';showReview(await api('/api/daily-review/latest'));await Promise.all([loadSummary(),loadPlan(),loadHistory(),loadMemory(),loadDashboard(),window.loadControlCenter?loadControlCenter():Promise.resolve()]);if(window.applyAutonomyCopy)window.applyAutonomyCopy()}catch(e){$('service-text').textContent=e.message;toast(e.message,'error')}})();
 function addOperationalWorkspace(){const nav=document.querySelector('aside nav'),main=document.querySelector('main');if(!nav||!main||document.getElementById('operational-hub'))return;const button=document.createElement('button');button.className='nav';button.dataset.page='operational-hub';button.dataset.title='R8 内容生产与发布闭环';button.dataset.subtitle='增长战役、素材、视频、审核、账号、发布、归因与搜索增长';button.innerHTML='<span>◆</span>内容生产与发布';const section=document.createElement('section');section.id='operational-hub';section.className='page operational-hub-page';section.innerHTML='<div class="operational-hub-intro"><div><small>同一自治运营系统的执行工作区</small><h2>从真实需求到内容、审核、发布和数据回流</h2><p>R7 与 R8 共用 Mission、数据和状态；嵌入执行中心时只显示工作区，不再重复第二套侧栏和主线。</p></div><button type="button" id="operational-open-window">独立窗口打开</button></div><iframe id="operational-frame" class="operational-hub-frame" title="R8 内容生产与发布闭环" src="/operational.html?embedded=1" loading="eager"></iframe>';nav.appendChild(button);main.appendChild(section);button.addEventListener('click',()=>openPage('operational-hub'));section.querySelector('#operational-open-window').addEventListener('click',()=>window.open('/operational.html','_blank','noopener'))}
 addOperationalWorkspace();
+
+// The owner shell is normally started by the static coordinator tag near the
+// end of index.html.  Some Chromium restore/reload paths have returned the
+// base R7 page with that tag present but never evaluated.  The result looks
+// deceptively healthy (the local service badge is green) while the R8-23
+// Mission UI and SEO/GEO route are missing.  app.js is already proven to have
+// executed once the dashboard is visible, so it supplies one idempotent,
+// bounded recovery path.  It does not restart a healthy coordinator.
+(() => {
+  const OWNER_SCRIPT = '/r8_12_startup_coordinator.js';
+  const BUILD_SCRIPT = '/build_info.js';
+  const loadShell = () => {
+    if (document.querySelector('script[data-kz-owner-shell-recovery]')) return;
+    const shell = document.createElement('script');
+    shell.src = `${OWNER_SCRIPT}?recovery=${Date.now()}`;
+    shell.async = false;
+    shell.dataset.kzOwnerShellRecovery = '1';
+    shell.onerror = () => toast('R8-23 工作台恢复加载失败，请重新启动本地程序', 'error');
+    document.body.appendChild(shell);
+  };
+  const recovery = () => {
+    if (document.documentElement.dataset.kzStartupPhase || window.__KZ_R812_STARTUP_COORDINATOR__) return;
+    if (!window.KZ_BUILD_INFO && !document.querySelector('script[data-kz-owner-build-recovery]')) {
+      const build = document.createElement('script');
+      build.src = `${BUILD_SCRIPT}?recovery=${Date.now()}`;
+      build.async = false;
+      build.dataset.kzOwnerBuildRecovery = '1';
+      build.onload = loadShell;
+      build.onerror = loadShell;
+      document.body.appendChild(build);
+      return;
+    }
+    loadShell();
+  };
+  window.setTimeout(recovery, 900);
+})();
 console.log(`KAZUIZHI_BUILD=${BUILD}`);

@@ -8,6 +8,7 @@ WORKBENCH = WEB / "r8_10_workbench.js"
 TRUTH = WEB / "r8_10_truth_convergence.js"
 SEO_ROUTE = WEB / "r8_13_route_bootstrap.js"
 INDEX = WEB / "index.html"
+APP = WEB / "app.js"
 
 
 def require(condition, message):
@@ -22,6 +23,7 @@ def main():
     truth = TRUTH.read_text(encoding="utf-8")
     seo_route = SEO_ROUTE.read_text(encoding="utf-8")
     index = INDEX.read_text(encoding="utf-8")
+    app = APP.read_text(encoding="utf-8")
 
     require(MANAGER.exists(), "AI employee manager patch is missing from packaged web source")
     require("Loaded after r7.js" in manager, "manager patch no longer documents the required r7.js ordering")
@@ -56,6 +58,12 @@ def main():
     require("event.stopImmediatePropagation()" in seo_route, "SEO/GEO route does not protect the first click from a delayed lazy handler")
     require("5000" in seo_route and "SEO/GEO 工作区加载超时" in seo_route, "SEO/GEO route has no bounded loading feedback")
     require("KZR813SeoGeoBridge?.open" in seo_route, "SEO/GEO route bootstrap cannot verify bridge readiness")
+
+    # A refresh must never leave the user on the base R7 shell merely because
+    # Chromium restored the static coordinator tag without evaluating it.
+    require("kzOwnerShellRecovery" in app, "app shell has no refresh recovery for a skipped owner coordinator")
+    require("kzStartupPhase" in app and "__KZ_R812_STARTUP_COORDINATOR__" in app, "owner recovery cannot distinguish a healthy startup from a skipped one")
+    require("r8_12_startup_coordinator.js" in app and "build_info.js" in app, "owner recovery cannot restore the R8-23 shell identity")
 
     # The owner workbench itself previously observed the whole body for childList
     # changes, while its callback rewrote textContent/innerHTML. textContent is a
