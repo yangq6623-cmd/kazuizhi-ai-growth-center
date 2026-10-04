@@ -13,8 +13,7 @@
     "phase": "R8-09",
     "runtime_build": "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922",
     "product": "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core",
-    "pilot_device_limit": 1,
-    "device_center": "r8_adb_stable_last_frame_control_takeover_audit",
+    "social_session_center": "r8_pc_browser_qr_session_receipt_audit",
     "command_architecture": "boss_goal_chatgpt_r7_mission_r8_verified_feedback_loop",
     "approval": "owner_video_gate_and_finance_manual_only",
     "modules": [
@@ -41,8 +40,7 @@
     "phase": "R8-09",
     "runtime_build": "KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922",
     "product": "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core",
-    "pilot_device_limit": 1,
-    "device_center": "r8_adb_stable_last_frame_control_takeover_audit",
+    "social_session_center": "r8_pc_browser_qr_session_receipt_audit",
     "command_architecture": "boss_goal_chatgpt_r7_mission_r8_verified_feedback_loop",
     "approval": "owner_video_gate_and_finance_manual_only",
     "modules": [
