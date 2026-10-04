@@ -174,6 +174,87 @@ def reconcile_external_publish_enabled(publish_connector_ready=False):
     return deepcopy(data["config"])
 
 
+def rehydrate_verified_publications(receipts):
+    """Recover missing local asset rows from immutable verified deploy receipts.
+
+    This migration is intentionally narrow: it restores only the public URL,
+    verification result and receipt timestamp that are already independently
+    recorded by R8-15/R8-17.  It does not recreate local source files, claim a
+    content generation timestamp, or infer any search-engine submission.
+    """
+    data = _load()
+    existing = {str(row.get("id") or "") for row in data["assets"] if isinstance(row, dict)}
+    opportunities = {
+        str(row.get("id") or "").replace("KW-", "SEO-", 1): row
+        for row in data["opportunities"]
+        if isinstance(row, dict)
+    }
+    restored = []
+    seen = set()
+    for receipt in list(receipts or []):
+        if not isinstance(receipt, dict):
+            continue
+        asset_id = str(receipt.get("asset_id") or "").strip()
+        public_url = str(receipt.get("public_url") or "").strip()
+        verification = receipt.get("verification") or {}
+        if (
+            not asset_id or asset_id in existing or asset_id in seen
+            or not public_url.startswith("https://") or not bool(verification.get("ok"))
+        ):
+            continue
+        opportunity = opportunities.get(asset_id) or {}
+        path = urlsplit(public_url).path.rstrip("/")
+        slug = path.rsplit("/", 1)[-1].removesuffix(".html") or asset_id.lower()
+        published_at = str(receipt.get("created_at") or verification.get("checked_at") or now_iso())
+        keyword = str(opportunity.get("keyword") or slug)
+        data["assets"].append({
+            "id": asset_id,
+            "opportunity_id": opportunity.get("id") or "",
+            "region": opportunity.get("region") or "",
+            "service": opportunity.get("service") or "",
+            "keyword": keyword,
+            "intent": opportunity.get("intent") or "",
+            "priority": opportunity.get("priority") or "",
+            "page_type": _page_type_for(opportunity) if opportunity else "已恢复公开页",
+            "slug": slug,
+            "stage": "PUBLISHED",
+            "created_at": "",
+            "updated_at": published_at,
+            "published_at": published_at,
+            "public_url": public_url,
+            "canonical": str(verification.get("canonical") or public_url),
+            "staging_path": "",
+            "title": keyword,
+            "description": "",
+            "submission_receipts": [],
+            "crawl_evidence": [],
+            "index_evidence": [],
+            "rankings": [],
+            "geo_mentions": [],
+            "conversions": [],
+            "events": [{
+                "at": published_at,
+                "stage": "PUBLISHED",
+                "payload": {
+                    "public_url": public_url,
+                    "deploy_receipt": receipt.get("receipt_id") or "",
+                    "recovered_from_verified_receipt": True,
+                },
+            }],
+        })
+        if opportunity:
+            opportunity["asset_id"] = asset_id
+            opportunity["status"] = "PUBLISHED"
+        existing.add(asset_id)
+        seen.add(asset_id)
+        restored.append(asset_id)
+    if restored:
+        _audit_event(data, "verified_publication_ledger_rehydrated", {"asset_ids": restored})
+        data["daily_runs"] = _reconciled_daily_runs(data)
+        _save(data)
+    return {"restored": restored, "count": len(restored)}
+
+
 def ensure_baseline():
     data = _load()
     existing = {str(x.get("keyword") or "") for x in data["opportunities"] if isinstance(x, dict)}

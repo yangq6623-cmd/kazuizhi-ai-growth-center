@@ -119,6 +119,28 @@ def main():
             config = growth.reconcile_external_publish_enabled(publish_connector_ready=True)
             assert config["external_publish_enabled"] is True
 
+            # Interrupted upgrades can lose the local asset ledger while the
+            # R8-17 deployment receipts are still intact.  Only a receipt
+            # with successful public verification may restore PUBLISHED.
+            restored = growth.rehydrate_verified_publications([
+                {
+                    "receipt_id": "REMOTE-DEPLOY-SEO-RESTORE-001",
+                    "asset_id": "SEO-RESTORE-001",
+                    "public_url": "https://kazuizhi.com/seo/restored/",
+                    "created_at": storage.now_iso(),
+                    "verification": {"ok": True, "canonical": "https://kazuizhi.com/seo/restored/"},
+                },
+                {
+                    "receipt_id": "REMOTE-DEPLOY-SEO-REJECTED-001",
+                    "asset_id": "SEO-REJECTED-001",
+                    "public_url": "https://kazuizhi.com/seo/rejected/",
+                    "verification": {"ok": False},
+                },
+            ])
+            assert restored["restored"] == ["SEO-RESTORE-001"], restored
+            restored_asset = next(row for row in growth.dashboard()["assets"] if row["id"] == "SEO-RESTORE-001")
+            assert restored_asset["stage"] == "PUBLISHED" and not restored_asset["staging_path"], restored_asset
+
             data = growth._load()
             geo_question_id = data["geo_questions"][0]["id"]
             try:

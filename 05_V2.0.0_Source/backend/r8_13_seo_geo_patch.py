@@ -15,6 +15,7 @@ from core.seo_geo_growth import (
     generate_staging,
     plan_today,
     reconcile_external_publish_enabled,
+    rehydrate_verified_publications,
     record_asset_stage,
     record_geo_observation,
     run_daily_cycle,
@@ -153,6 +154,11 @@ def _dashboard_payload():
         {"configured": False, "enabled": False, "ready": False,
          "reason": "公网部署状态正在重新读取。"},
     )
+    # A prior build may have lost only the local SEO asset ledger during an
+    # upgrade, while the independently verified R8-15/R8-17 receipts remain.
+    # Restore those exact receipts before computing UI totals; never infer a
+    # page from a connector configuration or from a remote file write alone.
+    rehydrate_verified_publications(seo_public_deployer.verified_publication_receipts())
     reconcile_external_publish_enabled(bool(deploy.get("ready")))
     payload = dashboard()
     technical = payload.setdefault("technical", {})

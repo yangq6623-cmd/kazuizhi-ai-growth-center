@@ -316,6 +316,26 @@ def _append_receipt(receipt: dict) -> None:
     write_json(RECEIPTS, data)
 
 
+def verified_publication_receipts() -> list[dict]:
+    """Return durable receipts that independently prove a public deployment.
+
+    The SEO asset ledger can be absent after an interrupted upgrade while the
+    guarded deploy receipt file remains intact.  Only receipts that already
+    passed the real public verifier are exposed for ledger recovery; a file
+    upload or a failed verification is never enough to recreate PUBLISHED.
+    """
+    data = read_json(RECEIPTS, {"schema": "kz.seo-public-deploy-receipts.v1", "items": []})
+    items = data.get("items") if isinstance(data, dict) else []
+    return [
+        deepcopy(row)
+        for row in (items or [])
+        if isinstance(row, dict)
+        and bool((row.get("verification") or {}).get("ok"))
+        and str(row.get("asset_id") or "").strip()
+        and str(row.get("public_url") or "").startswith("https://")
+    ]
+
+
 def _write_managed_sitemap(target: Path) -> str:
     snap = dashboard()
     urls = sorted({
