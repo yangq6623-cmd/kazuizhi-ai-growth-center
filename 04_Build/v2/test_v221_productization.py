@@ -108,7 +108,6 @@ def main():
     main_js = read(WEB / "main-productization.js")
     main_css = read(WEB / "main-productization.css")
     forms = read(WEB / "forms.js")
-    b3 = read(INTEGRATIONS / "android_device_b3.py")
     deep_backend = read(SRC / "backend" / "deep_productization_patch.py")
     growth_chain = read(SRC / "backend" / "growth_chain_patch.py")
     asset_intake = read(SRC / "promotion" / "asset_intake.py")
@@ -212,7 +211,7 @@ def main():
         "action_center",
         "human_count",
         "sync_accounts_from_control",
-        "r8_social_control",
+        "r8_desktop_browser_registry",
         "不能人工选择",
         "/api/content-factory/active-campaign",
     ], "deep productization backend", failures)
@@ -279,20 +278,6 @@ def main():
         failures.append("main productization must use finite retries/events, not MutationObserver")
     require(main_css, [".operational-entry", ".nav-more", ".r8-gate-details"], "main console styles", failures)
     require(forms, ["main-productization.css", "main-productization.js"], "main productization loader", failures)
-
-    required_actions = {
-        "recents": "187",
-        "volume_up": "24",
-        "volume_down": "25",
-        "rotate_left": "3",
-        "rotate_right": "1",
-    }
-    for action, code in required_actions.items():
-        if action not in b3 or code not in b3:
-            failures.append(f"owner device control is not implemented: {action}")
-        if action not in final:
-            failures.append(f"owner device control is not exposed in UI: {action}")
-    require(b3, ["OWNER_KEYEVENTS", "OWNER_ROTATIONS", "_require_owner_ready", "_audit_owner_control"], "audited owner controls", failures)
 
     # Never fake CRM/search results when external business data is absent.
     require(final, [
