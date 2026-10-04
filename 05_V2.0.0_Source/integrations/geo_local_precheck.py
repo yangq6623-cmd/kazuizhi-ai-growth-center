@@ -7,12 +7,34 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import urllib.parse
 
 from core import geo_validation as geo
 from core.storage import now_iso, read_json, write_json
 from integrations import ai_gateway
 
 PRECHECK_PATH = "geo_validation/local_precheck.json"
+
+
+def _local_service_available(endpoint):
+    """Perform a bounded TCP probe before advertising a local model as ready.
+
+    Route verification is persisted so it survives application restarts.  That
+    historical result is useful, but it is not proof that the local Router is
+    still running now.  GEO precheck must therefore fail closed when its local
+    endpoint is offline instead of showing a misleading "connected" badge.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(str(endpoint or ""))
+        host = parsed.hostname
+        if not host:
+            return False
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, port), timeout=0.35):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def _load():
@@ -27,24 +49,32 @@ def _save(value):
 
 def status():
     route = ai_gateway._route_status("local")
+    endpoint = str(route.get("endpoint") or "")
+    configured = bool(route.get("configured"))
+    previously_verified = bool(route.get("verified"))
+    reachable = bool(configured and _local_service_available(endpoint))
     results = _load().get("results") or []
     tested = {item.get("question_id") for item in results if item.get("question_id")}
     total = len(geo.question_set().get("questions") or [])
     return {
         "id": "local_geo_precheck",
         "mode": "local_precheck",
-        "configured": bool(route.get("configured")),
-        "verified": bool(route.get("verified")),
-        "ready": bool(route.get("configured") and route.get("verified")),
+        "configured": configured,
+        "verified": bool(previously_verified and reachable),
+        "ready": bool(configured and previously_verified and reachable),
         "provider": route.get("provider") or "local_model",
         "model": route.get("model") or "",
-        "endpoint": route.get("endpoint") or "",
+        "endpoint": endpoint,
         "tested": len(tested),
         "remaining": max(0, total - len(tested)),
         "total": total,
         "evidence_level": "C",
         "official_truth": False,
-        "reason": route.get("last_error") or ("本地模型已验证" if route.get("verified") else "本地模型尚未完成连接验证"),
+        "reason": route.get("last_error") or (
+            "本地模型已验证" if previously_verified and reachable
+            else "本地模型服务未运行或端口不可达，请启动本地 Router 后重试" if configured
+            else "本地模型尚未完成连接验证"
+        ),
         "truth_rule": "本地模型只做GEO预检、分类和缺口分析；结果固定为C级辅助，不计入正式GEO 50问成绩。",
     }
 

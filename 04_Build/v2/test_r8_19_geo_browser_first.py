@@ -74,6 +74,7 @@ def main():
             original_profile = ai_gateway._profile
             original_api_key = ai_gateway._api_key
             original_transport = ai_gateway._http_transport
+            original_local_service_available = geo_local_precheck._local_service_available
             try:
                 ai_gateway._route_status = lambda route: {
                     "configured": True, "verified": True, "provider": "ollama", "model": "qwen-local",
@@ -84,6 +85,7 @@ def main():
                     "protocol": "chat_completions",
                 }
                 ai_gateway._api_key = lambda route: ("", "none")
+                geo_local_precheck._local_service_available = lambda endpoint: True
                 ai_gateway._http_transport = lambda payload, key, profile: {
                     "choices": [{"message": {"content": json.dumps({
                         "answer": "本地预检回答",
@@ -99,6 +101,7 @@ def main():
                 ai_gateway._profile = original_profile
                 ai_gateway._api_key = original_api_key
                 ai_gateway._http_transport = original_transport
+                geo_local_precheck._local_service_available = original_local_service_available
             local_item = local_result["results"][0]
             check(local_item["evidence_level"] == "C" and local_item["official_truth"] is False, "local precheck leaked into official GEO")
 
