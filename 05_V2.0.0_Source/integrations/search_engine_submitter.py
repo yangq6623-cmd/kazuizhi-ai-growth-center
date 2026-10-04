@@ -483,6 +483,8 @@ def status() -> dict:
     index_key = _indexnow_key()
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
+    google_auth_error = _google_oauth_reauthorization_required(data.get("last_result") or {})
+    google_ready = bool(google_account and google_token and not google_auth_error)
     baidu_token = _baidu_token()
     assets = _public_assets()
     indexnow_init = deepcopy(data.get("last_indexnow_initialization") or {})
@@ -515,22 +517,51 @@ def status() -> dict:
             "google": {
                 "label": "Google Search Console",
                 "configured": bool(google_account and google_token),
-                "ready": bool(google_account and google_token),
+                # A locally stored OAuth token is not proof that Google will
+                # accept it.  Keep the connector visibly blocked after an
+                # observed 401 instead of presenting a misleading green
+                # "ready" state until the owner completes OAuth again.
+                "ready": google_ready,
+                "reauthorization_required": google_auth_error,
                 "mode": "Search Console Sitemap API",
-                "requires_owner": not bool(google_account and google_token),
+                "requires_owner": not google_ready,
                 "account_id": google_account.get("account_id") if google_account else None,
-                "reason": "" if google_account and google_token else "需要通过统一账号中心完成 Google Search Console OAuth 授权",
+                "reason": (
+                    "最近一次 Google API 返回 401，OAuth 已失效；请点击“去官方授权”重新授权"
+                    if google_auth_error else (
+                        "" if google_ready else "需要通过统一账号中心完成 Google Search Console OAuth 授权"
+                    )
+                ),
             },
         },
         "ready_engines": [name for name, row in {
             "baidu": bool(baidu_token and data.get("allow_baidu_http_submission")),
             "bing": indexnow_ready,
-            "google": bool(google_account and google_token),
+            "google": google_ready,
         }.items() if row],
         "truth": "配置/授权只代表连接器可用；只有搜索平台返回可审计接收响应后，页面才进入 SUBMITTED。SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
         "last_run_at": data.get("last_run_at") or "",
         "last_result": deepcopy(data.get("last_result") or {}),
     }
+
+
+def _google_oauth_reauthorization_required(last_result: dict) -> bool:
+    """Return true only for a persisted, real Google OAuth rejection.
+
+    This deliberately keys off the official response rather than a generic
+    submit failure, so a temporary network error remains retryable and does
+    not incorrectly ask the owner to repeat OAuth.
+    """
+    for failure in list(last_result.get("failed") or []):
+        if failure.get("engine") != "google_search_console":
+            continue
+        result = failure.get("result") or {}
+        status = str(result.get("status") or "")
+        body = str(result.get("response") or "").upper()
+        error = str(result.get("error") or "").upper()
+        if status == "401" or "UNAUTHENTICATED" in body or "INVALID CREDENTIAL" in body or "INVALID CREDENTIAL" in error:
+            return True
+    return False
 
 
 def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:

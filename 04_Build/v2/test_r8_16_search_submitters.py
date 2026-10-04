@@ -205,6 +205,28 @@ def main():
         submitter._vault_get = original_vault_get
     assert selected and selected["account_id"] == "ACC-GSC-NEW", selected
 
+    # A stored token that has actually received a Google 401 must not be
+    # rendered as a ready connector.  The owner needs a clear reauthorization
+    # action rather than a misleading green state and repeated failed jobs.
+    original_load = submitter._load
+    original_connected = submitter._connected_account
+    original_google_token = submitter._google_access_token
+    submitter._load = lambda: {
+        **submitter.DEFAULT,
+        "last_result": {"failed": [{"engine": "google_search_console", "reason": "sitemap_submit_failed", "result": {"status": 401, "response": "UNAUTHENTICATED"}}]},
+    }
+    submitter._connected_account = lambda platform: {"account_id": "ACC-GSC-NEW"} if platform == "google_search_console" else None
+    submitter._google_access_token = lambda account: "stale-token"
+    try:
+        google_status = submitter.status()["connectors"]["google"]
+    finally:
+        submitter._load = original_load
+        submitter._connected_account = original_connected
+        submitter._google_access_token = original_google_token
+    assert google_status["configured"] is True and google_status["ready"] is False, google_status
+    assert google_status["reauthorization_required"] is True, google_status
+    assert "401" in google_status["reason"], google_status
+
     print("R8-16 truthful IndexNow/search submission receipt gates passed")
 
 
