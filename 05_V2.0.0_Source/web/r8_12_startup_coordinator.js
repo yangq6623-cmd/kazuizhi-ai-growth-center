@@ -16,7 +16,12 @@
   };
 
   const state = window.__KZ_R812_STARTUP_COORDINATOR__;
-  const SCRIPT_TIMEOUT_MS = 4500;
+  // Cold starts share the local Python server with SEO/GEO evidence loading.
+  // 4.5 seconds was shorter than a healthy first SEO/GEO request, so two
+  // owner-shell scripts could be falsely reported as missing. Keep startup
+  // bounded, but give the local server one realistic response window.
+  const SCRIPT_TIMEOUT_MS = 12000;
+  const SCRIPT_RETRY_DELAY_MS = 350;
 
   // Keep first paint deliberately small.  The previous startup loaded every
   // iframe-backed workspace before the dashboard became usable.  On Chrome
@@ -142,6 +147,16 @@
       await loadScript(src, key);
       return true;
     } catch (error) {
+      // A cold local server can be busy completing its first evidence query.
+      // Retry once before declaring a UI module degraded; loadScript removes
+      // the failed tag before inserting the replacement script.
+      try {
+        await yieldToBrowser(SCRIPT_RETRY_DELAY_MS);
+        await loadScript(src, key);
+        return true;
+      } catch (retryError) {
+        error = retryError;
+      }
       const failure = {src, error: String(error?.message || error), at: new Date().toISOString()};
       state.failed_modules.push(failure);
       state.degraded = true;

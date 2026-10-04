@@ -52,7 +52,10 @@
 <script>
 const $=id=>document.getElementById(id);let state=null,loadAttempts=0,loadTimer=null;
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function api(path,options){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);try{const res=await fetch(path,{cache:'no-store',signal:controller.signal,...(options||{})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||data.message||`HTTP ${res.status}`);return data.data||data}finally{clearTimeout(timer)}}
+// Cold starts share one local server with the startup coordinator.  The
+// evidence snapshot can legitimately take about seven seconds, so eight
+// seconds produces intermittent false "service unavailable" notices.
+async function api(path,options){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const res=await fetch(path,{cache:'no-store',signal:controller.signal,...(options||{})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||data.message||`HTTP ${res.status}`);return data.data||data}finally{clearTimeout(timer)}}
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function num(v){return Number(v||0).toLocaleString('zh-CN')}
 function pct(v){return `${Number(v||0).toFixed(Number(v||0)%1?1:0)}%`}
