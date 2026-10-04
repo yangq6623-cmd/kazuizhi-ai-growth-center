@@ -55,7 +55,13 @@ def main():
         classes = set((button.get("class") or "").split())
         button_id = button.get("id")
         label = button.get("text") or button_id or "unnamed"
-        if "nav" in classes:
+        if "r810-nav-button" in classes:
+            # R8-23 renders the complete owner shell in the first HTML paint.
+            # Its handlers are idempotently attached by r8_10_workbench.js so
+            # the page never flashes the legacy R7 navigation while startup
+            # modules are still loading.
+            bound = "function bindNavigation(nav)" in scripts and "r810Bound" in scripts
+        elif "nav" in classes:
             bound = "document.querySelectorAll('.nav')" in scripts
         elif "go-page" in classes:
             bound = "document.querySelectorAll('.go-page')" in scripts

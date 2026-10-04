@@ -16,6 +16,7 @@ WORKBENCH = SRC / "web" / "r8_10_workbench.js"
 COORDINATOR = SRC / "web" / "r8_12_startup_coordinator.js"
 SEO_BRIDGE = SRC / "web" / "r8_13_seo_geo_bridge.js"
 GROWTH_OS = SRC / "web" / "r8_23_growth_os.js"
+INDEX = SRC / "web" / "index.html"
 TRUTH_PATCH = SRC / "core" / "r8_20_growth_truth_patch.py"
 
 
@@ -29,6 +30,7 @@ def main() -> None:
     coordinator = text(COORDINATOR)
     seo_bridge = text(SEO_BRIDGE)
     growth_os = text(GROWTH_OS)
+    index = text(INDEX)
     truth_patch = text(TRUTH_PATCH)
 
     # The actual entrypoint must preserve the original final release chain.
@@ -45,6 +47,16 @@ def main() -> None:
         assert marker in coordinator or marker in seo_bridge, marker
     for marker in ("系统状态与连接", "历史与审计", "高级设置"):
         assert marker in workbench, marker
+
+    # The owner shell cannot flash a legacy R7 menu while the coordinator is
+    # still loading.  The complete workbench navigation is present in the
+    # first HTML paint, and old buttons remain hidden compatibility routes.
+    assert '<body class="r810-workbench">' in index
+    assert 'r8-23-shell-preflight' in index
+    for marker in ("老板总控", "AI决策中心", "内容创导", "执行中心", "待我处理", "经营结果", "SEO/GEO增长", "自进化中心"):
+        assert marker in index, marker
+    assert "function bindNavigation(nav)" in workbench
+    assert "r810Bound" in workbench
 
     # A slow SEO/GEO report may update metrics later, but must never replace
     # the owner workbench with an unavailable-state panel.

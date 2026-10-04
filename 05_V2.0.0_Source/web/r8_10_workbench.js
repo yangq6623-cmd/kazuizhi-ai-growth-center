@@ -69,16 +69,27 @@
     }
   }
 
+  function bindNavigation(nav){
+    nav.querySelectorAll('.r810-nav-button').forEach(btn=>{
+      if(btn.dataset.r810Bound==='1')return;
+      btn.dataset.r810Bound='1';
+      btn.addEventListener('click',()=>openRoute(btn.dataset.target,{advanced:btn.dataset.action==='advanced'}));
+    });
+  }
   function rebuildNavigation(){
-    const nav=document.querySelector('aside nav'); if(!nav||nav.querySelector('.r810-primary-nav'))return;
-    [...nav.children].forEach(child=>child.classList.add('r810-legacy-route'));
-    const title=document.createElement('small'); title.className='r810-nav-title'; title.textContent='自治运营';
-    const primary=document.createElement('div'); primary.className='r810-primary-nav';
-    primary.innerHTML=PRIMARY.map(item=>`<button class="r810-nav-button${item.target==='dashboard'?' active':''}" data-target="${item.target}"><span class="r810-icon">${item.icon}</span><span>${item.label}</span>${item.badge?'<small id="r810-attention-badge" hidden>0</small>':''}</button>`).join('');
-    const secondary=document.createElement('div'); secondary.className='r810-secondary-nav';
-    secondary.innerHTML=SECONDARY.map(item=>`<button class="r810-nav-button secondary" data-target="${item.target}"${item.action?` data-action="${item.action}"`:''}><span class="r810-icon">${item.icon}</span><span>${item.label}</span></button>`).join('');
-    nav.prepend(title,primary); nav.appendChild(secondary);
-    nav.querySelectorAll('.r810-nav-button').forEach(btn=>btn.addEventListener('click',()=>openRoute(btn.dataset.target,{advanced:btn.dataset.action==='advanced'})));
+    const nav=document.querySelector('aside nav'); if(!nav)return;
+    let primary=nav.querySelector('.r810-primary-nav');
+    if(!primary){
+      [...nav.children].forEach(child=>child.classList.add('r810-legacy-route'));
+      const title=document.createElement('small'); title.className='r810-nav-title'; title.textContent='自治运营';
+      primary=document.createElement('div'); primary.className='r810-primary-nav';
+      primary.innerHTML=PRIMARY.map(item=>`<button class="r810-nav-button${item.target==='dashboard'?' active':''}" data-target="${item.target}"><span class="r810-icon">${item.icon}</span><span>${item.label}</span>${item.badge?'<small id="r810-attention-badge" hidden>0</small>':''}</button>`).join('');
+      const secondary=document.createElement('div'); secondary.className='r810-secondary-nav';
+      secondary.innerHTML=SECONDARY.map(item=>`<button class="r810-nav-button secondary" data-target="${item.target}"${item.action?` data-action="${item.action}"`:''}><span class="r810-icon">${item.icon}</span><span>${item.label}</span></button>`).join('');
+      nav.prepend(title,primary); nav.appendChild(secondary);
+    }
+    nav.querySelectorAll('button.nav,.nav-group').forEach(node=>node.classList.add('r810-legacy-route'));
+    bindNavigation(nav);
     const brandSmall=document.querySelector('aside .brand small'); setText(brandSmall,'AI 自治运营工作台');
     const baseline=document.querySelector('.baseline'); if(baseline&&baseline.dataset.r810Seeded!=='1'){baseline.dataset.r810Seeded='1';baseline.innerHTML='<b>R8-10 · #398 开发版</b><br><span>单工作台 · 真实执行 · 真实回执</span><code>基于 #397 稳定底座</code>';}
   }
