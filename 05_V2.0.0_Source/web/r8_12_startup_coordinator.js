@@ -101,9 +101,9 @@
     });
   }
 
-  function loadScript(src, datasetKey) {
+  function loadScript(src, datasetKey, force = false) {
     const existing = findExistingScript(src, datasetKey);
-    if (existing && existing.dataset.kzLoadFailed !== '1') {
+    if (!force && existing && existing.dataset.kzLoadFailed !== '1') {
       state.loaded.push({src, reused:true});
       return Promise.resolve(existing);
     }
@@ -183,6 +183,19 @@
     return promise;
   }
 
+  async function ensureSeoGeoBridge() {
+    if (window.KZR813SeoGeoBridge?.open) return true;
+    // A script tag can exist in the HTML while a previous cold start was
+    // interrupted before it executed.  Do one cache-busting recovery load
+    // rather than leaving the SEO/GEO navigation button apparently inert.
+    try {
+      await loadScript(`/r8_13_seo_geo_bridge.js?recovery=${Date.now()}`, 'r813SeoGeoRecovery', true);
+    } catch (error) {
+      console.warn('SEO/GEO workspace recovery load failed', error);
+    }
+    return Boolean(window.KZR813SeoGeoBridge?.open);
+  }
+
   function dedupeGeneratedSingletons() {
     const seen = new Set();
     document.querySelectorAll('[id]').forEach(node => {
@@ -246,7 +259,14 @@
       try {
         await loadLazyBundle(bundle);
         if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
-        else if (target === 'r813-seo-geo') window.KZR813SeoGeoBridge?.open?.();
+        else if (target === 'r813-seo-geo') {
+          const ready = await ensureSeoGeoBridge();
+          if (ready) window.KZR813SeoGeoBridge.open();
+          else {
+            button.title = 'SEO/GEO 工作区仍在加载，请稍候后重试';
+            console.error('SEO/GEO workspace did not become ready after recovery load');
+          }
+        }
         else if (target === 'operational-hub') {
           if (typeof window.openPage === 'function') window.openPage('operational-hub');
           else document.querySelectorAll('.page').forEach(node => node.classList.toggle('active', node.id === 'operational-hub'));

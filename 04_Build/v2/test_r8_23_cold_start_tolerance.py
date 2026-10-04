@@ -19,6 +19,8 @@ def main():
     require("SCRIPT_RETRY_DELAY_MS" in startup, "startup has no one-time retry for a busy local server")
     require("await loadScript(src, key);" in startup, "startup retry no longer reloads the module")
     require("controller.abort(),15000" in seo_geo, "SEO/GEO snapshot timeout is shorter than the cold-start evidence request")
+    require("ensureSeoGeoBridge" in startup, "SEO/GEO navigation has no interrupted-start recovery")
+    require("r813SeoGeoRecovery" in startup, "SEO/GEO recovery script marker is missing")
     require('src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator still depends on a later dynamic loader")
     print("PASS: cold-start UI loading tolerates a busy but healthy local SEO/GEO server")
 

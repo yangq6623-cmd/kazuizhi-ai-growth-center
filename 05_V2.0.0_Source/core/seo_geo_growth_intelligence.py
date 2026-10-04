@@ -612,8 +612,15 @@ def trends(days=30):
     return {"window_days":days, "points":rows, "seo":[{"date":x["date"], **x.get("seo",{})} for x in rows], "geo":[{"date":x["date"], **x.get("geo",{})} for x in rows], "business":[{"date":x["date"], **x.get("business",{})} for x in rows]}
 
 
-def alerts(days=30):
-    items = []; trend = trends(days).get("points") or []; health = _load().get("connector_health") or {}
+def alerts(days=30, trend=None, priorities=None):
+    """Return actionable alerts without rebuilding an already assembled snapshot.
+
+    The owner cockpit asks for a complete SEO/GEO status while the detailed
+    workspace is also loading.  Recomputing the trend and controller plan
+    three times on that path caused cold-start requests to exceed the browser
+    timeout.  Callers that already have those values can pass them here.
+    """
+    items = []; trend = (trend or trends(days)).get("points") or []; health = _load().get("connector_health") or {}
     for name,row in health.items():
         if row.get("breaker_open") or not row.get("ok", True): items.append({"severity":"high" if row.get("breaker_open") else "medium", "kind":"connector", "title":f"{name}连接器异常", "detail":row.get("detail") or "连续失败"})
     if len(trend) >= 2:
@@ -621,13 +628,15 @@ def alerts(days=30):
         for key,label in (("mention_rate","GEO提及率"),("recommendation_rate","GEO推荐率"),("citation_rate","官网引用率")):
             a=(first.get("geo") or {}).get(key); b=(last.get("geo") or {}).get(key)
             if a is not None and b is not None and float(b) < float(a): items.append({"severity":"medium", "kind":"geo_drop", "title":f"{label}下降", "detail":f"{a}% → {b}%"})
-    for row in controller_priorities().get("actions") or []:
+    for row in (priorities if priorities is not None else controller_priorities().get("actions") or []):
         if row.get("controller_action") == "deprioritize": items.append({"severity":"low", "kind":"low_conversion", "title":"有流量但无业务动作", "detail":row.get("keyword") or row.get("asset_id")})
     return items[:30]
 
 
-def controller_brief(days=30):
-    trend = trends(days); priorities = controller_priorities().get("actions") or []; issues = alerts(days)
+def controller_brief(days=30, trend=None, priorities=None, issues=None):
+    trend = trend or trends(days)
+    priorities = priorities if priorities is not None else controller_priorities().get("actions") or []
+    issues = issues if issues is not None else alerts(days, trend=trend, priorities=priorities)
     top = [x for x in priorities if x.get("controller_action") in {"amplify","strengthen"}][:3]; low=[x for x in priorities if x.get("controller_action")=="deprioritize"][:3]
     return {
         "controller":"chatgpt", "window_days":trend["window_days"],
@@ -650,12 +659,20 @@ def status(days=30):
     days = int(days); days = days if days in ALLOWED_WINDOWS else 30
     data = _load(); snap = seo_geo_growth.dashboard(); formal = geo_analysis.snapshot()
     if int((formal.get("summary") or {}).get("tested") or 0) != int((geo_validation.dashboard().get("official") or {}).get("tested") or 0): formal = geo_analysis.refresh(geo_validation.receipts(1000))
+    # Assemble expensive, read-only views once.  This endpoint is requested by
+    # both the cockpit and the dedicated workspace at cold start, so repeated
+    # trend/controller calculations make the UI look like it is redirecting or
+    # stalled even when the local service is healthy.
+    trend = trends(days)
+    priorities = controller_priorities().get("actions") or []
+    issues = alerts(days, trend=trend, priorities=priorities)
+    controller = controller_brief(days, trend=trend, priorities=priorities, issues=issues)
     return {
         "schema":SCHEMA, "completion_target":"90-95% autonomous SEO/GEO operating loop", "features":feature_registry(), "feature_count":len(FEATURES),
         "policy":deepcopy(data["policy"]), "seo_summary":deepcopy(snap.get("summary") or {}), "search":_search_rollup(days),
         "geo_summary":deepcopy(formal.get("summary") or {}), "provider_matrix":provider_matrix(), "dynamic_geo":{"version":DYNAMIC_VERSION,"questions":dynamic_questions(100),"count":len(dynamic_questions(500))},
-        "trends":trends(days), "funnel":attribution_funnel(days), "governance":keyword_governance(), "internal_links":internal_link_plan(), "decay":content_decay(),
-        "technical":technical_seo_status(), "third_party_sources":third_party_source_gaps(), "controller":controller_brief(days), "alerts":alerts(days),
+        "trends":trend, "funnel":attribution_funnel(days), "governance":keyword_governance(), "internal_links":internal_link_plan(), "decay":content_decay(),
+        "technical":technical_seo_status(), "third_party_sources":third_party_source_gaps(), "controller":controller, "alerts":issues,
         "operations":{"connector_health":deepcopy(data.get("connector_health") or {}), "dead_letters":deepcopy((data.get("dead_letters") or [])[-50:]), "daily_budgets":deepcopy(data.get("daily_budgets") or {}), "last_run_at":data.get("last_run_at") or ""},
         "truth":"所有搜索/GEO外部成功必须有真实证据；业务归因只到订单，不采集成交金额、收入、利润或ROI。",
     }
