@@ -223,7 +223,7 @@
     if (heading) heading.textContent = '从老板经营目标出发，统一管理AI决策、自动执行、真实发布和结果回流。';
 
     loadBridgeUsabilityPatch();
-    armDeviceRuntimeLoader();
+    // Real phone / ADB runtime is retired in R8-23 PC browser mode.
     loadFinalGrowthCenter();
 
     try {

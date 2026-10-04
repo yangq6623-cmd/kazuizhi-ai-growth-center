@@ -16,6 +16,7 @@ REGISTRY_PATH = "r8_12/account_registry.json"
 DEVICE_PATH = "r8_12/device_pool.json"
 CHECKPOINT_PATH = "r8_12/account_assets_last_good.json"
 AUDIT_PATH = "r8_12/account_asset_audit.json"
+MOBILE_RETIREMENT_PATH = "r8_12/mobile_runtime_retired.json"
 SCHEMA = "kz.account-registry.v2"
 DEVICE_SCHEMA = "kz.device-pool.v2"
 LEGACY_SCHEMAS = {"kz.account-registry.v1", SCHEMA}
@@ -68,6 +69,32 @@ def _default_registry():
 
 def _default_devices():
     return {"schema": DEVICE_SCHEMA, "devices": [], "created_at": now_iso(), "updated_at": now_iso()}
+
+
+def mobile_runtime_retired():
+    value = read_json(MOBILE_RETIREMENT_PATH, {})
+    return bool(isinstance(value, dict) and value.get("retired"))
+
+
+def retire_mobile_runtime():
+    """Remove phone/ADB bindings without deleting durable account identities."""
+    registry, devices = _read_registry(), _read_devices()
+    removed = len(devices.get("devices") or [])
+    devices["devices"] = []
+    changed_accounts = 0
+    for account in registry.get("accounts", []):
+        if not isinstance(account, dict): continue
+        if account.get("preferred_device_id"): changed_accounts += 1
+        account["preferred_device_id"] = None
+        auth = account.setdefault("auth", {})
+        if str(auth.get("method") or "").lower() in {"legacy_real_device", "real_device_verified", "real_device"}:
+            auth.update({"status": "needs_authorization", "method": "desktop_browser_qr_required", "reauthorization_required": True})
+        account["updated_at"] = now_iso()
+    registry["updated_at"], devices["updated_at"] = now_iso(), now_iso()
+    write_json(REGISTRY_PATH, registry); write_json(DEVICE_PATH, devices)
+    write_json(MOBILE_RETIREMENT_PATH, {"schema": "kz.mobile-runtime-retirement.v1", "retired": True, "retired_at": now_iso(), "policy": "PC 浏览器扫码登录；禁止 Android/ADB 运行时、设备绑定与真机发布队列。"})
+    _append_audit("mobile_runtime_retired", detail={"removed_device_bindings": removed, "detached_accounts": changed_accounts})
+    return {"retired": True, "removed_device_bindings": removed, "detached_accounts": changed_accounts, "policy": "PC 浏览器扫码登录"}
 
 
 def _read_registry():
@@ -135,7 +162,8 @@ def recover_assets_if_degraded():
     preg = checkpoint.get("registry") if isinstance(checkpoint.get("registry"), dict) else {}; pdev = checkpoint.get("device_pool") if isinstance(checkpoint.get("device_pool"), dict) else {}
     q, pq = _asset_quality(registry, devices), _asset_quality(preg, pdev)
     if q[0] >= pq[0] and q[3] >= pq[3]: return {"restored": False, "reason": "current_not_degraded"}
-    ra, rd = _merge_missing(registry, preg, "accounts"), _merge_missing(devices, pdev, "devices")
+    ra = _merge_missing(registry, preg, "accounts")
+    rd = 0 if mobile_runtime_retired() else _merge_missing(devices, pdev, "devices")
     if not (ra or rd): return {"restored": False, "reason": "nothing_missing_after_merge"}
     registry["schema"], devices["schema"], registry["updated_at"], devices["updated_at"] = SCHEMA, DEVICE_SCHEMA, now_iso(), now_iso()
     write_json(REGISTRY_PATH, registry); write_json(DEVICE_PATH, devices)
@@ -155,6 +183,8 @@ def _account_snapshot(account):
 
 
 def _legacy_auth(existing, legacy):
+    if mobile_runtime_retired():
+        return {"status": "needs_authorization", "method": "desktop_browser_qr_required", "last_verified_at": None, "reauthorization_required": True, "platform_subject_id": None, "scopes": [], "expires_at": None}
     auth = deepcopy((existing or {}).get("auth") or {}); incoming = _auth_state(legacy.get("login_status"))
     if auth.get("status") != "connected" or incoming == "connected": auth["status"] = incoming
     auth.setdefault("method", "legacy_real_device")
@@ -199,7 +229,7 @@ def _ensure_device(devices, legacy_id, *, connection="unknown", health="unknown"
 
 def migrate_legacy_assets():
     recover_assets_if_degraded(); state = r8_control.control_status(); registry, devices = _read_registry(), _read_devices(); changed, device_map, migrated = False, {}, []
-    for legacy in state.get("devices", []):
+    for legacy in ([] if mobile_runtime_retired() else state.get("devices", [])):
         if not isinstance(legacy, dict): continue
         legacy_id = str(legacy.get("device_id") or "").strip()
         if not legacy_id: continue
@@ -210,7 +240,7 @@ def migrate_legacy_assets():
         platform, alias = _platform(legacy.get("platform")), str(legacy.get("alias") or legacy.get("label") or "").strip()
         if not platform or not alias: continue
         legacy_id = str(legacy.get("account_id") or "").strip(); raw_device = str(legacy.get("device_id") or "").strip()
-        if raw_device and raw_device not in device_map: device_map[raw_device] = _ensure_device(devices, raw_device)
+        if raw_device and raw_device not in device_map and not mobile_runtime_retired(): device_map[raw_device] = _ensure_device(devices, raw_device)
         existing = next((x for x in registry["accounts"] if legacy_id and legacy_id in (x.get("legacy_account_ids") or [])), None)
         if existing is None: existing = next((x for x in registry["accounts"] if x.get("platform") == platform and x.get("display_name") == alias), None)
         account_id = (existing or {}).get("account_id") or _stable_account_id(platform, legacy_id or alias)
@@ -225,7 +255,7 @@ def migrate_legacy_assets():
             "account_id": account_id, "platform": platform, "platform_name": legacy.get("platform_name") or r8_control.PLATFORMS.get(platform, platform), "display_name": alias,
             "auth": _legacy_auth(existing, legacy), "service_scope": {"all_local_services": bool(all_services), "services": [] if all_services else services[:50]},
             "region_scope": {"all_regions": bool((existing or {}).get("region_scope", {}).get("all_regions")), "regions": regions[:50]},
-            "preferred_device_id": (existing or {}).get("preferred_device_id") or device_map.get(raw_device), "legacy_account_ids": legacy_ids,
+            "preferred_device_id": None if mobile_runtime_retired() else ((existing or {}).get("preferred_device_id") or device_map.get(raw_device)), "legacy_account_ids": legacy_ids,
             "source": (existing or {}).get("source") or legacy.get("migrated_from") or "r8_legacy_migration", "created_at": (existing or {}).get("created_at") or legacy.get("created_at") or now_iso(), "updated_at": now_iso(),
         }
         if existing: existing.update(row)
@@ -241,6 +271,7 @@ def migrate_legacy_assets():
 
 def sync_device_health(scan_snapshot):
     """Refresh Device Pool from real ADB observations without touching accounts."""
+    if mobile_runtime_retired(): return {"updated": 0, "devices": [], "retired": True}
     devices = _read_devices(); changed = 0
     for observed in (scan_snapshot or {}).get("devices", []):
         if not isinstance(observed, dict): continue
@@ -263,8 +294,8 @@ def snapshot(*, skip_migration=False):
     accounts, drows = [x for x in registry.get("accounts", []) if isinstance(x, dict)], [x for x in devices.get("devices", []) if isinstance(x, dict)]
     return {
         "schema": SCHEMA, "accounts": [_account_snapshot(x) for x in accounts], "devices": drows,
-        "summary": {"accounts": len(accounts), "connected_accounts": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "connected"), "needs_authorization": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "needs_authorization"), "platform_limited": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "platform_limited"), "online_devices": sum(1 for x in drows if x.get("connection") == "connected")},
-        "truth_rule": "账号身份长期保留；授权可刷新，设备可替换，Mission 只引用 account_id。没有真实平台回执不得记为已发布。",
+        "summary": {"accounts": len(accounts), "connected_accounts": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "connected"), "needs_authorization": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "needs_authorization"), "platform_limited": sum(1 for x in accounts if (x.get("auth") or {}).get("status") == "platform_limited"), "online_devices": sum(1 for x in drows if x.get("connection") == "connected"), "mobile_runtime_retired": mobile_runtime_retired()},
+        "truth_rule": "账号身份长期保留；社媒使用 PC 浏览器扫码会话，不使用手机/ADB。没有真实平台回执不得记为已发布。",
         "updated_at": max(str(registry.get("updated_at") or ""), str(devices.get("updated_at") or "")),
     }
 
@@ -277,6 +308,7 @@ def update_scope(account_id, *, all_services=None, services=None, all_regions=No
     if all_regions is not None: account.setdefault("region_scope", {})["all_regions"] = bool(all_regions)
     if regions is not None: account.setdefault("region_scope", {})["regions"] = [_normalize_region(x) for x in regions if str(x).strip()][:50]
     if preferred_device_id is not None:
+        if mobile_runtime_retired() and str(preferred_device_id or "").strip(): raise ValueError("已取消真实手机/ADB绑定；请使用 PC 浏览器扫码登录")
         preferred = str(preferred_device_id or "").strip() or None
         if preferred and not any(x.get("device_id") == preferred for x in devices.get("devices", [])): raise ValueError("指定设备不在设备池中")
         account["preferred_device_id"] = preferred

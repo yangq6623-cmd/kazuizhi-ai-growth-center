@@ -150,10 +150,14 @@ def main():
         assert forbidden not in serialized
 
     account_router.snapshot = lambda: snap
+    account_router.routing_allowed = lambda account_id: {"allowed": True, "risk_level": "low"}
+    account_router.provider_status = lambda platform: {"platform": platform, "configured": False}
+    account_router.browser_session_ready = lambda account_id: True
     route = account_router.route_account(platform="douyin", region="涟水县", service="家电安装维修")
     assert route["status"] == "ready"
     assert route["account"]["account_id"] == account["account_id"]
-    assert route["device"]["device_id"] == "DEV-ELE-AL00"
+    assert route["route_kind"] == "desktop_browser"
+    assert route["device"] is None
 
     oauth = provider_status("douyin")
     assert "configured" in oauth

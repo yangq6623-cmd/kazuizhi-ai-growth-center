@@ -29,14 +29,21 @@ from core.r8_growth_ops import (
     schedule_publish, update_conversation, update_video_job, upsert_lead,
 )
 from memory.memory_store import get_experiments, get_memory, remember
-from integrations.android_device import (
-    device_audit, execute_action as device_execute_action,
-    list_transfer_files as device_list_transfer_files,
-    pull_file_bytes as device_pull_file_bytes,
-    push_file as device_push_file,
-    scan_and_sync as device_scan_and_sync, screenshot_bytes as device_screenshot_bytes,
-    set_takeover as device_set_takeover,
-)
+# Android/ADB is retired from normal product startup.  Keep legacy endpoint
+# compatibility behind a lazy import so normal dashboard, SEO/GEO, and PC QR
+# login flows do not initialise a phone stack or probe USB.
+def _retired_android():
+    raise RuntimeError("真实手机/ADB运行时已取消；请在发布准备中使用 PC 浏览器扫码登录")
+
+
+def device_audit(): return _retired_android().device_audit()
+def device_execute_action(payload): return _retired_android().execute_action(payload)
+def device_list_transfer_files(device_id): return _retired_android().list_transfer_files(device_id)
+def device_pull_file_bytes(device_id, name): return _retired_android().pull_file_bytes(device_id, name)
+def device_push_file(device_id, temp_path, filename): return _retired_android().push_file(device_id, temp_path, filename)
+def device_scan_and_sync(): return _retired_android().scan_and_sync()
+def device_screenshot_bytes(device_id): return _retired_android().screenshot_bytes(device_id)
+def device_set_takeover(payload): return _retired_android().set_takeover(payload)
 from integrations.bridge import (
     bridge_status, configure_bridge, disable_bridge, export_report,
     list_bridge_commands, self_test as bridge_self_test, sync_once as bridge_sync_once,
@@ -133,11 +140,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "scheduler_and_audit", "bidirectional_operations_bridge",
                 "offline_autonomous_mode", "bridge_command_receipts",
                 "bridge_closed_loop_self_test", "verified_readonly_business_source",
-                "autonomous_decision_center", "r8_single_android_device_center",
-                "r8_adb_truthful_probe", "r8_device_screenshot",
-                "r8_manual_takeover", "r8_device_action_audit",
-                "r8_device_file_transfer", "r8_social_media_center",
-                "r8_platform_device_account_binding", "r8_public_signal_radar",
+                "autonomous_decision_center", "r8_pc_browser_qr_social_login",
+                "r8_desktop_browser_session_binding", "r8_public_signal_radar",
                 "r8_growth_id_traceability", "r8_eight_role_content_committee",
                 "r8_local_3060_video_orchestration", "r8_owner_gated_publish_queue",
                 "r8_truthful_platform_receipts", "r8_unified_conversations_and_leads",

@@ -5,7 +5,8 @@ import json
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
-from core.account_registry import migrate_legacy_assets, recover_assets_if_degraded, snapshot as account_snapshot, update_scope
+from core.account_registry import migrate_legacy_assets, recover_assets_if_degraded, retire_mobile_runtime, set_auth_state, snapshot as account_snapshot, update_scope
+from integrations.desktop_browser_session import begin_qr_login, confirm_qr_login, sessions as browser_sessions
 from integrations.account_environment import snapshot as environment_snapshot
 from integrations.account_router import route_account
 from integrations.credential_vault import status as vault_status
@@ -34,10 +35,12 @@ def _center_payload() -> dict:
     payload["credential_vault"] = vault_status()
     payload["environment_security"] = environment_snapshot()
     payload["recovery"] = recovery
+    payload["desktop_browser_sessions"] = browser_sessions()
     payload["architecture"] = {
         "identity_model": "durable_account_asset",
         "authorization_model": "replaceable_authorization",
-        "device_model": "independent_device_pool",
+        "device_model": "retired_no_mobile_or_adb",
+        "social_login_model": "windows_browser_qr_session",
         "environment_model": "sticky_account_environment_no_risk_failover",
         "mission_binding": "account_id_reference_only",
         "publication_truth": "receipt_gated",
@@ -85,7 +88,7 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
-        allowed_paths = {"/api/r8-12/migrate", "/api/r8-12/recover-assets", "/api/r8-12/account/scope"}
+        allowed_paths = {"/api/r8-12/migrate", "/api/r8-12/recover-assets", "/api/r8-12/account/scope", "/api/r8-12/retire-mobile", "/api/r8-12/browser/open-qr", "/api/r8-12/browser/confirm-qr"}
         if path not in allowed_paths: return original_post(handler)
         if not _origin_allowed(handler): handler._json_error(403, "Cross-origin changes are not allowed"); return
         try:
@@ -93,6 +96,14 @@ def install():
             if path == "/api/r8-12/recover-assets":
                 handler._json_ok({"recovery": recover_assets_if_degraded(), "snapshot": account_snapshot(), "truth": "只恢复已存在账号/设备资产，不补造登录、授权或发布成功。"}); return
             payload = _read_json_body(handler); account_id = str(payload.get("account_id") or "").strip()
+            if path == "/api/r8-12/retire-mobile":
+                handler._json_ok(retire_mobile_runtime()); return
+            if path == "/api/r8-12/browser/open-qr":
+                result = begin_qr_login(platform=payload.get("platform"), account_id=account_id, account_alias=payload.get("account_alias")); handler._json_ok(result); return
+            if path == "/api/r8-12/browser/confirm-qr":
+                result = confirm_qr_login(account_id=account_id)
+                set_auth_state(account_id, "connected", method="desktop_browser_qr_owner_confirmed")
+                handler._json_ok(result); return
             result = update_scope(account_id, all_services=payload.get("all_services"), services=payload.get("services"), all_regions=payload.get("all_regions"), regions=payload.get("regions"), preferred_device_id=payload.get("preferred_device_id"))
             handler._json_ok(result)
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:

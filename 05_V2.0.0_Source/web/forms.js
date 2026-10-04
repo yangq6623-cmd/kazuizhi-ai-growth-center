@@ -142,35 +142,10 @@ toast = function(message, type='ok') {
   document.body.appendChild(script);
 })();
 
-// R8 Social Media Center is the single business entry for real phones,
-// platform/account bindings and device operation. Connection & health stays
-// infrastructure-only; it no longer owns a second copy of phone controls.
+// R8-23 PC browser mode deliberately does not load the retired phone/ADB
+// console. Account QR login lives in the lightweight R8-12 account center.
 (() => {
-  if (document.querySelector('script[data-r8-social-center]')) return;
-  const social = document.createElement('script');
-  social.src = 'social_media_center.js';
-  social.async = false;
-  social.dataset.r8SocialCenter = '1';
-  social.onload = () => {
-    if (document.querySelector('script[data-r8-device-center]')) return;
-    const device = document.createElement('script');
-    device.src = 'r8_device_center.js';
-    device.async = false;
-    device.dataset.r8DeviceCenter = '1';
-    device.onload = () => {
-      if (document.querySelector('script[data-r8-device-file-patch]')) return;
-      const transfer = document.createElement('script');
-      transfer.src = 'r8_device_file_patch.js';
-      transfer.async = false;
-      transfer.dataset.r8DeviceFilePatch = '1';
-      transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
-      document.body.appendChild(transfer);
-    };
-    device.onerror = () => toast('R8 单真机设备控制模块加载失败，请重新安装最新版本', 'error');
-    document.body.appendChild(device);
-  };
-  social.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
-  document.body.appendChild(social);
+  document.documentElement.dataset.kzSocialRuntime = 'desktop_browser_qr';
 })();
 
 // V2.2.1 main-console productization layer. This keeps all legacy capabilities

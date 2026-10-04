@@ -2,7 +2,8 @@
 
 Publication planning is independent from device liveness: once a durable account
 identity is authorized, the owner-approved video may receive an idempotent plan.
-Execution waits for an approved official API path or an online Device Asset.
+Execution waits for an approved official API path or an owner-confirmed PC
+browser QR session. It never controls a phone or ADB device.
 Neither a plan nor a dry-run is publication success; only a real Content/Post ID
 + URL / Receipt can close the loop.
 """
@@ -12,11 +13,10 @@ from collections import defaultdict
 from datetime import datetime
 
 from core.storage import now_iso
-from integrations import publish_dry_run_queue
 from integrations.account_router import normalize_platform, route_account
 from promotion import content_factory, platform_rules
 
-ACTIVE_PLAN_STATES = {"等待最佳时间", "等待执行设备", "发布执行中", "已验证发布"}
+ACTIVE_PLAN_STATES = {"等待最佳时间", "等待PC扫码登录", "等待执行设备", "发布执行中", "已验证发布"}
 # During the first real closed-loop rollout we intentionally keep one automatic
 # publication plan per account/day. Platform ceilings are policy ceilings, not
 # permission for Kazuizhi to increase operational frequency on its own.
@@ -101,7 +101,7 @@ def _create_durable_plan(data, video, campaign, platform_code, route, fields):
         "id": account_id,
         "platform": platform_name,
         "daily_limit": DEFAULT_OPERATIONAL_DAILY_CAP,
-        "connection_status": "已验证可发布" if route.get("status") in {"ready", "device_offline"} else "待人工登录授权",
+        "connection_status": "已验证可发布" if route.get("status") in {"ready", "needs_browser_login"} else "待人工登录授权",
         "verification_source": "r8_12_durable_account_registry",
     }
     rule_check = platform_rules.evaluate(video, rule_account, fields["title"], fields["caption"])
@@ -115,9 +115,9 @@ def _create_durable_plan(data, video, campaign, platform_code, route, fields):
         "id": content_factory._id("PLAN"), "video_id": video["id"], "campaign_id": video["campaign_id"],
         "account_id": account_id, "account_asset_id": account_id, "platform": platform_name, "platform_code": platform_code,
         "title": fields["title"], "caption": fields["caption"], "scheduled_for": fields["scheduled_for"],
-        "status": "等待最佳时间" if executable else "等待执行设备", "created_at": now_iso(),
-        "route_kind": route.get("route_kind"), "device_asset_id": route.get("device_id"),
-        "execution_source": "官方API待真实执行" if route.get("route_kind") == "official_api" else ("真实设备待干跑/执行" if executable else "账号已规划，等待真实执行设备"),
+        "status": "等待最佳时间" if executable else "等待PC扫码登录", "created_at": now_iso(),
+        "route_kind": route.get("route_kind"), "device_asset_id": None,
+        "execution_source": "官方API待真实执行" if route.get("route_kind") == "official_api" else ("PC浏览器会话待执行" if executable else "账号已规划，等待 PC 浏览器扫码登录"),
         "rule_check": rule_check,
         "strategy_source": (fields.get("suggested") or {}).get("source") or "chatgpt_platform_adaptation",
         "platform_adaptation": fields.get("suggested") or {},
@@ -128,16 +128,10 @@ def _create_durable_plan(data, video, campaign, platform_code, route, fields):
     return plan
 
 
-def _queue_device_plan(plan, route, video):
-    try: return publish_dry_run_queue.queue_plan(plan, route, video)
-    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-        return {"queued": False, "reason": str(error)[:300], "publishes_content": False}
-
-
 def _blocker_text(route, platform_code):
     label, status = PLATFORM_NAME.get(platform_code, platform_code), route.get("status")
     if status == "needs_authorization": return f"{label}：永久账号存在，但需要重新授权"
-    if status == "device_offline": return f"{label}：账号已连接，发布计划可保留；等待执行设备上线或获批官方发布API"
+    if status == "needs_browser_login": return f"{label}：账号已连接，发布计划可保留；等待 PC 浏览器扫码登录或获批官方发布 API"
     if status == "platform_limited": return f"{label}：平台能力/审批限制，需要人工处理"
     return f"{label}：没有覆盖当前区域/服务的永久账号资产"
 
@@ -155,21 +149,19 @@ def run_publish_planning(limit=10):
             latest_video.update({"status": "等待账号", "bottleneck": "当前没有可路由的平台账号资产", "auto_action": "保留老板已审核成片；添加或恢复永久账号资产后自动继续"})
             content_factory._save(current); processed.append({"video_id": video["id"], "created": 0, "waiting": ["未添加平台账号资产"]}); continue
 
-        created, waiting, errors, dry_runs, covered = [], [], [], [], []
+        created, waiting, errors, covered = [], [], [], []
         for platform_code in targets:
             route = route_account(platform=platform_code, region=str(campaign.get("region") or ""), service=str(campaign.get("service") or ""), require_publish=True)
             existing_plans = existing.get(platform_code) or []
             if existing_plans:
                 plan = existing_plans[0]; covered.append(platform_code)
-                if route.get("status") == "ready" and plan.get("status") == "等待执行设备":
-                    plan["status"] = "等待最佳时间"; plan["route_kind"] = route.get("route_kind"); plan["device_asset_id"] = route.get("device_id")
-                if platform_code == "douyin" and route.get("status") == "ready" and route.get("route_kind") == "real_device": dry_runs.append(_queue_device_plan(plan, route, latest_video))
+                if route.get("status") == "ready" and plan.get("status") in {"等待执行设备", "等待PC扫码登录"}:
+                    plan["status"] = "等待最佳时间"; plan["route_kind"] = route.get("route_kind"); plan["device_asset_id"] = None
                 continue
 
-            # Device-offline is an execution blocker, not an identity/planning blocker.
-            # We keep one durable plan so reconnecting the device never requires the
-            # owner to rebind the account or rebuild the Mission.
-            can_plan = route.get("status") in {"ready", "device_offline"} and bool(route.get("account_id"))
+            # Missing PC QR login is an execution blocker, not an identity/planning
+            # blocker. The durable plan remains and no phone needs rebinding.
+            can_plan = route.get("status") in {"ready", "needs_browser_login"} and bool(route.get("account_id"))
             if not can_plan:
                 waiting.append(_blocker_text(route, platform_code)); continue
             try:
@@ -177,24 +169,22 @@ def run_publish_planning(limit=10):
                 plan = _create_durable_plan(current, latest_video, campaign, platform_code, route, fields)
                 created.append({"plan_id": plan.get("id"), "platform": PLATFORM_NAME.get(platform_code, platform_code), "platform_code": platform_code, "account_id": plan.get("account_id"), "route_kind": plan.get("route_kind"), "device_asset_id": plan.get("device_asset_id")})
                 covered.append(platform_code)
-                if route.get("status") == "device_offline": waiting.append(_blocker_text(route, platform_code))
-                if platform_code == "douyin" and route.get("status") == "ready" and route.get("route_kind") == "real_device": dry_runs.append(_queue_device_plan(plan, route, latest_video))
+                if route.get("status") == "needs_browser_login": waiting.append(_blocker_text(route, platform_code))
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
                 errors.append(f"{PLATFORM_NAME.get(platform_code, platform_code)}：{str(error)[:300]}")
 
-        missing = [x for x in targets if x not in covered]; douyin_queue = next((x for x in reversed(dry_runs) if isinstance(x, dict)), None)
+        missing = [x for x in targets if x not in covered]
         executable_covered = [x for x in covered if not any(msg.startswith(f"{PLATFORM_NAME.get(x,x)}：账号已连接，发布计划可保留") for msg in waiting)]
         if covered:
             latest_video["status"] = "等待最佳时间" if executable_covered else "等待账号"
             latest_video["bottleneck"] = "；".join(waiting[:6]) or (("尚有平台等待：" + "、".join(PLATFORM_NAME.get(x, x) for x in missing)) if missing else None)
-            if douyin_queue and douyin_queue.get("queued"): latest_video["auto_action"] = "已按永久账号资产建立发布计划并排入抖音真机干跑；最终发布动作仍需真实安全闸门"
-            elif executable_covered: latest_video["auto_action"] = "已建立可执行发布计划；等待真实平台执行并回收 Content/Post ID + URL"
-            else: latest_video["auto_action"] = "发布计划与永久账号已保留；设备上线后自动继续，无需重新绑定"
+            if executable_covered: latest_video["auto_action"] = "已建立可执行发布计划；等待 PC 平台网页执行并回收 Content/Post ID + URL"
+            else: latest_video["auto_action"] = "发布计划与永久账号已保留；完成 PC 浏览器扫码登录后自动继续，无需手机绑定"
         else:
-            latest_video.update({"status": "等待账号", "bottleneck": "；".join(waiting[:6]) or "当前没有可执行的永久账号资产", "auto_action": "永久账号资产保留；授权或设备恢复后自动重试，不重新绑定 Mission"})
+            latest_video.update({"status": "等待账号", "bottleneck": "；".join(waiting[:6]) or "当前没有可执行的永久账号资产", "auto_action": "永久账号资产保留；授权或 PC 浏览器会话恢复后自动重试，不重新绑定 Mission"})
 
-        latest_video["publish_planning"] = {"targets": targets, "covered": covered, "missing": missing, "last_created": created, "last_errors": errors[-10:], "douyin_dry_run": douyin_queue, "routing_source": "r8_12_durable_account_registry", "truth_rule": "发布计划或真机干跑不等于发布；只有真实 Content/Post ID + URL / Receipt 才能标记已验证发布。", "updated_at": now_iso()}
+        latest_video["publish_planning"] = {"targets": targets, "covered": covered, "missing": missing, "last_created": created, "last_errors": errors[-10:], "routing_source": "r8_12_durable_account_registry", "truth_rule": "发布计划不等于发布；只有真实 Content/Post ID + URL / Receipt 才能标记已验证发布。", "updated_at": now_iso()}
         content_factory._save(current)
-        processed.append({"video_id": video["id"], "created": len(created), "created_plans": created, "covered": covered, "waiting": waiting, "errors": errors, "dry_runs": dry_runs})
+        processed.append({"video_id": video["id"], "created": len(created), "created_plans": created, "covered": covered, "waiting": waiting, "errors": errors})
 
     return {"processed": len(processed), "items": processed, "routing_source": "r8_12_durable_account_registry", "truth_rule": "没有真实平台 Receipt，不计为已发布。"}

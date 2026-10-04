@@ -13,7 +13,6 @@ from pathlib import Path
 from core.version import BUILD_ID, PRODUCT_NAME
 from ai_center.ai_engine import AIEngine
 from backend.server import create_server
-from backend import realtime_mirror_patch as _realtime_mirror_patch  # noqa: F401,E402
 from backend import content_factory_patch as _content_factory_patch  # noqa: F401,E402
 from backend import ai_production_center_patch as _ai_production_center_patch  # noqa: F401,E402
 from promotion import content_factory_v2_extensions as _content_factory_v2_extensions  # noqa: F401,E402
@@ -65,7 +64,6 @@ from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
 from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
-from integrations.douyin_dry_run_executor import run_pending as run_pending_douyin_dry_runs
 from integrations.remote_agent import auto_import_pairing
 from integrations.r8_17_remote_deployer_patch import activate_remote_mode_if_ready
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
@@ -182,7 +180,6 @@ def start_content_execution_worker():
                 sync_chatgpt_handoffs()
                 bridge_sync_once()
                 run_publish_planning(limit=10)
-                run_pending_douyin_dry_runs(limit=1)
                 sync_autonomous_ops(autostart=False)
                 sync_mission_backbone()
                 _runtime_mark("content_execution", ok=True, detail=f"cycle={cycle}")

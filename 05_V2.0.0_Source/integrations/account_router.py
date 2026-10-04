@@ -1,4 +1,4 @@
-"""R8-12/R8-13 durable account/authorization/device route planner.
+"""R8-12/R8-13 durable account/authorization/PC-browser route planner.
 
 Safety rules:
 - Mission routing never re-binds an account.
@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import hashlib
 
-from core.account_registry import migrate_legacy_assets, snapshot, sync_device_health
+from core.account_registry import snapshot
+from integrations.desktop_browser_session import is_ready as browser_session_ready
 from integrations.account_environment import routing_allowed
 from integrations.oauth_adapters import provider_status
 
@@ -53,20 +54,10 @@ def _has_publish_scope(account):
     return bool(scopes & PUBLISH_SCOPE_HINTS)
 
 
-def _device_ready(device):
-    return isinstance(device, dict) and device.get("connection") == "connected" and str(device.get("health") or "").lower() not in {"blocked", "high_risk", "failed"}
-
-
 def _refresh_live_assets():
-    try:
-        migrate_legacy_assets()
-    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
-        pass
-    try:
-        from integrations import android_device
-        sync_device_health(android_device.scan_and_sync())
-    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
-        pass
+    # Deliberately no ADB probe here.  Account routing is a hot path during
+    # dashboard refresh and social publishing uses a PC browser QR session.
+    return None
 
 
 def _sticky_score(account_id: str, task_key: str) -> str:
@@ -82,7 +73,6 @@ def route_account(*, platform, region="", service="", require_publish=True, refr
     preferred_account_id = str(preferred_account_id or "").strip()
     task_key = str(task_key or "").strip()
     data = snapshot()
-    devices = {x.get("device_id"): x for x in data.get("devices", []) if isinstance(x, dict)}
     eligible, auth_blocked, limited, risk_paused = [], [], [], []
 
     for account in data.get("accounts", []):
@@ -96,12 +86,11 @@ def route_account(*, platform, region="", service="", require_publish=True, refr
         if not environment.get("allowed"):
             risk_paused.append({"account": account, "environment": environment})
             continue
-        device = devices.get(account.get("preferred_device_id"))
         official = provider_status(platform_code)
         eligible.append({
-            "account": account, "device": device, "official": official, "environment": environment,
+            "account": account, "official": official, "environment": environment,
             "api_ready": bool(require_publish and official.get("configured") and _has_publish_scope(account)),
-            "device_ready": _device_ready(device),
+            "browser_ready": browser_session_ready(account.get("account_id")),
         })
 
     if eligible:
@@ -109,24 +98,23 @@ def route_account(*, platform, region="", service="", require_publish=True, refr
         eligible.sort(key=lambda row: (
             0 if preferred_account_id and row["account"].get("account_id") == preferred_account_id else 1,
             0 if row["api_ready"] else 1,
-            0 if row["device_ready"] else 1,
+            0 if row["browser_ready"] else 1,
             _sticky_score(str(row["account"].get("account_id") or ""), task_key),
         ))
-        choice = eligible[0]; account, device = choice["account"], choice["device"]
+        choice = eligible[0]; account = choice["account"]
         common = {
             "status": "ready", "owner_status": "已连接", "account": account,
-            "account_id": account.get("account_id"), "device": device,
-            "device_id": device.get("device_id") if isinstance(device, dict) else None,
+            "account_id": account.get("account_id"), "device": None, "device_id": None,
             "platform": platform_code, "environment": choice.get("environment"),
             "routing_policy": "sticky_no_risk_failover",
         }
         if choice["api_ready"]:
             return dict(common, route_kind="official_api", route="official_api", truth="官方应用已配置且账号记录真实 scope；最终成功仍必须回收平台真实 URL/Post ID/Receipt。")
-        if choice["device_ready"]:
-            return dict(common, route_kind="real_device", route="real_device", truth="账号身份与设备解耦；当前由在线真实设备执行，最终成功仍必须有真实平台回执。")
+        if choice["browser_ready"]:
+            return dict(common, route_kind="desktop_browser", route="desktop_browser", truth="老板已确认 PC 浏览器扫码会话；平台网页发布仍需真实 URL/Post ID/Receipt 才算成功。")
         return {
-            **common, "status": "device_offline", "owner_status": "设备离线", "route_kind": "wait_device", "route": "wait_device",
-            "reason": "账号身份有效，但当前没有已批准的官方执行路径且首选真实设备不在线。",
+            **common, "status": "needs_browser_login", "owner_status": "需PC扫码登录", "route_kind": "desktop_browser_qr", "route": "desktop_browser_qr",
+            "reason": "账号身份有效，但尚未确认 PC 浏览器扫码会话。",
         }
 
     if risk_paused:
@@ -134,7 +122,7 @@ def route_account(*, platform, region="", service="", require_publish=True, refr
         return {
             "status": "risk_pause", "owner_status": "风控暂停", "account": blocked["account"],
             "account_id": blocked["account"].get("account_id"), "device": None,
-            "device_id": blocked["account"].get("preferred_device_id"), "route_kind": "wait_owner", "route": "wait_owner",
+            "device_id": None, "route_kind": "wait_owner", "route": "wait_owner",
             "platform": platform_code, "environment": blocked["environment"],
             "reason": "账号环境/平台风控状态要求暂停。不会自动切换其他账号来绕过限制。",
         }
@@ -142,14 +130,14 @@ def route_account(*, platform, region="", service="", require_publish=True, refr
         account = auth_blocked[0]
         return {
             "status": "needs_authorization", "owner_status": "需授权", "account": account, "account_id": account.get("account_id"),
-            "device": None, "device_id": account.get("preferred_device_id"), "route_kind": "reauthorize", "route": "reauthorize", "platform": platform_code,
-            "reason": "永久账号仍保留，只需要重新授权，不需要重新绑定 Mission、服务或手机。",
+            "device": None, "device_id": None, "route_kind": "desktop_browser_qr", "route": "desktop_browser_qr", "platform": platform_code,
+            "reason": "永久账号仍保留；请在 PC 浏览器扫码登录并确认，不需要重新绑定 Mission 或手机。",
         }
     if limited:
         account = limited[0]
         return {
             "status": "platform_limited", "owner_status": "平台限制", "account": account, "account_id": account.get("account_id"),
-            "device": None, "device_id": account.get("preferred_device_id"), "route_kind": "platform_limited", "route": "platform_limited", "platform": platform_code,
+            "device": None, "device_id": None, "route_kind": "platform_limited", "route": "platform_limited", "platform": platform_code,
             "reason": "账号资产存在，但平台当前能力/审批不允许自动执行。",
         }
     return {
