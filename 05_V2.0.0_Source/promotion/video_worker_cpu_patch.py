@@ -18,8 +18,9 @@ _INSTALLED = False
 _ORIGINAL = None
 
 
-def _encode_args(worker):
-    if worker.get("status") == "ready":
+def _encode_args(worker, *, force_cpu=False):
+    """Honor the base worker's explicit runtime NVENC fallback signal."""
+    if worker.get("status") == "ready" and not force_cpu:
         return ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23", "-b:v", "0"]
     return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"]
 
