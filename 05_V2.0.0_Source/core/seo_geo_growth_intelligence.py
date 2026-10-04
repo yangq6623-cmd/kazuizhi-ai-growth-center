@@ -620,9 +620,17 @@ def alerts(days=30, trend=None, priorities=None):
     three times on that path caused cold-start requests to exceed the browser
     timeout.  Callers that already have those values can pass them here.
     """
-    items = []; trend = (trend or trends(days)).get("points") or []; health = _load().get("connector_health") or {}
+    data = _load()
+    items = []; trend = (trend or trends(days)).get("points") or []; health = data.get("connector_health") or {}
     for name,row in health.items():
         if row.get("breaker_open") or not row.get("ok", True): items.append({"severity":"high" if row.get("breaker_open") else "medium", "kind":"connector", "title":f"{name}连接器异常", "detail":row.get("detail") or "连续失败"})
+    dead_letters = list(data.get("dead_letters") or [])
+    if dead_letters:
+        # Preserve every historical failure, but surface it as an actionable
+        # warning instead of allowing the cockpit to claim that there are no
+        # exceptions.  Records are deliberately not deleted by status reads.
+        active = [item for item in dead_letters if str(item.get("state") or "") == "dead_letter" or item.get("kind") in {"connector_breaker", "budget_block"}]
+        items.append({"severity":"high" if active else "medium", "kind":"dead_letter", "title":f"运行失败记录 {len(dead_letters)} 项", "detail":f"其中 {len(active)} 项需要核对/恢复；历史记录已保留，未被自动清除。"})
     if len(trend) >= 2:
         first, last = trend[0], trend[-1]
         for key,label in (("mention_rate","GEO提及率"),("recommendation_rate","GEO推荐率"),("citation_rate","官网引用率")):
@@ -673,6 +681,6 @@ def status(days=30):
         "geo_summary":deepcopy(formal.get("summary") or {}), "provider_matrix":provider_matrix(), "dynamic_geo":{"version":DYNAMIC_VERSION,"questions":dynamic_questions(100),"count":len(dynamic_questions(500))},
         "trends":trend, "funnel":attribution_funnel(days), "governance":keyword_governance(), "internal_links":internal_link_plan(), "decay":content_decay(),
         "technical":technical_seo_status(), "third_party_sources":third_party_source_gaps(), "controller":controller, "alerts":issues,
-        "operations":{"connector_health":deepcopy(data.get("connector_health") or {}), "dead_letters":deepcopy((data.get("dead_letters") or [])[-50:]), "daily_budgets":deepcopy(data.get("daily_budgets") or {}), "last_run_at":data.get("last_run_at") or ""},
+        "operations":{"connector_health":deepcopy(data.get("connector_health") or {}), "dead_letters":deepcopy((data.get("dead_letters") or [])[-50:]), "dead_letter_total":len(data.get("dead_letters") or []), "dead_letter_actionable":sum(1 for item in (data.get("dead_letters") or []) if str(item.get("state") or "") == "dead_letter" or item.get("kind") in {"connector_breaker", "budget_block"}), "daily_budgets":deepcopy(data.get("daily_budgets") or {}), "last_run_at":data.get("last_run_at") or ""},
         "truth":"所有搜索/GEO外部成功必须有真实证据；业务归因只到订单，不采集成交金额、收入、利润或ROI。",
     }

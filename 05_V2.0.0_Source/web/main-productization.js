@@ -6,9 +6,13 @@
   const MORE_TOOLS_LABEL = '更多运营工具';
 
   function businessCopy(){
-    document.title=`卡嘴子 AI ${OWNER_WORKBENCH_LABEL} · R8-12`;
+    // The R8-23 release coordinator owns the shell identity.  This older
+    // product-copy enhancer is still useful for a legacy standalone page, but
+    // must never overwrite the installed build/run number after page routing.
+    const isOwnerShell=document.body.classList.contains('r810-workbench');
+    if(!isOwnerShell) document.title=`卡嘴子 AI ${OWNER_WORKBENCH_LABEL} · R8-12`;
     const baseline=document.querySelector('.baseline');
-    if(baseline&&!document.body.classList.contains('r810-workbench')){
+    if(baseline&&!isOwnerShell){
       baseline.innerHTML='<b>R8-12 · 统一账号资产中心</b><br><span>单工作台 · 真实执行 · 真实回执</span><code>永久账号 · 独立设备池 · 自动路由</code>';
     }
     const badge=document.querySelector('#dashboard .welcome-badge');

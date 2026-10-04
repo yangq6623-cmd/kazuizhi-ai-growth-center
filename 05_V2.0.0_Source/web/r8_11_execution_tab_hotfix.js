@@ -5,7 +5,7 @@
   // The retired legacy account page is no longer an owner destination. Account
   // identity/authorization/device management is exclusively owned by the
   // R8-12 Unified Account Asset Center.
-  const PAGES = new Set(['dashboard','content','search','device','conversion','health']);
+  const PAGES = new Set(['dashboard','content','accounts','search','device','conversion','health']);
   const FRAME_ID = 'operational-frame';
   const FRAME_SRC = '/operational.html?embedded=1';
 
@@ -71,19 +71,13 @@
       const doc = frame?.contentDocument;
       const win = frame?.contentWindow;
       if (!doc || !win) return;
-      doc.querySelectorAll('.nav[data-page="accounts"], [data-page="accounts"], #accounts, #account-form').forEach(node => {
-        node.hidden = true;
-        node.style.display = 'none';
-      });
-      // Guard programmatic attempts from old code as well.
+      // The accounts route is now the PC QR account center embedded directly
+      // inside operational.html.  Keep the route visible; hiding #accounts
+      // before the replacement center loads was the source of a blank page.
       if (!win.__KZ_R812_ACCOUNT_RETIRE_GUARD__) {
         const original = typeof win.changeOperationalPage === 'function' ? win.changeOperationalPage.bind(win) : null;
         if (original) {
           win.changeOperationalPage = page => {
-            if (String(page || '') === 'accounts') {
-              window.KZR812AccountCenter?.open?.(document.querySelector('.r810-execution-tabs [data-execution-page="accounts"]'));
-              return;
-            }
             return original(page);
           };
         }
@@ -109,7 +103,6 @@
   }
 
   function routeInsideFrame(frame, page) {
-    if (page === 'accounts') return false;
     try {
       const win = frame?.contentWindow;
       const doc = frame?.contentDocument;
@@ -131,12 +124,8 @@
   }
 
   function route(page, button) {
-    if (page === 'accounts') {
-      window.KZR812AccountCenter?.open?.(button);
-      return;
-    }
     if (!PAGES.has(page)) return;
-    window.KZR812AccountCenter?.close?.();
+    if (page !== 'accounts') window.KZR812AccountCenter?.close?.();
     showExecutionHub();
     setActiveButton(page, button);
     const frame = ensureFrame();

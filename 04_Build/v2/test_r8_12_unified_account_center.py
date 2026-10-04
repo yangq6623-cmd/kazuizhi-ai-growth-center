@@ -18,11 +18,17 @@ def check_owner_runtime_contract():
 
     bridge = (ROOT / "web" / "r8_12_account_center_bridge.js").read_text(encoding="utf-8")
     hotfix = (ROOT / "web" / "r8_11_execution_tab_hotfix.js").read_text(encoding="utf-8")
+    operational = (ROOT / "web" / "operational.html").read_text(encoding="utf-8")
+    operational_js = (ROOT / "web" / "operational.js").read_text(encoding="utf-8")
     assert "window.addEventListener('click'" in bridge, "R8-12 account route must capture on window before the R8-11 document capture handler"
     assert "button.dataset.executionPage==='accounts'" in bridge
     assert "/r8_12_account_center.html?embed=1" in bridge
     assert "stopImmediatePropagation" in bridge
     assert "document.addEventListener('click'" in hotfix, "test contract changed: R8-11 execution router is expected to capture on document"
+    assert 'id="r812-inline-account-center"' in operational, "execution accounts route must render the PC QR account center instead of a blank retired form"
+    assert "/r8_12_account_center.html?embed=1" in operational
+    assert "const host=$('account-list');if(!host)return" in operational_js, "legacy account renderer must not crash the PC QR account route"
+    assert "$('account-form')?.addEventListener" in operational_js, "retired account form binding must remain optional"
 
     memory = (ROOT / "web" / "memory.js").read_text(encoding="utf-8")
     coordinator = (ROOT / "web" / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")

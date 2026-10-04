@@ -162,10 +162,10 @@ def check_safe_douyin_device_staging():
 def check_legacy_account_owner_surface_retired():
     hotfix = (SOURCE / "web" / "r8_11_execution_tab_hotfix.js").read_text(encoding="utf-8")
     bridge = (SOURCE / "web" / "r8_12_account_center_bridge.js").read_text(encoding="utf-8")
-    assert "const PAGES = new Set(['dashboard','content','search','device','conversion','health'])" in hotfix
+    assert "const PAGES = new Set(['dashboard','content','accounts','search','device','conversion','health'])" in hotfix
     assert "retireLegacyAccountSurface" in hotfix
-    assert "#account-form" in hotfix
-    assert "page === 'accounts'" in hotfix
+    assert "PC QR account center embedded directly" in hotfix
+    assert "page !== 'accounts'" in hotfix
     assert "KZR812AccountCenter" in hotfix
     assert "/r8_12_account_center.html?embed=1" in bridge
     assert "stopImmediatePropagation" in bridge
