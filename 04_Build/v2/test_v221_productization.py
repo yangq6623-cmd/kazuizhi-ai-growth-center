@@ -154,7 +154,10 @@ def main():
         "数据来源",
         "更新时间",
         "content-flow-summary",
-        "平台 → 终端 → 账号",
+        # The final R8-23 workbench intentionally decouples publishing from
+        # a USB/device path.  Its visible, truthful release flow is account
+        # authorization → content review → owner confirmation.
+        "账号授权 → 内容审核 → 本人确认发布",
         "线索工作台",
         "负责人",
         "最近联系",
