@@ -4,8 +4,6 @@
   const PHASE = 'R8-09 自治闭环收口';
   const PREVIOUS_PHASE = 'R8-08';
   const LEGACY_PHASE = 'R8-01B.4.3';
-  let deviceRuntimeArmed = false;
-  let deviceRuntimeLoading = false;
 
   function buildLabel() {
     const info = window.KZ_BUILD_INFO || {};
@@ -14,24 +12,6 @@
     const runLabel = run && !run.startsWith('__') ? `Build #${run}` : 'Source build';
     const commitLabel = commit && !commit.startsWith('__') ? commit.slice(0, 8) : 'local';
     return `${runLabel} · ${commitLabel}`;
-  }
-
-  function showLoaderStatus(text, kind='warn') {
-    const panel = document.getElementById('r8-device-center');
-    if (!panel) return;
-    let node = document.getElementById('r8-b4-loader-status');
-    if (!node) {
-      node = document.createElement('div');
-      node.id = 'r8-b4-loader-status';
-      node.className = 'notice';
-      const head = panel.querySelector('.r8-console-head');
-      if (head) head.insertAdjacentElement('afterend', node);
-      else panel.prepend(node);
-    }
-    node.textContent = text;
-    node.dataset.kind = kind;
-    node.style.background = kind === 'ok' ? '#eaf8ef' : kind === 'stop' ? '#f8e5e3' : '#fff7df';
-    node.style.color = kind === 'ok' ? '#237244' : kind === 'stop' ? '#9a392f' : '#8b6509';
   }
 
   function loadBridgeUsabilityPatch() {
@@ -44,125 +24,6 @@
       if (typeof toast === 'function') toast('双向运营桥交互恢复模块加载失败，请重新安装最新版本', 'error');
     };
     document.body.appendChild(script);
-  }
-
-  function mirrorReady() {
-    return !!(window.R8DeviceMirrorSync && typeof window.R8DeviceMirrorSync.syncOnce === 'function');
-  }
-
-  function devicePanelVisible() {
-    const panel = document.getElementById('r8-device-center');
-    const social = document.getElementById('social-center');
-    return !!(panel && !panel.hidden && social && social.classList.contains('active'));
-  }
-
-  function activateMirror() {
-    if (!mirrorReady()) return false;
-    try {
-      if (devicePanelVisible() && typeof window.R8DeviceMirrorSync.startContinuous === 'function') {
-        window.R8DeviceMirrorSync.startContinuous();
-      }
-      const panel = document.getElementById('r8-device-center');
-      if (panel) panel.dataset.mirrorLoader = 'ready';
-      showLoaderStatus('手机屏幕同步模块已加载。打开真机操作台后才会启动连续同步，也可以使用“测试截图”。', 'ok');
-      return true;
-    } catch (error) {
-      showLoaderStatus('屏幕同步模块启动失败：' + error.message, 'stop');
-      if (typeof toast === 'function') toast('R8 屏幕同步模块启动失败：' + error.message, 'error');
-      return false;
-    }
-  }
-
-  function loadMirrorDirect() {
-    if (mirrorReady()) {
-      activateMirror();
-      return;
-    }
-    const existing = document.querySelector('script[data-r8-device-b4-hotfix]');
-    if (existing) return;
-    showLoaderStatus('正在加载手机屏幕同步模块…', 'warn');
-    const script = document.createElement('script');
-    script.src = 'r8_device_b4_mirror_hotfix.js?v=R8-01B.5';
-    script.async = false;
-    script.dataset.r8DeviceB4Hotfix = '1';
-    script.onload = () => {
-      if (!activateMirror()) {
-        showLoaderStatus('屏幕同步文件已载入，但模块没有完成初始化。请关闭程序后重新打开一次。', 'stop');
-      }
-      setTimeout(() => {
-        if (mirrorReady()) activateMirror();
-      }, 500);
-    };
-    script.onerror = () => {
-      showLoaderStatus('屏幕同步脚本加载失败：' + script.src, 'stop');
-      if (typeof toast === 'function') toast('R8 真机屏幕同步脚本加载失败，请重新安装最新版本', 'error');
-    };
-    document.body.appendChild(script);
-  }
-
-  function loadDeviceB3Patch() {
-    if (document.querySelector('script[data-r8-device-b3]')) return;
-    const script = document.createElement('script');
-    script.src = 'r8_device_b3_patch.js';
-    script.async = false;
-    script.dataset.r8DeviceB3 = '1';
-    script.onerror = () => {
-      if (typeof toast === 'function') toast('R8 熄屏恢复与虚拟手机控制模块加载失败，请重新安装最新版本', 'error');
-    };
-    document.body.appendChild(script);
-  }
-
-  function loadTerminalCockpitPatch() {
-    if (document.querySelector('script[data-r8-terminal-cockpit]')) {
-      loadDeviceB3Patch();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'r8_terminal_cockpit_patch.js';
-    script.async = false;
-    script.dataset.r8TerminalCockpit = '1';
-    script.onload = loadDeviceB3Patch;
-    script.onerror = () => {
-      if (typeof toast === 'function') toast('R8 社媒终端驾驶舱模块加载失败，请重新安装最新版本', 'error');
-      loadDeviceB3Patch();
-    };
-    document.body.appendChild(script);
-  }
-
-  function loadDeviceRuntimeOnDemand() {
-    if (deviceRuntimeLoading) return;
-    deviceRuntimeLoading = true;
-    let attempts = 0;
-    const start = () => {
-      attempts += 1;
-      const panel = document.getElementById('r8-device-center');
-      if (panel) {
-        loadMirrorDirect();
-        setTimeout(loadTerminalCockpitPatch, 120);
-        deviceRuntimeLoading = false;
-        return;
-      }
-      if (attempts < 30) {
-        setTimeout(start, 100);
-        return;
-      }
-      deviceRuntimeLoading = false;
-      if (typeof toast === 'function') toast('R8 真机操作台未完成初始化，请重新打开社媒终端', 'error');
-    };
-    start();
-  }
-
-  function armDeviceRuntimeLoader() {
-    if (deviceRuntimeArmed) return;
-    deviceRuntimeArmed = true;
-    document.addEventListener('click', event => {
-      const terminal = event.target.closest && event.target.closest('[data-social-device-control]');
-      if (!terminal) return;
-      setTimeout(loadDeviceRuntimeOnDemand, 0);
-    }, true);
-    setTimeout(() => {
-      if (devicePanelVisible()) loadDeviceRuntimeOnDemand();
-    }, 700);
   }
 
   function loadCommandPyramid() {
