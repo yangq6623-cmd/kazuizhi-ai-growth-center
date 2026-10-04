@@ -6,6 +6,8 @@ STARTUP = WEB / "r8_12_startup_coordinator.js"
 MANAGER = WEB / "r7_manager_patch.js"
 WORKBENCH = WEB / "r8_10_workbench.js"
 TRUTH = WEB / "r8_10_truth_convergence.js"
+SEO_ROUTE = WEB / "r8_13_route_bootstrap.js"
+INDEX = WEB / "index.html"
 
 
 def require(condition, message):
@@ -18,6 +20,8 @@ def main():
     manager = MANAGER.read_text(encoding="utf-8")
     workbench = WORKBENCH.read_text(encoding="utf-8")
     truth = TRUTH.read_text(encoding="utf-8")
+    seo_route = SEO_ROUTE.read_text(encoding="utf-8")
+    index = INDEX.read_text(encoding="utf-8")
 
     require(MANAGER.exists(), "AI employee manager patch is missing from packaged web source")
     require("Loaded after r7.js" in manager, "manager patch no longer documents the required r7.js ordering")
@@ -44,6 +48,14 @@ def main():
     require("FiniteStartupObserver" not in startup, "finite fake observer policy is still present")
     require("yieldToBrowser" in startup, "owner-shell modules no longer yield to the browser between loads")
     require("__KZ_OWNER_HEARTBEAT_TIMER__" in startup, "runtime heartbeat for responsiveness checks is missing")
+
+    # SEO/GEO must claim the first side-nav click before the owner-shell lazy
+    # loader can make it appear inert on a cold local start.
+    require(SEO_ROUTE.exists(), "SEO/GEO first-click route bootstrap is missing")
+    require('src="r8_13_route_bootstrap.js"' in index, "SEO/GEO route bootstrap is not shipped by the primary console")
+    require("event.stopImmediatePropagation()" in seo_route, "SEO/GEO route does not protect the first click from a delayed lazy handler")
+    require("5000" in seo_route and "SEO/GEO 工作区加载超时" in seo_route, "SEO/GEO route has no bounded loading feedback")
+    require("KZR813SeoGeoBridge?.open" in seo_route, "SEO/GEO route bootstrap cannot verify bridge readiness")
 
     # The owner workbench itself previously observed the whole body for childList
     # changes, while its callback rewrote textContent/innerHTML. textContent is a
