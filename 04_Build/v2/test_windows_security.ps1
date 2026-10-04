@@ -1,5 +1,5 @@
 param(
-    [string]$Setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core.exe'
+    [string]$Setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
 )
 
 $ErrorActionPreference = 'Stop'

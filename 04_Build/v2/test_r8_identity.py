@@ -14,7 +14,8 @@ EXPECTED_CORE_PHASE = "R8-09"
 EXPECTED_WEB_PHASE = "R8-17"
 EXPECTED_CANDIDATE_PHASE = "R8-23"
 EXPECTED_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8 Autonomous Mission Core"
-EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8_Autonomous_Mission_Core"
+EXPECTED_INSTALLER_PRODUCT = "Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench"
+EXPECTED_INSTALLER = "Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench"
 
 status = version.get_version()
 if status.get("display_version") != EXPECTED_DISPLAY:
@@ -69,12 +70,12 @@ for field in ("social-form-role", "social-form-level", "social-form-region", "so
 installer = (ROOT / "04_Build" / "installer" / "Kazuizhi_AI_V2.0.0_Beta_Setup.iss").read_text(encoding="utf-8")
 windows_version = (ROOT / "04_Build" / "v2" / "windows_version.txt").read_text(encoding="utf-8")
 workflow = (ROOT / ".github" / "workflows" / "build_v2_enterprise_beta.yml").read_text(encoding="utf-8")
-for value in (EXPECTED_PRODUCT, EXPECTED_INSTALLER):
+for value in (EXPECTED_INSTALLER_PRODUCT, EXPECTED_INSTALLER):
     if value not in installer:
         raise AssertionError(f"R8 installer identity missing: {value}")
-if "2.2.2.22" not in windows_version or EXPECTED_PRODUCT not in windows_version:
+if "2.2.2.23" not in windows_version or EXPECTED_INSTALLER_PRODUCT not in windows_version:
     raise AssertionError("R8 Windows version identity missing")
 if EXPECTED_INSTALLER not in workflow:
     raise AssertionError("R8 artifact identity missing from workflow")
 
-print("PASS: V2.2.2 Autonomous Mission Core package, R8-09 core identity, R8-23 candidate provenance and R7 compatibility are traceable")
+print("PASS: R8-23 Final Workbench installer, R8-09 core identity, R8-23 provenance and R7 compatibility are traceable")
