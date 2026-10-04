@@ -195,7 +195,11 @@ def exercise(command):
                         },
                     },
                     "cta": "通过小程序提交需求，等待师傅报价",
-                    "output": {"width": 1080, "height": 1920, "fps": 30, "duration_seconds": 12},
+                    # CI validates the complete automatic render/QC path.  It uses a
+                    # compact vertical fixture because GitHub's CPU-only runner is
+                    # not representative of the user's RTX 3060 and must not make
+                    # an otherwise healthy pipeline intermittently time out.
+                    "output": {"width": 720, "height": 720, "fps": 24, "duration_seconds": 10},
                 }
                 _, planned = http_json(base, "/api/content-factory/chatgpt-plan", {
                     "video_id": video["id"], "campaign_id": campaign["id"], "production_plan": plan,
