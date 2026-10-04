@@ -12,16 +12,12 @@ sys.path.insert(0, str(SRC))
 
 with tempfile.TemporaryDirectory() as temp_dir:
     os.environ["LOCALAPPDATA"] = temp_dir
-    import core.r8_control as control
     import core.r8_growth_ops as growth
     import promotion.content_center as promotion
 
-    importlib.reload(control)
     importlib.reload(growth)
     importlib.reload(promotion)
 
-    control.register_device({"device_id": "PHONE-001", "label": "验收手机"})
-    control.record_device_probe("PHONE-001", True, source="adb", detail="test")
     draft = promotion.generate_ad({
         "region": "涟水",
         "service": "家电维修",
@@ -43,50 +39,20 @@ with tempfile.TemporaryDirectory() as temp_dir:
     assert audit["evidence"]["published_urls"] == []
     assert "不能验证搜索收录" in audit["evidence"]["indexing_status"]
 
-
-import integrations.android_device as device
-
-device._SCREENSHOT_CACHE.clear()
-calls = []
-original_run = device._run
-try:
-    def fake_run(arguments, timeout=8, binary=False):
-        calls.append(tuple(arguments))
-        if arguments[-1] == "get-state":
-            return "device\n"
-        return b"\x89PNG\r\n\x1a\n" + b"frame"
-
-    device._run = fake_run
-    first = device.screenshot_bytes("PHONE-001")
-    second = device.screenshot_bytes("PHONE-001")
-    assert first == second
-    assert sum(1 for row in calls if "screencap" in row) == 1
-finally:
-    device._run = original_run
-    device._SCREENSHOT_CACHE.clear()
-
-
-mirror = (SRC / "web" / "r8_device_b4_mirror_hotfix.js").read_text(encoding="utf-8")
 pyramid = (SRC / "web" / "r8_command_pyramid.js").read_text(encoding="utf-8")
 identity = (SRC / "web" / "r8_identity.js").read_text(encoding="utf-8")
 promotion_ui = (SRC / "web" / "promotion.js").read_text(encoding="utf-8")
 backend = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
-assert mirror.index("function hasFrame") < mirror.index("function showEmpty")
-assert "if (!hasFrame()) showEmpty" in mirror
-assert "clearTimeout" in mirror and "continuousEnabled" in mirror
 assert "0→10 全链路验收" in pyramid and "一、总控与决策" in pyramid
 assert "提交到 R8 审核" in promotion_ui
 assert "/api/r8/growth/import-draft" in backend
 
-# Startup stability contract: the AI command homepage must not start the phone
-# cockpit/mirror runtime or keep a permanent whole-main MutationObserver alive.
-# Device-heavy runtime is armed once and only starts after a terminal is opened.
-assert "armDeviceRuntimeLoader" in identity
-assert "loadDeviceRuntimeOnDemand" in identity
-assert "loadDeviceRuntimeAfterMount" not in identity
-assert "devicePanelVisible()" in identity
+# Startup stability contract: the AI command homepage must not arm any retired
+# phone/mirror runtime. PC browser QR login stays in the account-center route.
+assert "armDeviceRuntimeLoader();" not in identity
+assert "loadFinalGrowthCenter" in identity
 assert "new MutationObserver(()=>enhanceR8())" not in pyramid
 assert "observer.observe(target,{subtree:true,childList:true})" not in pyramid
 assert "settleEnhancements" in pyramid
 
-print("PASS: stable phone frames, lazy device runtime, bounded R8 startup, content-to-publish bridge and truthful 0-to-10 audit")
+print("PASS: PC browser QR runtime, bounded R8 startup, content-to-publish bridge and truthful 0-to-10 audit")
