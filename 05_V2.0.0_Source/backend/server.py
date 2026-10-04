@@ -36,12 +36,29 @@ def _retired_android():
     raise RuntimeError("真实手机/ADB运行时已取消；请在发布准备中使用 PC 浏览器扫码登录")
 
 
-def device_audit(): return _retired_android().device_audit()
+def _retired_device_status():
+    """Compatibility response for old dashboards without reviving the phone stack.
+
+    Old installations poll this endpoint during first paint.  Returning a truthful
+    terminal state lets those pages finish rendering instead of retrying a 500 and
+    makes it explicit that PC browser QR sessions replaced the device pool.
+    """
+    return {
+        "status": "retired",
+        "mode": "desktop_browser_qr_only",
+        "devices": [],
+        "adb": {"retired": True, "available": False, "message": "真实手机/ADB 已取消"},
+        "message": "真实手机/ADB运行时已取消；请在发布准备中使用 PC 浏览器扫码登录。",
+        "truth_rule": "没有真实手机、USB 或 ADB 队列；PC 扫码会话和真实平台回执是后续发布条件。",
+    }
+
+
+def device_audit(): return {"events": [], **_retired_device_status()}
 def device_execute_action(payload): return _retired_android().execute_action(payload)
 def device_list_transfer_files(device_id): return _retired_android().list_transfer_files(device_id)
 def device_pull_file_bytes(device_id, name): return _retired_android().pull_file_bytes(device_id, name)
 def device_push_file(device_id, temp_path, filename): return _retired_android().push_file(device_id, temp_path, filename)
-def device_scan_and_sync(): return _retired_android().scan_and_sync()
+def device_scan_and_sync(): return _retired_device_status()
 def device_screenshot_bytes(device_id): return _retired_android().screenshot_bytes(device_id)
 def device_set_takeover(payload): return _retired_android().set_takeover(payload)
 from integrations.bridge import (

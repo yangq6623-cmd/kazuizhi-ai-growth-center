@@ -321,7 +321,10 @@ def exercise(command):
 
                 _, device = http_json(base, "/api/r8/device/status")
                 if "status" in device:
-                    check(device["status"] in {"online", "waiting_device", "adb_error", "missing_adb"}, "Device state is not truthful")
+                    check(device["status"] in {"online", "waiting_device", "adb_error", "missing_adb", "retired"}, "Device state is not truthful")
+                    if device["status"] == "retired":
+                        check(device.get("mode") == "desktop_browser_qr_only" and device.get("devices") == [],
+                              "Retired phone runtime did not expose the PC-browser replacement truthfully")
                 else:
                     check(isinstance(device.get("adb"), dict) and isinstance(device.get("devices"), list) and device.get("message"), "Inherited #238 device state is not truthful")
                 try:
