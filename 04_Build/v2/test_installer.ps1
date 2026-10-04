@@ -8,6 +8,7 @@ $testRoot = Join-Path $baseTemp ('KazuizhiV2InstallerTest-' + [guid]::NewGuid().
 $oldLocalAppData = $env:LOCALAPPDATA
 $env:LOCALAPPDATA = Join-Path $testRoot 'localappdata'
 $name = 'Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
+$installerScript = Join-Path $root '04_Build/installer/Kazuizhi_AI_V2.0.0_Beta_Setup.iss'
 function Install-R8 {
     $proc = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $testRoot + '"')) -Wait -PassThru -WindowStyle Hidden
     if ($proc.ExitCode -ne 0) { throw "Install failed: $($proc.ExitCode)" }
@@ -28,6 +29,9 @@ function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     }
 }
 try {
+    $installerText = Get-Content -LiteralPath $installerScript -Raw
+    if ($installerText -notmatch '\{userstartup\}\\卡嘴子 AI 后台自动运行 R8-23') { throw 'Installer is missing the per-user background autostart shortcut' }
+    if ($installerText -notmatch 'Parameters: "--no-browser"') { throw 'Background autostart must not open a browser on sign-in' }
     New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
     Install-R8
     $exe = Join-Path $testRoot $name
