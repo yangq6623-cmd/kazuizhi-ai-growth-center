@@ -25,53 +25,31 @@ def expect_error(callable_, text):
 with tempfile.TemporaryDirectory() as temp_dir:
     os.environ["LOCALAPPDATA"] = temp_dir
 
-    import core.r8_control as control
+    import core.account_registry as registry
+    import integrations.desktop_browser_session as browser_session
     import core.r8_growth_ops as growth
 
-    importlib.reload(control)
+    importlib.reload(registry)
+    importlib.reload(browser_session)
     importlib.reload(growth)
 
-    control.register_device({"device_id": "REAL-ANDROID-001", "label": "验收真机"})
-    control.record_device_probe("REAL-ANDROID-001", True, source="adb", detail="verified-test-adapter")
-    control.register_account({
-        "device_id": "REAL-ANDROID-001",
-        "platform": "douyin",
-        "alias": "lshome-main",
-        "label": "涟水家修主账号",
-        "role": "brand",
-        "region": "涟水",
-        "service_category": "家电维修",
-        "automation_level": "L3",
-    })
-    account = control.control_status()["accounts"][0]
-    control.update_account_status({
-        "account_id": account["account_id"],
-        "login_status": "authorized",
-        "risk_level": "normal",
-    })
-    control.register_account({
-        "device_id": "REAL-ANDROID-001",
-        "platform": "douyin",
-        "alias": "lshome-service",
-        "label": "涟水家修服务矩阵号",
-        "role": "service",
-        "region": "涟水",
-        "service_category": "家电维修",
-        "automation_level": "L2",
-    })
-    second_account = control.control_status()["accounts"][1]
-    control.update_account_status({
-        "account_id": second_account["account_id"],
-        "login_status": "authorized",
-        "risk_level": "normal",
-    })
+    account = registry.register_official_identity("douyin", "lshome-main", "ci-main", method="desktop_browser_qr")
+    registry.set_auth_state(account["account_id"], "connected", method="desktop_browser_qr")
+    registry.update_scope(account["account_id"], services=["家电维修"], regions=["涟水县"])
+    second_account = registry.register_official_identity("douyin", "lshome-service", "ci-service", method="desktop_browser_qr")
+    registry.set_auth_state(second_account["account_id"], "connected", method="desktop_browser_qr")
+    registry.update_scope(second_account["account_id"], services=["家电维修"], regions=["涟水县"])
+    sessions = browser_session._state()
+    for item in (account, second_account):
+        sessions["sessions"].append({"account_id": item["account_id"], "platform": "douyin", "status": "owner_confirmed"})
+    browser_session._save(sessions)
 
     signal_payload = {
         "platform": "douyin",
         "source_id": "public-post-001",
         "source_url": "https://example.invalid/public-post-001",
         "summary": "涟水用户咨询冰箱不制冷，询问是否可以上门检查",
-        "region": "涟水",
+        "region": "涟水县",
         "service_category": "家电维修",
         "intent_level": "high",
         "recommended_action": "reply",
@@ -83,7 +61,8 @@ with tempfile.TemporaryDirectory() as temp_dir:
     signal_id = first_signal["item"]["signal_id"]
     routed = growth.route_signal({"signal_id": signal_id})
     assert routed["signal"]["route_state"] == "ready"
-    assert routed["account"]["account_id"] == account["account_id"]
+    assert routed["account"]["account_id"] in {account["account_id"], second_account["account_id"]}
+    account = routed["account"]
 
     case = growth.create_growth_case({"signal_id": signal_id})["item"]
     content = growth.create_content_brief({"growth_id": case["growth_id"]})["item"]
@@ -111,14 +90,14 @@ with tempfile.TemporaryDirectory() as temp_dir:
         lambda: growth.record_publish_receipt({
             "publish_id": publish["publish_id"],
             "result": "success",
-            "executed_by": "real_device",
+            "executed_by": "desktop_browser",
         }),
         "平台内容 ID",
     )
     receipt = growth.record_publish_receipt({
         "publish_id": publish["publish_id"],
         "result": "success",
-        "executed_by": "real_device",
+        "executed_by": "desktop_browser",
         "platform_content_id": "DY-REAL-001",
         "url": "https://example.invalid/video/DY-REAL-001",
     })

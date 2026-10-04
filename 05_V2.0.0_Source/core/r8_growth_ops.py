@@ -674,7 +674,7 @@ def record_publish_receipt(payload):
             "platform_content_id": _clean_text(payload.get("platform_content_id"), "平台内容 ID", 240, required=False) or None,
             "url": _clean_text(payload.get("url"), "平台 URL", 500, required=False) or None,
             "executed_at": _clean_text(payload.get("executed_at"), "执行时间", 80, required=False) or now_iso(),
-            "executed_by": _enum(payload.get("executed_by"), {"official_api", "real_device", "human"}, "执行来源"),
+            "executed_by": _enum(payload.get("executed_by"), {"official_api", "desktop_browser", "human"}, "执行来源"),
             "error": _clean_text(payload.get("error"), "失败原因", 500, required=False) or None,
         }
         if result == "success" and (not receipt["platform_content_id"] or not receipt["url"]):
@@ -746,7 +746,7 @@ def ingest_message(payload):
             "content": content,
             "receipt_id": _clean_text(payload.get("receipt_id"), "消息回执", 240, required=False) or None,
             "sent_at": _clean_text(payload.get("sent_at"), "消息时间", 80, required=False) or now_iso(),
-            "source": _enum(payload.get("source"), {"official_api", "real_device", "human_import"}, "消息来源", "human_import"),
+        "source": _enum(payload.get("source"), {"official_api", "desktop_browser", "human_import"}, "消息来源", "human_import"),
         }
         state["messages"].append(message)
         conversation["last_message_at"] = message["sent_at"]
