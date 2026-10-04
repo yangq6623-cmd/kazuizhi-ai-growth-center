@@ -14,6 +14,7 @@ from core.seo_geo_growth import (
     ensure_baseline,
     generate_staging,
     plan_today,
+    reconcile_external_publish_enabled,
     record_asset_stage,
     record_geo_observation,
     run_daily_cycle,
@@ -144,6 +145,15 @@ def _staging_evidence(payload):
 
 
 def _dashboard_payload():
+    # Read the real deploy connector first.  This lets migrated installations
+    # reconcile the obsolete R8-13 publish toggle with a verified R8-17 Remote
+    # Agent, instead of displaying “自动发布关闭” while it is publishing.
+    deploy = _optional_status(
+        "公网部署状态", seo_public_deployer.status,
+        {"configured": False, "enabled": False, "ready": False,
+         "reason": "公网部署状态正在重新读取。"},
+    )
+    reconcile_external_publish_enabled(bool(deploy.get("ready")))
     payload = dashboard()
     technical = payload.setdefault("technical", {})
     # Keep the independent website audit and the deployment connector separate.
@@ -153,11 +163,7 @@ def _dashboard_payload():
         "官网探测状态", search_growth_status,
         {"status": "unavailable", "latest_audit": None, "packs": []},
     )
-    technical["public_deploy"] = _optional_status(
-        "公网部署状态", seo_public_deployer.status,
-        {"configured": False, "enabled": False, "ready": False,
-         "reason": "公网部署状态正在重新读取。"},
-    )
+    technical["public_deploy"] = deploy
     search = _optional_status("搜索连接器状态", search_submit_status, _connector_fallback())
     technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
     technical["observability"] = _optional_status(

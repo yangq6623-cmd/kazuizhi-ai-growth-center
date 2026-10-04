@@ -119,6 +119,61 @@ def _audit_event(data, kind, detail):
     data["audit"] = data["audit"][:500]
 
 
+def _reconciled_daily_runs(data):
+    """Derive each day's publish/submit figures from the immutable asset ledger.
+
+    A daily cycle starts before the public deploy and search submit workers run.
+    Its original row therefore records zero for those later stages.  The owner
+    UI must show the actual receipts, not that stale start-of-cycle snapshot.
+    """
+    assets = list(data.get("assets") or [])
+    rows = []
+    for raw in data.get("daily_runs") or []:
+        row = deepcopy(raw)
+        date = str(row.get("date") or "")
+        if not date:
+            rows.append(row)
+            continue
+        published = sum(1 for asset in assets if str(asset.get("published_at") or "").startswith(date))
+        submitted = sum(
+            1 for asset in assets
+            if any(str(receipt.get("at") or "").startswith(date) for receipt in (asset.get("submission_receipts") or []))
+        )
+        if row.get("published") != published or row.get("submitted") != submitted:
+            row["published"] = published
+            row["submitted"] = submitted
+            row["receipt_reconciled"] = True
+        rows.append(row)
+    return rows
+
+
+def reconcile_external_publish_enabled(publish_connector_ready=False):
+    """Persist the effective publish state after a verified Remote Agent setup.
+
+    Older installs can have a working R8-17 Remote Agent while retaining the
+    legacy R8-13 flag as false.  Once the connector is live and at least one
+    real public receipt exists, align the flag without treating configuration
+    alone as a publication success.
+    """
+    data = _load()
+    has_verified_publication = any(
+        _stage_at_least(asset, "PUBLISHED") and str(asset.get("public_url") or "").startswith(("http://", "https://"))
+        for asset in (data.get("assets") or [])
+    )
+    changed = False
+    if bool(publish_connector_ready) and has_verified_publication and not data["config"].get("external_publish_enabled"):
+        data["config"]["external_publish_enabled"] = True
+        _audit_event(data, "external_publish_state_reconciled", {"source": "verified_remote_or_public_connector"})
+        changed = True
+    reconciled_runs = _reconciled_daily_runs(data)
+    if reconciled_runs != data.get("daily_runs"):
+        data["daily_runs"] = reconciled_runs
+        changed = True
+    if changed:
+        _save(data)
+    return deepcopy(data["config"])
+
+
 def ensure_baseline():
     data = _load()
     existing = {str(x.get("keyword") or "") for x in data["opportunities"] if isinstance(x, dict)}
@@ -393,6 +448,10 @@ def record_asset_stage(asset_id, stage, payload=None):
         asset.setdefault("geo_mentions", []).append({"at": now_iso(), "type": stage, "provider": payload["provider"], "question": payload["question"], "evidence": payload["evidence"], "source_url": payload.get("source_url") or ""})
     if stage == "CONVERTED":
         asset.setdefault("conversions", []).append({"at": now_iso(), "lead_id": payload.get("lead_id"), "order_id": payload.get("order_id")})
+    # Keep the current-day operational log aligned with real publication and
+    # submission receipts as they arrive, rather than leaving it at the values
+    # captured before the external workers ran.
+    data["daily_runs"] = _reconciled_daily_runs(data)
     _audit_event(data, "asset_stage_recorded", {"asset_id": asset_id, "from": current, "to": stage})
     _save(data)
     return deepcopy(asset)
@@ -522,7 +581,7 @@ def dashboard():
         "opportunities": sorted(deepcopy(opportunities), key=lambda x: (_priority_score(x.get("priority")), x.get("keyword") or ""))[:50],
         "assets": sorted(deepcopy(assets), key=lambda x: x.get("updated_at") or "", reverse=True)[:100],
         "technical": technical_snapshot(),
-        "daily_runs": deepcopy(data["daily_runs"][:30]),
+        "daily_runs": _reconciled_daily_runs(data)[:30],
         "truth_rule": "GENERATED ≠ PUBLISHED ≠ SUBMITTED ≠ CRAWLED ≠ INDEXED ≠ RANKED；AI提及/引用与咨询订单同样必须有真实证据。",
     }
 

@@ -108,6 +108,17 @@ def main():
             submitted = growth.record_asset_stage(asset_id, "SUBMITTED", {"engine": "Bing", "receipt": "INDEXNOW-TEST-001"})
             assert submitted["stage"] == "SUBMITTED"
 
+            # The daily run begins before public deployment and submission.
+            # Its owner-facing figures must reconcile from actual receipts.
+            data = growth._load()
+            today = storage.now_iso()[:10]
+            data["daily_runs"] = [{"date": today, "planned": 3, "generated": 3, "published": 0, "submitted": 0}]
+            growth._save(data)
+            reconciled = growth.dashboard()["daily_runs"][0]
+            assert reconciled["published"] == 1 and reconciled["submitted"] == 1
+            config = growth.reconcile_external_publish_enabled(publish_connector_ready=True)
+            assert config["external_publish_enabled"] is True
+
             data = growth._load()
             geo_question_id = data["geo_questions"][0]["id"]
             try:
