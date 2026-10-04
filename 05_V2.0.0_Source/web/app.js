@@ -48,7 +48,12 @@ addOperationalWorkspace();
     document.body.appendChild(shell);
   };
   const recovery = () => {
-    if (document.documentElement.dataset.kzStartupPhase || window.__KZ_R812_STARTUP_COORDINATOR__) return;
+    // `kzStartupPhase` is only a DOM diagnostic.  On Chromium refresh it can
+    // survive as "ready" even when the static coordinator tag was restored
+    // but never evaluated.  The coordinator object is the only authoritative
+    // readiness signal; trusting the stale attribute recreates the base-R7
+    // fallback that this recovery path is meant to prevent.
+    if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
     if (!window.KZ_BUILD_INFO && !document.querySelector('script[data-kz-owner-build-recovery]')) {
       const build = document.createElement('script');
       build.src = `${BUILD_SCRIPT}?recovery=${Date.now()}`;

@@ -62,7 +62,11 @@ def main():
     # A refresh must never leave the user on the base R7 shell merely because
     # Chromium restored the static coordinator tag without evaluating it.
     require("kzOwnerShellRecovery" in app, "app shell has no refresh recovery for a skipped owner coordinator")
-    require("kzStartupPhase" in app and "__KZ_R812_STARTUP_COORDINATOR__" in app, "owner recovery cannot distinguish a healthy startup from a skipped one")
+    require("__KZ_R812_STARTUP_COORDINATOR__" in app, "owner recovery cannot distinguish a healthy coordinator from a skipped one")
+    require(
+        "if (document.documentElement.dataset.kzStartupPhase || window.__KZ_R812_STARTUP_COORDINATOR__) return;" not in app,
+        "owner recovery still trusts a stale DOM startup marker after refresh",
+    )
     require("r8_12_startup_coordinator.js" in app and "build_info.js" in app, "owner recovery cannot restore the R8-23 shell identity")
 
     # The owner workbench itself previously observed the whole body for childList
