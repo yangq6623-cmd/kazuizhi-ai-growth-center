@@ -174,9 +174,13 @@ def check_legacy_account_owner_surface_retired():
 def check_runtime_wires_safe_executor():
     run = (SOURCE / "run.py").read_text(encoding="utf-8")
     assert "douyin_dry_run_executor" in run
-    # Device staging is a background scheduler action. It must never run again
-    # during the first dashboard paint merely to satisfy a source-count test.
-    assert "if tick % 4 == 0:" in run
+    # Device staging now lives in the isolated content-execution worker, so a
+    # slow external/content action cannot block the 15-second control lane or
+    # the first dashboard paint.  Keep the release gate tied to that design,
+    # rather than to the retired scheduler tick cadence.
+    assert "def start_content_execution_worker():" in run
+    assert 'name="r8-content-execution-worker"' in run
+    assert "CONTENT_WORKER_INTERVAL_SECONDS" in run
     assert run.count("run_pending_douyin_dry_runs(limit=1)") == 1
     executor = (SOURCE / "integrations" / "douyin_dry_run_executor.py").read_text(encoding="utf-8")
     for token in ("ready_for_composer", "final_publish_allowed", "publishes_content", "Content/Post ID + URL / Receipt"):

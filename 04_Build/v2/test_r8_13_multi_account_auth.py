@@ -153,7 +153,10 @@ def main():
     center = (SOURCE / "web" / "r8_12_account_center.html").read_text(encoding="utf-8")
     for marker in ("+ 新增账号", "账号环境安全策略", "window.open", "/api/r8-12/auth/start", "重新授权账号"):
         assert marker in ui, marker
-    for marker in ("环境稳定", "风控暂停", "重新授权", "设备：不要求/未指定"):
+    # The R8-23 complete workbench uses the explicit official-authorization
+    # action and states that a phone is not a prerequisite; it no longer
+    # renders the legacy device-placeholder copy.
+    for marker in ("环境稳定", "风控暂停", "前往官方授权", "不依赖手机"):
         assert marker in center, marker
     assert "password" not in ui.lower()
 
