@@ -20,8 +20,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.r8_control import PLATFORMS, control_status
+from core.r8_control import PLATFORMS
 from core.storage import now_iso, read_json, write_json
+from integrations.desktop_social_control import social_center_status
 
 
 STATE_PATH = "r8/growth_ops.json"
@@ -205,13 +206,13 @@ def _gpu_probe():
 def dashboard():
     with _LOCK:
         state = _state()
-        control = control_status()
+        control = social_center_status()
         gpu = _gpu_probe()
         worker = dict(state["video_worker"])
         worker["hardware"] = gpu
         devices = control.get("devices") or []
         accounts = control.get("accounts") or []
-        connected_devices = [row for row in devices if row.get("connection") == "connected" and row.get("probe_source") == "adb"]
+        connected_devices = [row for row in accounts if row.get("browser_session_ready")]
         authorized_accounts = [row for row in accounts if row.get("login_status") == "authorized"]
         connectors = []
         for platform_id, platform_name in PLATFORMS.items():
@@ -229,7 +230,7 @@ def dashboard():
         )}
         gates = [
             {"id": "Gate 0", "name": "安全与总控", "software": "ready", "live": "ready"},
-            {"id": "Gate 1", "name": "单真机", "software": "ready", "live": "ready" if connected_devices else "pending_device"},
+            {"id": "Gate 1", "name": "PC 浏览器扫码会话", "software": "ready", "live": "ready" if connected_devices else "pending_browser_qr"},
             {"id": "Gate 2", "name": "平台情报雷达", "software": "ready", "live": "ready" if authorized_accounts else "pending_connector"},
             {"id": "Gate 3", "name": "增长ID与内容策划", "software": "ready", "live": "ready" if state["growth_cases"] else "waiting_first_case"},
             {"id": "Gate 4", "name": "3060视频工厂", "software": "ready", "live": "ready" if worker.get("configured") and gpu.get("detected") else "pending_worker"},
@@ -245,7 +246,7 @@ def dashboard():
             "gates": gates,
             "video_worker": worker,
             "connectors": connectors,
-            "devices": {"registered": len(devices), "connected": len(connected_devices)},
+            "devices": {"registered": 0, "connected": len(connected_devices), "mode": "desktop_browser_qr_only"},
             "accounts": {"registered": len(accounts), "authorized": len(authorized_accounts)},
             "recent_audit": list(reversed(state["audit"][-30:])),
             "updated_at": state["updated_at"],
@@ -315,7 +316,7 @@ def route_signal(payload):
     with _LOCK:
         state = _state()
         signal = _find(state["signals"], "signal_id", signal_id, "需求信号")
-        accounts = control_status().get("accounts") or []
+        accounts = social_center_status().get("accounts") or []
         candidates = []
         for account in accounts:
             if account.get("platform") != signal["platform"]:
@@ -622,10 +623,10 @@ def schedule_publish(payload):
         content = _find(state["content_jobs"], "content_id", content_id, "内容任务")
         if content.get("approval_state") != "approved":
             raise ValueError("内容尚未审核通过")
-        control = control_status()
+        control = social_center_status()
         account = _find(control.get("accounts") or [], "account_id", account_id, "平台账号")
-        if account.get("login_status") != "authorized":
-            raise ValueError("平台账号尚未在真实手机完成人工登录/授权")
+        if account.get("login_status") != "authorized" or not account.get("browser_session_ready"):
+            raise ValueError("平台账号尚未完成 PC 浏览器扫码登录/授权")
         if account.get("platform") != content.get("platform"):
             raise ValueError("发布账号平台与内容策划平台不一致")
         video_id = _clean_text(payload.get("video_id"), "video_id", 80, required=False) or None
@@ -640,11 +641,11 @@ def schedule_publish(payload):
             "video_id": video_id,
             "platform": account["platform"],
             "account_id": account_id,
-            "device_id": account["device_id"],
+            "device_id": None,
             "scheduled_at": _clean_text(payload.get("scheduled_at"), "计划发布时间", 80, required=False) or now_iso(),
             "owner_approved": True,
             "status": "queued",
-            "connector_state": "waiting_real_execution",
+            "connector_state": "waiting_desktop_browser_execution",
             "receipt": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -704,7 +705,7 @@ def ingest_message(payload):
     content = _clean_text(payload.get("content"), "消息内容", 2000)
     direction = _enum(payload.get("direction"), {"inbound", "outbound"}, "消息方向", "inbound")
     kind = _enum(payload.get("kind"), {"comment", "reply", "dm", "mention"}, "消息类型", "comment")
-    accounts = control_status().get("accounts") or []
+    accounts = social_center_status().get("accounts") or []
     account = next((row for row in accounts if row.get("account_id") == account_id), None)
     if not account or account.get("platform") != platform:
         raise ValueError("消息必须归属已登记且平台一致的真实账号")
@@ -965,14 +966,14 @@ def diagnostics():
     ai_ready = integrations.get("external_ai", {}).get("status") == "connected"
     checks = [
         {"step": 0, "id": "foundation", "name": "安全底座与持久化", "status": "pass", "detail": f"本机持久化正常；{STATE_PATH}", "action": "无需处理"},
-        {"step": 1, "id": "device", "name": "真机连接与屏幕控制", "status": "pass" if summary["devices"]["connected"] else "blocked", "detail": f"ADB 在线 {summary['devices']['connected']} 台", "action": "连接并授权一台 Android 真机"},
+        {"step": 1, "id": "browser_qr", "name": "PC 浏览器扫码会话", "status": "pass" if summary["devices"]["connected"] else "blocked", "detail": f"已确认 PC 浏览器会话 {summary['devices']['connected']} 个", "action": "在账号中心打开平台网页并扫码登录"},
         {"step": 2, "id": "business", "name": "真实经营数据", "status": "pass" if business.get("status") == "connected" else "blocked", "detail": business.get("message") or "经营数据未接入", "action": "在连接与体检中配置只读经营数据"},
         {"step": 3, "id": "chatgpt", "name": "总控与 ChatGPT 分析回路", "status": "pass" if bridge_ready else "blocked", "detail": "双向运营桥已连接" if bridge_ready else "双向运营桥未连接", "action": "配置双向运营桥"},
         {"step": 4, "id": "external_ai", "name": "外部大模型增强", "status": "pass" if ai_ready else "pending", "detail": integrations.get("external_ai", {}).get("message") or "未配置；本地规则仍可运行", "action": "如需联网模型分析，在连接与体检中配置 API"},
-        {"step": 5, "id": "account", "name": "平台账号授权", "status": "pass" if summary["accounts"]["authorized"] else "blocked", "detail": f"已授权 {summary['accounts']['authorized']} 个", "action": "在社媒中心绑定账号，并在真机完成人工登录"},
+        {"step": 5, "id": "account", "name": "平台账号授权", "status": "pass" if summary["accounts"]["authorized"] else "blocked", "detail": f"已授权 {summary['accounts']['authorized']} 个", "action": "在账号中心绑定账号，并在 PC 浏览器完成人工扫码登录"},
         {"step": 6, "id": "content", "name": "情报、内容与审核", "status": "pass" if counts["content_jobs"] else "pending", "detail": f"信号 {counts['signals']} 条，内容任务 {counts['content_jobs']} 条", "action": "录入真实信号或把内容草稿提交到 R8 审核"},
         {"step": 7, "id": "video", "name": "本地视频生成", "status": "pass" if video_ready else "blocked", "detail": summary["video_worker"]["hardware"].get("name") or "未检测到 GPU", "action": "填写真实模型目录和成片输出目录"},
-        {"step": 8, "id": "publish", "name": "真实发布与回执", "status": "pass" if published else "blocked", "detail": "已取得真实平台 URL" if published else "尚无真实发布回执", "action": "先完成账号授权、人工审核，再由真实设备发布并回填 URL"},
+        {"step": 8, "id": "publish", "name": "真实发布与回执", "status": "pass" if published else "blocked", "detail": "已取得真实平台 URL" if published else "尚无真实发布回执", "action": "先完成账号授权、人工审核，再由 PC 浏览器发布并回填 URL"},
         {"step": 9, "id": "metrics", "name": "24h/72h/7天效果数据", "status": "pass" if counts.get("metric_snapshots") else "pending", "detail": f"效果快照 {counts.get('metric_snapshots', 0)} 条，订单归因 {counts.get('attribution', 0)} 条", "action": "发布后按时间点录入真实指标和订单归因"},
         {"step": 10, "id": "learning", "name": "复盘学习回写总控", "status": "pass" if counts["learning_cycles"] else "pending", "detail": f"学习回写 {counts['learning_cycles']} 轮", "action": "具备真实指标后运行学习回写"},
     ]

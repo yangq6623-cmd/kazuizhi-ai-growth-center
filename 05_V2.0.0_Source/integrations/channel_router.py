@@ -41,7 +41,7 @@ def build_routes(mission=None) -> dict:
                 action = "老板审核通过后才能进入真实发布队列"
             elif not channel.get("external_verified"):
                 state = "waiting_external_validation"
-                action = "等待真实账号登录 + ADB 真机验证"
+                action = "等待真实账号在 PC 浏览器扫码登录"
             else:
                 state = "ready_for_dry_run"
                 action = "进入真机干跑；最终发布仍需真实平台页面与回执验证"

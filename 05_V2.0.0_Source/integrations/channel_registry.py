@@ -2,8 +2,8 @@
 
 The registry is a truthful routing/catalog layer, not a claim that every external
 platform has already been authenticated.  It deliberately requires no paid
-third-party token service.  Social execution uses the existing real-Android
-control plane; owned/search channels use local or already-configured Kazuizhi
+third-party token service.  Social execution uses an owner-confirmed Windows
+PC browser QR session; owned/search channels use local or already-configured Kazuizhi
 capabilities.  Human login/verification remains a hard boundary.
 """
 from __future__ import annotations
@@ -13,12 +13,12 @@ from core.storage import now_iso
 
 CHANNELS = (
     # Social / short video
-    {"id": "douyin", "name": "抖音", "group": "short_video", "mode": "real_android_app", "auth": "human_login"},
-    {"id": "wechat_channels", "name": "视频号", "group": "short_video", "mode": "real_android_app", "auth": "human_login"},
-    {"id": "kuaishou", "name": "快手", "group": "short_video", "mode": "real_android_app", "auth": "human_login"},
-    {"id": "xiaohongshu", "name": "小红书", "group": "social_content", "mode": "real_android_app", "auth": "human_login"},
-    {"id": "bilibili", "name": "B站", "group": "short_video", "mode": "real_android_app", "auth": "human_login"},
-    {"id": "weibo", "name": "微博", "group": "social_content", "mode": "real_android_app", "auth": "human_login"},
+    {"id": "douyin", "name": "抖音", "group": "short_video", "mode": "desktop_browser_qr", "auth": "human_login"},
+    {"id": "wechat_channels", "name": "视频号", "group": "short_video", "mode": "desktop_browser_qr", "auth": "human_login"},
+    {"id": "kuaishou", "name": "快手", "group": "short_video", "mode": "desktop_browser_qr", "auth": "human_login"},
+    {"id": "xiaohongshu", "name": "小红书", "group": "social_content", "mode": "desktop_browser_qr", "auth": "human_login"},
+    {"id": "bilibili", "name": "B站", "group": "short_video", "mode": "desktop_browser_qr", "auth": "human_login"},
+    {"id": "weibo", "name": "微博", "group": "social_content", "mode": "desktop_browser_qr", "auth": "human_login"},
     # Search / GEO
     {"id": "baidu_search", "name": "百度搜索 / GEO", "group": "search", "mode": "content_and_indexing", "auth": "public_or_owned"},
     {"id": "wechat_search", "name": "微信搜一搜", "group": "search", "mode": "content_and_indexing", "auth": "public_or_owned"},
@@ -41,7 +41,7 @@ SEARCH_IDS = {"baidu_search", "wechat_search", "sogou_search", "360_search"}
 
 def _social_state() -> dict:
     try:
-        from core.r8_control import social_center_status
+        from integrations.desktop_social_control import social_center_status
         return social_center_status()
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
         return {"platforms": [], "devices": [], "accounts": []}
@@ -69,12 +69,10 @@ def _business_state() -> dict:
 def _social_row(channel: dict, social: dict) -> dict:
     platform = next((x for x in social.get("platforms", []) if x.get("id") == channel["id"]), {})
     accounts = [x for x in social.get("accounts", []) if x.get("platform") == channel["id"]]
-    devices = {x.get("device_id"): x for x in social.get("devices", [])}
     authorized = [x for x in accounts if x.get("login_status") == "authorized"]
     online_authorized = [
         x for x in authorized
-        if (devices.get(x.get("device_id")) or {}).get("connection") == "connected"
-        and (devices.get(x.get("device_id")) or {}).get("probe_source") == "adb"
+        if x.get("browser_session_ready")
     ]
     external_verified = bool(online_authorized)
     if external_verified:
@@ -92,10 +90,10 @@ def _social_row(channel: dict, social: dict) -> dict:
         "authorized_accounts": len(authorized),
         "online_authorized_accounts": len(online_authorized),
         "platform_attention": int(platform.get("attention") or 0),
-        "execution": "ADB real-device serial execution",
+        "execution": "Windows PC browser QR session",
         "human_gates": ["login", "captcha", "sms", "face_verification", "final_publish_approval"],
         "paid_token_required": False,
-        "token_policy": "不购买第三方平台 Token；使用真实账号人工登录 + 本机真实 Android 执行。",
+        "token_policy": "不购买第三方平台 Token；使用真实账号在 Windows PC 浏览器扫码登录。",
     }
 
 
@@ -149,7 +147,7 @@ def snapshot() -> dict:
         },
         "policy": {
             "no_paid_third_party_token_required": True,
-            "social_execution": "真实安卓 + 真实账号；验证码/短信/人脸由真人完成",
+            "social_execution": "Windows PC 浏览器扫码 + 真实账号；验证码/短信/人脸由真人完成",
             "external_truth": "纳入软件路由不等于平台已登录/已发布；只有真实账号验证和真实平台回执才能升级状态。",
             "finance": "资金操作永久人工处理",
         },

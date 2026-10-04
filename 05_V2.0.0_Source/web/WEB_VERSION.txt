@@ -22,7 +22,7 @@ Modules:
 - ChatGPT Structured Production Contract
 - ChatGPT Post-Render Content QC
 - Owner Final Video Approval Gate
-- R8-01 Real Android Device Center
+- R8-01 PC Browser QR Session Center
 - RTX 3060 / NVENC Local Production with CPU Fallback
 - Platform Rule Center and Verified Publish Receipts
 - SEO/GEO Content and Verification Center

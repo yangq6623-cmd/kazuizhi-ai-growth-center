@@ -72,51 +72,34 @@ def http_json(base, path, payload=None):
         return response.status, json.load(response)
 
 
-def seed_verified_social_control(temporary):
-    """Seed an isolated CI control-plane truth state without weakening production rules.
+def seed_verified_desktop_browser_account(temporary):
+    """Seed the same PC-browser QR truth source used by the production runtime.
 
-    CI cannot attach a physical Android phone, so this acceptance helper invokes the
-    same control-plane functions used by the ADB/platform adapters: register a real-
-    Android-shaped terminal, record an ADB-origin probe, register the platform account,
-    then record platform authorization. The content factory must discover this state
-    through sync_accounts_from_control; it never receives a writable verified flag.
+    CI never simulates a phone.  It creates a durable account identity, records a
+    confirmed Windows-browser QR session, and requires the factory to discover that
+    evidence rather than accepting a writable verified flag.
     """
     source = ROOT / "05_V2.0.0_Source"
     old_local = os.environ.get("LOCALAPPDATA")
     os.environ["LOCALAPPDATA"] = temporary
     sys.path.insert(0, str(source))
     try:
-        from core import r8_control
+        from core import account_registry
+        from integrations import desktop_browser_session
 
-        device_id = "CI-ADB-R8-001"
-        r8_control.register_device({
-            "device_id": device_id,
-            "label": "CI隔离验收真机",
-            "device_type": "real_android",
-            "transport": "usb",
-        })
-        r8_control.record_device_probe(
-            device_id,
-            True,
-            source="adb",
-            detail="CI隔离环境模拟硬件适配器的ADB探测结果；不代表真实用户设备",
+        identity = account_registry.register_official_identity(
+            "douyin", "涟水家电维修测试账号", "ci-desktop-browser-subject",
+            method="desktop_browser_qr",
         )
-        state = r8_control.register_account({
-            "platform": "douyin",
-            "device_id": device_id,
-            "alias": "涟水家电维修测试账号",
-            "label": "抖音CI验收账号",
-            "role": "service",
-            "region": "涟水县",
-            "service_category": "家电安装维修",
-            "automation_level": "L2",
+        account_id = identity["account_id"]
+        account_registry.set_auth_state(account_id, "connected", method="desktop_browser_qr")
+        state = desktop_browser_session._state()
+        state["sessions"].append({
+            "account_id": account_id, "platform": "douyin", "account_alias": "涟水家电维修测试账号",
+            "browser_url": "https://creator.douyin.com/", "status": "owner_confirmed",
+            "created_at": "2026-10-04T00:00:00+08:00", "confirmed_at": "2026-10-04T00:00:00+08:00",
         })
-        account_id = state["accounts"][-1]["account_id"]
-        r8_control.update_account_status({
-            "account_id": account_id,
-            "login_status": "authorized",
-            "risk_level": "normal",
-        })
+        desktop_browser_session._save(state)
         return account_id
     finally:
         try:
@@ -293,10 +276,9 @@ def exercise(command):
                 check(manual_account.get("connection_status") != "已验证可发布",
                       "Manual content-factory metadata illegally self-declared verified publish state")
 
-                # CI cannot host a physical Android device. Seed the isolated control
-                # plane through the same device/account state functions used by adapters,
-                # then require the factory to discover verification from that truth source.
-                social_account_id = seed_verified_social_control(temporary)
+                # CI uses the same durable PC-browser QR source as the installed runtime;
+                # it never fabricates a phone/ADB adapter.
+                social_account_id = seed_verified_desktop_browser_account(temporary)
                 _, factory = http_json(base, "/api/content-factory")
                 account = next(
                     (x for x in factory.get("accounts", [])
@@ -304,9 +286,9 @@ def exercise(command):
                     None,
                 )
                 check(account and account.get("connection_status") == "已验证可发布",
-                      "Verified control-plane account was not synchronized into content factory")
-                check(account.get("verification_source") == "r8_social_control",
-                      "Verified account did not preserve its control-plane evidence source")
+                      "Verified PC browser account was not synchronized into content factory")
+                check(account.get("verification_source") == "r8_desktop_browser_registry",
+                      "Verified account did not preserve PC browser evidence source")
 
                 _, publish_plan = http_json(base, "/api/content-factory/publish-plans", {
                     "video_id": video["id"], "account_id": account["id"],
@@ -364,7 +346,7 @@ def main():
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> verified control-plane account -> platform rules")
+    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> verified PC browser account -> platform rules")
 
 
 if __name__ == "__main__":

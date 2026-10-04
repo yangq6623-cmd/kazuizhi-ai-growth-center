@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 from core.storage import now_iso
 from core import r8_control
+from integrations.desktop_social_control import social_center_status
 from promotion import content_factory as cf
 
 
@@ -91,13 +92,13 @@ def save_account(payload):
     existing = next((x for x in data.get("accounts", []) if requested_id and x.get("id") == requested_id), None)
     values["connection_status"] = (
         existing.get("connection_status")
-        if existing and existing.get("verification_source") in {"r8_social_control", "official_connector", "platform_probe"}
+        if existing and existing.get("verification_source") in {"r8_desktop_browser_registry", "official_connector", "platform_probe"}
         else "待人工登录授权"
     )
     item = _ORIGINAL["save_account"](values)
     data = cf._load()
     current = cf._by_id(data.get("accounts", []), item["id"], "账号")
-    if current.get("verification_source") not in {"r8_social_control", "official_connector", "platform_probe"}:
+    if current.get("verification_source") not in {"r8_desktop_browser_registry", "official_connector", "platform_probe"}:
         current["connection_status"] = "待人工登录授权"
         current["verification_source"] = "metadata_only"
         current["verified_at"] = None
@@ -107,7 +108,7 @@ def save_account(payload):
 
 def _social_snapshot():
     try:
-        return r8_control.social_center_status()
+        return social_center_status()
     except (OSError, ValueError, RuntimeError):
         return {"accounts": [], "devices": [], "terminals": []}
 
@@ -121,25 +122,20 @@ def _social_connection_status(account, device_online):
     if login == "authorized" and device_online and not paused:
         return "已验证可发布"
     if login == "authorized" and not device_online:
-        return "等待真机上线"
+        return "等待PC扫码登录"
     if paused:
         return "已暂停"
     return "待人工登录授权"
 
 
 def sync_accounts_from_control():
-    """Mirror routing metadata into the content factory from the real control plane.
+    """Mirror routing metadata into the content factory from the PC browser registry.
 
     The content factory never upgrades an account to verified on its own. A
-    verified state requires: control-plane login_status=authorized, the bound
-    ADB device online, no attention/high risk, and automation not paused.
+    verified state requires: account authorization, an owner-confirmed PC
+    browser QR session, no attention/high risk, and automation not paused.
     """
     social = _social_snapshot()
-    devices = social.get("devices") or []
-    online_ids = {
-        item.get("device_id") for item in devices
-        if item.get("connection") == "connected" and item.get("probe_source") == "adb"
-    }
     data = cf._load()
     factory_accounts = data.setdefault("accounts", [])
     seen = set()
@@ -153,14 +149,13 @@ def sync_accounts_from_control():
             existing = next(
                 (x for x in factory_accounts
                  if x.get("platform") == (account.get("platform_name") or PLATFORM_NAME.get(account.get("platform")))
-                 and x.get("account_name") == (account.get("alias") or account.get("label"))
-                 and x.get("device_id") == account.get("device_id")),
+                 and x.get("account_name") == (account.get("alias") or account.get("label"))),
                 None,
             )
         if not existing:
             existing = {"id": social_id}
             factory_accounts.append(existing)
-        status = _social_connection_status(account, account.get("device_id") in online_ids)
+        status = _social_connection_status(account, bool(account.get("browser_session_ready")))
         existing.update({
             "social_account_id": social_id,
             "platform_id": account.get("platform"),
@@ -169,10 +164,10 @@ def sync_accounts_from_control():
             "region": account.get("region") or existing.get("region") or "",
             "service": account.get("service_category") or existing.get("service") or "",
             "connection_status": status,
-            "device_id": account.get("device_id") or "",
+            "device_id": "",
             "daily_limit": max(1, min(int(existing.get("daily_limit") or 1), 3)),
             "preferred_windows": existing.get("preferred_windows") or [],
-            "verification_source": "r8_social_control",
+            "verification_source": "r8_desktop_browser_registry",
             "login_status": account.get("login_status") or "not_verified",
             "risk_level": account.get("risk_level") or "unknown",
             "verified_at": account.get("login_verified_at") if status == "已验证可发布" else None,
@@ -251,15 +246,12 @@ def _human_action_center(data, social):
             "detail": "当前 Mission 的前台生产任务已达到自动重试/降级上限，需要人工确认后续处理；历史失败不会继续占用待办红点。",
         })
     awaiting_execution = any(x.get("status") in {"已授权发布", "等待账号", "等待最佳时间", "发布执行中"} for x in videos)
-    online = any(
-        item.get("connection") == "connected" and item.get("probe_source") == "adb"
-        for item in (social.get("devices") or [])
-    )
-    if awaiting_execution and not online:
+    browser_ready = any(item.get("browser_session_ready") for item in social_accounts)
+    if awaiting_execution and not browser_ready:
         items.append({
-            "id": "device_required", "kind": "human", "page": "device", "action": "检查终端",
-            "title": "当前 Mission 有待发布任务，但真实手机未在线",
-            "detail": "只有发布链实际需要终端时，设备离线才计入“待我处理”。",
+            "id": "browser_qr_required", "kind": "human", "page": "accounts", "action": "去扫码",
+            "title": "当前 Mission 有待发布任务，需完成 PC 浏览器扫码登录",
+            "detail": "系统不使用真实手机；请在账号中心打开平台网页并完成扫码登录。",
         })
     current_video = videos[0] if videos else None
     return {
@@ -287,7 +279,7 @@ def dashboard():
         "accounts": social.get("accounts") or [],
         "devices": social.get("devices") or [],
         "terminals": social.get("terminals") or [],
-        "source": "r8_social_control",
+        "source": "r8_12_desktop_browser_registry",
     }
     return value
 
@@ -297,7 +289,7 @@ def update_account_status(payload):
     values = dict(payload or {})
     if str(values.get("login_status") or "") == "authorized":
         source = str(values.get("verification_source") or "").strip()
-        if source not in {"platform_probe", "device_probe", "official_connector"}:
+        if source not in {"platform_probe", "desktop_browser_qr", "official_connector"}:
             raise ValueError("账号“已验证可发布”只能由真实平台/终端验证器写入，不能人工选择")
     values.pop("verification_source", None)
     return _ORIGINAL["update_account_status"](values)
