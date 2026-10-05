@@ -9,6 +9,7 @@ shown as a technical blocker and never faked as success.
 from __future__ import annotations
 
 from copy import deepcopy
+import threading
 
 from core import geo_growth_orchestrator as geo_growth
 from integrations import seo_public_deployer
@@ -17,6 +18,7 @@ _INSTALLED = False
 _ORIGINAL_RUN = geo_growth.run_once
 _ORIGINAL_STATUS = geo_growth.status
 _ORIGINAL_RETRY = geo_growth.retry_failed
+_LOOP_LOCK = threading.Lock()
 _PUBLISH_BLOCKER_CODES = {
     "publish_connector_not_ready",
     "public_publish_verification_failed",
@@ -118,22 +120,25 @@ def _attempt_publish(force=False):
 
 
 def run_once(force=False):
-    result = _ORIGINAL_RUN(force=force)
-    state = geo_growth._load()
-    if not state.get("enabled") or state.get("paused"):
-        return result
-
-    publish_result = _attempt_publish(force=force)
-    if publish_result.get("published"):
-        # A second bounded sync pass advances newly verified PUBLISHED assets to
-        # waiting_retest and schedules their truthful operating lifecycle.
-        _ORIGINAL_RUN(force=False)
-    if isinstance(result, dict):
-        merged = dict(result)
-        merged["publish_bridge"] = publish_result
-        return merged
-    return {"result": result, "publish_bridge": publish_result}
-
+    # Serialize the full GEO sync + guarded publish pass so manual runs and the
+    # scheduler cannot write the same ledgers at the same time on Windows.
+    if not _LOOP_LOCK.acquire(blocking=False):
+        return {"ok": True, "skipped": True, "reason": "geo_growth_full_loop_already_running"}
+    try:
+        result = _ORIGINAL_RUN(force=force)
+        state = geo_growth._load()
+        if not state.get("enabled") or state.get("paused"):
+            return result
+        publish_result = _attempt_publish(force=force)
+        if publish_result.get("published"):
+            _ORIGINAL_RUN(force=False)
+        if isinstance(result, dict):
+            merged = dict(result)
+            merged["publish_bridge"] = publish_result
+            return merged
+        return {"result": result, "publish_bridge": publish_result}
+    finally:
+        _LOOP_LOCK.release()
 
 def status():
     snap = _ORIGINAL_STATUS()

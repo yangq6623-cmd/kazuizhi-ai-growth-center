@@ -212,6 +212,18 @@ def _record_blocker(data, code, detail, item_id=""):
     data["technical_blockers"] = existing[-80:]
 
 
+def _clear_blocker(data, code, item_id=""):
+    code = str(code or "")
+    item_id = str(item_id or "")
+    data["technical_blockers"] = [
+        row for row in (data.get("technical_blockers") or [])
+        if not (
+            str(row.get("code") or "") == code
+            and (not item_id or str(row.get("item_id") or "") == item_id)
+        )
+    ]
+    return data
+
 def _create_from_signal(data, receipt):
     signal_id = _signal_id(receipt)
     if not signal_id or signal_id in set(data.get("processed_signal_ids") or []):
@@ -346,31 +358,18 @@ def _signal_score(signal):
 
 
 def _sync_item(data, item, jobs, seo_opportunities, assets):
+    item_id = str(item.get("id") or "")
     job = jobs.get(str(item.get("job_id") or ""), {})
     if job:
         item["job_state"] = job.get("state") or item.get("job_state")
         if job.get("state") == "failed":
             item["state"] = "failed"
             item["last_error"] = str(job.get("error") or "AI员工任务失败")[:500]
-        elif job.get("state") == "completed" and item.get("state") in {"ai_employee_queued", "ai_employee_running", "opportunity_created"}:
-            item["state"] = "content_ready"
+        elif job.get("state") == "completed":
+            if item.get("state") in {"ai_employee_queued", "ai_employee_running", "opportunity_created", "deferred"}:
+                item["state"] = "content_ready"
         elif job.get("state") in {"queued", "running"}:
             item["state"] = "ai_employee_running" if job.get("state") == "running" else "ai_employee_queued"
-
-    if item.get("job_state") == "completed" and item.get("seo_opportunity_id"):
-        bridge = geo_phase3_seo_bridge.prepare_phase3_assets({
-            "actions": [{
-                "action_id": item["id"],
-                "job_state": "completed",
-                "opportunity_id": item["seo_opportunity_id"],
-            }]
-        })
-        states = bridge.get("states") or []
-        if states:
-            item["asset_id"] = states[0].get("asset_id") or item.get("asset_id") or ""
-            item["asset_stage"] = states[0].get("stage") or item.get("asset_stage") or ""
-        if item.get("asset_stage") in {"GENERATED", "QC_PASSED"}:
-            item["state"] = "waiting_publish"
 
     seo_opportunity = seo_opportunities.get(str(item.get("seo_opportunity_id") or ""), {})
     asset_id = str(item.get("asset_id") or seo_opportunity.get("asset_id") or "")
@@ -379,12 +378,28 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         item["asset_id"] = asset_id
         item["asset_stage"] = asset.get("stage") or item.get("asset_stage") or ""
         item["public_url"] = asset.get("public_url") or item.get("public_url") or ""
-        if item["asset_stage"] in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}:
-            if not item.get("published_at"):
-                item["published_at"] = asset.get("published_at") or now_iso()
-                delay = max(300, int((_load().get("policy") or {}).get("retest_delay_seconds") or DEFAULT_RETEST_SECONDS))
-                item["retest_due_at_epoch"] = time.time() + delay
-            item["state"] = "waiting_retest"
+
+    prepared_stages = {"GENERATED", "QC_PASSED", "PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}
+    if item.get("job_state") == "completed" and item.get("seo_opportunity_id") and str(item.get("asset_stage") or "") not in prepared_stages:
+        bridge = geo_phase3_seo_bridge.prepare_phase3_assets({
+            "actions": [{"action_id": item["id"], "job_state": "completed", "opportunity_id": item["seo_opportunity_id"]}]
+        })
+        states = bridge.get("states") or []
+        if states:
+            item["asset_id"] = states[0].get("asset_id") or item.get("asset_id") or ""
+            item["asset_stage"] = states[0].get("stage") or item.get("asset_stage") or ""
+            item["public_url"] = states[0].get("public_url") or item.get("public_url") or ""
+
+    if item.get("asset_stage") in {"GENERATED", "QC_PASSED"}:
+        item["state"] = "waiting_publish"
+
+    if item.get("asset_stage") in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}:
+        if not item.get("published_at"):
+            published_asset = assets.get(str(item.get("asset_id") or ""), {})
+            item["published_at"] = published_asset.get("published_at") or now_iso()
+            delay = max(300, int((_load().get("policy") or {}).get("retest_delay_seconds") or DEFAULT_RETEST_SECONDS))
+            item["retest_due_at_epoch"] = time.time() + delay
+        item["state"] = "waiting_retest"
 
     if item.get("state") in {"waiting_retest", "retest_queued"}:
         fresh = _latest_aux_for_question(item.get("question_id"), item.get("published_at"))
@@ -404,6 +419,7 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             item["outcome"] = "improved" if after > before else "regressed" if after < before else "neutral"
             item["state"] = "completed"
             item["completed_at"] = now_iso()
+            _clear_blocker(data, "operating_retest_deferred", item_id)
             _record_history(data, "before_after_completed", {
                 "id": item["id"], "before": before, "after": after, "delta": after - before,
                 "truth": "C-level operating signal only; formal A/B score unchanged",
@@ -412,11 +428,15 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             try:
                 _ensure_retest_task(item)
                 item["state"] = "retest_queued"
+                _clear_blocker(data, "operating_retest_deferred", item_id)
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
                 item["last_error"] = str(error)[:500]
-                _record_blocker(data, "operating_retest_deferred", error, item["id"])
+                _record_blocker(data, "operating_retest_deferred", error, item_id)
 
+    if item.get("state") != "failed":
+        item["last_error"] = ""
     item["updated_at"] = now_iso()
+    _clear_blocker(data, "opportunity_sync_deferred", item_id)
     return item
 
 
@@ -432,7 +452,6 @@ def _sync_all(data):
                 item["state"] = "deferred"
             _record_blocker(data, "opportunity_sync_deferred", error, item.get("id") or "")
     return data
-
 
 def _state_counts(items):
     counts = {"total": len(items), "optimizing": 0, "waiting_publish": 0, "published_or_waiting_retest": 0, "completed": 0, "failed": 0}
@@ -464,9 +483,8 @@ def _pipeline(items):
 
 
 def status():
+    # read_only_status_no_sync: polling the dashboard must never mutate SEO/GEO ledgers.
     data = _load()
-    data = _sync_all(data)
-    _save(data)
     items = list(reversed(data.get("opportunities") or []))
     counts = _state_counts(items)
     cloud = geo_autonomy.status()
@@ -537,22 +555,31 @@ def resume():
 def retry_failed():
     data = _load()
     retried = 0
+    deferred = 0
     for item in data.get("opportunities") or []:
-        if item.get("state") != "failed" or not item.get("job_id"):
-            continue
-        try:
-            job = r7_engine.command({"action": "retry", "id": item["job_id"]})
-            item["job_state"] = job.get("state") or "queued"
-            item["state"] = "ai_employee_queued"
+        if item.get("state") == "failed" and item.get("job_id"):
+            try:
+                job = r7_engine.command({"action": "retry", "id": item["job_id"]})
+                item["job_state"] = job.get("state") or "queued"
+                item["state"] = "ai_employee_queued"
+                item["last_error"] = ""
+                retried += 1
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                item["last_error"] = str(error)[:500]
+        elif item.get("state") == "deferred":
+            if item.get("job_state") == "completed":
+                item["state"] = "content_ready"
+            elif item.get("job_state") in {"queued", "running"}:
+                item["state"] = "ai_employee_queued"
+            else:
+                item["state"] = "opportunity_created"
             item["last_error"] = ""
-            retried += 1
-        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-            item["last_error"] = str(error)[:500]
-    data["last_result"] = {"action": "retry_failed", "retried": retried, "at": now_iso()}
+            _clear_blocker(data, "opportunity_sync_deferred", item.get("id") or "")
+            deferred += 1
+    data["last_result"] = {"action": "retry_failed", "retried": retried, "deferred_requeued": deferred, "at": now_iso()}
     _save(data)
     r7_engine.run_due_jobs()
     return status()
-
 
 def run_once(force=False):
     if not _RUN_LOCK.acquire(blocking=False):

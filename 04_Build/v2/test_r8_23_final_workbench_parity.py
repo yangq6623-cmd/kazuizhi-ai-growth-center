@@ -25,6 +25,8 @@ GEO_PHASE3 = SRC / "web" / "geo-phase3.js"
 GEO_GROWTH_UI = SRC / "web" / "geo-growth-os.js"
 GEO_GROWTH_CORE = SRC / "core" / "geo_growth_orchestrator.py"
 GEO_PUBLISH_BRIDGE = SRC / "core" / "geo_growth_publish_bridge.py"
+BUILD_INFO = SRC / "web" / "build_info.js"
+STORAGE = SRC / "core" / "storage.py"
 GEO_JOB_PATCH = SRC / "core" / "geo_phase3_job_patch.py"
 R8_20_PATCH = SRC / "backend" / "r8_20_seo_geo_growth_patch.py"
 
@@ -50,6 +52,8 @@ def main() -> None:
     geo_growth_ui = text(GEO_GROWTH_UI)
     geo_growth_core = text(GEO_GROWTH_CORE)
     geo_publish_bridge = text(GEO_PUBLISH_BRIDGE)
+    build_info = text(BUILD_INFO)
+    storage = text(STORAGE)
     geo_job_patch = text(GEO_JOB_PATCH)
     r8_20_patch = text(R8_20_PATCH)
 
@@ -66,6 +70,9 @@ def main() -> None:
         assert marker in workbench, marker
 
     assert '<body class="r810-workbench">' in index
+    assert "build_info.js" in index and index.index("build_info.js") < index.index("app.js")
+    assert 'phase: "R8-24"' in build_info
+    assert "V2.2.2 R8-24 GEO Growth OS" in build_info
     assert 'r8-23-shell-preflight' in index
     for marker in ("老板总控", "AI决策中心", "内容创导", "执行中心", "待我处理", "经营结果", "SEO/GEO增长", "自进化中心"):
         assert marker in index, marker
@@ -118,6 +125,7 @@ def main() -> None:
         "/api/r8-24/geo-growth", "/api/r8-24/geo-growth/start",
         "geo-os-toolbar", "geo-os-actions", "geo-os-runtime-card", "repeat(auto-fit",
         "自动运营已启动", "publish_connector", "发布通道：",
+        "data-geo-filter", "data-geo-advance", "geo-os-blocker-retry",
     ):
         assert marker in geo_growth_ui or marker in geo_html, marker
     assert "geo-os-controls .geo-os-runtime" not in geo_growth_ui
@@ -135,6 +143,11 @@ def main() -> None:
         assert marker in geo_growth_core, marker
     assert '"evidence_level": "A"' not in geo_growth_core
     assert '"evidence_level": "B"' not in geo_growth_core
+    assert "read_only_status_no_sync" in geo_growth_core
+    assert "deferred_requeued" in geo_growth_core
+    assert "_clear_blocker" in geo_growth_core
+    assert "_JSON_IO_LOCK = threading.RLock()" in storage
+    assert "for attempt in range(8)" in storage
 
     # R8-24.1: QC_PASSED is not a terminal success. The existing guarded public
     # deployer must be called by the GEO loop, and missing configuration must
@@ -143,7 +156,7 @@ def main() -> None:
         "seo_public_deployer", "deploy_pending", "publish_connector_not_ready",
         "public_publish_verification_failed", "public_publish_deferred",
         "QC_PASSED 不等于 PUBLISHED", "publish_bridge", "waiting_retest",
-        "geo_growth._sync_all", "main_loop_continues",
+        "geo_growth._sync_all", "main_loop_continues", "_LOOP_LOCK",
     ):
         assert marker in geo_publish_bridge, marker
     assert "geo_growth_publish_bridge" in r8_20_patch
