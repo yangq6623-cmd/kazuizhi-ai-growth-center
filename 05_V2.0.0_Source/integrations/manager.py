@@ -167,6 +167,27 @@ def integration_status():
     ai = _ai_status()
     bridge = bridge_status()
     business_ready = analytics.get("status") == "verified"
+    # R8-23 queues content automatically only after its local QC has passed and
+    # only for the matching, PC-browser-authorized account.  Keep the status
+    # centre aligned with that policy: the old R7 wording said every item was
+    # manual even after an automatic queue had been enabled.
+    publishing = {
+        "id": "publishing", "name": "内容发布", "status": "configured",
+        "status_label": "质检后自动入队",
+        "message": "质检通过后，内容仅会进入已完成 PC 扫码授权且风险正常的匹配账号队列；平台成功仍必须回传 Post ID、URL 或 Receipt。",
+    }
+    try:
+        from core.r8_growth_ops import publication_policy
+        policy = publication_policy()
+        if not policy.get("enabled"):
+            publishing.update({
+                "status": "paused", "status_label": "自动队列已暂停",
+                "message": "自动发布队列已暂停；恢复后仍只会向已完成 PC 扫码授权的匹配账号入队。",
+            })
+    except (OSError, ValueError, RuntimeError, ImportError):
+        # The integration page must remain available while an older local data
+        # store is being migrated; its conservative queue explanation is safe.
+        pass
     return {
         "generated_at": now_iso(), "external_ai": ai, "bridge": bridge,
         "items": [
@@ -174,7 +195,7 @@ def integration_status():
             ai,
             {"id": "business_data", "name": "经营数据", "status": "ready" if business_ready else "not_connected", "status_label": "已验证" if business_ready else "未接入", "message": analytics.get("message", "真实经营数据尚未接入。")},
             bridge,
-            {"id": "publishing", "name": "内容发布", "status": "manual", "status_label": "人工审核", "message": "系统只生成草稿，不会自动对外发布。"},
+            publishing,
             {"id": "finance", "name": "资金操作", "status": "blocked", "status_label": "永久禁止", "message": "付款、退款、提现、改价和结算必须由人工处理。"},
         ],
     }

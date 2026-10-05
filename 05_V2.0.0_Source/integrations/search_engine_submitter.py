@@ -58,6 +58,11 @@ DEFAULT = {
     "last_result": {},
     "last_indexnow_initialization": {},
     "submission_attempts": {},
+    # A recovered asset may already have an independently verified public URL
+    # from a previous installer, but no local submission receipt.  It is safe
+    # to backfill that narrow case once, in normal capped batches; this is not
+    # a blanket retry of arbitrary historical pages.
+    "allow_verified_receipt_backfill": True,
 }
 
 MAX_SUBMISSION_BATCH = 3
@@ -240,14 +245,24 @@ def _record_attempt(data: dict, engine: str, assets: list[dict]) -> None:
 def _eligible_assets(data: dict, engine: str, assets: list[dict], limit: int) -> tuple[list[dict], int]:
     """Return at most ``limit`` fresh page revisions for one search engine.
 
-    Pre-existing public records without ``published_at`` are intentionally not
-    backfilled into an automated queue.  They can be re-published as a genuine
-    new revision; otherwise automatic retries would re-submit historic pages.
+    Pre-existing public records without ``published_at`` normally stay outside
+    the automatic queue.  The single exception is an asset recovered from an
+    immutable, verified deployment receipt: it can receive one capped search
+    submission because it is a genuine public page whose local ledger was
+    restored after an upgrade, not an arbitrary historic retry.
     """
     legacy = 0
     eligible = []
     for asset in assets:
-        if not _submission_revision(asset):
+        recovered = any(
+            isinstance(event, dict)
+            and isinstance(event.get("payload"), dict)
+            and event["payload"].get("recovered_from_verified_receipt")
+            for event in (asset.get("events") or [])
+        )
+        if not _submission_revision(asset) and not (
+            data.get("allow_verified_receipt_backfill", True) and recovered
+        ):
             legacy += 1
             continue
         if _existing_engine_receipt(asset, engine) or _attempted_today(data, engine, asset):

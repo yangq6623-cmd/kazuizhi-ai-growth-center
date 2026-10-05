@@ -31,12 +31,12 @@
 
   function markup() {
     return `<section id="geo-autonomy" class="geo-auto" aria-label="GEO自动验证">
-      <div class="geo-auto-head"><div><p>GEO · AUTONOMOUS CLOUD SCAN</p><h3>GEO 自动验证 · 分阶段自治验收</h3><small>按 1题 → 3题 → 10题 → 50题逐级放量。每一阶段自动逐题执行、保存原始回答和回执，不需要人工连续点击。</small></div><span id="geo-auto-state" class="geo-auto-state">待启动</span></div>
+      <div class="geo-auto-head"><div><p>GEO · AUTONOMOUS CLOUD SCAN</p><h3>GEO 自动扫描与正式验证</h3><small>云端辅助扫描按 1题 → 3题 → 10题 → 50题逐级自治运行；正式 A/B 成绩仅由已授权的外部网页执行器写入真实会话回执，二者不会混算。</small></div><span id="geo-auto-state" class="geo-auto-state">待启动</span></div>
       <div class="geo-auto-grid">
         <div class="geo-auto-metric"><span>云端自动扫描</span><b id="geo-auto-progress-text">0 / 1</b><small>C级辅助结果</small></div>
-        <div class="geo-auto-metric"><span>正式 A/B Evidence</span><b id="geo-auto-formal">0 / 50</b><small>统一正式 GEO 成绩</small></div>
+        <div class="geo-auto-metric"><span>正式 A/B Evidence</span><b id="geo-auto-formal">0 / 50</b><small>外部网页真实回执</small></div>
         <div class="geo-auto-metric"><span>Phase 2 已分析</span><b id="geo-auto-analyzed">0 / 50</b><small>必须与正式 A/B 一致</small></div>
-        <div class="geo-auto-metric"><span>排队</span><b id="geo-auto-queued">0</b><small id="geo-auto-queue-note">当前阶段待执行</small></div>
+        <div class="geo-auto-metric"><span>排队</span><b id="geo-auto-queued">0</b><small id="geo-auto-queue-note">仅云端辅助队列</small></div>
         <div class="geo-auto-metric"><span>失败 / 待授权</span><b id="geo-auto-failed">0</b><small>异常才需要处理</small></div>
         <div class="geo-auto-metric"><span>云端模型</span><b id="geo-auto-model">--</b><small id="geo-auto-provider">读取中</small></div>
         <div class="geo-auto-metric"><span>运行状态</span><b id="geo-auto-mode">待启动</b><small>单任务顺序执行</small></div>
@@ -113,7 +113,7 @@
     byId('geo-auto-queued').textContent = String(Number(queue.queued || 0));
     const hiddenHistorical = Number(queue.historical_unscoped || 0);
     const queueNote = byId('geo-auto-queue-note');
-    if (queueNote) queueNote.textContent = hiddenHistorical ? `当前阶段待执行 · 旧队列${hiddenHistorical}题暂不运行` : '当前阶段待执行';
+    if (queueNote) queueNote.textContent = hiddenHistorical ? `云端队列 · 旧队列${hiddenHistorical}题暂不运行` : '云端辅助队列';
     byId('geo-auto-failed').textContent = String(Number(queue.failed || 0) + Number(queue.authorization_required || 0));
     byId('geo-auto-model').textContent = executor.model || '--';
     byId('geo-auto-provider').textContent = `${executor.label || '云端API'} · ${executor.ready ? '已验证' : '未就绪'}`;
@@ -141,7 +141,7 @@
       const consistent = data.truth_consistent !== false && formal === analyzed;
       truth.className = `geo-auto-truth ${consistent ? 'ok' : 'warn'}`;
       truth.textContent = consistent
-        ? `数据口径一致：正式 A/B Evidence ${formal} 题，Phase 2 已分析 ${analyzed} 题。普通豆包/云端 API 无联网证据时仍固定为 C 级辅助。`
+        ? `数据口径一致：正式 A/B Evidence ${formal} 题，Phase 2 已分析 ${analyzed} 题。云端扫描仅产生 C 级辅助；正式外部网页验证会在已授权执行器可用时从浏览器队列取得真实回执。`
         : `数据口径异常：正式 A/B Evidence ${formal} 题，Phase 2 已分析 ${analyzed} 题。系统已阻止把两者混为同一成绩，请刷新后再开始下一阶段。`;
     }
   }

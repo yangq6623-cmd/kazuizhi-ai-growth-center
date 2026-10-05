@@ -227,6 +227,19 @@ def main():
     assert google_status["reauthorization_required"] is True, google_status
     assert "401" in google_status["reason"], google_status
 
+    # An upgrade can restore a page from an immutable public deployment
+    # receipt.  It may have no local revision timestamp, but it should receive
+    # one capped initial submission rather than remaining PUBLISHED forever.
+    recovered = {
+        "id": "SEO-RECOVERED", "public_url": "https://kazuizhi.example/seo/recovered/",
+        "submission_receipts": [],
+        "events": [{"payload": {"recovered_from_verified_receipt": True}}],
+    }
+    ordinary_legacy = {"id": "SEO-LEGACY", "public_url": "https://kazuizhi.example/seo/legacy/", "submission_receipts": [], "events": []}
+    eligible, legacy_count = submitter._eligible_assets({**submitter.DEFAULT, "submission_attempts": {}}, "indexnow", [recovered, ordinary_legacy], 3)
+    assert [row["id"] for row in eligible] == ["SEO-RECOVERED"], eligible
+    assert legacy_count == 1, legacy_count
+
     print("R8-16 truthful IndexNow/search submission receipt gates passed")
 
 

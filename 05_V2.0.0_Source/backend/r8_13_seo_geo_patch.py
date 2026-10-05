@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from backend import server
+from core import seo_geo_autonomy as seo_autonomy
 from core import seo_observability
 from core.seo_geo_growth import (
     configure,
@@ -239,7 +240,12 @@ def install():
                 handler._json_ok({"result": generate_staging(payload.get("limit") or 6), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/run":
-                handler._json_ok({"result": run_daily_cycle(force=bool(payload.get("force"))), "dashboard": _dashboard_payload()})
+                # This action is the owner-facing entry point for the complete
+                # SEO loop.  Calling only run_daily_cycle generated local
+                # files and left public deployment / IndexNow submission idle;
+                # the autonomy controller applies the same truth gates while
+                # advancing every ready external stage.
+                handler._json_ok({"result": seo_autonomy.run_once(force=bool(payload.get("force"))), "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/audit-site":
                 site = str(payload.get("site") or dashboard().get("config", {}).get("site_base_url") or "").strip()
