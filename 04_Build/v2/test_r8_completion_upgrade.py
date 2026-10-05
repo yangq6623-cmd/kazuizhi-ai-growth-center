@@ -28,7 +28,11 @@ with tempfile.TemporaryDirectory() as temp_dir:
     imported = growth.import_promotion_draft({"draft_id": draft["id"], "platform": "douyin"})
     assert imported["created"] is True
     assert imported["item"]["source_draft_id"] == draft["id"]
-    assert imported["item"]["approval_state"] == "pending"
+    # R8-23 uses automatic quality control: imported drafts are approved for
+    # account-scoped queueing, but are never treated as externally published
+    # without a real platform receipt.
+    assert imported["item"]["approval_state"] == "approved"
+    assert imported["item"]["approved_by"] == "automation_qc"
     duplicate = growth.import_promotion_draft({"draft_id": draft["id"], "platform": "douyin"})
     assert duplicate["created"] is False
 
