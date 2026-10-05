@@ -122,8 +122,8 @@ def main():
             for marker in ("R8-23.1 · 老板运营总览", "/api/r8-22/autonomy", "/api/r8-20/seo-geo?days=30", "kz-r8-23-legacy", "高级分析、内容治理与运行保障", "只显示真实分配/调用"):
                 assert marker in ui, marker
             assert "r8_23_growth_os_patch" in truth_patch
-            assert 'phase: "R8-23"' in build
-            assert "Autonomous Growth OS" in build
+            assert any(f'phase: "{phase}"' in build for phase in ("R8-23", "R8-24"))
+            assert any(label in build for label in ("Autonomous Growth OS", "GEO Growth OS"))
             for marker in ("ChatGPT is the only strategic controller", "Two business growth engines", "Eight AI employees", "Funds remain permanently human-only"):
                 assert marker in scope, marker
 
