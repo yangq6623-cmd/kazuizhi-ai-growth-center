@@ -24,6 +24,7 @@ GEO_PHASE2 = SRC / "web" / "geo-phase2-analysis.js"
 GEO_PHASE3 = SRC / "web" / "geo-phase3.js"
 GEO_GROWTH_UI = SRC / "web" / "geo-growth-os.js"
 GEO_GROWTH_CORE = SRC / "core" / "geo_growth_orchestrator.py"
+GEO_PUBLISH_BRIDGE = SRC / "core" / "geo_growth_publish_bridge.py"
 GEO_JOB_PATCH = SRC / "core" / "geo_phase3_job_patch.py"
 R8_20_PATCH = SRC / "backend" / "r8_20_seo_geo_growth_patch.py"
 
@@ -48,6 +49,7 @@ def main() -> None:
     geo_phase3 = text(GEO_PHASE3)
     geo_growth_ui = text(GEO_GROWTH_UI)
     geo_growth_core = text(GEO_GROWTH_CORE)
+    geo_publish_bridge = text(GEO_PUBLISH_BRIDGE)
     geo_job_patch = text(GEO_JOB_PATCH)
     r8_20_patch = text(R8_20_PATCH)
 
@@ -107,14 +109,18 @@ def main() -> None:
 
     # R8-24 owner surface: normal use is one autonomous workbench; staged
     # 1/3/10/50 and manual evidence tools are demoted into an advanced details
-    # area rather than deleted.
+    # area rather than deleted. R8-24.1 also protects the toolbar from button
+    # overlap on normal Windows widths and makes the running state explicit.
     for marker in (
         "GEO 自动增长工作台", "geo-os-start", "geo-os-pause", "geo-os-resume",
         "geo-os-run", "geo-os-retry", "geo-growth-advanced", "GEO 机会池与自动执行",
         "OpenAI API：禁用", "新增付费依赖：0", "正常推广无需人工审核",
         "/api/r8-24/geo-growth", "/api/r8-24/geo-growth/start",
+        "geo-os-toolbar", "geo-os-actions", "geo-os-runtime-card", "repeat(auto-fit",
+        "自动运营已启动", "publish_connector", "发布通道：",
     ):
         assert marker in geo_growth_ui or marker in geo_html, marker
+    assert "geo-os-controls .geo-os-runtime" not in geo_growth_ui
 
     # C-level operating signals may drive work, but formal A/B truth remains
     # separate. The local controller is the 7x24 executor; it must not require
@@ -129,6 +135,18 @@ def main() -> None:
         assert marker in geo_growth_core, marker
     assert '"evidence_level": "A"' not in geo_growth_core
     assert '"evidence_level": "B"' not in geo_growth_core
+
+    # R8-24.1: QC_PASSED is not a terminal success. The existing guarded public
+    # deployer must be called by the GEO loop, and missing configuration must
+    # become a visible technical blocker while other work continues.
+    for marker in (
+        "seo_public_deployer", "deploy_pending", "publish_connector_not_ready",
+        "public_publish_verification_failed", "public_publish_deferred",
+        "QC_PASSED 不等于 PUBLISHED", "publish_bridge", "waiting_retest",
+        "geo_growth._sync_all", "main_loop_continues",
+    ):
+        assert marker in geo_publish_bridge, marker
+    assert "geo_growth_publish_bridge" in r8_20_patch
 
     # Scheduler/API integration is automatic and uses the existing R8-20 lane.
     for marker in (
@@ -150,7 +168,7 @@ def main() -> None:
         assert marker not in run, marker
         assert marker not in truth_patch, marker
 
-    print("PASS: R8-24 keeps the complete workbench and adds a truth-safe, no-OpenAI-API autonomous GEO Growth OS")
+    print("PASS: R8-24.1 keeps the complete workbench, fixes GEO layout, and truthfully advances QC_PASSED assets through the guarded public publish bridge")
 
 
 if __name__ == "__main__":

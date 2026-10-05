@@ -16,6 +16,7 @@ from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch
 from core import seo_geo_growth_intelligence as growth
 from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
 from core import geo_growth_orchestrator as geo_growth
+from core import geo_growth_publish_bridge as _geo_growth_publish_bridge  # noqa: F401
 from integrations import seo_geo_connector_router_v2 as connector_router
 
 _INSTALLED = False
