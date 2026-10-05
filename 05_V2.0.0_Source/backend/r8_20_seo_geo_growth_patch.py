@@ -1,4 +1,9 @@
-"""R8-20/R8-21 SEO/GEO growth operating-loop HTTP and scheduler bridge."""
+"""R8-20/R8-21 SEO/GEO growth operating-loop HTTP and scheduler bridge.
+
+R8-24 extends the same scheduler with the GEO Growth OS. C-level Doubao/API
+signals may drive low-risk operating work, while formal A/B truth remains
+unchanged and independently evidence-gated.
+"""
 from __future__ import annotations
 
 import json
@@ -10,6 +15,7 @@ from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
 from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
+from core import geo_growth_orchestrator as geo_growth
 from integrations import seo_geo_connector_router_v2 as connector_router
 
 _INSTALLED = False
@@ -49,6 +55,7 @@ def _serve_operational_search(handler):
         "geo-phase3.js",
         "seo-geo-growth-intelligence.js",
         "seo-geo-connector-matrix.js",
+        "geo-growth-os.js",
     ]
     source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
     data = source.encode("utf-8")
@@ -66,17 +73,19 @@ def _combined_status():
     result["r8_20_growth"] = growth.status(30)
     result["connector_routes"] = connector_router.snapshot(check_live=False)
     result["runtime_health"] = runtime_resilience.snapshot()
+    result["geo_growth_os"] = geo_growth.status()
     return result
 
 
 def _combined_run(force=False):
-    # Refresh the connection->capability map before the business loop so every
-    # already-configured route is visible to SEO/GEO without inventing external
-    # success. Slow live probes remain in the background connection workers.
+    # Refresh connection/capability health first. Existing SEO/GEO loops run
+    # before R8-24 so a newly completed C-level cloud receipt can be converted
+    # into an operating opportunity in the same scheduler pass.
     connector_routes = connector_router.sync_growth_health(check_live=False)
     value = _ORIGINAL_RUN(force=force)
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
     result["r8_20_growth"] = growth.run_once(force=force)
+    result["geo_growth_os"] = geo_growth.run_once(force=force)
     result["connector_routes"] = connector_routes
     result["runtime_health"] = runtime_resilience.snapshot()
     return result
@@ -98,6 +107,9 @@ def install():
         try:
             if path == "/operational-search.js":
                 _serve_operational_search(handler)
+                return
+            if path == "/api/r8-24/geo-growth":
+                handler._json_ok(geo_growth.status())
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())
@@ -136,9 +148,36 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
+        if path in {
+            "/api/r8-24/geo-growth/start",
+            "/api/r8-24/geo-growth/pause",
+            "/api/r8-24/geo-growth/resume",
+            "/api/r8-24/geo-growth/run",
+            "/api/r8-24/geo-growth/retry",
+        }:
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                if path.endswith("/start"):
+                    result = geo_growth.start()
+                elif path.endswith("/pause"):
+                    result = geo_growth.pause()
+                elif path.endswith("/resume"):
+                    result = geo_growth.resume()
+                elif path.endswith("/retry"):
+                    result = geo_growth.retry_failed()
+                else:
+                    result = geo_growth.run_once(force=bool(payload.get("force", True)))
+                handler._json_ok({"result": result, "growth": geo_growth.status()})
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
         # The legacy SEO page still posts this route from its primary
-        # "运行一次增长循环" button. In R8-20/R8-21 it invokes the full
-        # autonomous controller, including connector-route synchronization.
+        # "运行一次增长循环" button. In R8-20/R8-21/R8-24 it invokes the full
+        # autonomous controller, unified connectors, and GEO Growth OS.
         if path == "/api/r8-13/seo-geo/run":
             if not _origin_allowed(handler):
                 handler._json_error(403, "Cross-origin changes are not allowed")
@@ -149,9 +188,10 @@ def install():
                 handler._json_ok({
                     "result": result,
                     "growth": growth.status(int(payload.get("days") or 30)),
+                    "geo_growth_os": geo_growth.status(),
                     "connector_routes": connector_router.snapshot(check_live=False),
                     "runtime_health": runtime_resilience.snapshot(),
-                    "mode": "r8_21_full_autonomous_loop_with_unified_connectors",
+                    "mode": "r8_24_full_autonomous_loop_with_geo_growth_os",
                 })
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
@@ -212,6 +252,7 @@ def install():
             handler._json_ok({
                 "result": result,
                 "growth": growth.status(int(payload.get("days") or 30)),
+                "geo_growth_os": geo_growth.status(),
                 "connector_routes": connector_router.snapshot(check_live=False),
                 "runtime_health": runtime_resilience.snapshot(),
             })
@@ -222,6 +263,7 @@ def install():
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_20_seo_geo_growth = True
     server.DashboardHandler._kz_r8_21_unified_connectors = True
+    server.DashboardHandler._kz_r8_24_geo_growth_os = True
     _INSTALLED = True
 
 

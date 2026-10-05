@@ -1,9 +1,9 @@
-"""Phase-3 additive job/context patch for the existing R7 employee engine.
+"""GEO additive job/context patch for the existing R7 employee engine.
 
-The patch preserves old job semantics and only stores a small allow-listed
-context on GEO Phase-3 jobs. Existing job types continue through the original
-executor. GEO/SEO/content/video jobs with a Phase-3 context generate drafts from
-the actual gap region/service/keyword instead of the generic default payload.
+The patch preserves old job semantics and stores a small allow-listed context
+on GEO growth jobs. A context may come from formal A/B Evidence or from a
+truth-labelled C-level operating Signal; the employee output must never upgrade
+that source grade. Existing job types continue through the original executor.
 """
 from __future__ import annotations
 
@@ -55,10 +55,10 @@ def create_job(payload):
         if command_id:
             stored["command_id"] = command_id
             stored["authorization_state"] = "authorized"
-            stored["authorization_note"] = "GEO Phase 3 已绑定已验证 ChatGPT Command。"
+            stored["authorization_note"] = "GEO任务已绑定已验证 ChatGPT Command。"
         stored["updated_at"] = now_iso()
         write_json(r7_engine.JOBS, data)
-        r7_engine._audit("job_context_bound", job["id"], "geo_phase3", {
+        r7_engine._audit("job_context_bound", job["id"], "geo_growth", {
             "schedule_source": schedule_source,
             "source_ref": source_ref,
             "has_context": bool(context),
@@ -93,14 +93,14 @@ def execute_autonomous(job):
         record = generate_ad(payload)
     return {
         "task_type": task_type,
-        "summary": f"{record.get('kind', 'GEO优化草稿')}已按真实GEO缺口生成并保存。",
+        "summary": f"{record.get('kind', 'GEO优化草稿')}已按当前GEO缺口生成并保存。",
         "draft_id": record.get("id"),
         "kind": record.get("kind"),
         "geo_gap_code": context.get("geo_gap_code"),
         "geo_question_id": context.get("geo_question_id"),
         "keyword": payload["keyword"],
         "next_actions": ["进入SEO/GEO自治流水线生成公开页", "取得真实发布回执后再执行GEO复测"],
-        "source_note": "输入来自真实A/B GEO Evidence的缺口；本步骤只生成本地内容，不伪造发布、收录或AI推荐结果。",
+        "source_note": "输入来自带证据等级标记的GEO缺口信号；具体等级以任务context evidence为准。本地内容生成不会升级原始证据等级，也不代表发布、收录或AI推荐成功。",
     }
 
 
