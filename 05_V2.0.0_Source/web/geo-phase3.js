@@ -1,7 +1,12 @@
 (() => {
+  'use strict';
+  if (window.__KZ_GEO_PHASE3_UI__) return;
+  window.__KZ_GEO_PHASE3_UI__ = true;
+
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   const byId = id => document.getElementById(id);
   let cache = null;
+  let actionBusy = false;
 
   async function json(path, options){
     const response = await fetch(path, {cache:'no-store', ...(options || {})});
@@ -58,7 +63,7 @@
     const wrap = document.createElement('div');
     wrap.innerHTML = markup();
     const panel = wrap.firstElementChild;
-    const anchor = byId('geo-autonomy-panel') || byId('geo-phase2-analysis');
+    const anchor = byId('geo-phase2-analysis') || byId('geo-autonomy');
     if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(panel, anchor.nextSibling);
     else pane.appendChild(panel);
     bind();
@@ -108,38 +113,75 @@
         <td><span class="geo3-pill ${deltaCls}">${esc(delta)}</span><small>${action.after_score == null ? `Before ${Number(action.baseline_score || 0)}` : `Before ${Number(action.baseline_score || 0)} → After ${Number(action.after_score || 0)}`}</small></td>
       </tr>`;
     }).join('') : '<tr><td colspan="6" class="geo3-empty">目前没有可执行缺口。先完成真实GEO验证并刷新Phase 2。</td></tr>';
-    const run = byId('geo3-run');
-    if(run){
-      run.textContent = auth.command_id ? '执行已获 ChatGPT 授权的优化' : '老板批准并执行本轮优化';
-      run.disabled = !actions.length || ['executing','waiting_publish','waiting_retest','completed'].includes(state);
+
+    const planButton = byId('geo3-plan');
+    const runButton = byId('geo3-run');
+    const refreshButton = byId('geo3-refresh');
+    if(planButton) planButton.disabled = actionBusy;
+    if(runButton){
+      runButton.textContent = auth.command_id ? '执行已获 ChatGPT 授权的优化' : '老板批准并执行本轮优化';
+      runButton.disabled = actionBusy || !actions.length || ['executing','waiting_publish','waiting_retest','completed'].includes(state);
     }
+    if(refreshButton) refreshButton.disabled = actionBusy;
     byId('geo3-msg').textContent = plan.plan_id ? `计划 ${plan.plan_id} · ${stateLabel(state)} · 授权：${auth.command_id ? 'ChatGPT Command' : plan.authorization_mode === 'owner_explicit' ? '老板明确批准' : '等待'}` : `Phase 2 正式证据 ${Number(phase2.formal_evidence || 0)} 条；有真实缺口后可生成第三阶段计划。`;
   }
 
   async function load(){
-    try{ render(await json('/api/r8-19/geo/phase3')); }
-    catch(error){ ensurePanel(); if(byId('geo3-msg')) byId('geo3-msg').textContent = `Phase 3 暂不可用：${error.message}`; }
+    try{
+      const data = await json('/api/r8-19/geo/phase3');
+      render(data);
+      return data;
+    } catch(error){
+      ensurePanel();
+      if(byId('geo3-msg')) byId('geo3-msg').textContent = `Phase 3 暂不可用：${error.message}`;
+      return null;
+    }
   }
 
-  function busy(button, value){ if(button){button.disabled = value; button.dataset.old = button.dataset.old || button.textContent; button.textContent = value ? '处理中…' : button.dataset.old;} }
+  async function withBusy(button, work){
+    if(actionBusy){
+      if(byId('geo3-msg')) byId('geo3-msg').textContent = '已有 GEO Phase 3 操作正在执行，请等待完成。';
+      return;
+    }
+    actionBusy = true;
+    const oldText = button?.textContent || '';
+    render(cache || {});
+    if(button){
+      button.disabled = true;
+      button.textContent = '处理中…';
+      button.setAttribute('aria-busy','true');
+    }
+    try{
+      await work();
+    } catch(error){
+      if(byId('geo3-msg')) byId('geo3-msg').textContent = error.message;
+    } finally {
+      actionBusy = false;
+      if(button){
+        button.removeAttribute('aria-busy');
+        button.textContent = oldText;
+      }
+      await load();
+    }
+  }
+
   function bind(){
-    byId('geo3-plan')?.addEventListener('click', async event => {
-      const button = event.currentTarget; busy(button,true);
-      try{ const data = await post('/api/r8-19/geo/phase3/plan',{force:true}); render(data.phase3 || await json('/api/r8-19/geo/phase3')); }
-      catch(error){byId('geo3-msg').textContent=error.message;} finally{busy(button,false);}
-    });
-    byId('geo3-run')?.addEventListener('click', async event => {
-      const button = event.currentTarget; busy(button,true);
-      try{
-        const ownerApproved = !(cache?.authorization?.command_id || cache?.plan?.authorization?.command_id);
-        const data = await post('/api/r8-19/geo/phase3/run',{owner_approved:ownerApproved});
-        render(data.phase3 || await json('/api/r8-19/geo/phase3'));
-      }catch(error){byId('geo3-msg').textContent=error.message;} finally{busy(button,false);}
-    });
-    byId('geo3-refresh')?.addEventListener('click', load);
+    const panel = byId('geo-phase3-panel');
+    if(!panel || panel.dataset.bound === '1') return;
+    panel.dataset.bound = '1';
+    byId('geo3-plan')?.addEventListener('click', event => withBusy(event.currentTarget, async () => {
+      const data = await post('/api/r8-19/geo/phase3/plan',{force:true});
+      render(data.phase3 || await json('/api/r8-19/geo/phase3'));
+    }));
+    byId('geo3-run')?.addEventListener('click', event => withBusy(event.currentTarget, async () => {
+      const ownerApproved = !(cache?.authorization?.command_id || cache?.plan?.authorization?.command_id);
+      const data = await post('/api/r8-19/geo/phase3/run',{owner_approved:ownerApproved});
+      render(data.phase3 || await json('/api/r8-19/geo/phase3'));
+    }));
+    byId('geo3-refresh')?.addEventListener('click', event => withBusy(event.currentTarget, load));
   }
 
-  function start(){ ensurePanel(); load(); setInterval(load, 12000); }
+  function start(){ ensurePanel(); load(); setInterval(() => { if(!actionBusy) load(); }, 12000); }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true}); else start();
-  window.addEventListener('operational:search-updated', () => { ensurePanel(); load(); });
+  window.addEventListener('operational:search-updated', () => { ensurePanel(); if(!actionBusy) load(); });
 })();

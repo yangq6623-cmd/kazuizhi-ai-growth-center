@@ -6,6 +6,9 @@
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const byId = id => document.getElementById(id);
   let timer = null;
+  let actionBusy = false;
+  let refreshBusy = false;
+  let latestStatus = null;
 
   async function request(path, options={}) {
     const response = await fetch(path, {cache:'no-store', ...options});
@@ -21,7 +24,7 @@
     style.id = 'geo-auto-style';
     style.textContent = `
       .geo-auto{margin:12px 0 16px;border:1px solid #cbdcff;border-radius:12px;background:#f8fbff;padding:14px 16px;box-shadow:0 5px 18px rgba(37,99,235,.05)}
-      .geo-auto-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.geo-auto-head p{margin:0;color:#315d9f;font-size:11px;font-weight:800;letter-spacing:.04em}.geo-auto-head h3{margin:3px 0 4px;font-size:18px}.geo-auto-head small{display:block;color:#64748b;line-height:1.55}.geo-auto-state{flex:0 0 auto;border-radius:4px;padding:5px 9px;font-size:12px;font-weight:800;background:#e2e8f0;color:#475569}.geo-auto-state.running{background:#eaf1ff;color:#245ec7}.geo-auto-state.completed{background:#e7f7ee;color:#16895f}.geo-auto-state.paused,.geo-auto-state.attention{background:#fff0d8;color:#a86500}
+      .geo-auto-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.geo-auto-head p{margin:0;color:#315d9f;font-size:11px;font-weight:800;letter-spacing:.04em}.geo-auto-head h3{margin:3px 0 4px;font-size:18px}.geo-auto-head small{display:block;color:#64748b;line-height:1.55}.geo-auto-state{flex:0 0 auto;border-radius:4px;padding:5px 9px;font-size:12px;font-weight:800;background:#e2e8f0;color:#475569}.geo-auto-state.running{background:#eaf1ff;color:#245ec7}.geo-auto-state.monitoring,.geo-auto-state.completed{background:#e7f7ee;color:#16895f}.geo-auto-state.paused,.geo-auto-state.attention{background:#fff0d8;color:#a86500}
       .geo-auto-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}.geo-auto-metric{border:1px solid #e2e8f0;border-radius:8px;background:#fff;padding:9px 10px;min-width:0}.geo-auto-metric span{display:block;color:#718096;font-size:11px}.geo-auto-metric b{display:block;margin-top:3px;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.geo-auto-metric small{display:block;color:#8793a5;font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .geo-auto-progress{height:7px;background:#e5eaf2;border-radius:99px;overflow:hidden;margin:11px 0 7px}.geo-auto-progress i{display:block;height:100%;background:#2563eb;transition:width .25s ease}.geo-auto-current{font-size:12px;color:#4a5b72;min-height:20px}.geo-auto-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.geo-auto-actions button{border:1px solid #cbd7e8;border-radius:8px;background:#fff;color:#315d9f;padding:8px 12px;font-weight:800;cursor:pointer}.geo-auto-actions button.primary{background:#2563eb;border-color:#2563eb;color:#fff}.geo-auto-actions button.stage-done{background:#e7f7ee;border-color:#bfe4d0;color:#16895f}.geo-auto-actions button:disabled{opacity:.5;cursor:not-allowed}.geo-auto-truth{margin-top:10px;padding-top:9px;border-top:1px dashed #ccd8ea;color:#607086;font-size:11px;line-height:1.55}.geo-auto-truth.ok{color:#25705a}.geo-auto-truth.warn{color:#a15c00;background:#fff8e8;border:1px solid #f3ddb0;border-radius:7px;padding:8px 10px}.geo-auto-error{color:#b42318;font-weight:700}
       @media(max-width:1180px){.geo-auto-grid{grid-template-columns:repeat(4,1fr)}}@media(max-width:760px){.geo-auto-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.geo-auto-head{flex-direction:column}}
@@ -79,30 +82,53 @@
     byId('geo-auto-resume')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/resume'));
     byId('geo-auto-retry')?.addEventListener('click', event => act(event.currentTarget, '/api/r8-19/geo/autonomy/retry-failed'));
     byId('geo-auto-refresh')?.addEventListener('click', () => refresh(true));
-    refresh();
     if (!timer) timer = setInterval(refresh, 2500);
     return true;
   }
 
-  function setStageButton(id, threshold, completed, busy, ready) {
+  function setStageButton(id, threshold, completed, locked, ready) {
     const button = byId(id);
     if (!button) return;
     const done = completed >= threshold;
-    button.disabled = busy || !ready || done;
+    button.disabled = locked || !ready || done;
     button.classList.toggle('stage-done', done);
     if (done) button.title = `云端自动扫描已完成前 ${threshold} 题`;
+    else if (locked) button.title = '当前 GEO 操作正在执行，请等待完成。';
     else button.title = `启动并自动运行到第 ${threshold} 题`;
+  }
+
+  function syncControls(data = latestStatus) {
+    if (!data || !byId('geo-autonomy')) return;
+    const completed = Number(data.cloud_completed || 0);
+    const queue = data.queue || {};
+    const executor = data.executor || {};
+    const state = data.state || 'idle';
+    const running = state === 'running';
+    const locked = actionBusy || running;
+    setStageButton('geo-auto-stage-1', 1, completed, locked, executor.ready);
+    setStageButton('geo-auto-stage-3', 3, completed, locked, executor.ready);
+    setStageButton('geo-auto-stage-10', 10, completed, locked, executor.ready);
+    setStageButton('geo-auto-stage-50', 50, completed, locked, executor.ready);
+    const pause = byId('geo-auto-pause');
+    const resume = byId('geo-auto-resume');
+    const retry = byId('geo-auto-retry');
+    const refreshButton = byId('geo-auto-refresh');
+    if (pause) pause.disabled = actionBusy || !data.enabled || Boolean(data.paused);
+    if (resume) resume.disabled = actionBusy || !data.enabled || !data.paused || !executor.ready;
+    if (retry) retry.disabled = actionBusy || (Number(queue.failed || 0) + Number(queue.authorization_required || 0)) === 0;
+    if (refreshButton) refreshButton.disabled = actionBusy || refreshBusy;
   }
 
   function render(data) {
     if (!data || !byId('geo-autonomy')) return;
+    latestStatus = data;
     const target = Number(data.target || 1);
     const completed = Number(data.cloud_completed || 0);
     const formal = Number(data.formal_ab_completed || 0);
     const analyzed = Number(data.phase2_analyzed || 0);
     const queue = data.queue || {};
     const executor = data.executor || {};
-    const stateLabels = {idle:'待启动',running:'运行中',paused:'已暂停',completed:'本阶段完成',attention:'需要处理'};
+    const stateLabels = {idle:'待启动',running:'运行中',monitoring:'监控中',paused:'已暂停',completed:'本阶段完成',attention:'需要处理'};
     const state = data.state || 'idle';
     const stateNode = byId('geo-auto-state');
     stateNode.textContent = stateLabels[state] || state;
@@ -121,20 +147,16 @@
     byId('geo-auto-bar').style.width = `${Math.max(0, Math.min(100, target ? completed / target * 100 : 0))}%`;
     const current = queue.current || {};
     const error = data.last_error || (!executor.ready ? executor.reason : '');
+    const recovery = data.stale_recovery || {};
+    const recovered = Number(recovery.requeued || 0) + Number(recovery.failed || 0);
+    const recoveryText = recovered ? ` · 已自动回收 ${recovered} 个超时任务` : '';
     byId('geo-auto-current').innerHTML = error
       ? `<span class="geo-auto-error">${esc(error)}</span>`
       : current.question_id
-        ? `当前：<b>${esc(current.question_id)}</b> · ${esc(current.question_text || '')}`
-        : completed >= target ? `当前 ${target} 题阶段已完成；验收通过后再进入下一档。` : '当前没有正在执行的题目。';
+        ? `当前：<b>${esc(current.question_id)}</b> · ${esc(current.question_text || '')}${esc(recoveryText)}`
+        : completed >= target ? `当前 ${target} 题阶段已完成；可直接进入下一档。${esc(recoveryText)}` : `当前没有正在执行的题目。${esc(recoveryText)}`;
 
-    const busy = Boolean(data.enabled) && !Boolean(data.paused);
-    setStageButton('geo-auto-stage-1', 1, completed, busy, executor.ready);
-    setStageButton('geo-auto-stage-3', 3, completed, busy, executor.ready);
-    setStageButton('geo-auto-stage-10', 10, completed, busy, executor.ready);
-    setStageButton('geo-auto-stage-50', 50, completed, busy, executor.ready);
-    byId('geo-auto-pause').disabled = !data.enabled || Boolean(data.paused);
-    byId('geo-auto-resume').disabled = !data.enabled || !data.paused || !executor.ready;
-    byId('geo-auto-retry').disabled = (Number(queue.failed || 0) + Number(queue.authorization_required || 0)) === 0;
+    syncControls(data);
 
     const truth = byId('geo-auto-truth');
     if (truth) {
@@ -148,6 +170,12 @@
 
   async function refresh(announce=false) {
     if (!mount()) return;
+    if (refreshBusy || actionBusy) {
+      if (announce && actionBusy) window.notify?.('已有 GEO 操作正在执行，请等待完成。');
+      return;
+    }
+    refreshBusy = true;
+    syncControls();
     try {
       const data = await request('/api/r8-19/geo/autonomy');
       render(data);
@@ -155,34 +183,49 @@
     } catch (error) {
       const node = byId('geo-auto-current');
       if (node) node.innerHTML = `<span class="geo-auto-error">${esc(error.message)}</span>`;
+    } finally {
+      refreshBusy = false;
+      syncControls();
     }
   }
 
   async function act(button, path, body={}, successMessage='GEO 自动运行状态已更新。') {
-    const old = button.textContent;
-    button.disabled = true;
-    button.textContent = '处理中…';
+    if (actionBusy) {
+      window.notify?.('已有 GEO 操作正在执行，请等待完成。');
+      return;
+    }
+    actionBusy = true;
+    const old = button?.textContent || '';
+    if (button) button.textContent = '处理中…';
+    syncControls();
     try {
       const data = await post(path, body);
       render(data.status || data);
       window.notify?.(successMessage);
-      setTimeout(refresh, 300);
     } catch (error) {
       window.notify?.(error.message, 'error');
       const node = byId('geo-auto-current');
       if (node) node.innerHTML = `<span class="geo-auto-error">${esc(error.message)}</span>`;
     } finally {
-      button.textContent = old;
-      setTimeout(refresh, 600);
+      if (button) button.textContent = old;
+      actionBusy = false;
+      syncControls();
+      setTimeout(() => refresh(false), 250);
     }
   }
 
   function boot() {
-    if (mount()) return;
+    if (mount()) {
+      refresh();
+      return;
+    }
     let tries = 0;
     const wait = setInterval(() => {
       tries += 1;
-      if (mount() || tries > 60) clearInterval(wait);
+      if (mount()) {
+        clearInterval(wait);
+        refresh();
+      } else if (tries > 60) clearInterval(wait);
     }, 250);
   }
 

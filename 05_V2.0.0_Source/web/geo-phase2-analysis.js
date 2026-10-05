@@ -202,11 +202,58 @@
     document.getElementById('geo2-generated').textContent = data?.generated_at ? `分析时间：${esc(data.generated_at)}` : '尚未生成分析快照';
   }
 
-  async function loadChatGPT() { try { const data = await json('/api/r8-19/geo/analysis/chatgpt'); renderChatGPT(data); } catch (_) {} }
+  async function loadChatGPT() {
+    try {
+      const data = await json('/api/r8-19/geo/analysis/chatgpt');
+      renderChatGPT(data);
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
 
-  function renderChatGPT(data) { const status = data && data.status ? data.status : {}; const snap = data && data.snapshot ? data.snapshot : {}; const box = document.getElementById('geo2-chatgpt-content'); const badge = document.getElementById('geo2-chatgpt-status'); const button = document.getElementById('geo2-chatgpt'); if (button) button.disabled = !status.ready; if (!box || !badge) return; if (snap.analysis) { badge.textContent = '已完成'; badge.className = 'geo2-status success'; const a=snap.analysis; const findings=(a.key_findings||[]).slice(0,4).map(x => '<li><b>'+esc(x.title)+'</b>：'+esc(x.detail)+'</li>').join(''); const actions=(a.candidate_actions||[]).slice(0,4).map(x => '<li>'+esc(x.action)+'<small>'+esc(x.why)+'</small></li>').join(''); box.innerHTML='<p>'+esc(a.executive_summary||'')+'</p>'+(findings?'<div><b>关键发现</b><ul>'+findings+'</ul></div>':'')+(actions?'<div><b>候选行动（待总控确认）</b><ul>'+actions+'</ul></div>':''); return; } badge.textContent = status.ready ? '可提交' : 'API未配置'; badge.className = 'geo2-status '+(status.ready?'success':'neutral'); box.textContent = status.ready ? '当前可以提交总脑分析。' : (status.reason || '请先在GEO API入口完成云端模型连接验证。'); }
+  function renderChatGPT(data) {
+    const status = data && data.status ? data.status : {};
+    const snap = data && data.snapshot ? data.snapshot : {};
+    const box = document.getElementById('geo2-chatgpt-content');
+    const badge = document.getElementById('geo2-chatgpt-status');
+    const button = document.getElementById('geo2-chatgpt');
+    if (button) {
+      button.disabled = !status.ready;
+      button.title = status.ready ? '提交当前正式 A/B Evidence 给 ChatGPT 总脑分析' : (status.reason || '云端总脑接口未就绪');
+    }
+    if (!box || !badge) return;
+    if (snap.analysis) {
+      badge.textContent = '已完成';
+      badge.className = 'geo2-status success';
+      const a = snap.analysis;
+      const findings = (a.key_findings || []).slice(0,4).map(x => '<li><b>'+esc(x.title)+'</b>：'+esc(x.detail)+'</li>').join('');
+      const actions = (a.candidate_actions || []).slice(0,4).map(x => '<li>'+esc(x.action)+'<small>'+esc(x.why)+'</small></li>').join('');
+      box.innerHTML = '<p>'+esc(a.executive_summary || '')+'</p>'+(findings?'<div><b>关键发现</b><ul>'+findings+'</ul></div>':'')+(actions?'<div><b>候选行动（待总控确认）</b><ul>'+actions+'</ul></div>':'');
+      return;
+    }
+    badge.textContent = status.ready ? '可提交' : 'API未配置';
+    badge.className = 'geo2-status '+(status.ready?'success':'neutral');
+    box.textContent = status.ready ? '当前可以提交总脑分析。' : (status.reason || '请先在GEO API入口完成云端模型连接验证。');
+  }
 
-  async function runChatGPT(button) { if(button) button.disabled=true; try { const data=await post('/api/r8-19/geo/analysis/chatgpt/run'); renderChatGPT({status:{ready:true},snapshot:data.result||data}); window.notify?.('ChatGPT 总脑分析已完成；候选行动仍需总控确认。'); } catch(error) { window.notify?.(error.message,'error'); loadChatGPT(); } finally { if(button) button.disabled=false; } }
+  async function runChatGPT(button) {
+    if (button?.disabled) return;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    }
+    try {
+      const data = await post('/api/r8-19/geo/analysis/chatgpt/run');
+      renderChatGPT({status:{ready:true},snapshot:data.result || data});
+      window.notify?.('ChatGPT 总脑分析已完成；候选行动仍需总控确认。');
+    } catch(error) {
+      window.notify?.(error.message,'error');
+    } finally {
+      if (button) button.removeAttribute('aria-busy');
+      await loadChatGPT();
+    }
+  }
 
   async function load() {
     ensurePanel();
@@ -223,6 +270,7 @@
   }
 
   async function refresh(button) {
+    if (button?.disabled) return;
     if (button) button.disabled = true;
     try {
       const data = await post('/api/r8-19/geo/analysis/refresh');
@@ -235,14 +283,41 @@
     }
   }
 
-  async function copyPack() {
+  async function writeClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch (_) {
+        // Embedded/enterprise browsers can deny the async clipboard even on
+        // localhost. Fall through to the DOM copy path instead of making the
+        // button appear broken.
+      }
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    if (!copied) throw new Error('浏览器拒绝复制，请允许剪贴板权限后重试。');
+  }
+
+  async function copyPack(button) {
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
     try {
       const pack = await json('/api/r8-19/geo/analysis/brief');
       const text = JSON.stringify(pack, null, 2);
-      await navigator.clipboard.writeText(text);
+      await writeClipboard(text);
       window.notify?.('ChatGPT 分析包已复制，可交给总脑进行战略判断。');
     } catch (error) {
       window.notify?.(error.message, 'error');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -251,7 +326,7 @@
     if (!panel || panel.dataset.bound === '1') return;
     panel.dataset.bound = '1';
     document.getElementById('geo2-refresh')?.addEventListener('click', event => refresh(event.currentTarget));
-    document.getElementById('geo2-copy')?.addEventListener('click', copyPack);
+    document.getElementById('geo2-copy')?.addEventListener('click', event => copyPack(event.currentTarget));
     document.getElementById('geo2-chatgpt')?.addEventListener('click', event => runChatGPT(event.currentTarget));
     const receiptList = document.getElementById('geo-receipt-list');
     if (receiptList && window.MutationObserver) {

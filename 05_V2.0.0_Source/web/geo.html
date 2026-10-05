@@ -28,11 +28,11 @@
 </head>
 <body>
   <header class="geo-direct-top">
-    <div><p>卡嘴子 AI · R8-19 Phase 2</p><h1>GEO 增长工作区</h1></div>
+    <div><p>卡嘴子 AI · R8-19 Phase 2 / 3</p><h1>GEO 增长工作区</h1></div>
     <a href="/index.html">返回老板总控</a>
   </header>
   <main class="geo-direct-main">
-    <p class="geo-direct-note">ChatGPT 是 GEO 总控制大脑；本地模型只做辅助分析。正式 GEO 成绩只接受真实外部 AI 的 A/B 级 Evidence / Receipt。第二阶段开始对真实 Evidence 自动分析与比较。</p>
+    <p class="geo-direct-note">ChatGPT 是 GEO 总控制大脑；本地模型只做辅助分析。正式 GEO 成绩只接受真实外部 AI 的 A/B 级 Evidence / Receipt。第二阶段负责证据分析，第三阶段负责经授权的优化、发布与真实复测闭环。</p>
     <section id="search" class="page active">
       <div class="geo-direct-seo-placeholder">
         SEO 本阶段冻结开发并保持现有运行。需要查看原 SEO/GEO 增长中心时，<a href="/index.html">返回主控制台</a>。
@@ -46,10 +46,17 @@
   </script>
   <script src="operational-search.js"></script>
   <script src="geo-phase1-field-fix.js"></script>
+  <script>
+    // The field-fix layer is the sole owner of Phase-1 button actions. Mark the
+    // visual-polish repair as already owned so its legacy capture handler cannot
+    // shadow or race the real field action handler.
+    if(window.__KZ_R819_GEO_FIELD_FIX__)document.documentElement.dataset.kzGeoInteractionRepair='1';
+  </script>
   <script src="geo-phase1-ui-polish.js"></script>
   <script src="geo-phase1-live-gate.js"></script>
   <script src="seo-geo-phase1-final.js"></script>
   <script src="geo-owner-ux.js"></script>
   <script src="geo-phase2-analysis.js"></script>
+  <script src="geo-phase3.js"></script>
 </body>
 </html>
