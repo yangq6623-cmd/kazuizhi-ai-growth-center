@@ -191,7 +191,9 @@ def install():
                     "geo_growth_os": geo_growth.status(),
                     "connector_routes": connector_router.snapshot(check_live=False),
                     "runtime_health": runtime_resilience.snapshot(),
-                    "mode": "r8_24_full_autonomous_loop_with_geo_growth_os",
+                    # Keep the R8-21 compatibility marker visible while R8-24
+                    # adds the GEO operating loop on top of the same route.
+                    "mode": "r8_21_full_autonomous_loop_with_unified_connectors+r8_24_geo_growth_os",
                 })
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
