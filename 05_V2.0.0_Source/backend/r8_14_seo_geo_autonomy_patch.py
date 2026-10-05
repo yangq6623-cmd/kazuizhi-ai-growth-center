@@ -150,6 +150,9 @@ def install():
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_14_seo_geo_autonomy = True
     server.DashboardHandler._kz_r8_19_geo_autonomy = True
+    # Re-arm the verified cloud route after upgrades so a completed staged
+    # GEO50 acceptance does not leave 24-hour API monitoring permanently off.
+    geo_autonomy.ensure_continuous_monitoring(target=50)
     geo_autonomy.start_worker()
     _INSTALLED = True
 

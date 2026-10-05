@@ -26,6 +26,15 @@ DEFAULT = {
     "enabled": False,
     "paused": False,
     "target": 1,
+    # A completed 1/3/10/50 acceptance run used to turn the controller off.
+    # Production GEO monitoring must instead retain its verified API route and
+    # re-check the same immutable baseline at a bounded daily cadence.
+    "continuous": True,
+    "recheck_interval_seconds": 24 * 60 * 60,
+    "cycle_number": 0,
+    "cycle_started_at": "",
+    "cycle_completed_at": "",
+    "next_cycle_at_epoch": 0.0,
     "started_at": "",
     "completed_at": "",
     "last_run_at": "",
@@ -70,8 +79,12 @@ def _all_receipts():
     return geo.receipts(1000)
 
 
-def _auto_receipts():
-    return [item for item in _all_receipts() if item.get("provider") == geo_cloud_executor.PROVIDER]
+def _auto_receipts(since=""):
+    return [
+        item for item in _all_receipts()
+        if item.get("provider") == geo_cloud_executor.PROVIDER
+        and (not since or str(item.get("tested_at") or item.get("finished_at") or "") >= since)
+    ]
 
 
 def _formal_question_ids():
@@ -82,8 +95,8 @@ def _formal_question_ids():
     }
 
 
-def _auto_question_ids():
-    return {item.get("question_id") for item in _auto_receipts() if item.get("question_id")}
+def _auto_question_ids(since=""):
+    return {item.get("question_id") for item in _auto_receipts(since) if item.get("question_id")}
 
 
 def _auto_tasks():
@@ -95,13 +108,13 @@ def _target_question_ids(target):
     return {item.get("question_id") for item in questions[: max(1, min(int(target or 1), 50))] if item.get("question_id")}
 
 
-def _completed_for_target(target):
-    return len(_auto_question_ids() & _target_question_ids(target))
+def _completed_for_target(target, since=""):
+    return len(_auto_question_ids(since) & _target_question_ids(target))
 
 
-def _materialize(target):
+def _materialize(target, *, include_completed=False):
     questions = geo.question_set().get("questions") or []
-    completed = _auto_question_ids()
+    completed = set() if include_completed else _auto_question_ids()
     tasks = _auto_tasks()
     existing = {item.get("question_id") for item in tasks if item.get("question_id")}
     wanted = [item for item in questions[:target] if item.get("question_id") not in completed and item.get("question_id") not in existing]
@@ -173,10 +186,12 @@ def status():
     counts = _queue_counts(target)
     executor = geo_cloud_executor.status()
     truth = _truth_snapshot()
-    completed = _completed_for_target(target)
+    completed = _completed_for_target(target, str(data.get("cycle_started_at") or ""))
     state = "idle"
     if data.get("enabled") and data.get("paused"):
         state = "paused"
+    elif data.get("enabled") and completed >= target:
+        state = "monitoring"
     elif data.get("enabled"):
         state = "running"
     elif completed >= target and target > 0:
@@ -188,6 +203,10 @@ def status():
         "state": state,
         "enabled": bool(data.get("enabled")),
         "paused": bool(data.get("paused")),
+        "continuous": bool(data.get("continuous", True)),
+        "recheck_interval_seconds": int(data.get("recheck_interval_seconds") or 24 * 60 * 60),
+        "cycle_number": int(data.get("cycle_number") or 0),
+        "next_cycle_at_epoch": float(data.get("next_cycle_at_epoch") or 0),
         "target": target,
         "acceptance_targets": list(ACCEPTANCE_TARGETS),
         "cloud_completed": completed,
@@ -213,18 +232,41 @@ def start(target=1):
     current = geo_cloud_executor.status()
     if not current.get("ready"):
         raise ValueError(current.get("reason") or "请先完成云端API连接验证")
+    if not data.get("cycle_started_at"):
+        data["cycle_started_at"] = now_iso()
+        data["cycle_number"] = max(1, int(data.get("cycle_number") or 0))
     created = _materialize(target)
     data["enabled"] = True
     data["paused"] = False
     data["target"] = target
     data["completed_at"] = ""
     data["last_error"] = ""
-    if not data.get("started_at") or _completed_for_target(target) == 0:
+    if not data.get("started_at") or _completed_for_target(target, data.get("cycle_started_at") or "") == 0:
         data["started_at"] = now_iso()
     data["last_result"] = {"action": "start", "target": target, "created": created, "at": now_iso()}
     _save(data)
     start_worker()
     return status()
+
+
+def ensure_continuous_monitoring(target=50):
+    """Re-arm a verified cloud route after an application restart or upgrade.
+
+    Historical staged builds disabled themselves once the 50-question baseline
+    had completed.  When continuous monitoring is enabled, a verified API
+    route should retain the baseline and wait for its next bounded cycle rather
+    than silently remaining off forever.  This never starts when credentials
+    have not passed the existing connection check.
+    """
+    data = _load()
+    current = geo_cloud_executor.status()
+    if not data.get("continuous", True) or not current.get("ready"):
+        return {"started": False, "reason": current.get("reason") or "continuous_monitoring_disabled", "status": status()}
+    if not data.get("enabled"):
+        start(target=max(1, min(int(target or data.get("target") or 1), 50)))
+        return {"started": True, "reason": "verified_cloud_route_rearmed", "status": status()}
+    start_worker()
+    return {"started": False, "reason": "already_monitoring", "status": status()}
 
 
 def pause():
@@ -287,16 +329,40 @@ def run_once(transport=None):
             return {"ok": True, "skipped": True, "reason": "geo_autonomy_paused"}
 
         target = int(data.get("target") or 1)
+        cycle_started_at = str(data.get("cycle_started_at") or "")
+        if not cycle_started_at:
+            cycle_started_at = now_iso()
+            data["cycle_started_at"] = cycle_started_at
+            data["cycle_number"] = max(1, int(data.get("cycle_number") or 0))
         _materialize(target)
-        completed_before = _completed_for_target(target)
+        completed_before = _completed_for_target(target, cycle_started_at)
         if completed_before >= target:
-            data["enabled"] = False
-            data["paused"] = False
-            data["completed_at"] = data.get("completed_at") or now_iso()
-            data["last_error"] = ""
-            data["last_result"] = {"ok": True, "completed": completed_before, "target": target, "reason": "target_completed", "at": now_iso()}
-            _save(data)
-            return data["last_result"]
+            if not data.get("continuous", True):
+                data["enabled"] = False
+                data["paused"] = False
+                data["completed_at"] = data.get("completed_at") or now_iso()
+                data["last_error"] = ""
+                data["last_result"] = {"ok": True, "completed": completed_before, "target": target, "reason": "target_completed", "at": now_iso()}
+                _save(data)
+                return data["last_result"]
+            now_epoch = time.time()
+            next_cycle = float(data.get("next_cycle_at_epoch") or 0)
+            if not next_cycle:
+                next_cycle = now_epoch + max(300, int(data.get("recheck_interval_seconds") or 24 * 60 * 60))
+                data["cycle_completed_at"] = now_iso()
+                data["next_cycle_at_epoch"] = next_cycle
+                data["last_error"] = ""
+                data["last_result"] = {"ok": True, "skipped": True, "completed": completed_before, "target": target, "reason": "waiting_next_monitor_cycle", "next_cycle_at_epoch": next_cycle, "at": now_iso()}
+                _save(data)
+                return data["last_result"]
+            if now_epoch < next_cycle:
+                return {"ok": True, "skipped": True, "reason": "waiting_next_monitor_cycle", "next_cycle_at_epoch": next_cycle}
+            data["cycle_number"] = int(data.get("cycle_number") or 0) + 1
+            data["cycle_started_at"] = now_iso()
+            data["cycle_completed_at"] = ""
+            data["next_cycle_at_epoch"] = 0.0
+            _materialize(target, include_completed=True)
+            cycle_started_at = data["cycle_started_at"]
 
         result = geo_cloud_executor.run_once(transport=transport)
         data["last_run_at"] = now_iso()
@@ -309,11 +375,15 @@ def run_once(transport=None):
         elif result.get("reason") == "non_cloud_geo_task_precedes_autonomous_queue":
             data["last_error"] = "队列前方存在人工/网页GEO任务；自动云端队列暂不抢占该任务。"
 
-        completed_after = _completed_for_target(target)
+        completed_after = _completed_for_target(target, cycle_started_at)
         if completed_after >= target:
-            data["enabled"] = False
-            data["paused"] = False
-            data["completed_at"] = now_iso()
+            if data.get("continuous", True):
+                data["cycle_completed_at"] = now_iso()
+                data["next_cycle_at_epoch"] = time.time() + max(300, int(data.get("recheck_interval_seconds") or 24 * 60 * 60))
+            else:
+                data["enabled"] = False
+                data["paused"] = False
+                data["completed_at"] = now_iso()
         _save(data)
         return result
     finally:

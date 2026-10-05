@@ -127,8 +127,10 @@ def main():
                 assert current["truth_consistent"] is True
 
             final = geo_autonomy.status()
-            assert final["state"] == "completed"
+            assert final["state"] == "monitoring"
             assert final["cloud_completed"] == 3
+            assert final["continuous"] is True
+            assert final["next_cycle_at_epoch"] > 0
             assert final["formal_ab_completed"] == 0
             assert final["phase2_analyzed"] == 0
             assert len(calls) == 3
