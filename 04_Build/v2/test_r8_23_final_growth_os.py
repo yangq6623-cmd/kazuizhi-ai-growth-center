@@ -65,6 +65,32 @@ def main():
             assert second["invoke_count"] == 2
             assert second["success_count"] == 1 and second["failure_count"] == 1
 
+            # The promotion-agent identity may learn from real evidence, but
+            # can only register one owner-reviewable micro-change for a single
+            # UI surface per day.  It cannot self-modify production software.
+            identity = growth.PROMOTION_AGENT_IDENTITY
+            assert identity["name"] == "推广员总控"
+            candidate = growth.register_platform_improvement("按钮状态不清晰", "体检记录：按钮无加载提示", "SEO/GEO增长页")
+            assert candidate["accepted"] is True
+            assert candidate["item"]["status"] == "awaiting_owner_confirmation"
+            assert candidate["item"]["scope"] == "single_ui_surface"
+            approval = growth.approve_platform_improvement(candidate["item"]["improvement_id"])
+            assert approval["approved"] is True
+            assert approval["item"]["status"] == "approved_for_dev_mission"
+            try:
+                growth.register_platform_improvement(
+                    "跨多个界面的改动",
+                    "这不应被接纳为微调。",
+                    "多个界面",
+                    scope="cross_page",
+                )
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("cross-page platform change must be rejected")
+            limited = growth.register_platform_improvement("第二个候选", "同日不应超过一个项目", "老板总控")
+            assert limited["accepted"] is False
+
             snap = growth.snapshot(mission, plan)
             assert snap["controller"]["exclusive_strategy_authority"] is True
             assert snap["outcome_scope"][-1] == "order"
@@ -79,9 +105,9 @@ def main():
             build = BUILD.read_text(encoding="utf-8")
             truth_patch = TRUTH_PATCH.read_text(encoding="utf-8")
             scope = SCOPE.read_text(encoding="utf-8")
-            for marker in ("AI_EMPLOYEES", "BUSINESS_ENGINES", "CAPABILITIES", "record_utilization", "work_packages", "annotate_current_jobs", "gpu_status"):
+            for marker in ("AI_EMPLOYEES", "BUSINESS_ENGINES", "CAPABILITIES", "record_utilization", "work_packages", "annotate_current_jobs", "gpu_status", "PROMOTION_AGENT_IDENTITY", "register_platform_improvement", "approve_platform_improvement", "single_ui_surface"):
                 assert marker in core, marker
-            for marker in ("/api/r8-23/growth-os", "/api/r8-23/growth-os/utilization", "convergence.controller_tick", "r8_23_growth_operating_system", "r8_23_growth_os.js"):
+            for marker in ("/api/r8-23/growth-os", "/api/r8-23/growth-os/utilization", "/api/r8-23/identity", "/api/r8-23/platform-improvements", "convergence.controller_tick", "r8_23_growth_operating_system", "r8_23_growth_os.js"):
                 assert marker in patch, marker
             # Windows owner UI must never flash a console window for the frequent
             # NVIDIA capability probe.  The probe is hidden and cached, while the

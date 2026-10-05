@@ -28,6 +28,7 @@
       .kz23-side{display:grid;gap:7px}.kz23-engine-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}.kz23-engine{border:1px solid #e3e9f3;border-radius:7px;padding:7px 8px;background:#f8faff}.kz23-engine b{display:block;font-size:9px;color:#29415f}.kz23-engine span{display:block;margin-top:3px;font-size:7px;color:#7e8ca0;line-height:1.35}
       .kz23-chain{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.kz23-chain div{background:var(--kz23-soft);border:1px solid #e5eaf2;border-radius:7px;padding:6px;text-align:center}.kz23-chain b{display:block;font-size:12px;color:#243a58}.kz23-chain span{display:block;margin-top:2px;font-size:7px;color:#7c8a9e}.kz23-chain .formal b{color:#2a61c5}
       .kz23-next{border-left:3px solid #5e8ee8;background:#f6f9ff;border-radius:7px;padding:7px 8px;color:#596b84;font-size:8px;line-height:1.45}.kz23-truth{font-size:8px;line-height:1.5;color:#6c7b90;background:#f7f9fc;border-radius:7px;padding:6px 8px}
+      .kz23-identity{border:1px solid #dce8fd;background:#f5f8ff;border-radius:8px;padding:8px 9px;display:flex;gap:10px;align-items:flex-start}.kz23-identity b{font-size:10px;color:#2454aa;white-space:nowrap}.kz23-identity span{font-size:8px;line-height:1.5;color:#5c6f8a}
       .kz23-details{border:1px solid var(--kz23-line);border-radius:8px;background:#fafbfd;overflow:hidden}.kz23-details>summary{cursor:pointer;list-style:none;padding:8px 10px;font-size:9px;font-weight:700;color:#52667f;display:flex;align-items:center;justify-content:space-between;gap:10px}.kz23-details>summary::-webkit-details-marker{display:none}.kz23-details>summary:after{content:'展开';font-size:7px;color:#8a98ab;font-weight:500}.kz23-details[open]>summary:after{content:'收起'}.kz23-details-content{padding:0 9px 9px}.kz23-tech-table{width:100%;border-collapse:collapse;font-size:8px;background:#fff;border:1px solid #e7ebf2}.kz23-tech-table th,.kz23-tech-table td{padding:5px 6px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.kz23-tech-table th{color:#78869a;background:#fafbfd;font-weight:600}.kz23-ok{color:var(--kz23-green)}.kz23-wait{color:var(--kz23-amber)}
       .kz23-legacy-slot{display:grid;gap:7px}.kz23-legacy-slot .kz22-panel{margin:0;box-shadow:none;border-color:#e3e8f0}.kz23-legacy-slot .kz22-head{background:#f4f7fb;color:#2b3e59;padding:9px 10px}.kz23-legacy-slot .kz22-head small,.kz23-legacy-slot .kz22-head p{color:#78869a;opacity:1}.kz23-legacy-slot .kz22-head h3{font-size:13px}.kz23-legacy-slot .kz22-grid{padding:8px 9px}.kz23-legacy-slot .kz22-body{padding:0 9px 9px}.kz23-legacy-ledger{border:1px solid #e4e9f1;border-radius:8px;padding:9px;background:#fff}
 
@@ -195,12 +196,15 @@
     const submitted = Number(ss.submitted_urls ?? ss.submitted ?? search.submitted_urls ?? search.submitted ?? 0);
     const tested = Number(geo.tested ?? geo.formal_tested ?? 0);
     const engines = Array.isArray(growth.business_engines) ? growth.business_engines : [];
+    const identity = growth.identity || {};
+    const platformImprovement = growth.platform_improvement || {};
     const systemState = Number(progress.running||0) > 0 ? '任务执行中' : Number(progress.queued||0) > 0 ? '自治巡检 · 等待计划时点' : command.command_id ? '持续监听中' : '等待老板目标';
     const failures = Number(progress.failed||0);
 
     panel.innerHTML = `
-      <div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · 老板运营总览</div><h3>ChatGPT 总脑 · 自治增长工作台</h3><p>这里仅在“老板监控”显示；其他业务页面只保留自己的工作内容，不再重复整套总览。</p></div><span class="kz23-live"><i></i>${esc(systemState)}</span></div>
+      <div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · 老板运营总览</div><h3>${esc(identity.name || 'ChatGPT 总脑')} · 自治增长工作台</h3><p>${esc(identity.mission || '这里仅在“老板监控”显示；其他业务页面只保留自己的工作内容，不再重复整套总览。')}</p></div><span class="kz23-live"><i></i>${esc(systemState)}</span></div>
       <div class="kz23-body">
+        <div class="kz23-identity"><b>运行身份</b><span>${esc(identity.authority || '按已登记能力与授权边界调度。')} ${esc(identity.learning || '')} 每日单界面微调建议：${Number(platformImprovement.used_today || 0)} / ${Number(platformImprovement.daily_limit || 1)}；${esc(platformImprovement.rule || '不自动改代码、构建或发布安装包。')}</span></div>
         <div class="kz23-hierarchy">
           <article><span class="kz23-label">长期 Mission</span><b class="kz23-value" title="${esc(mission.title||'')}">${esc(mission.title||mission.mission_id||'等待')}</b></article>
           <article><span class="kz23-label">当前 Command</span><b class="kz23-value">${esc(command.command_id||growth.command_id||'—')}</b></article>

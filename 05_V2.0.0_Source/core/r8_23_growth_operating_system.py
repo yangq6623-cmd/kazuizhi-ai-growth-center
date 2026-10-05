@@ -20,6 +20,21 @@ from core.storage import now_iso, read_json, write_json
 
 STATE_FILE = "ops/r8_23_growth_os.json"
 UTILIZATION_LIMIT = 500
+PLATFORM_OPTIMIZATION_LIMIT_PER_DAY = 1
+
+# The owner-facing identity is deliberately a doctrine, not an unrestricted
+# super-user switch.  It can orchestrate every registered business capability,
+# but external actions and software changes remain bound to their own receipts,
+# authorizations and release gates.
+PROMOTION_AGENT_IDENTITY = {
+    "id": "promotion_orchestrator",
+    "name": "推广员总控",
+    "mission": "从可用渠道、内容、搜索、官网、社媒与本地机会中持续推进真实推广增长。",
+    "authority": "可编排所有已登记能力和八个AI岗位；按触发条件调度，不为展示强制调用。",
+    "learning": "从真实任务结果、Receipt/Evidence、失败原因中优化策略、模板、优先级和降级路径。",
+    "platform_improvement": "发现可证实的体验问题时，每个自然日最多提出一个单界面、小改动建议，等待老板确认。",
+    "hard_boundaries": "不得自行修改代码、安装更新、删除数据、扩大账号权限、跨页面改动、改变自动化逻辑、绕过风控或把外部结果写成成功。",
+}
 
 AI_EMPLOYEES = (
     {"id": "market_intelligence", "name": "市场情报员", "responsibility": "发现真实需求、趋势、竞品和本地机会", "default_capabilities": ["local_model", "doubao_cloud", "search_signals"]},
@@ -63,7 +78,13 @@ TASK_TYPE_OWNER = {
 
 
 def _default_state():
-    return {"schema": "kazuizhi.r8_23.growth_os.v1", "utilization": {}, "cycles": [], "updated_at": now_iso()}
+    return {
+        "schema": "kazuizhi.r8_23.growth_os.v1",
+        "utilization": {},
+        "cycles": [],
+        "platform_improvements": [],
+        "updated_at": now_iso(),
+    }
 
 
 def _load():
@@ -72,6 +93,7 @@ def _load():
         data = _default_state()
     data.setdefault("utilization", {})
     data.setdefault("cycles", [])
+    data.setdefault("platform_improvements", [])
     return data
 
 
@@ -79,8 +101,86 @@ def _save(data):
     data["schema"] = "kazuizhi.r8_23.growth_os.v1"
     data["updated_at"] = now_iso()
     data["cycles"] = (data.get("cycles") or [])[-200:]
+    data["platform_improvements"] = (data.get("platform_improvements") or [])[-100:]
     write_json(STATE_FILE, data)
     return data
+
+
+def _today() -> str:
+    return now_iso().split("T", 1)[0]
+
+
+def platform_improvement_status():
+    """Expose a one-single-surface UI proposal budget per day.
+
+    A proposal is intentionally not a code mutation.  Only an owner-approved
+    proposal can enter DEV-MISSION -> review -> CI -> candidate installer.
+    This keeps self-learning useful without turning the desktop runtime into a
+    self-modifying program or allowing broad platform upgrades.
+    """
+    data = _load()
+    today = _today()
+    today_rows = [
+        row for row in data.get("platform_improvements") or []
+        if str(row.get("created_at") or "").startswith(today)
+    ]
+    latest = today_rows[-1] if today_rows else None
+    return {
+        "daily_limit": PLATFORM_OPTIMIZATION_LIMIT_PER_DAY,
+        "used_today": len(today_rows),
+        "remaining_today": max(0, PLATFORM_OPTIMIZATION_LIMIT_PER_DAY - len(today_rows)),
+        "latest": deepcopy(latest) if latest else None,
+        "rule": "仅接受单一界面的文案、布局、交互或错误提示小改动；候选不会自动改代码、构建或发布安装包。",
+    }
+
+
+def register_platform_improvement(title, evidence, component, severity="normal", scope="single_ui_surface"):
+    """Register one owner-reviewable, evidence-backed UI micro-change proposal."""
+    title = str(title or "").strip()
+    evidence = str(evidence or "").strip()
+    component = str(component or "").strip()
+    if not title or not evidence or not component:
+        raise ValueError("界面小改动候选必须包含标题、影响界面和可核对证据")
+    if scope != "single_ui_surface":
+        raise ValueError("推广员只能提出单一界面的微调建议；跨页面或系统级改动必须由老板另行立项")
+    state = platform_improvement_status()
+    if state["remaining_today"] <= 0:
+        return {
+            "accepted": False,
+            "reason": "daily_platform_improvement_limit_reached",
+            "status": state,
+        }
+    data = _load()
+    item = {
+        "improvement_id": f"UI-MICRO-{now_iso().replace(':', '').replace('-', '')}",
+        "created_at": now_iso(),
+        "title": title[:200],
+        "component": component[:120],
+        "evidence": evidence[:2000],
+        "severity": severity if severity in {"low", "normal", "high"} else "normal",
+        "scope": "single_ui_surface",
+        "allowed_change_kinds": ["copy", "layout", "interaction", "error_state"],
+        "status": "awaiting_owner_confirmation",
+        "next_step": "等待老板确认；确认后才可进入受控 DEV-MISSION，且仍需测试、CI 与候选安装包验收。",
+    }
+    data.setdefault("platform_improvements", []).append(item)
+    _save(data)
+    return {"accepted": True, "item": deepcopy(item), "status": platform_improvement_status()}
+
+
+def approve_platform_improvement(improvement_id):
+    """Record the owner's approval without changing any production code."""
+    data = _load()
+    item = next((row for row in data.get("platform_improvements") or [] if str(row.get("improvement_id")) == str(improvement_id)), None)
+    if not item:
+        raise ValueError("界面小改动候选不存在")
+    if item.get("status") != "awaiting_owner_confirmation":
+        raise ValueError("该候选已处理，不能重复确认")
+    item["status"] = "approved_for_dev_mission"
+    item["approved_at"] = now_iso()
+    item["next_step"] = "已获老板确认；仅可按该单一界面微调范围创建 DEV-MISSION，稳定版不会被自动覆盖。"
+    _save(data)
+    return {"approved": True, "item": deepcopy(item), "status": platform_improvement_status()}
 
 
 def _receipt_id(result):
@@ -319,6 +419,8 @@ def snapshot(mission=None, plan=None):
         "schema": "kazuizhi.r8_23.growth_os.v1",
         "generated_at": now_iso(),
         "controller": {"id": "chatgpt_controller", "name": "ChatGPT 总控制大脑", "exclusive_strategy_authority": True},
+        "identity": deepcopy(PROMOTION_AGENT_IDENTITY),
+        "platform_improvement": platform_improvement_status(),
         "business_engines": deepcopy(BUSINESS_ENGINES),
         "employees": deepcopy(AI_EMPLOYEES),
         "work_packages": work_packages(mission, plan),

@@ -248,6 +248,10 @@ def install():
                 snap = growth_os.snapshot()
                 handler._json_ok({"items": [{"id": row.get("id"), "name": row.get("name"), "ready": row.get("ready"), "state": row.get("state"), "utilization": row.get("utilization")} for row in snap.get("capabilities", [])]})
                 return
+            if path == "/api/r8-23/identity":
+                snap = growth_os.snapshot()
+                handler._json_ok({"identity": snap.get("identity") or {}, "platform_improvement": snap.get("platform_improvement") or {}})
+                return
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError) as error:
             handler._json_error(400, error)
             return
@@ -255,13 +259,23 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
-        if path != "/api/r8-23/growth-os/run":
+        if path not in {"/api/r8-23/growth-os/run", "/api/r8-23/platform-improvements", "/api/r8-23/platform-improvements/approve"}:
             return original_post(handler)
         if not _origin_allowed(handler):
             handler._json_error(403, "Cross-origin changes are not allowed")
             return
         try:
             payload = _read_json(handler)
+            if path == "/api/r8-23/platform-improvements":
+                result = growth_os.register_platform_improvement(
+                    payload.get("title"), payload.get("evidence"), payload.get("component"), payload.get("severity") or "normal",
+                    payload.get("scope") or "single_ui_surface",
+                )
+                handler._json_ok(result)
+                return
+            if path == "/api/r8-23/platform-improvements/approve":
+                handler._json_ok(growth_os.approve_platform_improvement(payload.get("improvement_id")))
+                return
             result = convergence.controller_tick()
             handler._json_ok({"result": result, "growth_os": growth_os.snapshot(), "reason": payload.get("reason") or "manual_controller_tick"})
         except (OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError, json.JSONDecodeError) as error:
