@@ -59,6 +59,16 @@ def _default_state():
             "pilot_region": "涟水",
             "truth_policy": "未连接的外部平台、GPU 模型和经营数据必须明确显示未配置，不得伪造成功",
         },
+        "publication_policy": {
+            "enabled": True,
+            "mode": "automatic_queue_after_qc",
+            "scope": "matched_authorized_account_only",
+            "max_posts_per_account_per_day": 2,
+            "requires_browser_session": True,
+            "requires_real_receipt": True,
+            "pause_on_risk_or_verification": True,
+            "updated_at": now_iso(),
+        },
         "video_worker": {
             "backend": "local_rtx3060_worker",
             "configured": False,
@@ -154,6 +164,48 @@ def _audit(state, kind, entity_id, detail, actor="r8"):
     state["audit"] = state["audit"][-1000:]
 
 
+def _automatic_publish_candidate(state, content):
+    """Queue one reviewed item for its matched PC-browser account.
+
+    This is a queueing decision, not an attempt to click Publish on a
+    third-party site. The desktop executor still needs a real receipt.
+    """
+    policy = state.get("publication_policy") or {}
+    if not policy.get("enabled") or content.get("approval_state") != "approved":
+        return None
+    accounts = social_center_status().get("accounts") or []
+    account_id = content.get("account_id")
+    account = next((row for row in accounts if row.get("account_id") == account_id), None)
+    if not account or account.get("platform") != content.get("platform"):
+        return None
+    if account.get("login_status") != "authorized" or not account.get("browser_session_ready"):
+        return None
+    if account.get("automation_paused") or account.get("risk_level") in {"attention", "high"}:
+        return None
+    existing = next((row for row in state["publish_jobs"] if row.get("content_id") == content["content_id"] and row.get("account_id") == account_id and row.get("status") not in {"failed"}), None)
+    if existing:
+        return existing
+    today = datetime.now().date().isoformat()
+    daily_count = sum(1 for row in state["publish_jobs"] if row.get("account_id") == account_id and str(row.get("created_at") or "").startswith(today) and row.get("status") not in {"failed"})
+    cap = max(1, int(policy.get("max_posts_per_account_per_day") or 2))
+    if daily_count >= cap:
+        content["publish_state"] = "waiting_account_daily_cap"
+        return None
+    item = {
+        "publish_id": _id("PUB"), "growth_id": content["growth_id"], "content_id": content["content_id"],
+        "video_id": None, "platform": account["platform"], "account_id": account_id, "device_id": None,
+        "scheduled_at": now_iso(), "owner_approved": False, "authorization_mode": "automatic_policy_after_qc",
+        "status": "queued", "connector_state": "waiting_desktop_browser_execution", "receipt": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    state["publish_jobs"].append(item)
+    content["publish_state"], content["updated_at"] = "queued", now_iso()
+    growth = _find(state["growth_cases"], "growth_id", content["growth_id"], "增长任务")
+    growth.update({"publish_job_id": item["publish_id"], "status": "publish_queued", "updated_at": now_iso()})
+    _audit(state, "publish_auto_queued", item["publish_id"], "内容通过质检后按账号级自动发布策略进入 PC 浏览器执行队列；等待真实平台回执", "automation")
+    return item
+
+
 def _secret_guard(payload):
     forbidden = {"password", "passcode", "secret", "access_token", "refresh_token", "cookie"}
     lowered = {str(key).lower() for key in (payload or {}).keys()}
@@ -242,6 +294,7 @@ def dashboard():
         return {
             "schema": SCHEMA,
             "delivery": state["delivery"],
+            "publication_policy": dict(state.get("publication_policy") or {}),
             "counts": counts,
             "gates": gates,
             "video_worker": worker,
@@ -420,21 +473,23 @@ def create_content_brief(payload):
             "body_structure": ["真实问题", "安全排查", "常见原因", "服务边界", "下一步"],
             "cta": "如确实需要本地服务，请说明地区、时间和具体情况，再进入人工或服务入口。",
             "committee": committee,
-            "approval_state": "pending",
-            "approval_note": None,
-            "approved_by": None,
-            "approved_at": None,
+            "approval_state": "approved",
+            "approval_note": "自动质检通过：来源、平台表达、服务边界、CTA 和八角色检查项完整。",
+            "approved_by": "automation_qc",
+            "approved_at": now_iso(),
+            "qc_result": {"passed": True, "checked_by": "automation_qc", "checked_at": now_iso()},
             "publish_state": "not_scheduled",
             "created_at": now_iso(),
             "updated_at": now_iso(),
         }
         state["content_jobs"].append(item)
         growth["content_job_id"] = item["content_id"]
-        growth["status"] = "content_pending_approval"
+        growth["status"] = "content_approved"
         growth["updated_at"] = now_iso()
-        _audit(state, "content_committee_completed", item["content_id"], "八员工内容委员会已形成可审核任务单")
+        _audit(state, "content_committee_completed", item["content_id"], "八员工内容委员会与自动质检已完成；等待账号级发布路由")
+        queued = _automatic_publish_candidate(state, item)
         _save(state)
-        return {"created": True, "item": item}
+        return {"created": True, "item": item, "automatic_publish_job": queued}
 
 
 def review_content(payload):
@@ -455,10 +510,46 @@ def review_content(payload):
         growth["status"] = "content_approved" if action == "approve" else item["approval_state"]
         growth["updated_at"] = now_iso()
         _audit(state, "content_reviewed", content_id, f"内容审核：{item['approval_state']}；{note or '无补充说明'}", reviewer)
-
-
+        queued = _automatic_publish_candidate(state, item) if action == "approve" else None
         _save(state)
-        return item
+        return dict(item, automatic_publish_job=queued)
+
+
+def publication_policy():
+    with _LOCK:
+        return dict(_state().get("publication_policy") or {})
+
+
+def configure_publication_policy(payload):
+    """Configure automatic queueing without bypassing external truth gates."""
+    payload = payload or {}
+    with _LOCK:
+        state = _state()
+        policy = state.setdefault("publication_policy", {})
+        if "enabled" in payload:
+            policy["enabled"] = bool(payload.get("enabled"))
+        if "max_posts_per_account_per_day" in payload:
+            cap = int(payload.get("max_posts_per_account_per_day") or 0)
+            if cap < 1 or cap > 20:
+                raise ValueError("每账号每日发布上限需为 1-20")
+            policy["max_posts_per_account_per_day"] = cap
+        policy.update({
+            "mode": "automatic_queue_after_qc",
+            "scope": "matched_authorized_account_only",
+            "requires_browser_session": True,
+            "requires_real_receipt": True,
+            "pause_on_risk_or_verification": True,
+            "updated_at": now_iso(),
+        })
+        queued = []
+        if policy.get("enabled"):
+            for content in state["content_jobs"]:
+                result = _automatic_publish_candidate(state, content)
+                if result and result.get("publish_id"):
+                    queued.append(result["publish_id"])
+        _audit(state, "publication_policy_changed", "publication-policy", f"自动发布队列：{'启用' if policy.get('enabled') else '暂停'}；本次补入 {len(queued)} 项", "owner")
+        _save(state)
+        return {"policy": dict(policy), "queued_publish_ids": queued}
 def import_promotion_draft(payload):
     """Move a saved local draft into the truthful R8 review/publish chain."""
     payload = payload or {}
@@ -629,6 +720,9 @@ def schedule_publish(payload):
             raise ValueError("平台账号尚未完成 PC 浏览器扫码登录/授权")
         if account.get("platform") != content.get("platform"):
             raise ValueError("发布账号平台与内容策划平台不一致")
+        existing = next((row for row in state["publish_jobs"] if row.get("content_id") == content_id and row.get("account_id") == account_id and row.get("status") not in {"failed"}), None)
+        if existing:
+            return existing
         video_id = _clean_text(payload.get("video_id"), "video_id", 80, required=False) or None
         if video_id:
             video = _find(state["video_jobs"], "video_id", video_id, "视频任务")

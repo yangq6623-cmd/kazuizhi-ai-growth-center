@@ -26,7 +26,7 @@ from core.r8_growth_ops import (
     create_video_job, dashboard as growth_dashboard, diagnostics as growth_diagnostics,
     ingest_message, ingest_signal, list_collection, record_attribution, record_metrics,
     record_publish_receipt, review_content, route_signal, run_learning_cycle,
-    schedule_publish, update_conversation, update_video_job, upsert_lead,
+    schedule_publish, configure_publication_policy, update_conversation, update_video_job, upsert_lead,
 )
 from memory.memory_store import get_experiments, get_memory, remember
 # Android/ADB is retired from normal product startup.  Keep legacy endpoint
@@ -420,7 +420,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/r8/social/account", "/api/r8/social/account/status", "/api/r8/social/account/remove",
             "/api/r8/growth/signals", "/api/r8/growth/signals/route", "/api/r8/growth/cases",
             "/api/r8/growth/content", "/api/r8/growth/content/review", "/api/r8/growth/video-worker",
-            "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing",
+            "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing", "/api/r8/growth/publishing/policy",
             "/api/r8/growth/publishing/receipt", "/api/r8/growth/messages",
             "/api/r8/growth/import-draft",
             "/api/r8/growth/conversations/update", "/api/r8/growth/leads", "/api/r8/growth/attribution",
@@ -559,6 +559,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = update_video_job(payload)
             elif path == "/api/r8/growth/publishing":
                 result = schedule_publish(payload)
+            elif path == "/api/r8/growth/publishing/policy":
+                result = configure_publication_policy(payload)
             elif path == "/api/r8/growth/publishing/receipt":
                 result = record_publish_receipt(payload)
             elif path == "/api/r8/growth/messages":
