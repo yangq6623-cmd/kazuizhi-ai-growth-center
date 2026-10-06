@@ -32,6 +32,7 @@
       .kz23-next{border-left:3px solid #5e8ee8;background:#f6f9ff;border-radius:7px;padding:7px 8px;color:#596b84;font-size:8px;line-height:1.45}.kz23-truth{font-size:8px;line-height:1.5;color:#6c7b90;background:#f7f9fc;border-radius:7px;padding:6px 8px}
       .kz23-identity{border:1px solid #dce8fd;background:#f5f8ff;border-radius:8px;padding:8px 9px;display:flex;gap:10px;align-items:flex-start}.kz23-identity b{font-size:10px;color:#2454aa;white-space:nowrap}.kz23-identity span{font-size:8px;line-height:1.5;color:#5c6f8a}
       .kz23-details{border:1px solid var(--kz23-line);border-radius:8px;background:#fafbfd;overflow:hidden}.kz23-details>summary{cursor:pointer;list-style:none;padding:8px 10px;font-size:9px;font-weight:700;color:#52667f;display:flex;align-items:center;justify-content:space-between;gap:10px}.kz23-details>summary::-webkit-details-marker{display:none}.kz23-details>summary:after{content:'展开';font-size:7px;color:#8a98ab;font-weight:500}.kz23-details[open]>summary:after{content:'收起'}.kz23-details-content{padding:0 9px 9px}.kz23-tech-table{width:100%;border-collapse:collapse;font-size:8px;background:#fff;border:1px solid #e7ebf2}.kz23-tech-table th,.kz23-tech-table td{padding:5px 6px;border-bottom:1px solid #edf1f5;text-align:left;vertical-align:top}.kz23-tech-table th{color:#78869a;background:#fafbfd;font-weight:600}.kz23-ok{color:var(--kz23-green)}.kz23-wait{color:var(--kz23-amber)}
+      .kz23-legacy-home{margin-top:8px}.kz23-legacy-home .kz23-details-content{display:grid;gap:8px}.kz23-legacy-home .welcome,.kz23-legacy-home .stat-grid,.kz23-legacy-home .dashboard-grid,.kz23-legacy-home #dash-human-panel{margin:0!important}
       .kz23-legacy-slot{display:grid;gap:7px}.kz23-legacy-slot .kz22-panel{margin:0;box-shadow:none;border-color:#e3e8f0}.kz23-legacy-slot .kz22-head{background:#f4f7fb;color:#2b3e59;padding:9px 10px}.kz23-legacy-slot .kz22-head small,.kz23-legacy-slot .kz22-head p{color:#78869a;opacity:1}.kz23-legacy-slot .kz22-head h3{font-size:13px}.kz23-legacy-slot .kz22-grid{padding:8px 9px}.kz23-legacy-slot .kz22-body{padding:0 9px 9px}.kz23-legacy-ledger{border:1px solid #e4e9f1;border-radius:8px;padding:9px;background:#fff}
 
       /* The red-marked repeated block was caused by both panels living directly under <main>.
@@ -94,6 +95,33 @@
     }else if(cockpit && strip && strip.parentElement === root && cockpit.previousElementSibling !== strip){
       strip.insertAdjacentElement('afterend',cockpit);
     }
+  }
+
+  function foldLegacyHomepage(){
+    const root=byId('dashboard');
+    const cockpit=byId('kz-r8-23-growth-os');
+    if(!root||!cockpit)return;
+    let details=byId('kz-r8-24-legacy-home');
+    if(!details){
+      details=document.createElement('details');
+      details.id='kz-r8-24-legacy-home';
+      details.className='kz23-details kz23-legacy-home';
+      const summary=document.createElement('summary');
+      summary.textContent='历史基础面板 · 默认收起';
+      const body=document.createElement('div');
+      body.className='kz23-details-content';
+      details.append(summary,body);
+      cockpit.insertAdjacentElement('afterend',details);
+    }
+    const body=details.querySelector('.kz23-details-content');
+    if(!body)return;
+    const candidates=[
+      ...root.querySelectorAll(':scope > .welcome.command-welcome'),
+      ...root.querySelectorAll(':scope > .stat-grid'),
+      ...root.querySelectorAll(':scope > .dashboard-grid'),
+      ...root.querySelectorAll(':scope > #dash-human-panel'),
+    ];
+    candidates.forEach(node=>{ if(node.parentElement!==body) body.appendChild(node); });
   }
 
   function host(){
@@ -280,6 +308,7 @@
     if(preservedR22 && r22slot){ r22slot.appendChild(preservedR22); preservedR22.classList.add('kz23-embedded-legacy'); }
     if(preservedLedger && ledgerslot){ preservedLedger.classList.add('kz23-legacy-ledger'); ledgerslot.appendChild(preservedLedger); }
     foldLegacy();
+    foldLegacyHomepage();
     polishSeo();
   }
 
@@ -405,10 +434,11 @@
     scopeOwnerPanels();
     polishSeo();
     refresh();
+    foldLegacyHomepage();
     if(timer) clearInterval(timer);
     timer = setInterval(refresh,15000);
     if(observer) observer.disconnect();
-    observer = new MutationObserver(()=>{ scopeOwnerPanels(); foldLegacy(); polishSeo(); });
+    observer = new MutationObserver(()=>{ scopeOwnerPanels(); foldLegacy(); foldLegacyHomepage(); polishSeo(); });
     observer.observe(document.body,{childList:true,subtree:true});
   }
 

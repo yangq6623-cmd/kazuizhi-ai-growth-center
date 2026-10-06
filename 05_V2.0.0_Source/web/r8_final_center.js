@@ -153,13 +153,22 @@
   function mount(){
     if(byId('r8-final-center'))return;
     const nav=document.querySelector('aside nav');const main=document.querySelector('main');if(!nav||!main)return;
-    const firstGroup=[...nav.querySelectorAll('.nav-group')].find(x=>x.textContent.includes('分析与内容'));
-    const group=document.createElement('small');group.className='nav-group';group.textContent='R8 增长闭环';
-    const button=document.createElement('button');button.className='nav';button.dataset.page='r8-final-center';button.dataset.title='R8 增长运营总控';button.dataset.subtitle='从真实需求到发布、线索、订单和学习回写';button.innerHTML='<span>◆</span>R8 增长总控';
-    if(firstGroup){nav.insertBefore(group,firstGroup);nav.insertBefore(button,firstGroup);}else{nav.append(group,button);}
-    const section=document.createElement('section');section.id='r8-final-center';section.className='page';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 最终版 · 全链路增长运营</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 质检通过自动入队 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-action-feedback" class="r8-action-feedback" hidden></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
+    // Single-home rule: dashboard is the only visible owner home. Keep this
+    // older R8 center as a hidden compatibility route for historical tools.
+    nav.querySelectorAll('.nav[data-page="r8-final-center"]').forEach(node=>node.remove());
+    let proxy=nav.querySelector('.nav[data-page="r8-final-center"]');
+    if(!proxy){
+      proxy=document.createElement('button');
+      proxy.className='nav r810-legacy-route';
+      proxy.dataset.page='r8-final-center';
+      proxy.dataset.title='历史 R8 增长工具';
+      proxy.dataset.subtitle='兼容旧增长记录与工具，不作为主页';
+      proxy.hidden=true;
+      proxy.textContent='历史 R8 增长工具';
+      nav.appendChild(proxy);
+    }
+    const section=document.createElement('section');section.id='r8-final-center';section.className='page r8-final-legacy-page';section.dataset.kzLegacyWorkspace='1';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 最终版 · 全链路增长运营</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 质检通过自动入队 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-action-feedback" class="r8-action-feedback" hidden></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
     main.appendChild(section);
-    button.addEventListener('click',()=>{if(typeof openPage==='function')openPage('r8-final-center');refresh();});
     byId('r8-final-refresh').addEventListener('click',()=>refresh());
     refresh(true);
   }

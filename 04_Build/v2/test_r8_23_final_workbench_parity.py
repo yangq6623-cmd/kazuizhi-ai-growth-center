@@ -14,6 +14,7 @@ WORKBENCH = SRC / "web" / "r8_10_workbench.js"
 COORDINATOR = SRC / "web" / "r8_12_startup_coordinator.js"
 SEO_BRIDGE = SRC / "web" / "r8_13_seo_geo_bridge.js"
 GROWTH_OS = SRC / "web" / "r8_23_growth_os.js"
+R8_FINAL_CENTER = SRC / "web" / "r8_final_center.js"
 INDEX = SRC / "web" / "index.html"
 TRUTH_PATCH = SRC / "core" / "r8_20_growth_truth_patch.py"
 GEO_HTML = SRC / "web" / "geo.html"
@@ -41,6 +42,7 @@ def main() -> None:
     coordinator = text(COORDINATOR)
     seo_bridge = text(SEO_BRIDGE)
     growth_os = text(GROWTH_OS)
+    r8_final_center = text(R8_FINAL_CENTER)
     index = text(INDEX)
     truth_patch = text(TRUTH_PATCH)
     geo_html = text(GEO_HTML)
@@ -78,6 +80,12 @@ def main() -> None:
         assert marker in index, marker
     assert "function bindNavigation(nav)" in workbench
     assert "r810Bound" in workbench
+    for marker in ("enforceSingleActivePage", "main > .page", "dataset.kzActivePage"):
+        assert marker in workbench, marker
+    for marker in ("installInitialRouteOwnership", "lockInitialDashboardOnce", "kzHomeOwner", "kzInitialRouteUserChosen"):
+        assert marker in coordinator, marker
+    assert "forceInitialDashboardOnce" not in coordinator
+    assert "late openPage('dashboard')" in coordinator
 
     for marker in ("latestSeo", "seoRequest", "SEO/GEO overview refresh deferred"):
         assert marker in growth_os, marker
@@ -89,6 +97,11 @@ def main() -> None:
     ):
         assert marker in growth_os, marker
     assert "const [growth, autonomy, seo] = await Promise.all" not in growth_os
+    for marker in ("foldLegacyHomepage", "kz-r8-24-legacy-home", "历史基础面板 · 默认收起"):
+        assert marker in growth_os, marker
+    assert "R8 增长总控" not in r8_final_center
+    for marker in ("Single-home rule", "r810-legacy-route", "不作为主页", "r8-final-legacy-page"):
+        assert marker in r8_final_center, marker
 
     # Existing evidence and staged acceptance tools remain reachable in the
     # advanced section, with Phase-1 action ownership kept single-source.

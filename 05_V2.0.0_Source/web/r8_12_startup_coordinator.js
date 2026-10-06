@@ -206,17 +206,34 @@
     });
   }
 
-  function forceInitialDashboardOnce() {
+  function installInitialRouteOwnership() {
+    if (window.__KZ_SINGLE_HOME_ROUTE_OWNER__) return;
+    window.__KZ_SINGLE_HOME_ROUTE_OWNER__ = true;
+    document.documentElement.dataset.kzHomeOwner = 'dashboard';
+    document.addEventListener('click', event => {
+      if (!event.isTrusted) return;
+      const route = event.target?.closest?.('.r810-nav-button[data-target],.go-page[data-target],.nav[data-page]');
+      if (route) document.documentElement.dataset.kzInitialRouteUserChosen = '1';
+    }, true);
+  }
+
+  function lockInitialDashboardOnce() {
     if (document.documentElement.dataset.kzInitialRouteLocked === '1') return;
     document.documentElement.dataset.kzInitialRouteLocked = '1';
+    if (document.documentElement.dataset.kzInitialRouteUserChosen === '1') return;
     try {
-      if (typeof window.openPage === 'function') window.openPage('dashboard');
-      else {
-        document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === 'dashboard'));
-        document.querySelectorAll('aside nav .nav').forEach(button => button.classList.toggle('active', button.dataset.page === 'dashboard'));
-      }
+      const dashboard = document.getElementById('dashboard');
+      const pages = [...document.querySelectorAll('main > .page')];
+      if (dashboard) pages.forEach(page => page.classList.toggle('active', page === dashboard));
+      document.querySelectorAll('.r810-nav-button[data-target]').forEach(button => {
+        button.classList.toggle('active', button.dataset.target === 'dashboard' && button.dataset.action !== 'advanced');
+      });
+      document.querySelectorAll('aside nav .nav[data-page]').forEach(button => {
+        button.classList.toggle('active', button.dataset.page === 'dashboard');
+      });
+      document.documentElement.dataset.kzActivePage = 'dashboard';
     } catch (error) {
-      console.warn('initial dashboard route failed', error);
+      console.warn('single homepage lock failed', error);
     }
   }
 
@@ -352,8 +369,10 @@
     state.phase = 'waiting_base';
     exposeStartupStatus();
     installHeartbeat();
+    installInitialRouteOwnership();
     await waitForWindowLoad();
     await waitForBaseShell();
+    lockInitialDashboardOnce();
     installReleaseTruthRefresh();
     emit('kz:startup-base-ready');
 
@@ -374,7 +393,8 @@
       await yieldToBrowser(120);
       dedupeGeneratedSingletons();
       installLazyWorkspaceRoutes();
-      forceInitialDashboardOnce();
+      // Do not route again here. A late openPage('dashboard') caused visible
+      // homepage jumps after owner modules finished mounting.
       convergeVisibleReleaseTruth();
       state.phase = state.failed_modules.length ? 'degraded' : 'ready';
       state.ready_at = new Date().toISOString();

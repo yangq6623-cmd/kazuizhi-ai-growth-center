@@ -42,11 +42,21 @@
     const node=q('r810-button-reason'); if(!node)return;
     setText(node,message); node.classList.add('show'); clearTimeout(node._timer); node._timer=setTimeout(()=>node.classList.remove('show'),2800);
   }
+  function enforceSingleActivePage(preferred=''){
+    const pages=[...document.querySelectorAll('main > .page')];
+    const chosen=(preferred&&q(preferred))||pages.find(page=>page.classList.contains('active'))||q('dashboard');
+    if(chosen) pages.forEach(page=>page.classList.toggle('active',page===chosen));
+    const target=chosen?.id||'dashboard';
+    document.documentElement.dataset.kzActivePage=target;
+    return target;
+  }
+
   function openRoute(target, options={}){
     if(typeof openPage==='function') openPage(target);
     else {
-      document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===target));
+      document.querySelectorAll('main > .page').forEach(x=>x.classList.toggle('active',x.id===target));
     }
+    enforceSingleActivePage(target);
     setNavActive(CHILD_TO_PRIMARY[target]||target);
     if(options.advanced) setTimeout(()=>document.querySelector('.r810-backup-ai')?.scrollIntoView({behavior:'smooth',block:'center'}),80);
     if(target==='analytics') setTimeout(refreshBusinessVisuals,260);
@@ -318,7 +328,7 @@
   }
 
   function syncActiveRoute(){
-    const active=document.querySelector('.page.active');const target=active?.id||'dashboard';setNavActive(CHILD_TO_PRIMARY[target]||target);
+    const target=enforceSingleActivePage();setNavActive(CHILD_TO_PRIMARY[target]||target);
   }
 
   function maintenancePass(){
@@ -339,7 +349,7 @@
   }
 
   async function boot(){
-    if(R810.booted)return;R810.booted=true;decorate();await refreshMission();await refreshAttention();updateConnectorCard();
+    if(R810.booted)return;R810.booted=true;enforceSingleActivePage('dashboard');decorate();await refreshMission();await refreshAttention();updateConnectorCard();
     // Do not observe the entire document. The previous childList observer called
     // functions that themselves wrote textContent/innerHTML, which generated a
     // new childList mutation and could keep Chromium's main thread in a
