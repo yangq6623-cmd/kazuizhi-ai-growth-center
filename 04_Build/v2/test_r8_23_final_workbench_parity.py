@@ -155,10 +155,11 @@ def main() -> None:
     for marker in (
         "seo_public_deployer", "deploy_pending", "publish_connector_not_ready",
         "public_publish_verification_failed", "public_publish_deferred",
-        "QC_PASSED 不等于 PUBLISHED", "publish_bridge", "waiting_retest",
+        "QC_PASSED 不等于 PUBLISHED", "publish_bridge",
         "geo_growth._sync_all", "main_loop_continues", "_LOOP_LOCK",
     ):
         assert marker in geo_publish_bridge, marker
+    assert "waiting_retest" in geo_growth_core
     assert "geo_growth_publish_bridge" in r8_20_patch
 
     # Scheduler/API integration is automatic and uses the existing R8-20 lane.
