@@ -81,6 +81,13 @@ def main() -> None:
 
     for marker in ("latestSeo", "seoRequest", "SEO/GEO overview refresh deferred"):
         assert marker in growth_os, marker
+    for marker in (
+        "主页工作流 · 从目标到结果", "全项目执行能力总览", "OWNER_PROJECTS",
+        "GEO 自动增长", "SEO 搜索增长", "内容生产", "视频 / 视觉生产",
+        "发布与分发", "本地增长 / 小程序", "转化与经营结果", "总控复盘 / 自进化",
+        "data-kz23-target", "能力就绪", "部分待连接", "最近执行",
+    ):
+        assert marker in growth_os, marker
     assert "const [growth, autonomy, seo] = await Promise.all" not in growth_os
 
     # Existing evidence and staged acceptance tools remain reachable in the

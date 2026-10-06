@@ -23,6 +23,8 @@
       .kz23-body{padding:11px 13px 13px;display:grid;gap:9px}.kz23-hierarchy{display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:7px}.kz23-hierarchy article,.kz23-metric,.kz23-card{border:1px solid var(--kz23-line);border-radius:9px;background:#fff}.kz23-hierarchy article{padding:8px 9px;min-width:0}.kz23-label{display:block;color:#7a899f;font-size:8px;margin-bottom:3px}.kz23-value{display:block;font-size:10px;color:#24364f;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kz23-value.state{color:var(--kz23-green)}
       .kz23-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}.kz23-metric{padding:8px 9px;min-width:0;background:#fbfcfe}.kz23-metric span{display:block;color:#7a899f;font-size:8px}.kz23-metric b{display:block;margin-top:2px;font-size:16px;color:#20344f;line-height:1.15}.kz23-metric small{display:block;margin-top:2px;color:#8592a5;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kz23-metric.good b{color:var(--kz23-green)}.kz23-metric.warn b{color:var(--kz23-amber)}.kz23-metric.bad b{color:var(--kz23-red)}
       .kz23-progress{height:4px;background:#edf1f6;border-radius:999px;overflow:hidden}.kz23-progress i{display:block;height:100%;border-radius:inherit;background:var(--kz23-blue);transition:width .25s ease}
+      .kz23-project-workflow{border:1px solid #dfe7f2;border-radius:9px;background:#f8faff;padding:8px 9px}.kz23-project-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.kz23-project-flow div{position:relative;border:1px solid #e1e8f2;border-radius:7px;background:#fff;padding:6px 7px;text-align:center;min-width:0}.kz23-project-flow div:not(:last-child):after{content:'→';position:absolute;right:-7px;top:50%;transform:translateY(-50%);color:#98a7ba;font-weight:800;z-index:2}.kz23-project-flow b{display:block;font-size:9px;color:#27415f}.kz23-project-flow span{display:block;margin-top:2px;font-size:7px;color:#7c8ba0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .kz23-projects{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.kz23-project{appearance:none;text-align:left;border:1px solid #e1e8f2;border-radius:9px;background:#fff;padding:9px;min-width:0;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}.kz23-project:hover{border-color:#a9c6f2;box-shadow:0 4px 12px rgba(36,95,211,.08);transform:translateY(-1px)}.kz23-project-head{display:flex;justify-content:space-between;gap:7px;align-items:flex-start}.kz23-project-head b{font-size:10px;color:#263c59}.kz23-project-state{font-size:7px;padding:2px 5px;border-radius:4px;background:#eef2f7;color:#66768c;white-space:nowrap}.kz23-project-state.active{background:#e8f7f0;color:#11724e}.kz23-project-state.ready{background:#edf3ff;color:#2b62c7}.kz23-project-state.partial{background:#fff4df;color:#8c5f1e}.kz23-project p{margin:5px 0;color:#6f7e93;font-size:8px;line-height:1.4;min-height:22px}.kz23-project-meta{display:flex;justify-content:space-between;gap:6px;color:#8794a6;font-size:7px}.kz23-project-bar{height:3px;margin-top:6px;background:#edf1f6;border-radius:999px;overflow:hidden}.kz23-project-bar i{display:block;height:100%;background:#4f7fe0;border-radius:999px}.kz23-project small{display:block;margin-top:5px;color:#98a3b2;font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .kz23-main{display:grid;grid-template-columns:minmax(0,1.42fr) minmax(280px,.58fr);gap:9px;align-items:start}.kz23-card{padding:9px 10px;min-width:0}.kz23-card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px}.kz23-card h4{margin:0;font-size:11px;color:#2b3e59}.kz23-card-head small{color:#8996a8;font-size:8px}
       .kz23-employees{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.kz23-employee{border:1px solid #e5eaf2;border-radius:8px;padding:7px 8px;background:#fcfdff;min-width:0}.kz23-employee-head{display:flex;justify-content:space-between;gap:5px;align-items:flex-start}.kz23-employee b{font-size:9px;color:#263a55}.kz23-state{font-size:7px;padding:2px 5px;border-radius:4px;background:#eef2f7;color:#66768c;white-space:nowrap}.kz23-state.active{background:#e9f7f1;color:#11724e}.kz23-state.assigned{background:#edf3ff;color:#2b62c7}.kz23-state.wait{background:#fff5e3;color:#90601f}.kz23-employee p{margin:5px 0 0;color:#78869a;font-size:8px;line-height:1.4;min-height:22px}.kz23-employee small{display:block;margin-top:4px;color:#9aa5b4;font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .kz23-side{display:grid;gap:7px}.kz23-engine-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}.kz23-engine{border:1px solid #e3e9f3;border-radius:7px;padding:7px 8px;background:#f8faff}.kz23-engine b{display:block;font-size:9px;color:#29415f}.kz23-engine span{display:block;margin-top:3px;font-size:7px;color:#7e8ca0;line-height:1.35}
@@ -69,8 +71,8 @@
       #decision-center.page.active .decision-hero{margin-bottom:12px}
       #decision-center.page.active .decision-grid{gap:12px}
 
-      @media(max-width:1250px){.kz23-employees{grid-template-columns:repeat(2,minmax(0,1fr))}.kz23-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.kz23-hierarchy{grid-template-columns:1fr 1fr}.kz23-main{grid-template-columns:1fr}#dashboard>.mission-command-strip .mission-bar{grid-template-columns:1fr 1fr}#dashboard>.mission-command-strip .mission-actions{grid-column:1/-1;justify-content:flex-start}}
-      @media(max-width:760px){.kz23-top{display:block}.kz23-live{display:inline-flex;margin-top:8px}.kz23-hierarchy,.kz23-metrics,.kz23-employees{grid-template-columns:1fr 1fr}.kz23-chain{grid-template-columns:1fr}.kz23-engine-row{grid-template-columns:1fr}#dashboard>.mission-command-strip .mission-bar{grid-template-columns:1fr}}
+      @media(max-width:1250px){.kz23-employees{grid-template-columns:repeat(2,minmax(0,1fr))}.kz23-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.kz23-projects{grid-template-columns:repeat(2,minmax(0,1fr))}.kz23-project-flow{grid-template-columns:repeat(3,minmax(0,1fr))}.kz23-project-flow div:after{display:none}.kz23-hierarchy{grid-template-columns:1fr 1fr}.kz23-main{grid-template-columns:1fr}#dashboard>.mission-command-strip .mission-bar{grid-template-columns:1fr 1fr}#dashboard>.mission-command-strip .mission-actions{grid-column:1/-1;justify-content:flex-start}}
+      @media(max-width:760px){.kz23-top{display:block}.kz23-projects{grid-template-columns:1fr}.kz23-project-flow{grid-template-columns:1fr 1fr}.kz23-live{display:inline-flex;margin-top:8px}.kz23-hierarchy,.kz23-metrics,.kz23-employees{grid-template-columns:1fr 1fr}.kz23-chain{grid-template-columns:1fr}.kz23-engine-row{grid-template-columns:1fr}#dashboard>.mission-command-strip .mission-bar{grid-template-columns:1fr}}
       @media(max-width:520px){.kz23-hierarchy,.kz23-metrics,.kz23-employees{grid-template-columns:1fr}}
     `;
     document.head.appendChild(node);
@@ -152,6 +154,36 @@
     }).join('');
   }
 
+  const OWNER_PROJECTS = [
+    {id:'geo',name:'GEO 自动增长',owner:'SEO/GEO 增长员',target:'r813-seo-geo',caps:['doubao_cloud','local_model','seo_website','formal_geo_browser','search_submission']},
+    {id:'seo',name:'SEO 搜索增长',owner:'SEO/GEO 增长员',target:'r813-seo-geo',caps:['local_model','seo_website','search_submission','remote_agent']},
+    {id:'content',name:'内容生产',owner:'内容运营员',target:'content-studio',caps:['local_model','doubao_cloud','seo_website']},
+    {id:'video',name:'视频 / 视觉生产',owner:'短视频运营员',target:'operational-hub',caps:['local_model','doubao_cloud','rtx3060']},
+    {id:'distribution',name:'发布与分发',owner:'社媒运营员',target:'operational-hub',caps:['seo_website','search_submission','social_distribution','remote_agent']},
+    {id:'local',name:'本地增长 / 小程序',owner:'本地增长员',target:'analytics',caps:['maps_local','mini_program','business_data']},
+    {id:'conversion',name:'转化与经营结果',owner:'用户转化员',target:'analytics',caps:['business_data','mini_program','local_model']},
+    {id:'review',name:'总控复盘 / 自进化',owner:'数据复盘员',target:'r810-evolution',caps:['chatgpt_controller','business_data','local_model','doubao_cloud']},
+  ];
+
+  function projectCards(growth){
+    const caps = capsArray(growth.capabilities);
+    const lookup = Object.fromEntries(caps.map(cap=>[String(cap.id||''),cap]));
+    const now = Date.now();
+    return OWNER_PROJECTS.map(project=>{
+      const rows = project.caps.map(id=>lookup[id]).filter(Boolean);
+      const usable = rows.filter(cap=>cap.ready===true || (cap.ready==null && !['not_configured','waiting_connector','not_detected','error'].includes(String(cap.state||''))));
+      const blocked = rows.filter(cap=>cap.ready===false || ['not_configured','waiting_connector','not_detected','error'].includes(String(cap.state||'')));
+      const used = rows.filter(cap=>Number((cap.utilization||{}).invoke_count||0)>0);
+      const latest = used.sort((a,b)=>timestamp((b.utilization||{}).last_invoked_at)-timestamp((a.utilization||{}).last_invoked_at))[0];
+      const at = timestamp((latest?.utilization||{}).last_invoked_at);
+      const recent = at>0 && now-at<30*60*1000;
+      const ratio = rows.length ? Math.round(usable.length*100/rows.length) : 0;
+      const state = recent ? ['最近执行','active'] : blocked.length ? ['部分待连接','partial'] : ['能力就绪','ready'];
+      const detail = recent && latest ? `最近调用：${latest.name||latest.id}` : blocked.length ? `待连接：${blocked.slice(0,2).map(x=>x.name||x.id).join('、')}` : '等待 Mission / 触发条件';
+      return `<button type="button" class="kz23-project" data-kz23-target="${esc(project.target)}"><div class="kz23-project-head"><b>${esc(project.name)}</b><span class="kz23-project-state ${state[1]}">${state[0]}</span></div><p>${esc(detail)}</p><div class="kz23-project-meta"><span>${esc(project.owner)}</span><span>能力 ${usable.length}/${rows.length}</span></div><div class="kz23-project-bar"><i style="width:${ratio}%"></i></div><small>${esc(latest ? `最近 ${shortTime((latest.utilization||{}).last_invoked_at)}` : `已登记 ${rows.length} 项执行能力`)}</small></button>`;
+    }).join('');
+  }
+
   function capabilityTable(growth){
     const caps = capsArray(growth.capabilities);
     if(!caps.length) return '<div class="kz23-truth">等待能力状态。</div>';
@@ -202,7 +234,7 @@
     const failures = Number(progress.failed||0);
 
     panel.innerHTML = `
-      <div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · 老板运营总览</div><h3>${esc(identity.name || 'ChatGPT 总脑')} · 自治增长工作台</h3><p>${esc(identity.mission || '这里仅在“老板监控”显示；其他业务页面只保留自己的工作内容，不再重复整套总览。')}</p></div><span class="kz23-live"><i></i>${esc(systemState)}</span></div>
+      <div class="kz23-top"><div><div class="kz23-eyebrow">R8-24 · 老板全项目执行总览</div><h3>${esc(identity.name || 'ChatGPT 总脑')} · 自治增长工作台</h3><p>${esc(identity.mission || '这里仅在“老板监控”显示；其他业务页面只保留自己的工作内容，不再重复整套总览。')}</p></div><span class="kz23-live"><i></i>${esc(systemState)}</span></div>
       <div class="kz23-body">
         <div class="kz23-identity"><b>运行身份</b><span>${esc(identity.authority || '按已登记能力与授权边界调度。')} ${esc(identity.learning || '')} 每日单界面微调建议：${Number(platformImprovement.used_today || 0)} / ${Number(platformImprovement.daily_limit || 1)}；${esc(platformImprovement.rule || '不自动改代码、构建或发布安装包。')}</span></div>
         <div class="kz23-hierarchy">
@@ -220,6 +252,8 @@
           ${metric('GEO正式Evidence',`${tested} / 50`,'仅真实A/B Evidence','')}
         </div>
         <div class="kz23-progress"><i style="width:${pct}%"></i></div>
+        <div class="kz23-project-workflow"><div class="kz23-card-head"><h4>主页工作流 · 从目标到结果</h4><small>每个项目按真实能力、调用和回执推进</small></div><div class="kz23-project-flow"><div><b>老板目标 / Mission</b><span>ChatGPT总控</span></div><div><b>项目识别</b><span>SEO / GEO / 内容 / 视频</span></div><div><b>能力路由</b><span>豆包 / 本地模型 / RTX3060</span></div><div><b>执行与发布</b><span>AI员工 / 平台能力</span></div><div><b>Receipt / Evidence</b><span>真实结果回流</span></div><div><b>复盘 / 下一轮</b><span>自动调整优先级</span></div></div></div>
+        <div class="kz23-card"><div class="kz23-card-head"><h4>全项目执行能力总览</h4><small>点击项目进入对应工作区 · 状态来自真实能力与最近调用</small></div><div class="kz23-projects">${projectCards(growth)}</div></div>
         <div class="kz23-main">
           <div class="kz23-card"><div class="kz23-card-head"><h4>8个AI员工 · 当前工作归属</h4><small>只显示真实分配/调用，不制造“忙碌”</small></div><div class="kz23-employees">${employeeCards(growth)}</div></div>
           <div class="kz23-side">
@@ -232,6 +266,14 @@
         <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth)}</div></details>
         <details class="kz23-details" id="kz-r8-23-legacy"><summary>技术主线与历史审计 · 默认收起</summary><div class="kz23-details-content kz23-legacy-slot"><div id="kz-r8-23-r22-slot"></div><div id="kz-r8-23-ledger-slot"></div></div></details>
       </div>`;
+
+    panel.querySelectorAll('[data-kz23-target]').forEach(button=>{
+      button.addEventListener('click',()=>{
+        const target=button.dataset.kz23Target;
+        const nav=document.querySelector(`.r810-nav-button[data-target="${target}"]`);
+        if(nav) nav.click();
+      });
+    });
 
     const r22slot = byId('kz-r8-23-r22-slot');
     const ledgerslot = byId('kz-r8-23-ledger-slot');
