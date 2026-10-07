@@ -292,6 +292,70 @@ def _combined_run_once(force=False):
     return result
 
 
+_UNATTENDED_CLOUD_TARGET = 50
+
+
+def _arm_unattended_cloud_scan():
+    """#682 automatically arm the verified Doubao/cloud GEO scan.
+
+    The cloud scan is C-level auxiliary evidence and therefore may run without
+    the manual external-browser Evidence gate. A user pause is always respected.
+    Once the saved cloud route is verified, an idle or partially staged install
+    is promoted to the full 50-question unattended target and continues daily.
+    """
+    _recover_stale_running_tasks()
+    current = geo_autonomy.geo_cloud_executor.status()
+    data = geo_autonomy._load()
+
+    # Preserve an explicit owner pause. The worker remains alive so Resume can
+    # continue immediately, but #682 never silently overrides Pause.
+    if data.get("paused"):
+        geo_autonomy.start_worker()
+        return {
+            "armed": False,
+            "reason": "owner_paused",
+            "target": int(data.get("target") or 1),
+            "executor_ready": bool(current.get("ready")),
+        }
+
+    if not current.get("ready"):
+        geo_autonomy.start_worker()
+        return {
+            "armed": False,
+            "reason": current.get("reason") or "verified_cloud_route_required",
+            "target": int(data.get("target") or 1),
+            "executor_ready": False,
+        }
+
+    changed = False
+    if not data.get("continuous", True):
+        data["continuous"] = True
+        changed = True
+    if int(data.get("recheck_interval_seconds") or 0) <= 0:
+        data["recheck_interval_seconds"] = 24 * 60 * 60
+        changed = True
+    if changed:
+        geo_autonomy._save(data)
+
+    current_target = int(data.get("target") or 1)
+    if not data.get("enabled") or current_target < _UNATTENDED_CLOUD_TARGET:
+        status = geo_autonomy.start(target=_UNATTENDED_CLOUD_TARGET)
+        return {
+            "armed": True,
+            "reason": "verified_cloud_route_auto_started",
+            "target": int(status.get("target") or _UNATTENDED_CLOUD_TARGET),
+            "executor_ready": True,
+        }
+
+    geo_autonomy.start_worker()
+    return {
+        "armed": False,
+        "reason": "already_running_or_monitoring",
+        "target": current_target,
+        "executor_ready": True,
+    }
+
+
 def install():
     global _INSTALLED
     if _INSTALLED:
@@ -377,12 +441,10 @@ def install():
     server.DashboardHandler._kz_r8_14_seo_geo_autonomy = True
     server.DashboardHandler._kz_r8_19_geo_autonomy = True
 
-    # Do not force target=50 on every application start. An already-enabled
-    # stage resumes because its persisted state is preserved; an idle install
-    # stays idle until the owner starts 1/3/10/50. Recover stale leases first so
-    # an old browser task cannot survive an upgrade as RUNNING forever.
-    _recover_stale_running_tasks()
-    geo_autonomy.start_worker()
+    # #682: the user's verified Doubao/cloud route is an unattended executor.
+    # Auto-arm the C-level 50-question scan on startup so no 1/3/10/50 button
+    # is required. Formal A/B Evidence remains separately truth-gated.
+    _arm_unattended_cloud_scan()
     _INSTALLED = True
 
 
