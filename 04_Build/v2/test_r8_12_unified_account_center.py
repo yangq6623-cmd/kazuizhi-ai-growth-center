@@ -58,7 +58,7 @@ def check_owner_runtime_contract():
         assert token in coordinator, f"startup convergence contract missing: {token}"
     assert "forceInitialDashboardOnce" not in coordinator, "late startup must not re-open dashboard after owner modules mount"
     assert "script.src = src" not in coordinator, "coordinator must not leave dangling network script tags that keep Chrome loading"
-    route_bootstrap = text(WEB / "r8_13_route_bootstrap.js")
+    route_bootstrap = (ROOT / "web" / "r8_13_route_bootstrap.js").read_text(encoding="utf-8")
     assert "KZLoadOwnerWorkspace('seo_geo')" in route_bootstrap
     assert "AbortController" in route_bootstrap
     assert "document.head.appendChild(tag)" not in route_bootstrap
