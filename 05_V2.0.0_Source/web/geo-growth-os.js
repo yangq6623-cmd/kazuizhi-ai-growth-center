@@ -144,7 +144,7 @@
 
     const pipelineFilters={signal:'signal',opportunity:'all',decision:'all',execute:'optimizing',publish:'waiting_publish',retest:'retest',learn:'completed'};
     byId('geo-os-pipeline').innerHTML=(data.pipeline||[]).map(step=>`<button type="button" data-geo-filter="${pipelineFilters[step.id]||'all'}" class="geo-os-step ${step.state==='active'?'active':''}"><b>${esc(step.label)}</b><span>${Number(step.count||0)}</span><small>${step.state==='active'?'正在形成闭环':'等待上游结果'}</small></button>`).join('');
-    const rows=data.opportunities||[];    const rows=data.opportunities||[];
+    const rows=data.opportunities||[];
     byId('geo-os-rows').innerHTML=rows.length?rows.map(item=>{
       const delta=item.operating_delta==null?'—':`${Number(item.operating_delta)>=0?'+':''}${Number(item.operating_delta)}`;
       const result=item.state==='completed'?`${item.outcome||'完成'} · Δ ${delta}`:(item.retest_task_id?'复测排队':item.public_url?'等待复测':'等待');
