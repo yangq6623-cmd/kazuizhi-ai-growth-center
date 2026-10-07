@@ -563,7 +563,7 @@ def status() -> dict:
     index_key = _indexnow_key()
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
-    google_auth_error = _google_oauth_reauthorization_required(data.get("last_result") or {})
+    google_auth_error = _google_oauth_reauthorization_required(data.get("last_result") or {}, google_account)
     google_ready = bool(google_account and google_token and not google_auth_error)
     baidu_token = _baidu_token()
     assets = _public_assets()
@@ -623,6 +623,10 @@ def status() -> dict:
                 "mode": "Search Console Sitemap API",
                 "requires_owner": not google_ready,
                 "account_id": google_account.get("account_id") if google_account else None,
+                "portal_url": "https://search.google.com/search-console",
+                "portal_action_label": "打开 Search Console",
+                "oauth_launch_path": "/api/r8-12/auth/launch/google_search_console",
+                "oauth_callback_path": "/api/r8-12/oauth/callback/google_search_console",
                 "reason": (
                     "最近一次 Google API 返回 401，OAuth 已失效；请点击“去官方授权”重新授权"
                     if google_auth_error else (
@@ -712,13 +716,16 @@ def status() -> dict:
     }
 
 
-def _google_oauth_reauthorization_required(last_result: dict) -> bool:
-    """Return true only for a persisted, real Google OAuth rejection.
+def _google_oauth_reauthorization_required(last_result: dict, account: dict | None = None) -> bool:
+    """Return true only when the latest real Google 401 is newer than authorization.
 
-    This deliberately keys off the official response rather than a generic
-    submit failure, so a temporary network error remains retryable and does
-    not incorrectly ask the owner to repeat OAuth.
+    A successful reauthorization must supersede an older persisted 401. The
+    previous implementation kept reading the historical last_result forever,
+    which could leave the UI stuck on "需要重新授权" after a fresh token.
     """
+    auth = account.get("auth") if isinstance(account, dict) and isinstance(account.get("auth"), dict) else {}
+    verified_source = auth.get("last_verified_at") or (account.get("updated_at") if isinstance(account, dict) else "")
+    verified_at = _parse_time(verified_source)
     for failure in list(last_result.get("failed") or []):
         if failure.get("engine") != "google_search_console":
             continue
@@ -726,8 +733,13 @@ def _google_oauth_reauthorization_required(last_result: dict) -> bool:
         status = str(result.get("status") or "")
         body = str(result.get("response") or "").upper()
         error = str(result.get("error") or "").upper()
-        if status == "401" or "UNAUTHENTICATED" in body or "INVALID CREDENTIAL" in body or "INVALID CREDENTIAL" in error:
-            return True
+        rejected = status == "401" or "UNAUTHENTICATED" in body or "INVALID CREDENTIAL" in body or "INVALID CREDENTIAL" in error
+        if not rejected:
+            continue
+        failed_at = _parse_time(result.get("at") or failure.get("at") or "")
+        if verified_at and failed_at and verified_at > failed_at:
+            continue
+        return True
     return False
 
 

@@ -31,13 +31,30 @@ def _secret_file():
 
 def _read_config():
     path = _secret_file()
-    if not path.exists():
-        return {}
-    try:
-        value = json.loads(_unprotect(path.read_bytes()))
-        return value if isinstance(value, dict) else {}
-    except (OSError, ValueError, TypeError):
-        return {}
+    if path.exists():
+        try:
+            value = json.loads(_unprotect(path.read_bytes()))
+            if isinstance(value, dict) and value.get("app_id") and value.get("app_secret"):
+                return value
+        except (OSError, ValueError, TypeError):
+            pass
+
+    # Upgrade-safe fallback for installations that supplied the official
+    # Mini Program credentials through the process environment before the
+    # dedicated DPAPI connector existed.  Never return the secret in status.
+    app_id = str(
+        os.environ.get("KZ_WECHAT_MINI_PROGRAM_APP_ID")
+        or os.environ.get("WECHAT_MINI_PROGRAM_APP_ID")
+        or ""
+    ).strip()
+    app_secret = str(
+        os.environ.get("KZ_WECHAT_MINI_PROGRAM_APP_SECRET")
+        or os.environ.get("WECHAT_MINI_PROGRAM_APP_SECRET")
+        or ""
+    ).strip()
+    if app_id and app_secret:
+        return {"app_id": app_id, "app_secret": app_secret, "_source": "environment"}
+    return {}
 
 
 def _save_config(app_id, app_secret):
@@ -167,13 +184,34 @@ def wechat_mini_program_status():
     summary = read_json(SUMMARY_PATH, {}) or {}
     configured = bool(config.get("app_id") and config.get("app_secret"))
     connected = bool(configured and status.get("last_ok") and summary.get("status") == "ok")
+    recovered_snapshot = bool(not configured and summary.get("status") == "ok" and summary.get("ref_date"))
+    if connected:
+        state = "connected"
+        label = "已验证访问数据"
+        message = "微信官方最近完整日访问数据已验证。"
+    elif configured and status.get("last_error"):
+        state = "error"
+        label = "需要修复"
+        message = status.get("last_error")
+    elif recovered_snapshot:
+        state = "recovered_snapshot"
+        label = "已恢复此前验证快照"
+        message = "检测到升级前已验证的小程序访问快照；当前未找到直连凭据，保留真实历史数据且不把整个小程序判为未接入。"
+    else:
+        state = "not_configured"
+        label = "未配置微信直连统计"
+        message = "尚未配置本机微信访问统计直连；如果生产经营接口已经接入小程序，无需重复填写。"
     return {
-        "id": "wechat_mini_program", "configured": configured, "has_credentials": configured,
-        "status": "connected" if connected else "error" if configured and status.get("last_error") else "not_configured",
-        "status_label": "已验证访问数据" if connected else "需要修复" if configured else "未配置微信统计",
-        "last_refresh": status.get("last_refresh"), "last_error": status.get("last_error"),
+        "id": "wechat_mini_program",
+        "configured": configured,
+        "has_credentials": configured,
+        "credential_source": "environment" if config.get("_source") == "environment" else "dpapi" if configured else None,
+        "source_mode": "direct_wechat_analytics" if connected else "local_verified_snapshot" if recovered_snapshot else "direct_optional",
+        "status": state,
+        "status_label": label,
+        "last_refresh": status.get("last_refresh"),
+        "last_error": status.get("last_error"),
         "last_error_code": status.get("last_error_code"),
-        "summary": summary if connected else {},
-        "message": "微信官方最近完整日访问数据已验证。" if connected else
-                   status.get("last_error") or "尚未配置微信小程序 AppID 与 AppSecret。",
+        "summary": summary if connected or recovered_snapshot else {},
+        "message": message,
     }

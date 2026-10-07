@@ -325,6 +325,76 @@ def test_business_source():
     return refresh_business_source(force=True)
 
 
+def _mini_program_has_aggregate(summary):
+    if not isinstance(summary, dict):
+        return False
+    return any(summary.get(key) is not None for key in ("visit_uv", "visit_pv", "session_cnt", "visit_uv_new"))
+
+
+def _effective_wechat_status(remote, production_connected, direct):
+    """Re-use the already connected production Mini Program source before asking for duplicate secrets.
+
+    The direct WeChat AppID/AppSecret connector is an optional analytics fallback
+    added after the production business connector.  A valid server aggregate must
+    therefore win over a missing local credential file, otherwise an upgrade can
+    incorrectly render an already connected Mini Program as "not configured".
+    """
+    direct = dict(direct or {})
+    if direct.get("status") == "connected":
+        direct.setdefault("source_mode", "direct_wechat_analytics")
+        direct["business_connected"] = bool(production_connected)
+        return direct
+
+    server_mini = dict((remote or {}).get("mini_program") or {})
+    server_status = str(server_mini.get("status") or "").strip().lower()
+    server_has_data = _mini_program_has_aggregate(server_mini)
+    server_error = server_status in {"wechat_error", "error", "unavailable", "failed"}
+
+    if production_connected and server_has_data and not server_error:
+        return {
+            "id": "wechat_mini_program",
+            "configured": True,
+            "has_credentials": False,
+            "business_connected": True,
+            "status": "connected",
+            "status_label": "既有小程序数据已接入",
+            "source_mode": "server_aggregate",
+            "last_refresh": None,
+            "last_error": None,
+            "last_error_code": None,
+            "summary": server_mini,
+            "message": "已复用现有服务器小程序聚合数据，无需重复填写 AppID / AppSecret。",
+        }
+
+    historical = dict(direct.get("summary") or {})
+    if production_connected and direct.get("status") == "recovered_snapshot" and _mini_program_has_aggregate(historical):
+        direct.update({
+            "business_connected": True,
+            "status_label": "小程序业务已接入·已恢复历史访问快照",
+            "source_mode": "local_verified_snapshot",
+            "message": "小程序业务连接正常；已恢复此前验证的微信访问快照，自动刷新凭据未找到时不会要求重新接入整个小程序。",
+        })
+        return direct
+
+    if production_connected:
+        return {
+            "id": "wechat_mini_program",
+            "configured": True,
+            "has_credentials": bool(direct.get("has_credentials")),
+            "business_connected": True,
+            "status": "business_connected",
+            "status_label": "小程序业务已接入·访问统计待同步",
+            "source_mode": "production_business",
+            "last_refresh": direct.get("last_refresh"),
+            "last_error": direct.get("last_error") or (server_mini.get("message") if isinstance(server_mini, dict) else None),
+            "last_error_code": direct.get("last_error_code"),
+            "summary": server_mini if server_has_data else historical,
+            "message": "现有小程序业务连接仍然有效；这里只缺微信访问趋势聚合数据，不需要重新接入小程序。系统会继续从现有服务器经营接口同步，直连 AppID / AppSecret 仅作为可选恢复通道。",
+        }
+
+    return direct
+
+
 def business_source_status(analytics=None):
     status = _status_config()
     key_present = bool(_read_key())
@@ -334,11 +404,12 @@ def business_source_status(analytics=None):
     # or any other production business aggregate from the server source.
     try:
         from integrations.wechat_mini_program import wechat_mini_program_status
-        wechat = wechat_mini_program_status()
+        direct_wechat = wechat_mini_program_status()
     except (ImportError, OSError, ValueError):
-        wechat = {"status": "not_configured", "summary": {}}
+        direct_wechat = {"status": "not_configured", "summary": {}}
     quality = remote.get("data_quality") if isinstance(remote, dict) else {}
     connected = bool(key_present and status.get("last_ok") and remote.get("source") and remote.get("as_of"))
+    wechat = _effective_wechat_status(remote, connected, direct_wechat)
     summary = {
         "users": remote.get("users") or {}, "orders": remote.get("orders") or {},
         "technicians": remote.get("technicians") or {}, "partners": remote.get("partners") or {},
@@ -346,10 +417,11 @@ def business_source_status(analytics=None):
         "mini_program": dict(remote.get("mini_program") or {}),
         "attribution": dict(remote.get("attribution") or {}),
     }
-    if wechat.get("status") == "connected":
-        mini = dict(wechat.get("summary") or {})
+    mini = dict(wechat.get("summary") or {})
+    if wechat.get("status") in {"connected", "recovered_snapshot", "business_connected"} and _mini_program_has_aggregate(mini):
         summary["mini_program"] = mini
-        summary["funnel"]["mini_program_visits"] = mini.get("visit_uv")
+        if summary["funnel"].get("mini_program_visits") is None and mini.get("visit_uv") is not None:
+            summary["funnel"]["mini_program_visits"] = mini.get("visit_uv")
     return {
         "id": "business_source",
         "endpoint": ENDPOINT,

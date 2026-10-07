@@ -177,6 +177,8 @@ def main():
     assert connector["connectors"]["doubao_search"]["channel_group"] == "ai_content_ecosystem", connector
     assert connector["connectors"]["doubao_search"]["reuse_existing_api"] is True, connector
     assert connector["connectors"]["douyin_search"]["publish_authorized"] is False, connector
+    assert connector["connectors"]["google"]["portal_url"] == "https://search.google.com/search-console", connector
+    assert connector["connectors"]["google"]["oauth_launch_path"] == "/api/r8-12/auth/launch/google_search_console", connector
     assert connector["channel_groups"]["search_submission"] == ["baidu", "bing", "google", "so360"], connector
     assert connector["cost_policy"]["new_paid_model_dependencies"] == 0, connector
     assert connector["automation_summary"]["auto_submit_enabled"] is True, connector
@@ -198,8 +200,9 @@ def main():
     page = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
     bridge = (SOURCE / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
     assert "/api/r8-16/search-submit/initialize" in page
-    assert "/api/r8-12/auth/start" in page
+    assert "/api/r8-12/auth/launch/google_search_console" in page
     assert "beginSearchAuthorization" in page
+    assert "http://127.0.0.1:8876/api/r8-12/oauth/callback/google_search_console" in page
     assert "KZAuthUI" in bridge
     assert "已连接·额度用尽" in page
     assert "baidu_quota_exhausted" in page
@@ -248,6 +251,20 @@ def main():
     assert google_status["configured"] is True and google_status["ready"] is False, google_status
     assert google_status["reauthorization_required"] is True, google_status
     assert "401" in google_status["reason"], google_status
+
+    # A later successful OAuth must supersede the historical 401 instead of
+    # leaving the owner stuck in an endless "重新授权" loop.
+    stale_401 = {"failed": [{"engine": "google_search_console", "result": {
+        "status": 401, "response": "UNAUTHENTICATED", "at": "2026-10-07T10:00:00+08:00"
+    }}]}
+    fresh_account = {"updated_at": "2026-10-07T11:00:00+08:00", "auth": {
+        "status": "connected", "last_verified_at": "2026-10-07T11:00:00+08:00"
+    }}
+    assert submitter._google_oauth_reauthorization_required(stale_401, fresh_account) is False
+    old_account = {"updated_at": "2026-10-07T09:00:00+08:00", "auth": {
+        "status": "connected", "last_verified_at": "2026-10-07T09:00:00+08:00"
+    }}
+    assert submitter._google_oauth_reauthorization_required(stale_401, old_account) is True
 
     # An upgrade can restore a page from an immutable public deployment
     # receipt.  It may have no local revision timestamp, but it should receive

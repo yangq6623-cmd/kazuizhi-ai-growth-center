@@ -23,7 +23,7 @@ from integrations.account_environment import (  # noqa: E402
 from integrations.account_router import route_account  # noqa: E402
 from integrations.official_account_assets import upsert_official_account  # noqa: E402
 from integrations.oauth_token_broker import _validate_request  # noqa: E402
-from integrations.platform_auth_catalog import catalog, start_authorization  # noqa: E402
+from integrations.platform_auth_catalog import PROVIDERS, catalog, start_authorization  # noqa: E402
 
 
 def main():
@@ -159,6 +159,11 @@ def main():
     for marker in ("环境稳定", "风控暂停", "前往官方授权", "不依赖手机"):
         assert marker in center, marker
     assert "password" not in ui.lower()
+
+    auth_bridge = (SOURCE / "backend" / "r8_12_auth_broker_patch.py").read_text(encoding="utf-8")
+    for marker in ("/api/r8-12/auth/launch/", "_local_callback_uri", "http://127.0.0.1:", "_redirect_external"):
+        assert marker in auth_bridge, marker
+    assert PROVIDERS["google_search_console"]["authorization_url"] == "https://accounts.google.com/o/oauth2/v2/auth"
 
     print("R8-13 multi-account identity, official auth and environment safety checks passed")
 

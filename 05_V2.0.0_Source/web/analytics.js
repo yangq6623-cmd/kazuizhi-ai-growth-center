@@ -145,15 +145,18 @@ function ensureWeChatMiniProgramPanel() {
   panel.id = 'wechat-mini-program-panel';
   panel.className = 'wide ai-command-card';
   panel.innerHTML = `
-    <div class="article-head"><div><label>小程序访问数据 · 微信官方只读接口</label><h3>微信小程序访问数据修复</h3></div><span id="wechat-mini-program-badge" class="status-pill waiting">检查中</span></div>
-    <div class="content-form">
-      <label>小程序 AppID<input id="wechat-mini-program-app-id" maxlength="64" autocomplete="off" placeholder="仅填写小程序后台的 AppID"></label>
-      <label>小程序 AppSecret<input id="wechat-mini-program-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="仅填写小程序后台的 AppSecret"></label>
-      <small class="form-help">仅调用微信“最近完整日访问趋势”的聚合数据；凭据使用当前 Windows 用户加密保存，不上传 GitHub、不写入运营日志，也不读取用户明细。</small>
-      <div class="button-row"><button id="save-wechat-mini-program" class="primary-button">保存并验证微信访问数据</button><button id="refresh-wechat-mini-program" class="outline-button">立即刷新访问数据</button></div>
-    </div>
-    <div id="wechat-mini-program-message" class="notice">正在检查微信小程序访问数据状态。</div>
-    <div id="wechat-mini-program-summary" class="analysis-body"></div>`;
+    <div class="article-head"><div><label>小程序访问数据 · 复用既有业务接入</label><h3>微信小程序访问数据</h3></div><span id="wechat-mini-program-badge" class="status-pill waiting">检查中</span></div>
+    <div id="wechat-mini-program-message" class="notice">正在检查现有小程序业务连接与访问统计状态。</div>
+    <div id="wechat-mini-program-summary" class="analysis-body"></div>
+    <details id="wechat-mini-program-direct-config" style="margin-top:12px">
+      <summary style="cursor:pointer;font-weight:700">高级：仅在需要直接拉取微信访问统计时配置 AppID / AppSecret</summary>
+      <div class="content-form" style="margin-top:12px">
+        <label>小程序 AppID<input id="wechat-mini-program-app-id" maxlength="64" autocomplete="off" placeholder="仅填写小程序后台的 AppID"></label>
+        <label>小程序 AppSecret<input id="wechat-mini-program-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="仅填写小程序后台的 AppSecret"></label>
+        <small class="form-help">这是访问趋势的可选直连恢复通道，不代表重新接入小程序业务。凭据只在当前 Windows 用户下加密保存，不上传 GitHub、不写入运营日志。</small>
+        <div class="button-row"><button id="save-wechat-mini-program" class="primary-button">保存并验证微信访问统计</button><button id="refresh-wechat-mini-program" class="outline-button">立即刷新访问数据</button></div>
+      </div>
+    </details>`;
   anchor.insertAdjacentElement('afterend', panel);
   $('save-wechat-mini-program').addEventListener('click', saveWeChatMiniProgram);
   $('refresh-wechat-mini-program').addEventListener('click', refreshWeChatMiniProgram);
@@ -209,23 +212,34 @@ function renderWeChatMiniProgram(data) {
   ensureWeChatMiniProgramPanel();
   if (!data) return;
   const connected = data.status === 'connected';
+  const businessConnected = data.business_connected === true || data.status === 'business_connected';
+  const recovered = data.status === 'recovered_snapshot';
   const needsRepair = data.status === 'error';
-  const remoteMini = window.__lastBusinessSource?.summary?.mini_program || {};
-  $('wechat-mini-program-badge').textContent = connected ? '微信数据已验证' : (data.status_label || '未配置');
-  $('wechat-mini-program-badge').className = `status-pill ${connected ? 'ready' : 'waiting'}`;
-  $('wechat-mini-program-app-id').placeholder = data.has_credentials ? 'AppID 已加密保存；无需重复填写' : '仅填写小程序后台的 AppID';
-  $('wechat-mini-program-secret').placeholder = data.has_credentials ? 'AppSecret 已加密保存；无需重复填写' : '仅填写小程序后台的 AppSecret';
-  $('wechat-mini-program-message').textContent = connected
-    ? `${data.message} · 最近完整日：${data.summary?.ref_date || '—'}`
-    : `${data.message || '尚未配置微信统计。'}${remoteMini.status === 'wechat_error' ? ' 当前服务器汇总也反馈微信统计不可用（wechat_error），可在此用本机官方只读连接修复。' : ''}`;
-  $('wechat-mini-program-summary').innerHTML = connected ? `
-    <div class="analysis-values">
-      ${businessStat(`小程序访问UV ${data.summary?.ref_date || ''}`, data.summary?.visit_uv)}
-      ${businessStat('访问PV', data.summary?.visit_pv)}
-      ${businessStat('打开次数', data.summary?.session_cnt)}
-      ${businessStat('新访客UV', data.summary?.visit_uv_new)}
-    </div><div class="rate-list"><span>来源：微信官方日趋势，仅聚合数据</span><span>不会写入小程序或修改后台配置</span></div>`
-    : `<div class="empty">${needsRepair ? '请核对 AppID、AppSecret、数据分析权限与网络后点击“保存并验证”。' : '填写小程序后台的 AppID 与 AppSecret 后，系统仅拉取最近完整日的聚合访问数据。'}</div>`;
+  const summary = data.summary || {};
+  const hasAggregate = ['visit_uv','visit_pv','session_cnt','visit_uv_new'].some(key => summary[key] !== null && summary[key] !== undefined);
+  const mode = data.source_mode || '';
+  const badgeReady = connected || businessConnected || recovered;
+  $('wechat-mini-program-badge').textContent = data.status_label || (connected ? '微信数据已验证' : businessConnected ? '小程序业务已接入' : '访问统计待同步');
+  $('wechat-mini-program-badge').className = `status-pill ${badgeReady ? 'ready' : 'waiting'}`;
+  $('wechat-mini-program-app-id').placeholder = data.has_credentials ? 'AppID 已加密保存；无需重复填写' : '仅在需要直连微信统计时填写';
+  $('wechat-mini-program-secret').placeholder = data.has_credentials ? 'AppSecret 已加密保存；无需重复填写' : '仅在需要直连微信统计时填写';
+  const details = $('wechat-mini-program-direct-config');
+  if (details) details.open = needsRepair && !businessConnected;
+  const dateNote = summary.ref_date ? ` · 最近完整日：${summary.ref_date}` : '';
+  $('wechat-mini-program-message').textContent = `${data.message || ''}${dateNote}`;
+  if (hasAggregate) {
+    $('wechat-mini-program-summary').innerHTML = `
+      <div class="analysis-values">
+        ${businessStat(`小程序访问UV ${summary.ref_date || ''}`, summary.visit_uv)}
+        ${businessStat('访问PV', summary.visit_pv)}
+        ${businessStat('打开次数', summary.session_cnt)}
+        ${businessStat('新访客UV', summary.visit_uv_new)}
+      </div><div class="rate-list"><span>来源：${mode === 'server_aggregate' ? '既有服务器小程序聚合接口' : mode === 'local_verified_snapshot' ? '此前已验证访问快照' : '微信官方访问趋势'}</span><span>不要求重复接入小程序业务</span></div>`;
+  } else if (businessConnected) {
+    $('wechat-mini-program-summary').innerHTML = '<div class="empty">小程序业务已经接入；当前仅等待访问趋势聚合字段同步。系统不会因此把小程序判为“未接入”，也不会要求重新配置整个小程序。</div>';
+  } else {
+    $('wechat-mini-program-summary').innerHTML = `<div class="empty">${needsRepair ? '微信访问统计直连需要修复；这不会影响已经存在的小程序业务连接。' : '如需额外读取微信访问趋势，可展开下方高级直连配置。'}</div>`;
+  }
 }
 
 async function loadBusinessSource() {
@@ -253,7 +267,7 @@ async function saveWeChatMiniProgram() {
     await Promise.all([loadBusinessSource(), loadAnalytics(), window.loadIntegrations ? window.loadIntegrations() : Promise.resolve()]);
     toast('微信小程序访问数据已验证；以后可按需刷新');
   } catch (error) { toast(error.message,'error'); }
-  finally { button.disabled = false; button.textContent = '保存并验证微信访问数据'; }
+  finally { button.disabled = false; button.textContent = '保存并验证微信访问统计'; }
 }
 
 async function refreshWeChatMiniProgram() {

@@ -26,6 +26,26 @@ def _origin_allowed(handler):
     return not origin or origin in allowed
 
 
+def _local_callback_uri(handler, platform: str) -> str:
+    # Use one deterministic loopback redirect URI so the Google Cloud OAuth
+    # client can register it exactly once.  Google explicitly permits HTTP for
+    # localhost/loopback redirect URIs, but the URI must be an exact match.
+    port = int(getattr(handler.server, "server_port", 8876) or 8876)
+    safe_platform = str(platform or "").strip()
+    return f"http://127.0.0.1:{port}/api/r8-12/oauth/callback/{safe_platform}"
+
+
+def _redirect_external(handler, url: str):
+    target = str(url or "").strip()
+    if not target.startswith("https://"):
+        raise ValueError("官方授权地址必须使用 HTTPS")
+    handler.send_response(302)
+    handler.send_header("Location", target)
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", "0")
+    handler.end_headers()
+
+
 def _read_json_body(handler):
     length = int(handler.headers.get("Content-Length", "0") or 0)
     if length < 0 or length > 64 * 1024:
@@ -58,6 +78,23 @@ def install():
                 payload = catalog(); payload["pending"] = pending_requests(); handler._json_ok(payload); return
             if path == "/api/r8-12/account-environments":
                 handler._json_ok(environment_snapshot()); return
+            if path.startswith("/api/r8-12/auth/launch/"):
+                platform = path.rsplit("/", 1)[-1].strip()
+                if not platform:
+                    raise ValueError("授权平台不能为空")
+                result = start_authorization(
+                    platform,
+                    slot_label="Google Search Console" if platform == "google_search_console" else "",
+                    redirect_uri=_local_callback_uri(handler, platform),
+                )
+                target = str(result.get("authorization_url") or "").strip()
+                if not target:
+                    raise ValueError(result.get("truth") or "未能生成官方授权地址")
+                # Keep the click->redirect chain synchronous.  The older UI
+                # opened about:blank and then awaited a POST; Chrome could
+                # classify the later navigation as a blocked popup.
+                _redirect_external(handler, target)
+                return
             if path.startswith("/api/r8-12/oauth/callback/"):
                 platform = path.rsplit("/", 1)[-1].strip(); query = parse_qs(parsed.query)
                 state = (query.get("state") or [""])[0]

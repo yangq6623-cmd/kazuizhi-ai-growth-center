@@ -212,8 +212,9 @@ def main():
             # Search Console authorization must start from the SEO page itself.
             # The account-center iframe is optional and must not make the
             # visible button silently do nothing when it has not loaded.
-            for token in ("beginSearchAuthorization", "/api/r8-12/auth/start", "正在生成 Google 官方授权链接", "window.open('about:blank','_blank')"):
+            for token in ("beginSearchAuthorization", "/api/r8-12/auth/launch/google_search_console", "Google Cloud 的“已获授权的重定向 URI”必须精确包含", "http://127.0.0.1:8876/api/r8-12/oauth/callback/google_search_console"):
                 assert token in ui
+            assert "window.open('about:blank','_blank')" not in ui
             assert "[object Object]" not in ui
 
             patch_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
