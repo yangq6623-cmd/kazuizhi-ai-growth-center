@@ -92,7 +92,7 @@ def main() -> None:
     seo_page = text(SRC / "web" / "r8_13_seo_geo.html")
     for marker in ("SEO自动增长主流水线", "RevenueOS经营反馈", "flow-bottleneck", "revenue-feedback"):
         assert marker in seo_page, marker
-    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED", "搜索提交渠道", "AI / 内容生态监测与发布", "新增付费模型：0", "SEO/GEO实时刷新延后", "probeServiceHealth", "loadBusy", "loadPending"):
+    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED", "搜索提交渠道", "AI / 内容生态监测与发布", "新增付费模型：0", "SEO/GEO实时刷新延后", "probeServiceHealth", "loadBusy", "loadPending", "LAST_GOOD_KEY", "restoreLastGood", "persistLastGood", "build_info.js?probe="):
         assert marker in seo_page, marker
     submitter_source = text(SRC / "integrations" / "search_engine_submitter.py")
     for marker in ("RETRY_BACKOFF_MINUTES", "_record_failure", "_retry_blocked", "automation_summary", "monitoring_channels", "channel_groups", "cost_policy", "reuse_existing_api", "publish_authorized"):
@@ -110,7 +110,7 @@ def main() -> None:
     for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: []"):
         assert marker in coordinator, marker
     startup = text(SRC / "web" / "r8_12_startup_coordinator.js")
-    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules"):
+    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "KZClearStartupModuleFailure", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules", "POST_READY_DELAY_MS = 5000", "POST_READY_TIMEOUT_MS = 45000"):
         assert marker in startup, marker
     truth_patch = text(SRC / "web" / "r8_15_ui_truth_patch.js")
     for marker in ("refreshBusy", "AbortController", "scheduleRefresh(1800)", "30000"):
@@ -119,7 +119,7 @@ def main() -> None:
     for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only", "_fast_dashboard_response", "_kick_snapshot_refresh", "_SNAPSHOT_REFRESH_LOCK", "_fast_health_payload", "data_root() / _SNAPSHOT_STORE"):
         assert marker in seo_bridge_backend, marker
     route_bootstrap = text(SRC / "web" / "r8_13_route_bootstrap.js")
-    for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace"):
+    for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace", "KZClearStartupModuleFailure"):
         assert marker in route_bootstrap, marker
     assert "button.disabled = active" not in route_bootstrap
     assert 'data-src="/r8_13_seo_geo.html?embed=1"' in seo_bridge

@@ -205,7 +205,7 @@ def main():
                 assert token in ui
             for token in ("action-status", "data-kpi-target", "kz-r813-focus", "操作已完成，页面已刷新为真实状态。"):
                 assert token in ui
-            for token in ("AbortController", "SEO/GEO实时刷新延后", "SEO/GEO服务降级", "service_health", "service-message", "probeServiceHealth", "loadBusy", "loadPending", "RevenueOS", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
+            for token in ("AbortController", "SEO/GEO实时刷新延后", "SEO/GEO服务降级", "service_health", "service-message", "probeServiceHealth", "loadBusy", "loadPending", "LAST_GOOD_KEY", "restoreLastGood", "persistLastGood", "build_info.js?probe=", "RevenueOS", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
                 assert token in ui
             for token in ("搜索提交渠道", "AI / 内容生态监测与发布", "配置360站长平台", "现有API已复用", "监测开启·发布待授权", "新增付费模型：0"):
                 assert token in ui

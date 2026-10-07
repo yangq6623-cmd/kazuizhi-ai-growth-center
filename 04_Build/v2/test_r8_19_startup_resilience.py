@@ -38,7 +38,18 @@ def main():
     require("recovered_modules" in startup and "retryFailedModules" in startup, "startup failures cannot self-heal")
     require("KZStartupDiagnostics" in startup and "KZRetryFailedStartupModules" in startup, "startup diagnostics do not expose exact failed files")
     require("POST_READY_SEQUENCE" in startup and "loadPostReadyModules" in startup, "non-critical truth patch is not deferred until post-ready")
-    require("['/r8_15_ui_truth_patch.js', 'r815UiTruth']" in startup, "R8-15 truth patch post-ready entry missing")
+    for token in (
+        "['/r8_13_seo_geo_bridge.js', 'r813SeoGeo']",
+        "['/r8_10_truth_convergence.js', 'r810TruthConvergence']",
+        "['/r8_11_backbone_ui.js', 'r811Backbone']",
+        "['/r8_15_ui_truth_patch.js', 'r815UiTruth']",
+        "POST_READY_DELAY_MS = 5000",
+        "POST_READY_TIMEOUT_MS = 45000",
+    ):
+        require(token in startup, f"post-ready startup contract missing: {token}")
+    critical_block = startup.split("const POST_READY_SEQUENCE", 1)[0]
+    for token in ("/r8_13_seo_geo_bridge.js", "/r8_10_truth_convergence.js", "/r8_11_backbone_ui.js"):
+        require(token not in critical_block, f"{token} regressed into the critical cold-start path")
     require("r812-startup-diagnostics" in startup, "system status page does not show startup module filenames/reasons")
     require("auto_retry_" in startup and "30000" in startup, "startup failures have no bounded post-boot retry")
     require("kz:startup-module-failed" in startup, "startup module failures are not surfaced as recoverable events")

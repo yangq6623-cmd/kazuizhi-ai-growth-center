@@ -36,23 +36,24 @@
     ['/main-productization.js', 'mainProductization'],
     ['/autonomous-ops.js', 'autonomousOps'],
     ['/r8_10_workbench.js', 'r810Workbench'],
-    // The SEO/GEO bridge itself is lightweight.  Load it with the owner shell,
-    // but keep both heavy iframe workspaces lazy inside the bridge.  This
-    // removes the cold-start race where an early SEO/GEO click had to fetch
-    // the bridge while other startup work was still converging.
-    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
-    ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
-    ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
   ];
 
-  // Truth reconciliation is useful but not required for first paint. Loading
-  // it in the critical path caused the final owner-shell fetch to compete with
-  // SEO/GEO cold-start queries and it was the only module still timing out on
-  // real #669 installs. Give it a quiet post-ready window instead.
+  // Real #674 installs proved that the SEO/GEO bridge, truth convergence and
+  // backbone are not first-paint dependencies: when the local service is busy,
+  // fetching all three in the critical owner-shell path can create false
+  // "module missing" alarms even though the main console is already usable.
+  // Keep the critical path small and load these optional surfaces only after
+  // the owner shell is visibly ready. An early SEO/GEO click still has its
+  // dedicated route-recovery path.
   const POST_READY_SEQUENCE = [
+    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
+    ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
+    ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_15_ui_truth_patch.js', 'r815UiTruth'],
   ];
+  const POST_READY_DELAY_MS = 5000;
+  const POST_READY_TIMEOUT_MS = 45000;
 
   const LAZY_SEQUENCE = {
     decision: [
@@ -534,7 +535,7 @@
       let lastError = null;
       for (let attempt = 1; attempt <= 3 && !loaded; attempt += 1) {
         try {
-          await loadScript(src, key, false, 30000);
+          await loadScript(src, key, false, POST_READY_TIMEOUT_MS);
           clearFailure(src, `post_ready_${attempt}`);
           loaded = true;
         } catch (error) {
@@ -605,7 +606,7 @@
           window.setTimeout(() => retryFailedModules(`auto_retry_${index + 1}`), delay);
         });
       }
-      window.setTimeout(() => loadPostReadyModules(), 1500);
+      window.setTimeout(() => loadPostReadyModules(), POST_READY_DELAY_MS);
     } catch (error) {
       state.phase = 'failed';
       state.error = String(error?.message || error);
@@ -622,6 +623,7 @@
   }, true);
   window.KZLoadOwnerWorkspace = loadLazyBundle;
   window.KZRetryFailedStartupModules = retryFailedModules;
+  window.KZClearStartupModuleFailure = (src, reason = 'external_recovery') => clearFailure(src, reason);
   window.KZStartupDiagnostics = () => ({
     phase: state.phase,
     degraded: state.degraded,

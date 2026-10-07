@@ -58,6 +58,7 @@
         tag.textContent = `${source}\n//# sourceURL=${SCRIPT}`;
         document.body.appendChild(tag);
         if (!window.KZR813SeoGeoBridge?.open) throw new Error('SEO/GEO 工作区未完成初始化');
+        window.KZClearStartupModuleFailure?.(SCRIPT, 'route_recovery');
         return window.KZR813SeoGeoBridge;
       } catch (error) {
         lastError = error?.name === 'AbortError' ? new Error('SEO/GEO 工作区加载超时') : error;
@@ -70,7 +71,10 @@
   }
 
   function loadBridge() {
-    if (window.KZR813SeoGeoBridge?.open) return Promise.resolve(window.KZR813SeoGeoBridge);
+    if (window.KZR813SeoGeoBridge?.open) {
+      window.KZClearStartupModuleFailure?.(SCRIPT, 'route_already_ready');
+      return Promise.resolve(window.KZR813SeoGeoBridge);
+    }
     if (pending) return pending;
     pending = (async () => {
       // The startup coordinator is the single owner of lazy workspace scripts.
