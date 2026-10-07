@@ -109,6 +109,12 @@ def main() -> None:
     assert forms.count("if (window.__KZ_R812_STARTUP_COORDINATOR__) return;") >= 6
     for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: []"):
         assert marker in coordinator, marker
+    startup = text(SRC / "web" / "r8_12_startup_coordinator.js")
+    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered"):
+        assert marker in startup, marker
+    seo_bridge_backend = text(SRC / "backend" / "r8_13_seo_geo_patch.py")
+    for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only"):
+        assert marker in seo_bridge_backend, marker
     route_bootstrap = text(SRC / "web" / "r8_13_route_bootstrap.js")
     for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace"):
         assert marker in route_bootstrap, marker

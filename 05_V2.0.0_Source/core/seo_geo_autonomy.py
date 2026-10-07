@@ -12,7 +12,15 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 from core.storage import now_iso, read_json, write_json
-from core.seo_geo_growth import dashboard, ensure_baseline, generate_staging, record_asset_stage, run_daily_cycle
+from core.seo_geo_growth import (
+    dashboard,
+    ensure_baseline,
+    generate_staging,
+    record_asset_stage,
+    reconcile_external_publish_enabled,
+    rehydrate_verified_publications,
+    run_daily_cycle,
+)
 from integrations import search_engine_submitter
 from integrations import seo_public_deployer
 
@@ -313,6 +321,24 @@ def run_once(force=False):
                 readiness["publish_connector_reason"] or "公网部署连接器尚未就绪。",
                 "只需配置真实网站目录；连接器仅写 <site_root>/seo/，不会碰 Web.config、App_Data、uploads、数据库或现有业务目录。",
             )
+
+    # Synchronize verified publication receipts and the publish-policy gate in
+    # the autonomous worker, never in the browser dashboard GET. This keeps
+    # page refreshes read-only and prevents UI polling from competing with the
+    # Windows JSON truth ledger.
+    try:
+        deploy_status = seo_public_deployer.status()
+        reconcile_external_publish_enabled(bool(deploy_status.get("ready")))
+        rehydrate_verified_publications(seo_public_deployer.verified_publication_receipts())
+        _close_human_item(data, "seo_public_receipt_sync")
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        _add_human_item(
+            data,
+            "seo_public_receipt_sync",
+            "SEO发布回执同步延后",
+            str(error)[:500],
+            "系统会在下一次自治周期自动重试；页面读取保持只读，不会因为该同步动作失败而离线。",
+        )
 
     # Refresh after deployment so search submission only sees pages that have real
     # public verification receipts. A ready public connector is enough to attempt

@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from backend import server
 from core import seo_geo_autonomy as seo_autonomy
 from core import seo_observability
+from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import (
     configure,
     dashboard,
@@ -30,6 +31,26 @@ from promotion.search_growth import audit as audit_search_site, status as search
 
 _INSTALLED = False
 _LAST_GOOD_PAYLOAD = None
+_SNAPSHOT_STORE = "r8_13/seo_geo_dashboard_snapshot.json"
+
+
+def _save_last_good_payload(payload):
+    global _LAST_GOOD_PAYLOAD
+    snapshot = deepcopy(payload)
+    snapshot["_snapshot_saved_at"] = now_iso()
+    _LAST_GOOD_PAYLOAD = snapshot
+    try:
+        write_json(_SNAPSHOT_STORE, snapshot)
+    except OSError:
+        pass
+    return snapshot
+
+
+def _load_last_good_payload():
+    if isinstance(_LAST_GOOD_PAYLOAD, dict):
+        return deepcopy(_LAST_GOOD_PAYLOAD)
+    cached = read_json(_SNAPSHOT_STORE, {})
+    return deepcopy(cached) if isinstance(cached, dict) and cached else None
 
 
 def _optional_status(label, reader, fallback):
@@ -219,15 +240,10 @@ def _dashboard_payload():
         {"configured": False, "enabled": False, "ready": False,
          "reason": "公网部署状态正在重新读取。"},
     )
-    try:
-        rehydrate_verified_publications(seo_public_deployer.verified_publication_receipts())
-    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-        warnings.append(f"发布回执同步延后：{type(error).__name__}")
-    try:
-        reconcile_external_publish_enabled(bool(deploy.get("ready")))
-    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-        warnings.append(f"发布策略同步延后：{type(error).__name__}")
-
+    # GET /api/r8-13/seo-geo is deliberately read-only. Publication receipt
+    # rehydration and publish-policy reconciliation run in the autonomous
+    # worker, so a browser refresh cannot compete with workers for the Windows
+    # truth ledger and make the dashboard disappear.
     payload = dashboard()
     technical = payload.setdefault("technical", {})
     technical["public_site"] = _optional_status(
@@ -254,7 +270,7 @@ def _dashboard_payload():
         "warnings": warnings,
         "truth": "核心SEO账本可读时页面保持可用；可选连接器或回执同步失败只降级对应子模块，不把整个SEO/GEO工作区判为离线。",
     }
-    _LAST_GOOD_PAYLOAD = deepcopy(payload)
+    _save_last_good_payload(payload)
     return payload
 
 
@@ -280,16 +296,19 @@ def install():
                 handler._json_ok(result)
                 return
         except Exception as error:  # Never close the local HTTP connection without JSON.
-            if path == "/api/r8-13/seo-geo" and _LAST_GOOD_PAYLOAD:
-                fallback = deepcopy(_LAST_GOOD_PAYLOAD)
-                fallback["service_health"] = {
-                    "state": "degraded_snapshot",
-                    "degraded": True,
-                    "warnings": [f"实时刷新延后：{type(error).__name__}"],
-                    "truth": "当前展示本进程最后一次成功读取的真实快照；系统会自动重试，不把快照冒充为新的实时回执。",
-                }
-                handler._json_ok(fallback)
-                return
+            if path == "/api/r8-13/seo-geo":
+                fallback = _load_last_good_payload()
+                if fallback:
+                    saved_at = fallback.get("_snapshot_saved_at") or ""
+                    fallback["service_health"] = {
+                        "state": "degraded_snapshot",
+                        "degraded": True,
+                        "warnings": [f"实时刷新延后：{type(error).__name__}"],
+                        "snapshot_saved_at": saved_at,
+                        "truth": "当前展示最近一次成功持久化的真实快照；系统会自动重试。快照时间单独标注，不把旧快照冒充为新的实时回执。",
+                    }
+                    handler._json_ok(fallback)
+                    return
             handler._json_error(503, f"SEO/GEO 状态暂时不可用：{type(error).__name__}")
             return
         return original_get(handler)

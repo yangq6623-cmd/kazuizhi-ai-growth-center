@@ -8,7 +8,9 @@
     ready_at: null,
     loaded: [],
     failed_modules: [],
+    recovered_modules: [],
     degraded: false,
+    retrying_failures: false,
     heartbeat: 0,
     last_heartbeat_at: null,
     current_module: '',
@@ -150,9 +152,46 @@
     }
   }
 
+  function rememberFailure(src, error) {
+    const message = String(error?.message || error || 'unknown startup error');
+    let failure = state.failed_modules.find(row => row.src === src);
+    if (!failure) {
+      failure = {src, error: message, at: new Date().toISOString(), attempts: 1};
+      state.failed_modules.push(failure);
+    } else {
+      failure.error = message;
+      failure.at = new Date().toISOString();
+      failure.attempts = Number(failure.attempts || 0) + 1;
+    }
+    state.degraded = true;
+    exposeStartupStatus();
+    renderStartupDiagnostics();
+    console.error('Owner-shell module degraded, continuing startup', failure);
+    emit('kz:startup-module-failed', {...failure});
+    return failure;
+  }
+
+  function clearFailure(src, recoveredBy = 'auto_retry') {
+    const index = state.failed_modules.findIndex(row => row.src === src);
+    if (index < 0) return false;
+    const [failure] = state.failed_modules.splice(index, 1);
+    state.recovered_modules.unshift({
+      ...failure,
+      recovered_at: new Date().toISOString(),
+      recovered_by: recoveredBy,
+    });
+    state.recovered_modules = state.recovered_modules.slice(0, 12);
+    state.degraded = state.failed_modules.length > 0;
+    exposeStartupStatus();
+    renderStartupDiagnostics();
+    emit('kz:startup-module-recovered', {src, recovered_by: recoveredBy});
+    return true;
+  }
+
   async function loadScriptFailSoft(src, key) {
     try {
       await loadScript(src, key);
+      clearFailure(src, 'normal_load');
       return true;
     } catch (error) {
       // A cold local server can be busy completing its first evidence query.
@@ -161,15 +200,12 @@
       try {
         await yieldToBrowser(SCRIPT_RETRY_DELAY_MS);
         await loadScript(src, key);
+        clearFailure(src, 'startup_retry');
         return true;
       } catch (retryError) {
         error = retryError;
       }
-      const failure = {src, error: String(error?.message || error), at: new Date().toISOString()};
-      state.failed_modules.push(failure);
-      state.degraded = true;
-      console.error('Owner-shell module degraded, continuing startup', failure);
-      emit('kz:startup-module-failed', failure);
+      rememberFailure(src, error);
       return false;
     }
   }
@@ -377,11 +413,112 @@
     window.__KZ_OWNER_HEARTBEAT_TIMER__ = window.setInterval(beat, 250);
   }
 
+  function renderStartupDiagnostics() {
+    const page = document.getElementById('connections');
+    if (!page) return;
+    let card = document.getElementById('r812-startup-diagnostics');
+    if (!card) {
+      card = document.createElement('article');
+      card.id = 'r812-startup-diagnostics';
+      card.className = 'wide';
+      const title = page.querySelector('.page-title');
+      if (title?.nextSibling) page.insertBefore(card, title.nextSibling);
+      else page.prepend(card);
+    }
+    card.replaceChildren();
+    const head = document.createElement('div');
+    head.className = 'article-head';
+    const titleWrap = document.createElement('div');
+    const label = document.createElement('label');
+    label.textContent = '启动模块诊断';
+    const heading = document.createElement('h3');
+    heading.textContent = state.failed_modules.length
+      ? `未恢复模块 ${state.failed_modules.length} 个`
+      : '启动模块全部正常';
+    titleWrap.append(label, heading);
+    const retry = document.createElement('button');
+    retry.id = 'r812-retry-startup-modules';
+    retry.className = 'primary-small';
+    retry.textContent = state.retrying_failures ? '正在重试…' : '重试失败模块';
+    retry.disabled = state.retrying_failures || !state.failed_modules.length;
+    retry.addEventListener('click', () => retryFailedModules('manual'));
+    head.append(titleWrap, retry);
+    card.appendChild(head);
+
+    const note = document.createElement('p');
+    note.className = 'subtle';
+    note.textContent = `启动阶段：${state.phase} · 当前未恢复 ${state.failed_modules.length} · 本次已自动恢复 ${state.recovered_modules.length}。这里显示真实文件名和浏览器收到的失败原因，不隐藏错误。`;
+    card.appendChild(note);
+
+    const list = document.createElement('div');
+    list.className = 'diagnostic-list';
+    const rows = [
+      ...state.failed_modules.map(row => ({...row, status:'未恢复'})),
+      ...state.recovered_modules.map(row => ({...row, status:'已恢复'})),
+    ];
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'friendly-empty';
+      empty.textContent = '0 个启动模块异常。';
+      list.appendChild(empty);
+    } else {
+      rows.forEach(row => {
+        const item = document.createElement('div');
+        item.className = 'diagnostic-item';
+        const name = document.createElement('b');
+        name.textContent = `${row.status} · ${row.src}`;
+        const detail = document.createElement('p');
+        detail.textContent = row.status === '已恢复'
+          ? `原失败原因：${row.error}；恢复时间：${row.recovered_at || '—'}；恢复方式：${row.recovered_by || '—'}`
+          : `失败原因：${row.error}；最近失败：${row.at || '—'}；尝试次数：${row.attempts || 1}`;
+        item.append(name, detail);
+        list.appendChild(item);
+      });
+    }
+    card.appendChild(list);
+  }
+
   function exposeStartupStatus() {
     document.documentElement.dataset.kzStartupPhase = state.phase;
     document.documentElement.dataset.kzStartupDegraded = state.degraded ? '1' : '0';
     document.documentElement.dataset.kzStartupFailures = String(state.failed_modules.length);
     document.documentElement.dataset.kzStartupCurrentModule = state.current_module || '';
+  }
+
+  async function retryFailedModules(reason = 'auto') {
+    if (state.retrying_failures || !state.failed_modules.length) {
+      renderStartupDiagnostics();
+      return state.failed_modules.length === 0;
+    }
+    state.retrying_failures = true;
+    renderStartupDiagnostics();
+    const pending = state.failed_modules.map(row => ({...row}));
+    for (const failure of pending) {
+      const tuple = SCRIPT_SEQUENCE.find(([src]) => src === failure.src);
+      if (!tuple) continue;
+      const [src, key] = tuple;
+      try {
+        await loadScript(src, key, false, 30000);
+        clearFailure(src, reason);
+      } catch (error) {
+        const current = state.failed_modules.find(row => row.src === src);
+        if (current) {
+          current.error = String(error?.message || error);
+          current.at = new Date().toISOString();
+          current.attempts = Number(current.attempts || 0) + 1;
+        }
+        await yieldToBrowser(250);
+      }
+    }
+    state.retrying_failures = false;
+    state.degraded = state.failed_modules.length > 0;
+    if (state.phase === 'degraded' && !state.degraded) state.phase = 'ready';
+    exposeStartupStatus();
+    renderStartupDiagnostics();
+    if (!state.failed_modules.length && typeof window.toast === 'function') {
+      window.toast(`启动模块已自动恢复：本次恢复 ${state.recovered_modules.length} 个。`, 'success');
+    }
+    return state.failed_modules.length === 0;
   }
 
   async function boot() {
@@ -423,8 +560,16 @@
         failed_modules: state.failed_modules.slice(),
         degraded: state.degraded,
       });
+      renderStartupDiagnostics();
       if (state.failed_modules.length && typeof window.toast === 'function') {
-        window.toast(`部分模块未加载（${state.failed_modules.length}），主界面已继续启动；可在系统检查中查看详情。`, 'warning');
+        const names = state.failed_modules.map(row => row.src.split('/').pop()).join('、');
+        window.toast(`部分模块未加载（${state.failed_modules.length}）：${names}。系统将自动重试；系统状态页可查看真实原因。`, 'warning');
+        // Cold-start failures are frequently caused by the local Python server
+        // finishing its first evidence query. Retry them after the UI is usable
+        // instead of leaving a stale degraded count for the entire session.
+        [1500, 7000, 20000].forEach((delay, index) => {
+          window.setTimeout(() => retryFailedModules(`auto_retry_${index + 1}`), delay);
+        });
       }
     } catch (error) {
       state.phase = 'failed';
@@ -435,6 +580,18 @@
     }
   }
 
+  document.addEventListener('click', event => {
+    if (event.target?.closest?.('.r810-nav-button[data-target="connections"],.nav[data-page="connections"],.go-page[data-target="connections"]')) {
+      window.setTimeout(renderStartupDiagnostics, 80);
+    }
+  }, true);
   window.KZLoadOwnerWorkspace = loadLazyBundle;
+  window.KZRetryFailedStartupModules = retryFailedModules;
+  window.KZStartupDiagnostics = () => ({
+    phase: state.phase,
+    degraded: state.degraded,
+    failed_modules: state.failed_modules.map(row => ({...row})),
+    recovered_modules: state.recovered_modules.map(row => ({...row})),
+  });
   boot();
 })();

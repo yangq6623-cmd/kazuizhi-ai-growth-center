@@ -35,7 +35,12 @@ def main():
     require("SCRIPT_TIMEOUT_MS" in startup, "startup script loading has no timeout and can hang the UI")
     require("loadScriptFailSoft" in startup, "owner-shell module loading is still fail-hard")
     require("failed_modules" in startup and "degraded" in startup, "startup degradation state is not exposed")
+    require("recovered_modules" in startup and "retryFailedModules" in startup, "startup failures cannot self-heal")
+    require("KZStartupDiagnostics" in startup and "KZRetryFailedStartupModules" in startup, "startup diagnostics do not expose exact failed files")
+    require("r812-startup-diagnostics" in startup, "system status page does not show startup module filenames/reasons")
+    require("auto_retry_" in startup and "30000" in startup, "startup failures have no bounded post-boot retry")
     require("kz:startup-module-failed" in startup, "startup module failures are not surfaced as recoverable events")
+    require("kz:startup-module-recovered" in startup, "startup module recoveries are not auditable")
     require(
         "state.phase = state.failed_modules.length ? 'degraded' : 'ready'" in startup,
         "a single module failure can still prevent the owner shell from reaching a usable state",
