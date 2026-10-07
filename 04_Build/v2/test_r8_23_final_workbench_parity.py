@@ -83,6 +83,8 @@ def main() -> None:
 
     assert '<body class="r810-workbench">' in index
     assert "build_info.js" in index and index.index("build_info.js") < index.index("app.js")
+    for marker in ('<script defer src="build_info.js"', '<script defer src="app.js"', '<script defer src="r8_12_startup_coordinator.js"', '<script defer src="r8_13_route_bootstrap.js"'):
+        assert marker in index, marker
     assert 'phase: "R8-24"' in build_info
     assert "V2.2.2 R8-24 GEO Growth OS" in build_info
     assert 'r8-23-shell-preflight' in index
@@ -117,7 +119,7 @@ def main() -> None:
     assert "const [growth, autonomy, seo] = await Promise.all" not in growth_os
     forms = text(SRC / "web" / "forms.js")
     assert forms.count("if (window.__KZ_R812_STARTUP_COORDINATOR__) return;") >= 6
-    for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: []"):
+    for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: [", "sourceCache", "sourcePromises", "primeScriptSources", "prefetchWorkspaceDocuments"):
         assert marker in coordinator, marker
     startup = text(SRC / "web" / "r8_12_startup_coordinator.js")
     for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "KZClearStartupModuleFailure", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules", "POST_READY_DELAY_MS = 5000", "POST_READY_TIMEOUT_MS = 45000"):

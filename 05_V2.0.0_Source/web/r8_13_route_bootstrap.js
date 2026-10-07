@@ -81,8 +81,8 @@
       // Reusing it avoids the old route bootstrap racing a second <script src>
       // request against the local server.
       if (typeof window.KZLoadOwnerWorkspace === 'function') {
-        await window.KZLoadOwnerWorkspace('seo_geo');
-        if (window.KZR813SeoGeoBridge?.open) return window.KZR813SeoGeoBridge;
+        const ready = await window.KZLoadOwnerWorkspace('seo_geo');
+        if (ready && window.KZR813SeoGeoBridge?.open) return window.KZR813SeoGeoBridge;
       }
       return fallbackLoadBridge();
     })().finally(() => { pending = null; });

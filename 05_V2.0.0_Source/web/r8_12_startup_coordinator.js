@@ -47,7 +47,6 @@
   // the owner shell is visibly ready. An early SEO/GEO click still has its
   // dedicated route-recovery path.
   const POST_READY_SEQUENCE = [
-    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_15_ui_truth_patch.js', 'r815UiTruth'],
@@ -64,8 +63,10 @@
     execution: [
       ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ],
-    // The route shell is already resident; only its selected iframe is lazy.
-    seo_geo: [],
+    // Keep SEO/GEO lazy, but make the first click execute prefetched source.
+    seo_geo: [
+      ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
+    ],
     content_studio: [
       ['/content-studio-shell.js', 'contentStudioShell'],
       ['/content-pipeline-host.js', 'contentPipelineHost'],
@@ -79,6 +80,57 @@
 
   const GENERATED_ID_PREFIXES = ['r8-', 'r810-', 'r811-', 'r812-', 'r813-', 'kz-'];
   const lazyPromises = new Map();
+  const sourceCache = new Map();
+  const sourcePromises = new Map();
+
+  function canonicalSourceKey(src) {
+    try { return new URL(src, location.href).pathname; } catch { return String(src || ''); }
+  }
+
+  async function fetchScriptSource(src, timeoutMs = SCRIPT_TIMEOUT_MS, force = false) {
+    const key = canonicalSourceKey(src);
+    if (!force && sourceCache.has(key)) return sourceCache.get(key);
+    if (!force && sourcePromises.has(key)) return sourcePromises.get(key);
+    const promise = (async () => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(src, {cache:'no-store', signal:controller.signal});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const source = await response.text();
+        if (!force) sourceCache.set(key, source);
+        return source;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    })();
+    if (!force) sourcePromises.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      if (!force) sourcePromises.delete(key);
+    }
+  }
+
+  function primeScriptSources(sequence, timeoutMs = SCRIPT_TIMEOUT_MS) {
+    sequence.forEach(([src]) => {
+      fetchScriptSource(src, timeoutMs, false).catch(error => {
+        console.debug('[KZ startup] source prefetch deferred', src, error?.message || error);
+      });
+    });
+  }
+
+  function prefetchWorkspaceDocuments() {
+    for (const href of ['/r8_13_seo_geo.html?embed=1', '/geo.html?embed=1']) {
+      const absolute = new URL(href, location.href).href;
+      if ([...document.querySelectorAll('link[rel="prefetch"]')].some(node => node.href === absolute)) continue;
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.as = 'document';
+      link.href = href;
+      document.head.appendChild(link);
+    }
+  }
 
   function emit(name, detail = {}) {
     window.dispatchEvent(new CustomEvent(name, {detail}));
@@ -135,12 +187,8 @@
     document.documentElement.dataset.kzStartupCurrentModule = src;
     console.info('[KZ startup] loading', src);
 
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(src, {cache:'no-store', signal:controller.signal});
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const source = await response.text();
+      const source = await fetchScriptSource(src, timeoutMs, force);
       const script = document.createElement('script');
       script.dataset[datasetKey] = '1';
       script.dataset.kzLoadReady = '1';
@@ -155,8 +203,6 @@
         ? `启动模块加载超时：${src}`
         : `启动模块加载失败：${src} · ${error?.message || error}`;
       throw new Error(message);
-    } finally {
-      window.clearTimeout(timer);
     }
   }
 
@@ -569,6 +615,11 @@
 
     state.phase = 'loading_owner_shell';
     exposeStartupStatus();
+    primeScriptSources([
+      ...SCRIPT_SEQUENCE,
+      ...LAZY_SEQUENCE.seo_geo,
+      ...POST_READY_SEQUENCE,
+    ], SCRIPT_TIMEOUT_MS);
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
         state.current_module = src;
@@ -607,6 +658,9 @@
         });
       }
       window.setTimeout(() => loadPostReadyModules(), POST_READY_DELAY_MS);
+      const warmDocuments = () => prefetchWorkspaceDocuments();
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(warmDocuments, {timeout:1800});
+      else window.setTimeout(warmDocuments, 900);
     } catch (error) {
       state.phase = 'failed';
       state.error = String(error?.message || error);

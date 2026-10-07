@@ -34,7 +34,9 @@ def main():
     require("SEO/GEO实时刷新延后" in seo_geo, "SEO/GEO page cannot distinguish delayed refresh from offline service")
     require("LAST_GOOD_KEY" in seo_geo and "restoreLastGood" in seo_geo and "persistLastGood" in seo_geo, "SEO/GEO page cannot preserve a real last-good snapshot across iframe reloads")
     require("build_info.js?probe=" in seo_geo, "SEO/GEO status does not distinguish static local service health from a busy API queue")
-    require('src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator still depends on a later dynamic loader")
+    require('defer src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator is not parallel-deferred")
+    require("sourceCache" in startup and "sourcePromises" in startup and "primeScriptSources" in startup, "owner-shell sources are still downloaded sequentially")
+    require("seo_geo: [" in startup and "r8_13_seo_geo_bridge.js" in startup, "SEO/GEO first-click bridge is not prefetched/lazy-cached")
     require("request_queue_size = 64" in server and "daemon_threads = True" in server, "local HTTP server cannot absorb the owner-shell cold-start burst")
     for token in ("SCHEDULER_STARTUP_GRACE_SECONDS = 12", "CONTENT_STARTUP_GRACE_SECONDS = 25", "RELAY_STARTUP_GRACE_SECONDS = 20", "VIDEO_STARTUP_GRACE_SECONDS = 35", "HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45"):
         require(token in run, f"background worker cold-start grace missing: {token}")

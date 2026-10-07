@@ -39,16 +39,20 @@ def main():
     require("KZStartupDiagnostics" in startup and "KZRetryFailedStartupModules" in startup, "startup diagnostics do not expose exact failed files")
     require("POST_READY_SEQUENCE" in startup and "loadPostReadyModules" in startup, "non-critical truth patch is not deferred until post-ready")
     for token in (
-        "['/r8_13_seo_geo_bridge.js', 'r813SeoGeo']",
         "['/r8_10_truth_convergence.js', 'r810TruthConvergence']",
         "['/r8_11_backbone_ui.js', 'r811Backbone']",
         "['/r8_15_ui_truth_patch.js', 'r815UiTruth']",
         "POST_READY_DELAY_MS = 5000",
         "POST_READY_TIMEOUT_MS = 45000",
+        "sourceCache",
+        "sourcePromises",
+        "primeScriptSources",
+        "prefetchWorkspaceDocuments",
     ):
-        require(token in startup, f"post-ready startup contract missing: {token}")
+        require(token in startup, f"post-ready/startup fast-path contract missing: {token}")
+    require("seo_geo: [" in startup and "['/r8_13_seo_geo_bridge.js', 'r813SeoGeo']" in startup, "SEO/GEO bridge is not on the lazy cached first-click path")
     critical_block = startup.split("const POST_READY_SEQUENCE", 1)[0]
-    for token in ("/r8_13_seo_geo_bridge.js", "/r8_10_truth_convergence.js", "/r8_11_backbone_ui.js"):
+    for token in ("/r8_10_truth_convergence.js", "/r8_11_backbone_ui.js"):
         require(token not in critical_block, f"{token} regressed into the critical cold-start path")
     require("r812-startup-diagnostics" in startup, "system status page does not show startup module filenames/reasons")
     require("auto_retry_" in startup and "30000" in startup, "startup failures have no bounded post-boot retry")
@@ -72,9 +76,9 @@ def main():
     # SEO/GEO must claim the first side-nav click before the owner-shell lazy
     # loader can make it appear inert on a cold local start.
     require(SEO_ROUTE.exists(), "SEO/GEO first-click route bootstrap is missing")
-    require('src="r8_13_route_bootstrap.js"' in index, "SEO/GEO route bootstrap is not shipped by the primary console")
+    require('defer src="r8_13_route_bootstrap.js"' in index, "SEO/GEO route bootstrap is not shipped as a parallel-deferred primary console script")
     require("event.stopImmediatePropagation()" in seo_route, "SEO/GEO route does not protect the first click from a delayed lazy handler")
-    require("5000" in seo_route and "SEO/GEO 工作区加载超时" in seo_route, "SEO/GEO route has no bounded loading feedback")
+    require("30000" in seo_route and "SEO/GEO 工作区加载超时" in seo_route, "SEO/GEO route has no bounded loading feedback")
     require("KZR813SeoGeoBridge?.open" in seo_route, "SEO/GEO route bootstrap cannot verify bridge readiness")
 
     # A refresh must never leave the user on the base R7 shell merely because
