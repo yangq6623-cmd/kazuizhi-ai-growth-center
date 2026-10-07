@@ -97,6 +97,10 @@ def main() -> None:
     ):
         assert marker in growth_os, marker
     assert "const [growth, autonomy, seo] = await Promise.all" not in growth_os
+    forms = text(SRC / "web" / "forms.js")
+    assert forms.count("if (window.__KZ_R812_STARTUP_COORDINATOR__) return;") >= 6
+    for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js"):
+        assert marker in coordinator, marker
     for marker in ("foldLegacyHomepage", "kz-r8-24-legacy-home", "历史基础面板 · 默认收起"):
         assert marker in growth_os, marker
     assert "R8 增长总控" not in r8_final_center

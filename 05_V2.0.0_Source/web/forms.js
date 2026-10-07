@@ -62,6 +62,7 @@ toast = function(message, type='ok') {
 // patch immediately and refresh R7 once so the four manager KPI cards work on
 // the first visit, not only after waiting for the scheduler refresh.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r7-manager-patch]')) return;
   const script = document.createElement('script');
   script.src = 'r7_manager_patch.js';
@@ -82,6 +83,7 @@ toast = function(message, type='ok') {
 // Autonomous Decision Center V1 is deliberately a separate enhancement layer:
 // employee reports -> R7 manager summary -> ChatGPT strategy handoff.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r7-decision-center]')) return;
   const script = document.createElement('script');
   script.src = 'decision_center.js';
@@ -111,6 +113,7 @@ toast = function(message, type='ok') {
 // R8 Final identity is an additive display/package layer over the frozen R7 core.
 // build_info.js is stamped by GitHub Actions with the real run number and commit.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r8-build-info]')) return;
   const info = document.createElement('script');
   info.src = 'build_info.js';
@@ -133,6 +136,7 @@ toast = function(message, type='ok') {
 // key, keep bridge/device settings outside the install directory, and avoid
 // forcing the owner to re-enter already verified configuration after upgrades.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r8-persistence-patch]')) return;
   const script = document.createElement('script');
   script.src = 'r8_persistence_patch.js';
@@ -159,6 +163,7 @@ toast = function(message, type='ok') {
     style.dataset.mainProductization = '1';
     document.head.appendChild(style);
   }
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-main-productization]')) return;
   const script = document.createElement('script');
   script.src = 'main-productization.js';
@@ -178,6 +183,7 @@ toast = function(message, type='ok') {
     style.dataset.autonomousOps = '1';
     document.head.appendChild(style);
   }
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-autonomous-ops]')) return;
   const script = document.createElement('script');
   script.src = 'autonomous-ops.js';

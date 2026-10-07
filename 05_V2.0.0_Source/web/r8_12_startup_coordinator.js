@@ -30,6 +30,9 @@
   // allowed in the critical path; heavy workspaces are loaded on first use.
   const SCRIPT_SEQUENCE = [
     ['/r7_manager_patch.js', 'r7ManagerPatch'],
+    ['/r8_persistence_patch.js', 'r8PersistencePatch'],
+    ['/main-productization.js', 'mainProductization'],
+    ['/autonomous-ops.js', 'autonomousOps'],
     ['/r8_10_workbench.js', 'r810Workbench'],
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
@@ -38,6 +41,11 @@
   ];
 
   const LAZY_SEQUENCE = {
+    decision: [
+      ['/decision_center.js', 'r7DecisionCenter'],
+      ['/decision_layout_patch.js', 'r7DecisionLayout'],
+      ['/region_strategy.js', 'r7RegionStrategy'],
+    ],
     execution: [
       ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ],
@@ -101,45 +109,41 @@
     });
   }
 
-  function loadScript(src, datasetKey, force = false) {
+  async function loadScript(src, datasetKey, force = false) {
     const existing = findExistingScript(src, datasetKey);
     if (!force && existing && existing.dataset.kzLoadFailed !== '1') {
       state.loaded.push({src, reused:true});
-      return Promise.resolve(existing);
+      return existing;
     }
-    if (existing?.dataset.kzLoadFailed === '1') existing.remove();
+    if (existing) existing.remove();
 
-    return new Promise((resolve, reject) => {
+    state.current_module = src;
+    document.documentElement.dataset.kzStartupCurrentModule = src;
+    console.info('[KZ startup] loading', src);
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), SCRIPT_TIMEOUT_MS);
+    try {
+      const response = await fetch(src, {cache:'no-store', signal:controller.signal});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const source = await response.text();
       const script = document.createElement('script');
-      let settled = false;
-      state.current_module = src;
-      document.documentElement.dataset.kzStartupCurrentModule = src;
-      console.info('[KZ startup] loading', src);
-      const finish = (ok, error) => {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timer);
-        if (ok) {
-          script.dataset.kzLoadReady = '1';
-          state.loaded.push({src, reused:false});
-          console.info('[KZ startup] loaded', src);
-          resolve(script);
-        } else {
-          script.dataset.kzLoadFailed = '1';
-          reject(error || new Error(`启动模块加载失败：${src}`));
-        }
-      };
-      const timer = window.setTimeout(
-        () => finish(false, new Error(`启动模块加载超时：${src}`)),
-        SCRIPT_TIMEOUT_MS,
-      );
-      script.src = src;
-      script.async = false;
       script.dataset[datasetKey] = '1';
-      script.onload = () => finish(true);
-      script.onerror = () => finish(false, new Error(`启动模块加载失败：${src}`));
+      script.dataset.kzLoadReady = '1';
+      script.dataset.kzSource = src;
+      script.textContent = `${source}\n//# sourceURL=${src}`;
       document.body.appendChild(script);
-    });
+      state.loaded.push({src, reused:false});
+      console.info('[KZ startup] loaded', src);
+      return script;
+    } catch (error) {
+      const message = error?.name === 'AbortError'
+        ? `启动模块加载超时：${src}`
+        : `启动模块加载失败：${src} · ${error?.message || error}`;
+      throw new Error(message);
+    } finally {
+      window.clearTimeout(timer);
+    }
   }
 
   async function loadScriptFailSoft(src, key) {
@@ -263,7 +267,8 @@
       if (!button) return;
       const target = String(button.dataset.target || '');
       let bundle = '';
-      if (target === 'content-studio') bundle = 'content_studio';
+      if (target === 'workflow') bundle = 'decision';
+      else if (target === 'content-studio') bundle = 'content_studio';
       else if (target === 'r813-seo-geo') bundle = 'seo_geo';
       else if (target === 'operational-hub') bundle = 'execution';
       else if (target === 'connections') bundle = 'connections';
@@ -275,7 +280,9 @@
       button.dataset.kzLoading = '1';
       try {
         await loadLazyBundle(bundle);
-        if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
+        if (target === 'workflow') {
+          if (typeof window.openPage === 'function') window.openPage('workflow');
+        } else if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
         else if (target === 'r813-seo-geo') {
           const ready = await ensureSeoGeoBridge();
           if (ready) window.KZR813SeoGeoBridge.open();

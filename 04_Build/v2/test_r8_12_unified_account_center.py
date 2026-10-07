@@ -41,7 +41,12 @@ def check_owner_runtime_contract():
         "/r8_10_truth_convergence.js",
         "/r8_11_backbone_ui.js",
         "/r8_12_account_center_bridge.js",
+        "/r8_persistence_patch.js",
+        "/main-productization.js",
+        "/autonomous-ops.js",
         "yieldToBrowser",
+        "AbortController",
+        "cache:'no-store'",
         "dedupeGeneratedSingletons",
         "installInitialRouteOwnership",
         "lockInitialDashboardOnce",
@@ -52,6 +57,7 @@ def check_owner_runtime_contract():
     ):
         assert token in coordinator, f"startup convergence contract missing: {token}"
     assert "forceInitialDashboardOnce" not in coordinator, "late startup must not re-open dashboard after owner modules mount"
+    assert "script.src = src" not in coordinator, "coordinator must not leave dangling network script tags that keep Chrome loading"
     assert "window.MutationObserver =" not in coordinator, "startup must not replace native browser observers"
 
 
