@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from backend import server
 from core import seo_geo_autonomy as seo_autonomy
 from core import seo_observability
-from core.storage import now_iso, read_json, write_json
+from core.storage import data_root, now_iso, write_json
 from core.seo_geo_growth import (
     configure,
     dashboard,
@@ -34,6 +34,7 @@ _INSTALLED = False
 _LAST_GOOD_PAYLOAD = None
 _SNAPSHOT_STORE = "r8_13/seo_geo_dashboard_snapshot.json"
 _SNAPSHOT_REFRESH_LOCK = threading.Lock()
+_FAST_GET_STATS = {"requests": 0, "errors": 0, "last_ok_at": "", "last_error_at": "", "last_error": ""}
 
 
 def _save_last_good_payload(payload):
@@ -51,8 +52,14 @@ def _save_last_good_payload(payload):
 def _load_last_good_payload():
     if isinstance(_LAST_GOOD_PAYLOAD, dict):
         return deepcopy(_LAST_GOOD_PAYLOAD)
-    cached = read_json(_SNAPSHOT_STORE, {})
-    return deepcopy(cached) if isinstance(cached, dict) and cached else None
+    path = data_root() / _SNAPSHOT_STORE
+    try:
+        if not path.exists():
+            return None
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        return deepcopy(cached) if isinstance(cached, dict) and cached else None
+    except (OSError, ValueError):
+        return None
 
 
 def _snapshot_age_seconds(payload):
@@ -80,8 +87,43 @@ def _warm_snapshot():
 
 
 def _kick_snapshot_refresh():
+    if _SNAPSHOT_REFRESH_LOCK.locked():
+        return False
     thread = threading.Thread(target=_warm_snapshot, name="kz-seo-geo-snapshot", daemon=True)
     thread.start()
+    return True
+
+
+def _mark_fast_ok(payload):
+    _FAST_GET_STATS["requests"] = int(_FAST_GET_STATS.get("requests") or 0) + 1
+    _FAST_GET_STATS["last_ok_at"] = now_iso()
+    return payload
+
+
+def _mark_fast_error(error):
+    _FAST_GET_STATS["requests"] = int(_FAST_GET_STATS.get("requests") or 0) + 1
+    _FAST_GET_STATS["errors"] = int(_FAST_GET_STATS.get("errors") or 0) + 1
+    _FAST_GET_STATS["last_error_at"] = now_iso()
+    _FAST_GET_STATS["last_error"] = type(error).__name__
+
+
+def _fast_health_payload():
+    cached = _load_last_good_payload()
+    age = _snapshot_age_seconds(cached) if cached else None
+    return {
+        "online": True,
+        "service": "seo_geo",
+        "snapshot_available": bool(cached),
+        "snapshot_saved_at": (cached or {}).get("_snapshot_saved_at") or "",
+        "snapshot_age_seconds": round(age, 1) if age is not None else None,
+        "refresh_inflight": _SNAPSHOT_REFRESH_LOCK.locked(),
+        "requests": int(_FAST_GET_STATS.get("requests") or 0),
+        "errors": int(_FAST_GET_STATS.get("errors") or 0),
+        "last_ok_at": _FAST_GET_STATS.get("last_ok_at") or "",
+        "last_error_at": _FAST_GET_STATS.get("last_error_at") or "",
+        "last_error": _FAST_GET_STATS.get("last_error") or "",
+        "truth": "健康探针不读取主SEO/GEO账本，也不访问外部连接器；只判断本地服务在线与真实快照是否存在。",
+    }
 
 
 def _fast_dashboard_response():
@@ -94,7 +136,7 @@ def _fast_dashboard_response():
         health["snapshot_age_seconds"] = round(age, 1) if age is not None else None
         health["snapshot_mode"] = True
         health["truth"] = "页面优先读取最近一次成功持久化的真实快照，并在后台异步刷新；快照时间单独标注，不把缓存冒充为新的外部回执。"
-        return cached
+        return _mark_fast_ok(cached)
 
     # Never make the first page paint wait on optional remote connectors.
     # Return the local ledger immediately, then enrich/persist the full snapshot
@@ -121,7 +163,7 @@ def _fast_dashboard_response():
         "truth": "正在后台生成完整真实快照；首屏不等待远程连接器。",
     }
     _kick_snapshot_refresh()
-    return payload
+    return _mark_fast_ok(payload)
 
 
 def _optional_status(label, reader, fallback):
@@ -147,37 +189,37 @@ def _connector_fallback():
     return {
         "connectors": {
             "baidu": {
-                "label": "百度搜索资源平台", "configured": False, "ready": False,
+                "label": "百度搜索资源平台", "channel_group": "search_submission", "setup_state": "API Token/站点授权", "extra_paid_api": False, "configured": False, "ready": False,
                 "submit_capable": True, "monitoring_only": False,
                 "mode": "普通收录 API", "requires_owner": True,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
             "bing": {
-                "label": "Bing / IndexNow", "configured": False, "ready": False,
+                "label": "Bing / IndexNow", "channel_group": "search_submission", "setup_state": "无需登录，自动初始化", "extra_paid_api": False, "configured": False, "ready": False,
                 "submit_capable": True, "monitoring_only": False,
                 "mode": "IndexNow", "requires_owner": False,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
             "google": {
-                "label": "Google Search Console", "configured": False, "ready": False,
+                "label": "Google Search Console", "channel_group": "search_submission", "setup_state": "OAuth/站点授权", "extra_paid_api": False, "configured": False, "ready": False,
                 "submit_capable": True, "monitoring_only": False,
                 "mode": "Search Console Sitemap API", "requires_owner": True,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
             "so360": {
-                "label": "360搜索站长平台", "configured": False, "ready": False,
+                "label": "360搜索站长平台", "channel_group": "search_submission", "setup_state": "建议配置站点验证与Sitemap", "extra_paid_api": False, "configured": False, "ready": False,
                 "submit_capable": False, "monitoring_only": True,
                 "mode": "Sitemap / 站长平台", "requires_owner": True,
                 "reason": "360站长平台监测状态正在重新读取。",
             },
             "doubao_search": {
-                "label": "豆包搜索 / 豆包浏览器", "configured": True, "ready": False,
+                "label": "豆包搜索 / 豆包浏览器", "channel_group": "ai_content_ecosystem", "setup_state": "复用现有豆包API，无需重复配置", "extra_paid_api": False, "configured": True, "ready": False,
                 "submit_capable": False, "monitoring_only": True,
                 "mode": "GEO/搜索可见性监测", "requires_owner": False,
                 "reason": "复用现有豆包能力做可见性监测。",
             },
             "douyin_search": {
-                "label": "抖音搜索 / 抖音浏览器", "configured": False, "ready": False,
+                "label": "抖音搜索 / 抖音浏览器", "channel_group": "ai_content_ecosystem", "setup_state": "监测无需额外模型；自动发布时再授权官方账号", "extra_paid_api": False, "configured": False, "ready": False,
                 "submit_capable": False, "monitoring_only": True,
                 "mode": "搜索/内容生态监测", "requires_owner": False,
                 "reason": "抖音搜索监测状态正在重新读取。",
@@ -357,6 +399,9 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path == "/api/r8-13/seo-geo/health":
+                handler._json_ok(_fast_health_payload())
+                return
             if path == "/api/r8-13/seo-geo":
                 handler._json_ok(_fast_dashboard_response())
                 return
@@ -369,6 +414,7 @@ def install():
                 return
         except Exception as error:  # Never close the local HTTP connection without JSON.
             if path == "/api/r8-13/seo-geo":
+                _mark_fast_error(error)
                 fallback = _load_last_good_payload()
                 if fallback:
                     saved_at = fallback.get("_snapshot_saved_at") or ""

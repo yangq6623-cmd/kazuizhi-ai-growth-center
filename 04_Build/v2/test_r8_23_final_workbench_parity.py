@@ -92,10 +92,10 @@ def main() -> None:
     seo_page = text(SRC / "web" / "r8_13_seo_geo.html")
     for marker in ("SEO自动增长主流水线", "RevenueOS经营反馈", "flow-bottleneck", "revenue-feedback"):
         assert marker in seo_page, marker
-    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED"):
+    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED", "搜索提交渠道", "AI / 内容生态监测与发布", "新增付费模型：0", "SEO/GEO实时刷新延后", "probeServiceHealth", "loadBusy", "loadPending"):
         assert marker in seo_page, marker
     submitter_source = text(SRC / "integrations" / "search_engine_submitter.py")
-    for marker in ("RETRY_BACKOFF_MINUTES", "_record_failure", "_retry_blocked", "automation_summary", "monitoring_channels"):
+    for marker in ("RETRY_BACKOFF_MINUTES", "_record_failure", "_retry_blocked", "automation_summary", "monitoring_channels", "channel_groups", "cost_policy", "reuse_existing_api", "publish_authorized"):
         assert marker in submitter_source, marker
     for marker in (
         "主页工作流 · 从目标到结果", "全项目执行能力总览", "OWNER_PROJECTS",
@@ -116,7 +116,7 @@ def main() -> None:
     for marker in ("refreshBusy", "AbortController", "scheduleRefresh(1800)", "30000"):
         assert marker in truth_patch, marker
     seo_bridge_backend = text(SRC / "backend" / "r8_13_seo_geo_patch.py")
-    for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only", "_fast_dashboard_response", "_kick_snapshot_refresh", "_SNAPSHOT_REFRESH_LOCK"):
+    for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only", "_fast_dashboard_response", "_kick_snapshot_refresh", "_SNAPSHOT_REFRESH_LOCK", "_fast_health_payload", "data_root() / _SNAPSHOT_STORE"):
         assert marker in seo_bridge_backend, marker
     route_bootstrap = text(SRC / "web" / "r8_13_route_bootstrap.js")
     for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace"):

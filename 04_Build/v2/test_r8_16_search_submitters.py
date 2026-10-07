@@ -173,6 +173,12 @@ def main():
     assert connector["connectors"]["doubao_search"]["monitoring_only"] is True, connector
     assert connector["connectors"]["douyin_search"]["monitoring_only"] is True, connector
     assert connector["connectors"]["so360"]["submit_capable"] is False, connector
+    assert connector["connectors"]["so360"]["channel_group"] == "search_submission", connector
+    assert connector["connectors"]["doubao_search"]["channel_group"] == "ai_content_ecosystem", connector
+    assert connector["connectors"]["doubao_search"]["reuse_existing_api"] is True, connector
+    assert connector["connectors"]["douyin_search"]["publish_authorized"] is False, connector
+    assert connector["channel_groups"]["search_submission"] == ["baidu", "bing", "google", "so360"], connector
+    assert connector["cost_policy"]["new_paid_model_dependencies"] == 0, connector
     assert connector["automation_summary"]["auto_submit_enabled"] is True, connector
     assert connector["truth"].find("SUBMITTED") >= 0
     # Failed submissions are de-duplicated while their exponential backoff is

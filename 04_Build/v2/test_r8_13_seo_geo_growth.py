@@ -63,6 +63,8 @@ def main():
             assert "_SNAPSHOT_STORE" in bridge_source and "_load_last_good_payload" in bridge_source
             assert "_fast_dashboard_response" in bridge_source and "_kick_snapshot_refresh" in bridge_source
             assert "_SNAPSHOT_REFRESH_LOCK" in bridge_source
+            assert "_fast_health_payload" in bridge_source and '"/api/r8-13/seo-geo/health"' in bridge_source
+            assert "data_root() / _SNAPSHOT_STORE" in bridge_source and "path.read_text" in bridge_source
             assert "deliberately read-only" in bridge_source
             assert "snapshot_saved_at" in bridge_source
             autonomy_source = (SOURCE / "core" / "seo_geo_autonomy.py").read_text(encoding="utf-8")
@@ -183,7 +185,9 @@ def main():
                 assert token in ui
             for token in ("action-status", "data-kpi-target", "kz-r813-focus", "操作已完成，页面已刷新为真实状态。"):
                 assert token in ui
-            for token in ("AbortController", "本机服务正在就绪", "SEO/GEO服务降级", "service_health", "RevenueOS", "loadAttempts<5", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
+            for token in ("AbortController", "SEO/GEO实时刷新延后", "SEO/GEO服务降级", "service_health", "service-message", "probeServiceHealth", "loadBusy", "loadPending", "RevenueOS", "执行技术审计", "网络响应检查", "候选孤儿页", "最近提交："):
+                assert token in ui
+            for token in ("搜索提交渠道", "AI / 内容生态监测与发布", "配置360站长平台", "现有API已复用", "监测开启·发布待授权", "新增付费模型：0"):
                 assert token in ui
             # Search Console authorization must start from the SEO page itself.
             # The account-center iframe is optional and must not make the

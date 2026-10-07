@@ -23,6 +23,9 @@ def main():
     require("r813SeoGeoRecovery" in startup, "SEO/GEO recovery script marker is missing")
     require("retryFailedModules" in startup and "auto_retry_" in startup, "cold-start owner modules are not retried after the UI becomes usable")
     require("loadPostReadyModules" in startup and "30000" in startup, "post-ready truth module does not have a quiet long-timeout recovery path")
+    require("probeServiceHealth" in seo_geo and "/api/r8-13/seo-geo/health" in seo_geo, "SEO/GEO page lacks lightweight service health probe")
+    require("loadBusy" in seo_geo and "loadPending" in seo_geo, "SEO/GEO polling can overlap itself")
+    require("SEO/GEO实时刷新延后" in seo_geo, "SEO/GEO page cannot distinguish delayed refresh from offline service")
     require('src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator still depends on a later dynamic loader")
     print("PASS: cold-start UI loading tolerates a busy but healthy local SEO/GEO server")
 
