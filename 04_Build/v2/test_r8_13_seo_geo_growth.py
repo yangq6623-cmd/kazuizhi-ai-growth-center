@@ -59,11 +59,11 @@ def main():
             assert "revenue_os" in enriched and "revenue_status" in enriched["revenue_os"]
             assert "source_parameter_contract" in enriched["revenue_os"]
             assert enriched["unattended_validation"]["target_hours"] == 24
-            bridge_source = (ROOT / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
+            bridge_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
             assert "_SNAPSHOT_STORE" in bridge_source and "_load_last_good_payload" in bridge_source
             assert "deliberately read-only" in bridge_source
             assert "snapshot_saved_at" in bridge_source
-            autonomy_source = (ROOT / "core" / "seo_geo_autonomy.py").read_text(encoding="utf-8")
+            autonomy_source = (SOURCE / "core" / "seo_geo_autonomy.py").read_text(encoding="utf-8")
             assert "rehydrate_verified_publications" in autonomy_source and "browser dashboard GET" in autonomy_source
             assert "只代表本地证据" in evidence["truth"]
 
