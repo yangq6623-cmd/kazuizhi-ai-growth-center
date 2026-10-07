@@ -56,21 +56,43 @@ def _connector_fallback():
         "connectors": {
             "baidu": {
                 "label": "百度搜索资源平台", "configured": False, "ready": False,
+                "submit_capable": True, "monitoring_only": False,
                 "mode": "普通收录 API", "requires_owner": True,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
             "bing": {
                 "label": "Bing / IndexNow", "configured": False, "ready": False,
+                "submit_capable": True, "monitoring_only": False,
                 "mode": "IndexNow", "requires_owner": False,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
             "google": {
                 "label": "Google Search Console", "configured": False, "ready": False,
+                "submit_capable": True, "monitoring_only": False,
                 "mode": "Search Console Sitemap API", "requires_owner": True,
                 "reason": "连接状态正在重新读取，请稍后刷新。",
             },
+            "so360": {
+                "label": "360搜索站长平台", "configured": False, "ready": False,
+                "submit_capable": False, "monitoring_only": True,
+                "mode": "Sitemap / 站长平台", "requires_owner": True,
+                "reason": "360站长平台监测状态正在重新读取。",
+            },
+            "doubao_search": {
+                "label": "豆包搜索 / 豆包浏览器", "configured": True, "ready": False,
+                "submit_capable": False, "monitoring_only": True,
+                "mode": "GEO/搜索可见性监测", "requires_owner": False,
+                "reason": "复用现有豆包能力做可见性监测。",
+            },
+            "douyin_search": {
+                "label": "抖音搜索 / 抖音浏览器", "configured": False, "ready": False,
+                "submit_capable": False, "monitoring_only": True,
+                "mode": "搜索/内容生态监测", "requires_owner": False,
+                "reason": "抖音搜索监测状态正在重新读取。",
+            },
         },
         "ready_engines": [],
+        "automation_summary": {"auto_submit_enabled": True, "pending_unique_urls": 0, "submitted_unique_urls": 0, "failed_last_run": 0, "retry_queue": 0},
         "truth": "连接器状态暂不可用；不会影响本地 SEO/GEO 数据和页面查看。",
     }
 
@@ -158,6 +180,7 @@ def _revenue_feedback():
     funnel = summary.get("funnel") or {}
     orders = summary.get("orders") or {}
     mini = summary.get("mini_program") or {}
+    attribution = summary.get("attribution") or {}
     connected = source.get("status") == "connected"
     visits = funnel.get("mini_program_visits")
     if visits is None:
@@ -177,9 +200,14 @@ def _revenue_feedback():
         "orders_completed": orders.get("completed"),
         "revenue": None,
         "revenue_status": "verified_revenue_not_connected",
-        "attribution_status": "waiting_source_attribution",
+        "attribution_status": attribution.get("status") or "waiting_source_attribution",
+        "mapped_consultations": attribution.get("mapped_consultations"),
+        "mapped_orders": attribution.get("mapped_orders"),
+        "asset_id_coverage": attribution.get("asset_id_coverage"),
+        "attribution_channels": attribution.get("channels") or {},
+        "source_parameter_contract": ["seo", "geo", "search_engine", "ai_citation", "asset_id"],
         "message": source.get("message") or source.get("last_error") or "",
-        "truth": "RevenueOS只显示已验证聚合经营数据；当前没有安全收入聚合字段时显示待接入，不用订单数推算收入，也不把SEO公开页数量当成转化。",
+        "truth": "RevenueOS只显示已验证聚合经营数据；来源归因只有服务器明确携带 SEO/GEO/搜索引擎/AI引用/asset_id 证据时才计入。当前没有安全收入聚合字段时显示待接入，不用订单数推算收入。",
     }
 
 
@@ -217,6 +245,7 @@ def _dashboard_payload():
     payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
     payload["revenue_os"] = _revenue_feedback()
+    payload["unattended_validation"] = seo_autonomy.validation_status()
     geo = payload.setdefault("geo", {})
     geo["measurement_state"] = "measured" if int(geo.get("observations") or 0) > 0 else "not_started"
     payload["service_health"] = {

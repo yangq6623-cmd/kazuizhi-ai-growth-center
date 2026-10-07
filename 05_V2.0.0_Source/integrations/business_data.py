@@ -180,6 +180,9 @@ def validate_remote_summary(payload):
     promotion = _safe_object(payload.get("promotion"), "promotion")
     funnel = _safe_object(payload.get("funnel"), "funnel")
     mini_program = _safe_object(payload.get("mini_program"), "mini_program")
+    attribution = _safe_object(payload.get("attribution"), "attribution")
+    attribution_channels = _safe_object(attribution.get("channels"), "attribution.channels")
+    allowed_channels = ("seo", "geo", "search_engine", "ai_citation", "direct", "unknown")
     clean = {
         "ok": True,
         "source": source[:160],
@@ -193,6 +196,17 @@ def validate_remote_summary(payload):
         "services": payload.get("services") if isinstance(payload.get("services"), list) else [],
         "promotion": {key: _safe_number(promotion.get(key), "promotion." + key) for key in ("event_records", "partner_attributed_orders")},
         "funnel": {key: _safe_number(funnel.get(key), "funnel." + key) for key in ("mini_program_visits", "repair_requests", "leads")},
+        "attribution": {
+            "status": str(attribution.get("status") or "")[:40],
+            "mapped_consultations": _safe_number(attribution.get("mapped_consultations"), "attribution.mapped_consultations"),
+            "mapped_orders": _safe_number(attribution.get("mapped_orders"), "attribution.mapped_orders"),
+            "asset_id_coverage": _safe_number(attribution.get("asset_id_coverage"), "attribution.asset_id_coverage"),
+            "channels": {
+                key: _safe_number(attribution_channels.get(key), "attribution.channels." + key)
+                for key in allowed_channels
+                if key in attribution_channels
+            },
+        },
         "mini_program": {
             "status": str(mini_program.get("status") or "")[:40],
             "ref_date": str(mini_program.get("ref_date") or "")[:20],
@@ -330,6 +344,7 @@ def business_source_status(analytics=None):
         "technicians": remote.get("technicians") or {}, "partners": remote.get("partners") or {},
         "promotion": remote.get("promotion") or {}, "funnel": dict(remote.get("funnel") or {}),
         "mini_program": dict(remote.get("mini_program") or {}),
+        "attribution": dict(remote.get("attribution") or {}),
     }
     if wechat.get("status") == "connected":
         mini = dict(wechat.get("summary") or {})

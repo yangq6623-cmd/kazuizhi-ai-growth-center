@@ -31,6 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -66,6 +67,7 @@ DEFAULT = {
 }
 
 MAX_SUBMISSION_BATCH = 3
+RETRY_BACKOFF_MINUTES = (15, 60, 360, 1440)
 
 
 def _load() -> dict:
@@ -221,25 +223,88 @@ def _batch_limit(limit: int | None) -> int:
     return max(1, min(MAX_SUBMISSION_BATCH, int(limit or MAX_SUBMISSION_BATCH)))
 
 
-def _attempted_today(data: dict, engine: str, asset: dict) -> bool:
+def _parse_time(value: str):
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00")).astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _retry_blocked(data: dict, engine: str, asset: dict) -> bool:
     attempts = data.get("submission_attempts") or {}
     entry = ((attempts.get(engine) or {}).get(str(asset.get("id"))) or {})
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or entry.get("revision") != _submission_revision(asset):
         return False
-    return (
-        entry.get("date") == now_iso().split("T", 1)[0]
-        and entry.get("revision") == _submission_revision(asset)
-    )
+    next_retry = _parse_time(entry.get("next_retry_at"))
+    if next_retry:
+        return datetime.now(timezone.utc) < next_retry
+    # Backward compatibility for pre-R8-24 records: a same-day attempt without
+    # retry metadata keeps the old conservative behaviour for one day.
+    return entry.get("date") == now_iso().split("T", 1)[0]
 
 
 def _record_attempt(data: dict, engine: str, assets: list[dict]) -> None:
     attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
-    today = now_iso().split("T", 1)[0]
+    stamp = now_iso()
+    today = stamp.split("T", 1)[0]
     for asset in assets:
-        attempts[str(asset.get("id"))] = {
+        key = str(asset.get("id"))
+        previous = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        attempts[key] = {
+            **previous,
             "date": today,
             "revision": _submission_revision(asset),
+            "last_attempt_at": stamp,
+            "attempt_count": int(previous.get("attempt_count") or 0) + 1,
         }
+
+
+def _record_failure(data: dict, engine: str, assets: list[dict], reason: str) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    now = datetime.now(timezone.utc)
+    for asset in assets:
+        key = str(asset.get("id"))
+        entry = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        failures = int(entry.get("failure_count") or 0) + 1
+        delay = RETRY_BACKOFF_MINUTES[min(failures - 1, len(RETRY_BACKOFF_MINUTES) - 1)]
+        entry.update({
+            "revision": _submission_revision(asset),
+            "failure_count": failures,
+            "last_failure_reason": str(reason or "")[:160],
+            "last_failure_at": now.isoformat(),
+            "next_retry_at": (now + timedelta(minutes=delay)).isoformat(),
+        })
+        attempts[key] = entry
+
+
+def _record_success(data: dict, engine: str, assets: list[dict]) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    stamp = now_iso()
+    for asset in assets:
+        key = str(asset.get("id"))
+        entry = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        entry.update({
+            "revision": _submission_revision(asset),
+            "failure_count": 0,
+            "next_retry_at": "",
+            "last_success_at": stamp,
+        })
+        attempts[key] = entry
+
+
+def _retry_queue_count(data: dict) -> int:
+    now = datetime.now(timezone.utc)
+    total = 0
+    for engine_rows in (data.get("submission_attempts") or {}).values():
+        if not isinstance(engine_rows, dict):
+            continue
+        for entry in engine_rows.values():
+            if not isinstance(entry, dict):
+                continue
+            next_retry = _parse_time(entry.get("next_retry_at"))
+            if next_retry and next_retry > now:
+                total += 1
+    return total
 
 
 def _eligible_assets(data: dict, engine: str, assets: list[dict], limit: int) -> tuple[list[dict], int]:
@@ -265,7 +330,7 @@ def _eligible_assets(data: dict, engine: str, assets: list[dict], limit: int) ->
         ):
             legacy += 1
             continue
-        if _existing_engine_receipt(asset, engine) or _attempted_today(data, engine, asset):
+        if _existing_engine_receipt(asset, engine) or _retry_blocked(data, engine, asset):
             continue
         eligible.append(asset)
     eligible.sort(key=lambda asset: _submission_revision(asset), reverse=True)
@@ -512,6 +577,10 @@ def status() -> dict:
                 "label": "百度搜索资源平台",
                 "configured": bool(baidu_token),
                 "ready": bool(baidu_token and data.get("allow_baidu_http_submission")),
+                "submit_capable": True,
+                "monitoring_only": False,
+                "authorization_state": "已授权" if baidu_token else "待Token",
+                "automation_state": "自动提交" if baidu_token and data.get("allow_baidu_http_submission") else "等待授权",
                 "mode": "普通收录 API",
                 "requires_owner": not bool(baidu_token),
                 "transport": "official_http_endpoint",
@@ -521,6 +590,10 @@ def status() -> dict:
                 "label": "Bing / IndexNow",
                 "configured": bool(index_key),
                 "ready": indexnow_ready,
+                "submit_capable": True,
+                "monitoring_only": False,
+                "authorization_state": "无需登录",
+                "automation_state": "自动提交" if indexnow_ready else "自动初始化中",
                 "mode": "IndexNow",
                 "requires_owner": False,
                 "initialization": indexnow_init,
@@ -532,12 +605,12 @@ def status() -> dict:
             "google": {
                 "label": "Google Search Console",
                 "configured": bool(google_account and google_token),
-                # A locally stored OAuth token is not proof that Google will
-                # accept it.  Keep the connector visibly blocked after an
-                # observed 401 instead of presenting a misleading green
-                # "ready" state until the owner completes OAuth again.
                 "ready": google_ready,
+                "submit_capable": True,
+                "monitoring_only": False,
                 "reauthorization_required": google_auth_error,
+                "authorization_state": "已授权" if google_ready else "需重新授权" if google_auth_error else "待OAuth",
+                "automation_state": "Sitemap自动提交" if google_ready else "等待授权",
                 "mode": "Search Console Sitemap API",
                 "requires_owner": not google_ready,
                 "account_id": google_account.get("account_id") if google_account else None,
@@ -548,13 +621,59 @@ def status() -> dict:
                     )
                 ),
             },
+            "so360": {
+                "label": "360搜索站长平台",
+                "configured": False,
+                "ready": False,
+                "submit_capable": False,
+                "monitoring_only": True,
+                "authorization_state": "需站长平台登录/站点验证",
+                "automation_state": "Sitemap监测",
+                "mode": "360站长平台 / Sitemap",
+                "requires_owner": True,
+                "portal_url": "https://zhanzhang.so.com/",
+                "reason": "360官方支持站长平台与Sitemap数据提交；当前未发现可由本机安全调用的公开URL提交API，因此登记为站长平台/监测通道，不伪造SUBMITTED回执。",
+            },
+            "doubao_search": {
+                "label": "豆包搜索 / 豆包浏览器",
+                "configured": True,
+                "ready": False,
+                "submit_capable": False,
+                "monitoring_only": True,
+                "authorization_state": "复用现有豆包能力",
+                "automation_state": "GEO/搜索可见性监测",
+                "mode": "豆包搜索可见性观测",
+                "requires_owner": False,
+                "reason": "复用现有豆包API做品牌、URL与答案可见性观测；没有官方站长URL提交回执时不计入SUBMITTED。",
+            },
+            "douyin_search": {
+                "label": "抖音搜索 / 抖音浏览器",
+                "configured": False,
+                "ready": False,
+                "submit_capable": False,
+                "monitoring_only": True,
+                "authorization_state": "开放平台能力按需授权",
+                "automation_state": "搜索/内容生态监测",
+                "mode": "抖音搜索与内容分发观测",
+                "requires_owner": False,
+                "reason": "抖音开放平台提供内容发布等OpenAPI，但当前没有通用网页收录提交回执接口；本通道只做搜索/内容可见性监测，不伪造网页SUBMITTED。",
+            },
         },
         "ready_engines": [name for name, row in {
             "baidu": bool(baidu_token and data.get("allow_baidu_http_submission")),
             "bing": indexnow_ready,
             "google": google_ready,
         }.items() if row],
-        "truth": "配置/授权只代表连接器可用；只有搜索平台返回可审计接收响应后，页面才进入 SUBMITTED。SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
+        "monitoring_channels": ["so360", "doubao_search", "douyin_search"],
+        "automation_summary": {
+            "auto_submit_enabled": True,
+            "public_pages": len(assets),
+            "pending_unique_urls": sum(1 for asset in assets if not (asset.get("submission_receipts") or [])),
+            "submitted_unique_urls": sum(1 for asset in assets if STAGE_INDEX.get(str(asset.get("stage") or ""), 0) >= STAGE_INDEX["SUBMITTED"]),
+            "failed_last_run": len((data.get("last_result") or {}).get("failed") or []),
+            "retry_queue": _retry_queue_count(data),
+        },
+        "truth": "配置/授权只代表连接器可用；只有官方提交端点返回可审计接收响应后，页面才进入 SUBMITTED。360/豆包/抖音监测通道不会伪造提交回执；SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
         "last_run_at": data.get("last_run_at") or "",
         "last_result": deepcopy(data.get("last_result") or {}),
     }
@@ -632,10 +751,12 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
             receipt_id = f"INDEXNOW-{now_iso().replace(':','').replace('-','')}"
             _append_receipt({"receipt_id": receipt_id, "engine": "indexnow", "result": receipt, "key_location": verification.get("key_location"), "created_at": now_iso()})
             if receipt.get("ok"):
+                _record_success(data, "indexnow", pending)
                 for asset in pending:
                     _record_submission(asset, "indexnow", receipt_id)
                     submitted.append({"asset_id": asset["id"], "engine": "indexnow", "receipt": receipt_id})
             else:
+                _record_failure(data, "indexnow", pending, "endpoint_rejected")
                 failed.append({"engine": "indexnow", "reason": "endpoint_rejected", "result": receipt})
         elif pending:
             failed.append({"engine": "indexnow", "reason": "key_file_public_verification_failed", "verification": verification})
@@ -654,10 +775,12 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
         receipt_id = f"GSC-{now_iso().replace(':','').replace('-','')}"
         _append_receipt({"receipt_id": receipt_id, "engine": "google_search_console", "result": g_result, "created_at": now_iso()})
         if g_result.get("ok"):
+            _record_success(data, "google_search_console", google_pending)
             for asset in google_pending:
                 _record_submission(asset, "google_search_console", receipt_id)
                 submitted.append({"asset_id": asset["id"], "engine": "google_search_console", "receipt": receipt_id})
         else:
+            _record_failure(data, "google_search_console", google_pending, "sitemap_submit_failed")
             failed.append({"engine": "google_search_console", "reason": "sitemap_submit_failed", "result": g_result})
 
     # Baidu: the official ordinary-indexing API is documented as HTTP. Keep it
@@ -671,13 +794,16 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
         receipt_id = f"BAIDU-{now_iso().replace(':','').replace('-','')}"
         _append_receipt({"receipt_id": receipt_id, "engine": "baidu", "result": b_result, "created_at": now_iso()})
         if b_result.get("ok"):
+            _record_success(data, "baidu", baidu_pending)
             for asset in baidu_pending:
                 _record_submission(asset, "baidu", receipt_id)
                 submitted.append({"asset_id": asset["id"], "engine": "baidu", "receipt": receipt_id})
         else:
+            failure_reason = "baidu_quota_exhausted" if _baidu_quota_exhausted(b_result) else "api_submit_failed"
+            _record_failure(data, "baidu", baidu_pending, failure_reason)
             failed.append({
                 "engine": "baidu",
-                "reason": "baidu_quota_exhausted" if _baidu_quota_exhausted(b_result) else "api_submit_failed",
+                "reason": failure_reason,
                 "result": b_result,
             })
 
@@ -692,8 +818,9 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
         "submitted_count": len(submitted),
         "failed": failed,
         "failed_count": len(failed),
+        "retry_queue": _retry_queue_count(data),
         "indexnow_initialization": initialization,
-        "truth": "每次最多提交 3 个新发布或实质更新的页面版本；同一页面版本当天只尝试一次。搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
+        "truth": "每次最多提交 3 个新发布或实质更新的页面版本；成功回执永久去重，失败按15分钟→1小时→6小时→24小时自动退避重试。搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
     }
     data["last_result"] = result
     _save(data)

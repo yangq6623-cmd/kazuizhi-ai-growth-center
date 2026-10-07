@@ -92,6 +92,11 @@ def main() -> None:
     seo_page = text(SRC / "web" / "r8_13_seo_geo.html")
     for marker in ("SEO自动增长主流水线", "RevenueOS经营反馈", "flow-bottleneck", "revenue-feedback"):
         assert marker in seo_page, marker
+    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED"):
+        assert marker in seo_page, marker
+    submitter_source = text(SRC / "integrations" / "search_engine_submitter.py")
+    for marker in ("RETRY_BACKOFF_MINUTES", "_record_failure", "_retry_blocked", "automation_summary", "monitoring_channels"):
+        assert marker in submitter_source, marker
     for marker in (
         "主页工作流 · 从目标到结果", "全项目执行能力总览", "OWNER_PROJECTS",
         "GEO 自动增长", "SEO 搜索增长", "内容生产", "视频 / 视觉生产",

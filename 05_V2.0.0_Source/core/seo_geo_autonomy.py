@@ -9,6 +9,7 @@ public deployment through the desktop Remote Agent when that connector is ready.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import dashboard, ensure_baseline, generate_staging, record_asset_stage, run_daily_cycle
@@ -43,6 +44,16 @@ DEFAULT = {
     },
     "last_run_at": "",
     "last_result": {},
+    "unattended_validation": {
+        "started_at": "",
+        "last_cycle_at": "",
+        "cycle_count": 0,
+        "success_cycles": 0,
+        "failure_cycles": 0,
+        "progress_events": 0,
+        "last_progress_counts": {},
+        "state": "not_started",
+    },
     "human_items": [],
     "audit": [],
 }
@@ -55,6 +66,9 @@ def _load():
     data.setdefault("mode", "autonomous")
     data.setdefault("enabled", True)
     data.setdefault("policy", deepcopy(DEFAULT["policy"]))
+    data.setdefault("unattended_validation", deepcopy(DEFAULT["unattended_validation"]))
+    for key, value in DEFAULT["unattended_validation"].items():
+        data["unattended_validation"].setdefault(key, deepcopy(value))
     data.setdefault("human_items", [])
     data.setdefault("audit", [])
     return data
@@ -156,6 +170,70 @@ def _external_readiness(snapshot):
         "publish_connector": deploy,
         "search_submitter": search,
     }
+
+
+def _parse_iso(value):
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def validation_status(data=None):
+    data = data or _load()
+    raw = deepcopy(data.get("unattended_validation") or {})
+    started = _parse_iso(raw.get("started_at"))
+    elapsed_hours = 0.0
+    if started:
+        elapsed_hours = round(max(0.0, (datetime.now(timezone.utc) - started).total_seconds() / 3600), 2)
+    failures = int(raw.get("failure_cycles") or 0)
+    progress = int(raw.get("progress_events") or 0)
+    if not started:
+        state = "not_started"
+    elif elapsed_hours < 24:
+        state = "collecting"
+    elif failures == 0 and progress > 0:
+        state = "passed"
+    else:
+        state = "needs_review"
+    raw["elapsed_hours"] = elapsed_hours
+    raw["target_hours"] = 24
+    raw["state"] = state
+    raw["truth"] = "24小时验收只统计自治调度真实周期与账本进展；未满24小时显示采集中，抓取/收录/排名仍必须等待外部证据。"
+    return raw
+
+
+def _update_unattended_validation(data, result, counts):
+    validation = data.setdefault("unattended_validation", deepcopy(DEFAULT["unattended_validation"]))
+    stamp = now_iso()
+    if not validation.get("started_at"):
+        validation["started_at"] = stamp
+    validation["last_cycle_at"] = stamp
+    validation["cycle_count"] = int(validation.get("cycle_count") or 0) + 1
+    failed = bool(
+        result.get("local_cycle", {}).get("reason") == "local_cycle_error"
+        or result.get("local_qc", {}).get("error")
+        or (result.get("public_deploy", {}).get("failed") or [])
+        or (result.get("search_submit", {}).get("failed") or [])
+    )
+    key_counts = {
+        "public_pages": int(counts.get("public_pages") or 0),
+        "submitted_urls": int(counts.get("submitted_urls") or 0),
+        "indexed_urls": int(counts.get("indexed_urls") or 0),
+    }
+    previous = validation.get("last_progress_counts") or {}
+    if previous and any(key_counts.get(key, 0) > int(previous.get(key) or 0) for key in key_counts):
+        validation["progress_events"] = int(validation.get("progress_events") or 0) + 1
+    validation["last_progress_counts"] = key_counts
+    if failed:
+        validation["failure_cycles"] = int(validation.get("failure_cycles") or 0) + 1
+    else:
+        validation["success_cycles"] = int(validation.get("success_cycles") or 0) + 1
+    validation["state"] = validation_status(data).get("state")
+    return validation
 
 
 def run_once(force=False):
@@ -303,6 +381,7 @@ def run_once(force=False):
     }
     data["last_run_at"] = now_iso()
     data["last_result"] = result
+    _update_unattended_validation(data, result, result["counts"])
     data["audit"].insert(0, {
         "at": now_iso(),
         "kind": "autonomy_run",
@@ -326,6 +405,7 @@ def status():
         "policy": deepcopy(data.get("policy") or {}),
         "last_run_at": data.get("last_run_at") or "",
         "last_result": deepcopy(data.get("last_result") or {}),
+        "unattended_validation": validation_status(data),
         "human_items": deepcopy(open_items),
         "human_item_count": len(open_items),
         "public_deploy": seo_public_deployer.status(),

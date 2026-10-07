@@ -48,6 +48,10 @@ def main():
     assert state["policy"]["never_fake_publication"] is True
     assert state["policy"]["never_fake_indexing"] is True
     assert state["policy"]["never_fake_geo_visibility"] is True
+    validation = state["unattended_validation"]
+    assert validation["state"] in {"collecting", "passed", "needs_review"}, validation
+    assert validation["cycle_count"] >= 1 and validation["target_hours"] == 24, validation
+    assert "24小时验收" in validation["truth"]
     assert all("授权至少一个搜索站长平台" != x.get("title") for x in state["human_items"])
 
     ui = (SOURCE / "web" / "r8_14_seo_geo_autonomy_ui.js").read_text(encoding="utf-8")

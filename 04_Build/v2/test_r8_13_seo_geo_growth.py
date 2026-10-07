@@ -57,6 +57,8 @@ def main():
             assert enriched["geo"]["measurement_state"] == "not_started"
             assert enriched["service_health"]["state"] in {"healthy", "degraded"}
             assert "revenue_os" in enriched and "revenue_status" in enriched["revenue_os"]
+            assert "source_parameter_contract" in enriched["revenue_os"]
+            assert enriched["unattended_validation"]["target_hours"] == 24
             assert "只代表本地证据" in evidence["truth"]
 
             # Public technical audit records only actual HTTP/link observations;
@@ -167,7 +169,7 @@ def main():
             assert measured["geo"]["measurement_state"] == "measured"
 
             ui = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
-            for token in ("SEO/GEO增长中心", "SEO自动增长主流水线", "RevenueOS经营反馈", "关键词机会池", "索引与收录漏斗", "GEO / AI 50问验证", "技术SEO健康检查", "内容与页面工厂", "今日自动作业流水线", "转化与归因", "今日增量", "累计真值", "本周公开页面目标", "性能测速"):
+            for token in ("SEO/GEO增长中心", "SEO自动增长主流水线", "RevenueOS经营反馈", "24小时无人值守验收", "关键词机会池", "索引与收录漏斗", "GEO / AI 50问验证", "技术SEO健康检查", "内容与页面工厂", "今日自动作业流水线", "转化与归因", "今日增量", "累计真值", "本周公开页面目标", "性能测速", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器"):
                 assert token in ui
             for token in ("公开回执", "已有逐页公网回执", "当前官网探测", "等待自动初始化", "IndexNow 自动提交（无需登录）", "/api/r8-13/seo-geo/audit-site"):
                 assert token in ui

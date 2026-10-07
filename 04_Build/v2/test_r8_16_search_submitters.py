@@ -169,7 +169,21 @@ def main():
 
     connector = submitter.status()
     assert connector["connectors"]["bing"]["configured"] is True, connector
+    assert connector["connectors"]["so360"]["monitoring_only"] is True, connector
+    assert connector["connectors"]["doubao_search"]["monitoring_only"] is True, connector
+    assert connector["connectors"]["douyin_search"]["monitoring_only"] is True, connector
+    assert connector["connectors"]["so360"]["submit_capable"] is False, connector
+    assert connector["automation_summary"]["auto_submit_enabled"] is True, connector
     assert connector["truth"].find("SUBMITTED") >= 0
+    # Failed submissions are de-duplicated while their exponential backoff is
+    # active, then become eligible again; successful receipts remain permanent.
+    retry_data = {**submitter.DEFAULT, "submission_attempts": {}}
+    retry_asset = {"id": "SEO-RETRY", "published_at": "2026-10-07T10:00:00+08:00", "submission_receipts": []}
+    submitter._record_attempt(retry_data, "indexnow", [retry_asset])
+    submitter._record_failure(retry_data, "indexnow", [retry_asset], "endpoint_rejected")
+    assert submitter._retry_blocked(retry_data, "indexnow", retry_asset) is True
+    retry_entry = retry_data["submission_attempts"]["indexnow"]["SEO-RETRY"]
+    assert retry_entry["failure_count"] == 1 and retry_entry["next_retry_at"], retry_entry
 
     # Owner-facing controls must invoke a real initialization endpoint.  The
     # Search Console control must also be able to start official authorization
@@ -184,6 +198,8 @@ def main():
     assert "已连接·额度用尽" in page
     assert "baidu_quota_exhausted" in page
     assert "baidu_quota_hold" in page
+    for marker in ("360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "自动重试", "不计SUBMITTED"):
+        assert marker in page, marker
 
     # Repeated OAuth callbacks create a history of account assets.  The
     # submitter must use the newest usable credential instead of silently
