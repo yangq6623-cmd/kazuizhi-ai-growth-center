@@ -76,14 +76,19 @@ def _snapshot_age_seconds(payload):
 
 
 def _warm_snapshot():
-    if not _SNAPSHOT_REFRESH_LOCK.acquire(blocking=False):
+    # Capture the lock object before acquiring it. importlib.reload mutates the
+    # module globals in place; a background thread started by the previous
+    # module generation must release the exact lock it acquired, not a newly
+    # assigned replacement lock.
+    lock = _SNAPSHOT_REFRESH_LOCK
+    if not lock.acquire(blocking=False):
         return
     try:
         _dashboard_payload()
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
         pass
     finally:
-        _SNAPSHOT_REFRESH_LOCK.release()
+        lock.release()
 
 
 def _kick_snapshot_refresh():

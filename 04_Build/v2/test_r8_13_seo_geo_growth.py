@@ -67,6 +67,26 @@ def main():
             assert "data_root() / _SNAPSHOT_STORE" in bridge_source and "path.read_text" in bridge_source
             assert "deliberately read-only" in bridge_source
             assert "snapshot_saved_at" in bridge_source
+
+            # A previous module generation can still own a daemon snapshot
+            # thread while importlib.reload replaces module globals. The worker
+            # must release the exact lock it acquired, never the replacement.
+            import threading
+            original_snapshot_lock = seo_patch._SNAPSHOT_REFRESH_LOCK
+            original_dashboard_payload = seo_patch._dashboard_payload
+            acquired_lock = threading.Lock()
+            replacement_lock = threading.Lock()
+            seo_patch._SNAPSHOT_REFRESH_LOCK = acquired_lock
+            def swap_snapshot_lock():
+                seo_patch._SNAPSHOT_REFRESH_LOCK = replacement_lock
+                return {}
+            seo_patch._dashboard_payload = swap_snapshot_lock
+            seo_patch._warm_snapshot()
+            assert not acquired_lock.locked()
+            assert not replacement_lock.locked()
+            seo_patch._SNAPSHOT_REFRESH_LOCK = original_snapshot_lock
+            seo_patch._dashboard_payload = original_dashboard_payload
+
             autonomy_source = (SOURCE / "core" / "seo_geo_autonomy.py").read_text(encoding="utf-8")
             assert "rehydrate_verified_publications" in autonomy_source and "browser dashboard GET" in autonomy_source
             assert "只代表本地证据" in evidence["truth"]
