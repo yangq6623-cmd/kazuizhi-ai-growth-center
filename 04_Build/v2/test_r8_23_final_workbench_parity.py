@@ -120,6 +120,8 @@ def main() -> None:
     ):
         assert marker in geo_autonomy, marker
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
+    assert geo_growth_ui.count("async function load(){") == 1
+    assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
 
     for marker in (
         "geo2-refresh", "geo2-copy", "geo2-chatgpt", "writeClipboard",

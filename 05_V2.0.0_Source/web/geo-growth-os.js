@@ -222,7 +222,7 @@
     });
   }
 
-  async function load(){  async function load(){
+  async function load(){
     if(!ensureStructure()) return null;
     try{
       const data=await json('/api/r8-24/geo-growth');
