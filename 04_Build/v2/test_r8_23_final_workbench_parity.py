@@ -24,6 +24,8 @@ GEO_POLISH = SRC / "web" / "geo-phase1-ui-polish.js"
 GEO_PHASE2 = SRC / "web" / "geo-phase2-analysis.js"
 GEO_PHASE3 = SRC / "web" / "geo-phase3.js"
 GEO_GROWTH_UI = SRC / "web" / "geo-growth-os.js"
+OPERATIONAL_SEARCH = SRC / "web" / "operational-search.js"
+CONNECTOR_MATRIX = SRC / "web" / "seo-geo-connector-matrix.js"
 GEO_GROWTH_CORE = SRC / "core" / "geo_growth_orchestrator.py"
 GEO_PUBLISH_BRIDGE = SRC / "core" / "geo_growth_publish_bridge.py"
 BUILD_INFO = SRC / "web" / "build_info.js"
@@ -54,6 +56,8 @@ def main() -> None:
     geo_phase2 = text(GEO_PHASE2)
     geo_phase3 = text(GEO_PHASE3)
     geo_growth_ui = text(GEO_GROWTH_UI)
+    operational_search = text(OPERATIONAL_SEARCH)
+    connector_matrix = text(CONNECTOR_MATRIX)
     geo_growth_core = text(GEO_GROWTH_CORE)
     geo_publish_bridge = text(GEO_PUBLISH_BRIDGE)
     build_info = text(BUILD_INFO)
@@ -136,6 +140,14 @@ def main() -> None:
     assert "button.disabled = active" not in route_bootstrap
     assert 'data-src="/r8_13_seo_geo.html?embed=1"' in seo_bridge
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
+    for marker in ("frameAtWantedLocation", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "5000"):
+        assert marker in seo_bridge, marker
+    assert "frame.dataset.kzLoaded='1';\n    frame.src=wanted;" not in seo_bridge
+    for marker in ("Promise.allSettled", "GEO 主界面已先恢复", "KZ_GEO_TIMEOUT"):
+        assert marker in operational_search, marker
+    assert "Promise.all([json('/api/r8-19/geo')" not in operational_search
+    for marker in ("requestJson", "连接路由检查超时", "主界面不会等待此检查", "showError"):
+        assert marker in connector_matrix, marker
     for marker in ("foldLegacyHomepage", "kz-r8-24-legacy-home", "历史基础面板 · 默认收起"):
         assert marker in growth_os, marker
     for marker in ("MISSION CONTROL LEDGER", "四类 AI 协作状态", "告诉ChatGPT 你希望什么经营结果发生"):
@@ -163,6 +175,8 @@ def main() -> None:
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
     assert geo_growth_ui.count("async function load(){") == 1
     assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
+    for marker in ("GEO 自动增长数据等待超时", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe"):
+        assert marker in geo_growth_ui, marker
 
     for marker in (
         "geo2-refresh", "geo2-copy", "geo2-chatgpt", "writeClipboard",

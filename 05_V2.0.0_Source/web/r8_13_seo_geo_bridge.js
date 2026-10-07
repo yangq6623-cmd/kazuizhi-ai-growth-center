@@ -120,17 +120,39 @@
     }catch(error){console.warn('SEO legacy decoration deferred',error)}
   }
 
+  function frameAtWantedLocation(frame, wanted){
+    try{
+      const href=String(frame?.contentWindow?.location?.href||'');
+      if(!href||href==='about:blank')return false;
+      const url=new URL(href,location.href);
+      const expected=new URL(wanted,location.href);
+      return url.pathname===expected.pathname;
+    }catch(_){return false}
+  }
+
   function wireFrame(frame, kind){
     if(!frame||frame.dataset.kzFinalWired==='1')return;
     frame.dataset.kzFinalWired='1';
     frame.setAttribute('scrolling','no');
     frame.addEventListener('load',()=>{
+      const wanted=frame.dataset.src||(kind==='geo'?'/geo.html?embed=1':'/r8_13_seo_geo.html?embed=1');
+      frame.dataset.kzLoading='0';
+      if(frameAtWantedLocation(frame,wanted)){
+        frame.dataset.kzLoaded='1';
+        frame.dataset.kzLoadAttempts='0';
+      }else{
+        frame.dataset.kzLoaded='0';
+      }
       if(kind==='seo')decorateLegacySeo(frame); else injectFinalUx(frame);
       scheduleFrameFit(frame);
       try{
         frame.contentWindow?.addEventListener('focus',()=>scheduleFrameFit(frame));
         frame.contentWindow?.addEventListener('resize',()=>scheduleFrameFit(frame));
       }catch(_){}
+    });
+    frame.addEventListener('error',()=>{
+      frame.dataset.kzLoading='0';
+      frame.dataset.kzLoaded='0';
     });
   }
 
@@ -183,9 +205,22 @@
     if(!frame)return;
     wireFrame(frame,target);
     const wanted=frame.dataset.src||(target==='geo'?'/geo.html?embed=1':'/r8_13_seo_geo.html?embed=1');
-    if(frame.dataset.kzLoaded==='1'){scheduleFrameFit(frame);return}
-    frame.dataset.kzLoaded='1';
-    frame.src=wanted;
+    if(frame.dataset.kzLoaded==='1'&&frameAtWantedLocation(frame,wanted)){scheduleFrameFit(frame);return}
+    if(frame.dataset.kzLoading==='1')return;
+    const attempts=Number(frame.dataset.kzLoadAttempts||0);
+    frame.dataset.kzLoading='1';
+    frame.dataset.kzLoaded='0';
+    frame.dataset.kzLoadAttempts=String(attempts+1);
+    frame.src=wanted+(wanted.includes('?')?'&':'?')+'reload='+Date.now();
+
+    window.setTimeout(()=>{
+      if(frame.dataset.kzLoaded==='1'&&frameAtWantedLocation(frame,wanted))return;
+      frame.dataset.kzLoading='0';
+      frame.dataset.kzLoaded='0';
+      if(Number(frame.dataset.kzLoadAttempts||0)<3&&desiredWorkspace===target){
+        loadWorkspaceIfNeeded(target);
+      }
+    },5000);
   }
 
   function renderWorkspace(name){

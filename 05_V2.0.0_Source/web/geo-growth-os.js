@@ -11,10 +11,21 @@
   let activeFilter = "all";
 
   async function json(path, options={}) {
-    const response = await fetch(path, {cache:'no-store', ...options});
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || body.message || `GEO Growth OS 返回 ${response.status}`);
-    return body;
+    const controller=new AbortController();
+    const timeoutMs=Number(options.timeoutMs||15000);
+    const timer=setTimeout(()=>controller.abort('kz_geo_os_timeout'),timeoutMs);
+    try{
+      const clean={...options};delete clean.timeoutMs;
+      const response=await fetch(path,{cache:'no-store',signal:controller.signal,...clean});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.error||body.message||`GEO Growth OS 返回 ${response.status}`);
+      return body;
+    }catch(error){
+      if(controller.signal.aborted||error?.name==='AbortError'||String(error?.message||'').includes('aborted')){
+        throw new Error(`GEO 自动增长数据等待超时（${Math.round(timeoutMs/1000)}秒）；主界面已保留，后台继续重试。`);
+      }
+      throw error;
+    }finally{clearTimeout(timer)}
   }
   const post = (path, body={}) => json(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
 
@@ -270,9 +281,25 @@
       return;
     }
     bind();
+    // Paint the complete GEO shell before waiting for any API. A slow local
+    // endpoint must never leave the owner staring at a blank 720px iframe.
+    if(!cache)render({
+      state:'stopped',
+      summary:{},
+      cloud:{},
+      policy:{},
+      publish_connector:{},
+      technical_blockers:[],
+      opportunities:[],
+      pipeline:[],
+      formal_ab_completed:0,
+      formal_ab_target:50,
+      mission:'正在恢复 GEO 运行状态…'
+    });
     load();
     setInterval(()=>{if(!busy)load();},10000);
   }
 
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(start,60),{once:true});else setTimeout(start,60);
+  window.__KZ_GEO_GROWTH_OS_BOOT__=start;
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();

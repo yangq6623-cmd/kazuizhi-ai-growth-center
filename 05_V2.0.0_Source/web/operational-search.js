@@ -9,10 +9,21 @@
   let browserCurrentTask=null;
 
   async function json(path, options){
-    const response=await fetch(path,{cache:'no-store',...(options||{})});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||`增长服务返回 ${response.status}`);
-    return data;
+    const controller=new AbortController();
+    const timeoutMs=Number(options?.timeoutMs||15000);
+    const timer=setTimeout(()=>controller.abort('kz_growth_timeout'),timeoutMs);
+    try{
+      const clean={...(options||{})};delete clean.timeoutMs;
+      const response=await fetch(path,{cache:'no-store',signal:controller.signal,...clean});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||`增长服务返回 ${response.status}`);
+      return data;
+    }catch(error){
+      if(controller.signal.aborted||error?.name==='AbortError'||String(error?.message||'').includes('aborted')){
+        const e=new Error(`GEO 子接口等待超时：${path}`);e.code='KZ_GEO_TIMEOUT';throw e;
+      }
+      throw error;
+    }finally{clearTimeout(timer)}
   }
   async function post(path, body={}){
     return json(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -192,7 +203,31 @@
   }
 
   async function loadGeo(){
-    const [dashboard,questions,queue,receipts,precheck]=await Promise.all([json('/api/r8-19/geo'),json('/api/r8-19/geo/questions'),json('/api/r8-19/geo/queue'),json('/api/r8-19/geo/receipts?limit=200'),json('/api/r8-19/geo/local-precheck?limit=20')]);geoCache={dashboard,questions:questions.questions||[],queue:queue.tasks||[],receipts:receipts.receipts||[],localPrecheck:precheck||{status:null,results:[]}};renderGeo();return geoCache;
+    const calls=[
+      json('/api/r8-19/geo'),
+      json('/api/r8-19/geo/questions'),
+      json('/api/r8-19/geo/queue'),
+      json('/api/r8-19/geo/receipts?limit=200'),
+      json('/api/r8-19/geo/local-precheck?limit=20')
+    ];
+    const settled=await Promise.allSettled(calls);
+    const ok=index=>settled[index]?.status==='fulfilled'?settled[index].value:null;
+    const dashboard=ok(0),questions=ok(1),queue=ok(2),receipts=ok(3),precheck=ok(4);
+    geoCache={
+      dashboard:dashboard||geoCache.dashboard||{},
+      questions:questions?.questions||geoCache.questions||[],
+      queue:queue?.tasks||geoCache.queue||[],
+      receipts:receipts?.receipts||geoCache.receipts||[],
+      localPrecheck:precheck||geoCache.localPrecheck||{status:null,results:[]}
+    };
+    renderGeo();
+    const failed=settled.filter(x=>x.status==='rejected');
+    const banner=byId('geo-truth-banner');
+    if(banner&&failed.length){
+      banner.textContent=`GEO 主界面已先恢复；${5-failed.length}/5 个数据接口已返回，${failed.length} 个接口正在后台重试。不会因为单个慢接口把整个页面留白。`;
+    }
+    if(failed.length===settled.length)throw new Error('GEO 本地数据接口暂未响应；界面已保留并可继续重试。');
+    return geoCache;
   }
   async function runLocalPrecheck(limit,button){button.disabled=true;const original=button.textContent;try{button.textContent=`本地预检中…`;const reply=await post('/api/r8-19/geo/local-precheck/run',{limit});await loadGeo();window.notify?.(`本地模型已完成 ${fmt(reply.result?.completed||0)} 题预检；结果仅为C级辅助，不计正式GEO。`)}catch(error){window.notify?.(error.message,'error')}finally{button.disabled=false;button.textContent=original}}
   async function prepareBrowserTask(limit,button){button.disabled=true;const original=button.textContent;try{await post('/api/r8-19/geo/bootstrap',{});const platform=byId('geo-browser-platform')?.value||'custom_web';const reply=await post('/api/r8-19/geo/browser/prepare',{limit,platform});const task=reply.result?.claim?.task||{};browserCurrentTask=task;fillBrowserTask(task);await loadGeo();window.notify?.(limit>1?`已准备 ${limit} 题网页验证队列，当前先执行第1题。`:'已准备1题真实网页验证，请到外部AI网页提交原始问题。')}catch(error){window.notify?.(error.message,'error')}finally{button.disabled=false;button.textContent=original}}

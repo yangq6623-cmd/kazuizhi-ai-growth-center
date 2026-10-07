@@ -3,13 +3,24 @@
   const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   let cache=null;
 
-  async function getJson(path){
-    const r=await fetch(path,{cache:'no-store'});const d=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(d.error||`连接路由返回 ${r.status}`);return d;
+  async function requestJson(path,options={},timeoutMs=12000){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort('kz_connector_timeout'),timeoutMs);
+    try{
+      const r=await fetch(path,{cache:'no-store',signal:controller.signal,...options});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||`连接路由返回 ${r.status}`);
+      return d;
+    }catch(error){
+      if(controller.signal.aborted||error?.name==='AbortError'||String(error?.message||'').includes('aborted')){
+        throw new Error(`连接路由检查超时（${Math.round(timeoutMs/1000)}秒），不影响 SEO/GEO 主界面继续使用。`);
+      }
+      throw error;
+    }finally{clearTimeout(timer)}
   }
+  async function getJson(path){return requestJson(path,{},12000)}
   async function post(path,body={}){
-    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'});
-    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`连接路由返回 ${r.status}`);return d;
+    return requestJson(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},20000);
   }
 
   function style(){
@@ -70,10 +81,23 @@
     document.querySelectorAll('[data-r821-msg]').forEach(el=>el.textContent=note.join('；')||'统一路由已同步；没有发现新的连接层阻塞。');
   }
 
-  async function refresh(){render(await getJson('/api/r8-21/seo-geo/connectors'))}
+  function showError(message){
+    ensure();
+    document.querySelectorAll('[data-r821-rows]').forEach(el=>el.innerHTML='<tr><td colspan="8">连接矩阵暂未返回；SEO/GEO 主工作区继续运行，可稍后重试。</td></tr>');
+    document.querySelectorAll('[data-r821-msg]').forEach(el=>el.textContent=message||'连接矩阵暂不可用。');
+  }
+  async function refresh(){
+    try{render(await getJson('/api/r8-21/seo-geo/connectors'))}
+    catch(error){showError(error.message);throw error}
+  }
   async function sync(){
-    document.querySelectorAll('[data-r821-msg]').forEach(el=>el.textContent='正在同步连接路由并检查服务器通道…');
-    const d=await post('/api/r8-21/seo-geo/connectors/sync',{check_live:true});render(d.result||d.connector_routes||d);
+    const buttons=[...document.querySelectorAll('[data-r821-sync]')];
+    buttons.forEach(btn=>{btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='检查中…'});
+    document.querySelectorAll('[data-r821-msg]').forEach(el=>el.textContent='正在同步连接路由并检查服务器通道；主界面不会等待此检查。');
+    try{
+      const d=await post('/api/r8-21/seo-geo/connectors/sync',{check_live:true});render(d.result||d.connector_routes||d);
+    }catch(error){showError(error.message);throw error}
+    finally{buttons.forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.oldText||'同步并检查服务器通道';delete btn.dataset.oldText})}
   }
   let bound=false;
   function bind(){
