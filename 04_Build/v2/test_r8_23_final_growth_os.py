@@ -116,10 +116,10 @@ def main():
                 assert marker in patch, marker
             for marker in ("R8-23 · FINAL 7×24 AUTONOMOUS GROWTH OS", "ChatGPT 总脑", "双增长引擎", "8个AI员工", "能力利用情况"):
                 assert marker in ui, marker
-            # R8-23.1 collapses duplicated technical/legacy surfaces and reads
-            # SEO/GEO truth into the same owner cockpit instead of stacking more
-            # full-size dashboards.
-            for marker in ("R8-23.1 · 老板运营总览", "/api/r8-22/autonomy", "/api/r8-20/seo-geo?days=30", "kz-r8-23-legacy", "高级分析、内容治理与运行保障", "只显示真实分配/调用"):
+            # R8-24 keeps the compact owner cockpit, adds the all-project
+            # execution overview, and preserves the same SEO/GEO truth feeds.
+            assert any(marker in ui for marker in ("R8-23.1 · 老板运营总览", "R8-24 · 老板全项目执行总览"))
+            for marker in ("/api/r8-22/autonomy", "/api/r8-20/seo-geo?days=30", "kz-r8-23-legacy", "高级分析、内容治理与运行保障", "只显示真实分配/调用"):
                 assert marker in ui, marker
             assert "r8_23_growth_os_patch" in truth_patch
             assert any(f'phase: "{phase}"' in build for phase in ("R8-23", "R8-24"))
