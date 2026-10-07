@@ -115,13 +115,26 @@
     }
     const body=details.querySelector('.kz23-details-content');
     if(!body)return;
+    const legacyPhrases = [
+      '告诉 ChatGPT 你希望什么经营结果发生',
+      '告诉ChatGPT 你希望什么经营结果发生',
+      'MISSION CONTROL LEDGER',
+      '四类 AI 协作状态',
+      '四类AI协作状态',
+    ];
     const candidates=[
       ...root.querySelectorAll(':scope > .welcome.command-welcome'),
       ...root.querySelectorAll(':scope > .stat-grid'),
       ...root.querySelectorAll(':scope > .dashboard-grid'),
       ...root.querySelectorAll(':scope > #dash-human-panel'),
+      ...[...root.children].filter(node =>
+        node !== cockpit &&
+        node !== details &&
+        node !== byId('mission-command-strip') &&
+        legacyPhrases.some(text => String(node.textContent || '').includes(text))
+      ),
     ];
-    candidates.forEach(node=>{ if(node.parentElement!==body) body.appendChild(node); });
+    [...new Set(candidates)].forEach(node=>{ if(node.parentElement!==body) body.appendChild(node); });
   }
 
   function host(){

@@ -103,6 +103,8 @@ def main() -> None:
         assert marker in coordinator, marker
     for marker in ("foldLegacyHomepage", "kz-r8-24-legacy-home", "历史基础面板 · 默认收起"):
         assert marker in growth_os, marker
+    for marker in ("MISSION CONTROL LEDGER", "四类 AI 协作状态", "告诉ChatGPT 你希望什么经营结果发生"):
+        assert marker in growth_os, marker
     assert "R8 增长总控" not in r8_final_center
     for marker in ("Single-home rule", "r810-legacy-route", "不作为主页", "r8-final-legacy-page"):
         assert marker in r8_final_center, marker

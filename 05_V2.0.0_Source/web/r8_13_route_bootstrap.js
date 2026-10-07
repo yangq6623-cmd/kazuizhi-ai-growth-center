@@ -29,30 +29,43 @@
     if (typeof window.toast === 'function') window.toast(message, 'error');
   }
 
+  async function fallbackLoadBridge() {
+    if (window.__KZ_R813_SEO_GEO_BRIDGE__ && !window.KZR813SeoGeoBridge) {
+      delete window.__KZ_R813_SEO_GEO_BRIDGE__;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(SCRIPT, {cache:'no-store', signal:controller.signal});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const source = await response.text();
+      const tag = document.createElement('script');
+      tag.dataset.r813SeoGeoFallback = '1';
+      tag.textContent = `${source}\n//# sourceURL=${SCRIPT}`;
+      document.body.appendChild(tag);
+      if (!window.KZR813SeoGeoBridge?.open) throw new Error('SEO/GEO 工作区未完成初始化');
+      return window.KZR813SeoGeoBridge;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('SEO/GEO 工作区加载超时');
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
   function loadBridge() {
     if (window.KZR813SeoGeoBridge?.open) return Promise.resolve(window.KZR813SeoGeoBridge);
     if (pending) return pending;
-    pending = new Promise((resolve, reject) => {
-      // A previously interrupted legacy load can leave only its guard flag.
-      // Clear that incomplete state before loading this known-good bridge.
-      if (window.__KZ_R813_SEO_GEO_BRIDGE__ && !window.KZR813SeoGeoBridge) {
-        delete window.__KZ_R813_SEO_GEO_BRIDGE__;
+    pending = (async () => {
+      // The startup coordinator is the single owner of lazy workspace scripts.
+      // Reusing it avoids the old route bootstrap racing a second <script src>
+      // request against the local server.
+      if (typeof window.KZLoadOwnerWorkspace === 'function') {
+        await window.KZLoadOwnerWorkspace('seo_geo');
+        if (window.KZR813SeoGeoBridge?.open) return window.KZR813SeoGeoBridge;
       }
-      const tag = document.createElement('script');
-      const timer = window.setTimeout(() => reject(new Error('SEO/GEO 工作区加载超时')), 5000);
-      tag.src = `${SCRIPT}?route=${Date.now()}`;
-      tag.async = true;
-      tag.onload = () => {
-        window.clearTimeout(timer);
-        if (window.KZR813SeoGeoBridge?.open) resolve(window.KZR813SeoGeoBridge);
-        else reject(new Error('SEO/GEO 工作区未完成初始化'));
-      };
-      tag.onerror = () => {
-        window.clearTimeout(timer);
-        reject(new Error('SEO/GEO 工作区脚本未能加载'));
-      };
-      document.head.appendChild(tag);
-    }).finally(() => { pending = null; });
+      return fallbackLoadBridge();
+    })().finally(() => { pending = null; });
     return pending;
   }
 
@@ -68,8 +81,8 @@
     }
   }
 
-  // Capture before the asynchronous startup coordinator registers its lazy
-  // listener.  This makes the first click deterministic even on a cold start.
+  // Cold-start capture remains, but script ownership is delegated to the
+  // startup coordinator whenever it is available.
   document.addEventListener('click', event => {
     const button = event.target?.closest?.(`.r810-nav-button[data-target="${TARGET}"]`);
     if (!button) return;
