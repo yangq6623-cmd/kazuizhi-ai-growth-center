@@ -43,11 +43,15 @@ def check_owner_runtime_contract():
         "/r8_12_account_center_bridge.js",
         "yieldToBrowser",
         "dedupeGeneratedSingletons",
-        "forceInitialDashboardOnce",
+        "installInitialRouteOwnership",
+        "lockInitialDashboardOnce",
+        "kzHomeOwner",
+        "kzInitialRouteUserChosen",
         "r810:workbench-ready",
         "kz:app-ready",
     ):
         assert token in coordinator, f"startup convergence contract missing: {token}"
+    assert "forceInitialDashboardOnce" not in coordinator, "late startup must not re-open dashboard after owner modules mount"
     assert "window.MutationObserver =" not in coordinator, "startup must not replace native browser observers"
 
 
