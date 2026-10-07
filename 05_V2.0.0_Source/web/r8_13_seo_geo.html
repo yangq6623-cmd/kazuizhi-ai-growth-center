@@ -167,7 +167,7 @@ function renderTechnical(){
 }
 function renderConnectors(){
  const con=(state.technical||{}).connectors||{},deploy=(state.technical||{}).public_deploy||{},submission=state.search_submit||{},last=submission.last_result||{},at=submission.last_run_at||'',summary=submission.automation_summary||{};
- const purposes={baidu:'百度站点验证 / URL提交',bing:'IndexNow 自动提交',google:'Search Console Sitemap',so360:'360搜索站长平台 / Sitemap',doubao_search:'豆包搜索 / 豆包浏览器 · GEO可见性',douyin_search:'抖音搜索 / 抖音浏览器 · 内容生态'};
+ const purposes={baidu:'百度站点验证 / URL提交',bing:'IndexNow 自动提交（无需登录）',google:'Search Console Sitemap',so360:'360搜索站长平台 / Sitemap',doubao_search:'豆包搜索 / 豆包浏览器 · GEO可见性',douyin_search:'抖音搜索 / 抖音浏览器 · 内容生态'};
  const engine={baidu:'baidu',bing:'indexnow',google:'google_search_console'};
  const evidence=key=>{const name=engine[key];if(!name)return '监测通道：不生成网页SUBMITTED回执。';const success=(last.submitted||[]).find(row=>row.engine===name),failure=(last.failed||[]).find(row=>row.engine===name);if(success)return `最近提交：${technicalTime(at)}；回执 ${success.receipt||'已记录'}`;if(failure)return `最近检查：${technicalTime(at)}；未接收：${failure.reason||'平台拒绝'}`;return at?`最近检查：${technicalTime(at)}；本轮无该平台新 URL。`:'尚无提交检查记录。'};
  $('connector-summary').innerHTML=[['自动提交',summary.auto_submit_enabled?'已开启':'未开启'],['待提交',summary.pending_unique_urls??0],['已提交',summary.submitted_unique_urls??0],['上轮失败',summary.failed_last_run??0],['自动重试',summary.retry_queue??0]].map(([a,b])=>`<div class="mini"><span>${a}</span><b>${esc(b)}</b></div>`).join('');
