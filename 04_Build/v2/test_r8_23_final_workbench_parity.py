@@ -89,6 +89,9 @@ def main() -> None:
 
     for marker in ("latestSeo", "seoRequest", "SEO/GEO overview refresh deferred"):
         assert marker in growth_os, marker
+    seo_page = text(SRC / "web" / "r8_13_seo_geo.html")
+    for marker in ("SEO自动增长主流水线", "RevenueOS经营反馈", "flow-bottleneck", "revenue-feedback"):
+        assert marker in seo_page, marker
     for marker in (
         "主页工作流 · 从目标到结果", "全项目执行能力总览", "OWNER_PROJECTS",
         "GEO 自动增长", "SEO 搜索增长", "内容生产", "视频 / 视觉生产",

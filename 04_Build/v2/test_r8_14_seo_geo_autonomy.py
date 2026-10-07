@@ -11,7 +11,7 @@ sys.path.insert(0, str(SOURCE))
 os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="kz-r814-seo-")
 
 from core.seo_geo_autonomy import configure, run_once, status  # noqa: E402
-from core.seo_geo_growth import dashboard  # noqa: E402
+from core.seo_geo_growth import dashboard, plan_today  # noqa: E402
 
 
 def main():
@@ -26,6 +26,13 @@ def main():
     assert result["mode"] == "assisted"
     snap = dashboard()
     assert len(snap.get("assets", [])) > 0
+    # After today's first run, a newly PLANNED asset must not wait until
+    # tomorrow. The normal 5-minute autonomy pass drains ready local stages
+    # without planning beyond the daily quota.
+    extra = plan_today(limit=1)
+    assert extra["count"] == 1
+    follow = run_once(force=False)
+    assert (follow["local_cycle"].get("carryover_generation") or {}).get("count") == 1, follow
     # Deterministic local QC may advance GENERATED pages but must not fabricate public success.
     assert all(a.get("stage") not in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"} for a in snap.get("assets", []))
 

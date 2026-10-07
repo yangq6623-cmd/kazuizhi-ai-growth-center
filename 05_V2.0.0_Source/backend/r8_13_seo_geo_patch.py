@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -23,10 +24,12 @@ from core.seo_geo_growth import (
     technical_snapshot,
 )
 from integrations.search_engine_submitter import status as search_submit_status
+from integrations import business_data
 from integrations import seo_public_deployer
 from promotion.search_growth import audit as audit_search_site, status as search_growth_status
 
 _INSTALLED = False
+_LAST_GOOD_PAYLOAD = None
 
 
 def _optional_status(label, reader, fallback):
@@ -146,33 +149,66 @@ def _staging_evidence(payload):
     }
 
 
+def _revenue_feedback():
+    source = _optional_status(
+        "RevenueOS经营数据", business_data.business_source_status,
+        {"status": "unavailable", "status_label": "暂不可用", "summary": {}, "last_error": "经营数据状态正在重新读取。"},
+    )
+    summary = source.get("summary") or {}
+    funnel = summary.get("funnel") or {}
+    orders = summary.get("orders") or {}
+    mini = summary.get("mini_program") or {}
+    connected = source.get("status") == "connected"
+    visits = funnel.get("mini_program_visits")
+    if visits is None:
+        visits = mini.get("visit_uv")
+    consultations = funnel.get("leads")
+    if consultations is None:
+        consultations = funnel.get("repair_requests")
+    return {
+        "status": source.get("status") or "not_configured",
+        "status_label": source.get("status_label") or ("已连接" if connected else "待接入"),
+        "connected": connected,
+        "source": source.get("source"),
+        "as_of": source.get("remote_as_of") or source.get("last_refresh"),
+        "visits": visits,
+        "consultations": consultations,
+        "orders_today": orders.get("today"),
+        "orders_completed": orders.get("completed"),
+        "revenue": None,
+        "revenue_status": "verified_revenue_not_connected",
+        "attribution_status": "waiting_source_attribution",
+        "message": source.get("message") or source.get("last_error") or "",
+        "truth": "RevenueOS只显示已验证聚合经营数据；当前没有安全收入聚合字段时显示待接入，不用订单数推算收入，也不把SEO公开页数量当成转化。",
+    }
+
+
 def _dashboard_payload():
-    # Read the real deploy connector first.  This lets migrated installations
-    # reconcile the obsolete R8-13 publish toggle with a verified R8-17 Remote
-    # Agent, instead of displaying “自动发布关闭” while it is publishing.
+    global _LAST_GOOD_PAYLOAD
+    warnings = []
     deploy = _optional_status(
         "公网部署状态", seo_public_deployer.status,
         {"configured": False, "enabled": False, "ready": False,
          "reason": "公网部署状态正在重新读取。"},
     )
-    # A prior build may have lost only the local SEO asset ledger during an
-    # upgrade, while the independently verified R8-15/R8-17 receipts remain.
-    # Restore those exact receipts before computing UI totals; never infer a
-    # page from a connector configuration or from a remote file write alone.
-    rehydrate_verified_publications(seo_public_deployer.verified_publication_receipts())
-    reconcile_external_publish_enabled(bool(deploy.get("ready")))
+    try:
+        rehydrate_verified_publications(seo_public_deployer.verified_publication_receipts())
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        warnings.append(f"发布回执同步延后：{type(error).__name__}")
+    try:
+        reconcile_external_publish_enabled(bool(deploy.get("ready")))
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        warnings.append(f"发布策略同步延后：{type(error).__name__}")
+
     payload = dashboard()
     technical = payload.setdefault("technical", {})
-    # Keep the independent website audit and the deployment connector separate.
-    # The former is a current homepage/robots/sitemap observation; the latter
-    # owns the historical per-page verification receipt required for PUBLISHED.
     technical["public_site"] = _optional_status(
         "官网探测状态", search_growth_status,
         {"status": "unavailable", "latest_audit": None, "packs": []},
     )
     technical["public_deploy"] = deploy
     search = _optional_status("搜索连接器状态", search_submit_status, _connector_fallback())
-    technical["connectors"] = deepcopy_connectors = search.get("connectors") or {}
+    technical["connectors"] = search.get("connectors") or {}
     technical["observability"] = _optional_status(
         "技术审计状态", seo_observability.status,
         {"state": "unavailable", "checked_at": "", "network": {}, "links": {},
@@ -180,8 +216,16 @@ def _dashboard_payload():
     )
     payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
+    payload["revenue_os"] = _revenue_feedback()
     geo = payload.setdefault("geo", {})
     geo["measurement_state"] = "measured" if int(geo.get("observations") or 0) > 0 else "not_started"
+    payload["service_health"] = {
+        "state": "degraded" if warnings else "healthy",
+        "degraded": bool(warnings),
+        "warnings": warnings,
+        "truth": "核心SEO账本可读时页面保持可用；可选连接器或回执同步失败只降级对应子模块，不把整个SEO/GEO工作区判为离线。",
+    }
+    _LAST_GOOD_PAYLOAD = deepcopy(payload)
     return payload
 
 
@@ -207,6 +251,16 @@ def install():
                 handler._json_ok(result)
                 return
         except Exception as error:  # Never close the local HTTP connection without JSON.
+            if path == "/api/r8-13/seo-geo" and _LAST_GOOD_PAYLOAD:
+                fallback = deepcopy(_LAST_GOOD_PAYLOAD)
+                fallback["service_health"] = {
+                    "state": "degraded_snapshot",
+                    "degraded": True,
+                    "warnings": [f"实时刷新延后：{type(error).__name__}"],
+                    "truth": "当前展示本进程最后一次成功读取的真实快照；系统会自动重试，不把快照冒充为新的实时回执。",
+                }
+                handler._json_ok(fallback)
+                return
             handler._json_error(503, f"SEO/GEO 状态暂时不可用：{type(error).__name__}")
             return
         return original_get(handler)

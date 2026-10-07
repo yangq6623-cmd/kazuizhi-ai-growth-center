@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
-from core.seo_geo_growth import dashboard, ensure_baseline, record_asset_stage, run_daily_cycle
+from core.seo_geo_growth import dashboard, ensure_baseline, generate_staging, record_asset_stage, run_daily_cycle
 from integrations import search_engine_submitter
 from integrations import seo_public_deployer
 
@@ -179,9 +179,36 @@ def run_once(force=False):
     technical_audit = {"scheduled": bool(data["policy"].get("auto_technical_audit", True))}
 
     if mode in {"assisted", "autonomous"}:
-        local = run_daily_cycle(force=bool(force))
+        try:
+            local = run_daily_cycle(force=bool(force))
+            # The daily-cycle gate limits new planning, but it must not strand
+            # assets that are already PLANNED.  The 5-minute autonomous pass
+            # keeps draining those ready local stages without creating extra
+            # daily plans.
+            if (
+                local.get("skipped")
+                and local.get("reason") == "today_already_started"
+                and data["policy"].get("auto_generate", True)
+            ):
+                current = dashboard()
+                limit = int((current.get("config") or {}).get("daily_page_limit") or 6)
+                carryover = generate_staging(limit=limit)
+                local = {**local, "carryover_generation": carryover}
+            _close_human_item(data, "seo_local_pipeline_error")
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            local = {"skipped": True, "reason": "local_cycle_error", "error": str(error)[:500]}
+            _add_human_item(
+                data,
+                "seo_local_pipeline_error",
+                "SEO本地流水线暂时延后",
+                str(error)[:500],
+                "系统会在下一次5分钟自治周期自动重试；其他已发布页面的搜索提交不应被阻断。",
+            )
         if data["policy"].get("auto_local_qc", True):
-            qc = _local_qc_generated_assets(limit=20)
+            try:
+                qc = _local_qc_generated_assets(limit=20)
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                qc = {"passed": [], "failed": [], "error": str(error)[:500]}
 
     snap = dashboard()
     readiness = _external_readiness(snap)

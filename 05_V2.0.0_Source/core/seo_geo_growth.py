@@ -259,6 +259,7 @@ def ensure_baseline():
     data = _load()
     existing = {str(x.get("keyword") or "") for x in data["opportunities"] if isinstance(x, dict)}
     added = 0
+    changed = False
     for region, service, keyword, intent, priority in DEFAULT_OPPORTUNITIES:
         if keyword in existing:
             continue
@@ -275,13 +276,19 @@ def ensure_baseline():
             "asset_id": "",
         })
         added += 1
+        changed = True
     if not data["geo_questions"]:
         data["geo_questions"] = _default_geo_questions()
         _audit_event(data, "geo_baseline_created", {"questions": len(data["geo_questions"])})
+        changed = True
     if added:
         _audit_event(data, "opportunity_baseline_created", {"added": added})
-    _save(data)
-    return {"added_opportunities": added, "questions": len(data["geo_questions"])}
+    # Dashboard polling calls ensure_baseline. Once the baseline exists it must
+    # remain read-only; otherwise every 30-second refresh competes with workers
+    # for the same Windows JSON file.
+    if changed:
+        _save(data)
+    return {"added_opportunities": added, "questions": len(data["geo_questions"]), "changed": changed}
 
 
 def _default_geo_questions():
