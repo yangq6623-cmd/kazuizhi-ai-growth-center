@@ -23,13 +23,18 @@
   }
 
   async function api(path) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch(path, {cache:'no-store'});
+      const response = await fetch(path, {cache:'no-store', signal:controller.signal});
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       return payload.data || payload;
     } catch (error) {
-      return {__error:true, message:String(error?.message || error)};
+      const message = error?.name === 'AbortError' ? `timeout: ${path}` : String(error?.message || error);
+      return {__error:true, message};
+    } finally {
+      window.clearTimeout(timer);
     }
   }
 
@@ -217,14 +222,21 @@
     if (humanLabel) humanLabel.textContent = 'SEO/GEO 待我处理';
   }
 
+  let refreshBusy = false;
   async function refreshTruth() {
-    const [factory, seo] = await Promise.all([
-      api('/api/content-factory'),
-      api('/api/r8-14/seo-geo/autonomy'),
-    ]);
-    patchLegacyReleaseCopy();
-    patchSeoFrameTruth();
-    if (!factory.__error || !seo.__error) renderGlobalAttention(factory.__error ? {} : factory, seo.__error ? {} : seo);
+    if (refreshBusy) return;
+    refreshBusy = true;
+    try {
+      const [factory, seo] = await Promise.all([
+        api('/api/content-factory'),
+        api('/api/r8-14/seo-geo/autonomy'),
+      ]);
+      patchLegacyReleaseCopy();
+      patchSeoFrameTruth();
+      if (!factory.__error || !seo.__error) renderGlobalAttention(factory.__error ? {} : factory, seo.__error ? {} : seo);
+    } finally {
+      refreshBusy = false;
+    }
   }
 
   function scheduleRefresh(delay = 80) {
@@ -242,6 +254,9 @@
   document.addEventListener('kz:app-ready', () => scheduleRefresh(20));
   const seoFrame = $('r813-seo-geo-frame');
   seoFrame?.addEventListener('load', () => scheduleRefresh(250));
-  setInterval(() => refreshTruth().catch(() => {}), 15000);
-  scheduleRefresh(0);
+  setInterval(() => refreshTruth().catch(() => {}), 30000);
+  // First refresh waits until owner shell and local evidence services have had
+  // time to settle. This patch is informational and must never compete with
+  // critical startup or SEO/GEO ledger reads.
+  scheduleRefresh(1800);
 })();

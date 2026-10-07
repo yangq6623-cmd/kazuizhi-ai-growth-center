@@ -61,6 +61,8 @@ def main():
             assert enriched["unattended_validation"]["target_hours"] == 24
             bridge_source = (SOURCE / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
             assert "_SNAPSHOT_STORE" in bridge_source and "_load_last_good_payload" in bridge_source
+            assert "_fast_dashboard_response" in bridge_source and "_kick_snapshot_refresh" in bridge_source
+            assert "_SNAPSHOT_REFRESH_LOCK" in bridge_source
             assert "deliberately read-only" in bridge_source
             assert "snapshot_saved_at" in bridge_source
             autonomy_source = (SOURCE / "core" / "seo_geo_autonomy.py").read_text(encoding="utf-8")

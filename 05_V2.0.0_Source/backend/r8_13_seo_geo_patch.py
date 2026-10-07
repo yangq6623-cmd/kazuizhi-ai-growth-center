@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
+import threading
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -32,6 +33,7 @@ from promotion.search_growth import audit as audit_search_site, status as search
 _INSTALLED = False
 _LAST_GOOD_PAYLOAD = None
 _SNAPSHOT_STORE = "r8_13/seo_geo_dashboard_snapshot.json"
+_SNAPSHOT_REFRESH_LOCK = threading.Lock()
 
 
 def _save_last_good_payload(payload):
@@ -51,6 +53,75 @@ def _load_last_good_payload():
         return deepcopy(_LAST_GOOD_PAYLOAD)
     cached = read_json(_SNAPSHOT_STORE, {})
     return deepcopy(cached) if isinstance(cached, dict) and cached else None
+
+
+def _snapshot_age_seconds(payload):
+    raw = str((payload or {}).get("_snapshot_saved_at") or "")
+    if not raw:
+        return None
+    try:
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds())
+    except (ValueError, TypeError):
+        return None
+
+
+def _warm_snapshot():
+    if not _SNAPSHOT_REFRESH_LOCK.acquire(blocking=False):
+        return
+    try:
+        _dashboard_payload()
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        pass
+    finally:
+        _SNAPSHOT_REFRESH_LOCK.release()
+
+
+def _kick_snapshot_refresh():
+    thread = threading.Thread(target=_warm_snapshot, name="kz-seo-geo-snapshot", daemon=True)
+    thread.start()
+
+
+def _fast_dashboard_response():
+    cached = _load_last_good_payload()
+    if cached:
+        age = _snapshot_age_seconds(cached)
+        _kick_snapshot_refresh()
+        health = cached.setdefault("service_health", {})
+        health["snapshot_saved_at"] = cached.get("_snapshot_saved_at") or ""
+        health["snapshot_age_seconds"] = round(age, 1) if age is not None else None
+        health["snapshot_mode"] = True
+        health["truth"] = "页面优先读取最近一次成功持久化的真实快照，并在后台异步刷新；快照时间单独标注，不把缓存冒充为新的外部回执。"
+        return cached
+
+    # Never make the first page paint wait on optional remote connectors.
+    # Return the local ledger immediately, then enrich/persist the full snapshot
+    # in a background thread.
+    payload = dashboard()
+    payload["search_submit"] = _connector_fallback()
+    payload["evidence_summary"] = _staging_evidence(payload)
+    payload["revenue_os"] = {
+        "status": "warming",
+        "status_label": "经营数据读取中",
+        "connected": False,
+        "revenue": None,
+        "revenue_status": "verified_revenue_not_connected",
+        "attribution_status": "waiting_source_attribution",
+        "source_parameter_contract": ["seo", "geo", "search_engine", "ai_citation", "asset_id"],
+        "truth": "首屏只读取本地真实账本；RevenueOS与外部连接器将在后台快照刷新完成后显示真实状态。",
+    }
+    payload["unattended_validation"] = seo_autonomy.validation_status()
+    payload["service_health"] = {
+        "state": "warming_snapshot",
+        "degraded": False,
+        "warnings": [],
+        "snapshot_mode": True,
+        "truth": "正在后台生成完整真实快照；首屏不等待远程连接器。",
+    }
+    _kick_snapshot_refresh()
+    return payload
 
 
 def _optional_status(label, reader, fallback):
@@ -279,6 +350,7 @@ def install():
     if _INSTALLED:
         return
     ensure_baseline()
+    _kick_snapshot_refresh()
     original_get = server.DashboardHandler.do_GET
     original_post = server.DashboardHandler.do_POST
 
@@ -286,7 +358,7 @@ def install():
         path = urlsplit(handler.path).path
         try:
             if path == "/api/r8-13/seo-geo":
-                handler._json_ok(_dashboard_payload())
+                handler._json_ok(_fast_dashboard_response())
                 return
             if path == "/api/r8-13/seo-geo/technical":
                 result = technical_snapshot()

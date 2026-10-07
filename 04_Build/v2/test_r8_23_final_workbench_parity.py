@@ -110,10 +110,13 @@ def main() -> None:
     for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: []"):
         assert marker in coordinator, marker
     startup = text(SRC / "web" / "r8_12_startup_coordinator.js")
-    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered"):
+    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules"):
         assert marker in startup, marker
+    truth_patch = text(SRC / "web" / "r8_15_ui_truth_patch.js")
+    for marker in ("refreshBusy", "AbortController", "scheduleRefresh(1800)", "30000"):
+        assert marker in truth_patch, marker
     seo_bridge_backend = text(SRC / "backend" / "r8_13_seo_geo_patch.py")
-    for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only"):
+    for marker in ("_SNAPSHOT_STORE", "_load_last_good_payload", "snapshot_saved_at", "deliberately read-only", "_fast_dashboard_response", "_kick_snapshot_refresh", "_SNAPSHOT_REFRESH_LOCK"):
         assert marker in seo_bridge_backend, marker
     route_bootstrap = text(SRC / "web" / "r8_13_route_bootstrap.js")
     for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace"):

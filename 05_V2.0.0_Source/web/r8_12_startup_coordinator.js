@@ -44,6 +44,13 @@
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
+  ];
+
+  // Truth reconciliation is useful but not required for first paint. Loading
+  // it in the critical path caused the final owner-shell fetch to compete with
+  // SEO/GEO cold-start queries and it was the only module still timing out on
+  // real #669 installs. Give it a quiet post-ready window instead.
+  const POST_READY_SEQUENCE = [
     ['/r8_15_ui_truth_patch.js', 'r815UiTruth'],
   ];
 
@@ -494,7 +501,7 @@
     renderStartupDiagnostics();
     const pending = state.failed_modules.map(row => ({...row}));
     for (const failure of pending) {
-      const tuple = SCRIPT_SEQUENCE.find(([src]) => src === failure.src);
+      const tuple = [...SCRIPT_SEQUENCE, ...POST_READY_SEQUENCE].find(([src]) => src === failure.src);
       if (!tuple) continue;
       const [src, key] = tuple;
       try {
@@ -519,6 +526,33 @@
       window.toast(`启动模块已自动恢复：本次恢复 ${state.recovered_modules.length} 个。`, 'success');
     }
     return state.failed_modules.length === 0;
+  }
+
+  async function loadPostReadyModules() {
+    for (const [src, key] of POST_READY_SEQUENCE) {
+      let loaded = false;
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3 && !loaded; attempt += 1) {
+        try {
+          await loadScript(src, key, false, 30000);
+          clearFailure(src, `post_ready_${attempt}`);
+          loaded = true;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 3) await yieldToBrowser(attempt * 1200);
+        }
+      }
+      if (!loaded) {
+        rememberFailure(src, lastError || new Error(`post-ready module failed: ${src}`));
+        if (typeof window.toast === 'function') {
+          window.toast(`后台界面增强模块未加载：${src.split('/').pop()}。系统状态页可查看真实原因并重试。`, 'warning');
+        }
+      }
+    }
+    state.degraded = state.failed_modules.length > 0;
+    if (state.phase === 'degraded' && !state.degraded) state.phase = 'ready';
+    exposeStartupStatus();
+    renderStartupDiagnostics();
   }
 
   async function boot() {
@@ -571,6 +605,7 @@
           window.setTimeout(() => retryFailedModules(`auto_retry_${index + 1}`), delay);
         });
       }
+      window.setTimeout(() => loadPostReadyModules(), 1500);
     } catch (error) {
       state.phase = 'failed';
       state.error = String(error?.message || error);

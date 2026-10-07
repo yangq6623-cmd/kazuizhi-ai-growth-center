@@ -22,6 +22,7 @@ def main():
     require("ensureSeoGeoBridge" in startup, "SEO/GEO navigation has no interrupted-start recovery")
     require("r813SeoGeoRecovery" in startup, "SEO/GEO recovery script marker is missing")
     require("retryFailedModules" in startup and "auto_retry_" in startup, "cold-start owner modules are not retried after the UI becomes usable")
+    require("loadPostReadyModules" in startup and "30000" in startup, "post-ready truth module does not have a quiet long-timeout recovery path")
     require('src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator still depends on a later dynamic loader")
     print("PASS: cold-start UI loading tolerates a busy but healthy local SEO/GEO server")
 

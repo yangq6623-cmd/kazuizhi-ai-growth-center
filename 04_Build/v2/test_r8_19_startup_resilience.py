@@ -37,6 +37,8 @@ def main():
     require("failed_modules" in startup and "degraded" in startup, "startup degradation state is not exposed")
     require("recovered_modules" in startup and "retryFailedModules" in startup, "startup failures cannot self-heal")
     require("KZStartupDiagnostics" in startup and "KZRetryFailedStartupModules" in startup, "startup diagnostics do not expose exact failed files")
+    require("POST_READY_SEQUENCE" in startup and "loadPostReadyModules" in startup, "non-critical truth patch is not deferred until post-ready")
+    require("['/r8_15_ui_truth_patch.js', 'r815UiTruth']" in startup, "R8-15 truth patch post-ready entry missing")
     require("r812-startup-diagnostics" in startup, "system status page does not show startup module filenames/reasons")
     require("auto_retry_" in startup and "30000" in startup, "startup failures have no bounded post-boot retry")
     require("kz:startup-module-failed" in startup, "startup module failures are not surfaced as recoverable events")
