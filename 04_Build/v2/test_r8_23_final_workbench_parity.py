@@ -102,8 +102,14 @@ def main() -> None:
     assert "const [growth, autonomy, seo] = await Promise.all" not in growth_os
     forms = text(SRC / "web" / "forms.js")
     assert forms.count("if (window.__KZ_R812_STARTUP_COORDINATOR__) return;") >= 6
-    for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js"):
+    for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: []"):
         assert marker in coordinator, marker
+    route_bootstrap = text(SRC / "web" / "r8_13_route_bootstrap.js")
+    for marker in ("route_recovery", "30000", "clearFailure", "KZLoadOwnerWorkspace"):
+        assert marker in route_bootstrap, marker
+    assert "button.disabled = active" not in route_bootstrap
+    assert 'data-src="/r8_13_seo_geo.html?embed=1"' in seo_bridge
+    assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     for marker in ("foldLegacyHomepage", "kz-r8-24-legacy-home", "历史基础面板 · 默认收起"):
         assert marker in growth_os, marker
     for marker in ("MISSION CONTROL LEDGER", "四类 AI 协作状态", "告诉ChatGPT 你希望什么经营结果发生"):

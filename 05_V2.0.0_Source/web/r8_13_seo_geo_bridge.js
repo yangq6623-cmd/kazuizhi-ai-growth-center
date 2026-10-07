@@ -148,7 +148,7 @@
             <button type="button" class="r813-growth-tab" data-r813-workspace="geo" role="tab"><b>GEO 增长</b><span>R8-19 · 浏览器真实验证</span></button>
           </div>
           <div class="r813-growth-pane" data-r813-pane="seo">
-            <iframe id="r813-seo-frame" class="r813-growth-frame" title="SEO增长中心" src="/r8_13_seo_geo.html?embed=1" scrolling="no"></iframe>
+            <iframe id="r813-seo-frame" class="r813-growth-frame" title="SEO增长中心" src="about:blank" data-src="/r8_13_seo_geo.html?embed=1" scrolling="no"></iframe>
           </div>
           <div class="r813-growth-pane" data-r813-pane="geo" hidden>
             <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO增长中心" src="about:blank" data-src="/geo.html?embed=1" scrolling="no"></iframe>
@@ -160,7 +160,7 @@
     const seoFrame=page.querySelector('#r813-seo-frame');
     const geoFrame=page.querySelector('#r813-geo-frame');
     wireFrame(seoFrame,'seo');wireFrame(geoFrame,'geo');
-    if(seoFrame?.contentDocument?.readyState==='complete'){decorateLegacySeo(seoFrame);scheduleFrameFit(seoFrame)}
+    if(seoFrame?.dataset.kzLoaded==='1'&&seoFrame?.contentDocument?.readyState==='complete'){decorateLegacySeo(seoFrame);scheduleFrameFit(seoFrame)}
     if(geoFrame?.dataset.kzLoaded==='1'&&geoFrame?.contentDocument?.readyState==='complete'){injectFinalUx(geoFrame);scheduleFrameFit(geoFrame)}
 
     const legacy=document.querySelector('aside nav');
@@ -177,11 +177,12 @@
     return page;
   }
 
-  function loadGeoIfNeeded(){
-    const frame=document.getElementById('r813-geo-frame');
+  function loadWorkspaceIfNeeded(kind){
+    const target=kind==='geo'?'geo':'seo';
+    const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
     if(!frame)return;
-    wireFrame(frame,'geo');
-    const wanted=frame.dataset.src||'/geo.html?embed=1';
+    wireFrame(frame,target);
+    const wanted=frame.dataset.src||(target==='geo'?'/geo.html?embed=1':'/r8_13_seo_geo.html?embed=1');
     if(frame.dataset.kzLoaded==='1'){scheduleFrameFit(frame);return}
     frame.dataset.kzLoaded='1';
     frame.src=wanted;
@@ -196,7 +197,7 @@
       button.setAttribute('aria-selected',String(active));
     });
     page.querySelectorAll('[data-r813-pane]').forEach(pane=>{pane.hidden=pane.dataset.r813Pane!==target;});
-    if(target==='geo')loadGeoIfNeeded();
+    loadWorkspaceIfNeeded(target);
     desiredWorkspace=target;
     try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
     const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');

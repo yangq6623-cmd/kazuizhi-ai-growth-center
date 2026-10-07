@@ -38,6 +38,7 @@ def check_owner_runtime_contract():
     for token in (
         "SCRIPT_SEQUENCE",
         "/r8_10_workbench.js",
+        "/r8_13_seo_geo_bridge.js",
         "/r8_10_truth_convergence.js",
         "/r8_11_backbone_ui.js",
         "/r8_12_account_center_bridge.js",
@@ -61,6 +62,13 @@ def check_owner_runtime_contract():
     route_bootstrap = (ROOT / "web" / "r8_13_route_bootstrap.js").read_text(encoding="utf-8")
     assert "KZLoadOwnerWorkspace('seo_geo')" in route_bootstrap
     assert "AbortController" in route_bootstrap
+    assert "button.disabled = active" not in route_bootstrap
+    assert "30000" in route_bootstrap
+    assert "lazyPromises.delete(name)" in coordinator
+    assert "seo_geo: []" in coordinator
+    seo_bridge = (ROOT / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
+    assert 'id="r813-seo-frame"' in seo_bridge and 'data-src="/r8_13_seo_geo.html?embed=1"' in seo_bridge
+    assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     assert "document.head.appendChild(tag)" not in route_bootstrap
     assert "window.MutationObserver =" not in coordinator, "startup must not replace native browser observers"
 

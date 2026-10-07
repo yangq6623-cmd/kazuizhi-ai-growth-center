@@ -34,6 +34,11 @@
     ['/main-productization.js', 'mainProductization'],
     ['/autonomous-ops.js', 'autonomousOps'],
     ['/r8_10_workbench.js', 'r810Workbench'],
+    // The SEO/GEO bridge itself is lightweight.  Load it with the owner shell,
+    // but keep both heavy iframe workspaces lazy inside the bridge.  This
+    // removes the cold-start race where an early SEO/GEO click had to fetch
+    // the bridge while other startup work was still converging.
+    ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
     ['/r8_10_truth_convergence.js', 'r810TruthConvergence'],
     ['/r8_11_backbone_ui.js', 'r811Backbone'],
     ['/r8_12_account_center_bridge.js', 'r812AccountCenter'],
@@ -49,9 +54,8 @@
     execution: [
       ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ],
-    seo_geo: [
-      ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
-    ],
+    // The route shell is already resident; only its selected iframe is lazy.
+    seo_geo: [],
     content_studio: [
       ['/content-studio-shell.js', 'contentStudioShell'],
       ['/content-pipeline-host.js', 'contentPipelineHost'],
@@ -109,7 +113,7 @@
     });
   }
 
-  async function loadScript(src, datasetKey, force = false) {
+  async function loadScript(src, datasetKey, force = false, timeoutMs = SCRIPT_TIMEOUT_MS) {
     const existing = findExistingScript(src, datasetKey);
     if (!force && existing && existing.dataset.kzLoadFailed !== '1') {
       state.loaded.push({src, reused:true});
@@ -122,7 +126,7 @@
     console.info('[KZ startup] loading', src);
 
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), SCRIPT_TIMEOUT_MS);
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(src, {cache:'no-store', signal:controller.signal});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -175,15 +179,19 @@
     const sequence = LAZY_SEQUENCE[name] || [];
     const promise = (async () => {
       document.documentElement.dataset.kzLazyWorkspace = name;
+      let complete = true;
       for (const [src, key] of sequence) {
-        await loadScriptFailSoft(src, key);
+        const loaded = await loadScriptFailSoft(src, key);
+        complete = Boolean(loaded) && complete;
         await yieldToBrowser(70);
       }
+      if (!complete) return false;
       if (!state.lazy_loaded.includes(name)) state.lazy_loaded.push(name);
       emit('kz:lazy-workspace-ready', {name});
       return true;
     })();
     lazyPromises.set(name, promise);
+    promise.then(ok => { if (!ok) lazyPromises.delete(name); }, () => lazyPromises.delete(name));
     return promise;
   }
 
@@ -193,7 +201,7 @@
     // interrupted before it executed.  Do one cache-busting recovery load
     // rather than leaving the SEO/GEO navigation button apparently inert.
     try {
-      await loadScript(`/r8_13_seo_geo_bridge.js?recovery=${Date.now()}`, 'r813SeoGeoRecovery', true);
+      await loadScript(`/r8_13_seo_geo_bridge.js?recovery=${Date.now()}`, 'r813SeoGeoRecovery', true, 30000);
     } catch (error) {
       console.warn('SEO/GEO workspace recovery load failed', error);
     }
@@ -279,7 +287,11 @@
       button.disabled = true;
       button.dataset.kzLoading = '1';
       try {
-        await loadLazyBundle(bundle);
+        const bundleReady = await loadLazyBundle(bundle);
+        if (!bundleReady && target !== 'r813-seo-geo') {
+          button.title = '工作区模块暂未就绪，请再次点击重试';
+          return;
+        }
         if (target === 'workflow') {
           if (typeof window.openPage === 'function') window.openPage('workflow');
         } else if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
