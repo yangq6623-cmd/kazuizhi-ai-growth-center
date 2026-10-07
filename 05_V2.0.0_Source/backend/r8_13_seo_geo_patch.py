@@ -34,6 +34,7 @@ _INSTALLED = False
 _LAST_GOOD_PAYLOAD = None
 _SNAPSHOT_STORE = "r8_13/seo_geo_dashboard_snapshot.json"
 _SNAPSHOT_REFRESH_LOCK = threading.Lock()
+_SNAPSHOT_REFRESH_PENDING = threading.Event()
 _FAST_GET_STATS = {"requests": 0, "errors": 0, "last_ok_at": "", "last_error_at": "", "last_error": ""}
 
 
@@ -75,13 +76,14 @@ def _snapshot_age_seconds(payload):
         return None
 
 
-def _warm_snapshot():
-    # Capture the lock object before acquiring it. importlib.reload mutates the
-    # module globals in place; a background thread started by the previous
-    # module generation must release the exact lock it acquired, not a newly
-    # assigned replacement lock.
-    lock = _SNAPSHOT_REFRESH_LOCK
+def _warm_snapshot(lock=None, pending=None):
+    # Capture synchronization objects when the work is scheduled. importlib.reload
+    # mutates module globals in place, so an old timer must release/clear the
+    # exact objects it reserved rather than a replacement from a newer module.
+    lock = lock or _SNAPSHOT_REFRESH_LOCK
+    pending = pending or _SNAPSHOT_REFRESH_PENDING
     if not lock.acquire(blocking=False):
+        pending.clear()
         return
     try:
         _dashboard_payload()
@@ -89,13 +91,19 @@ def _warm_snapshot():
         pass
     finally:
         lock.release()
+        pending.clear()
 
 
-def _kick_snapshot_refresh():
-    if _SNAPSHOT_REFRESH_LOCK.locked():
+def _kick_snapshot_refresh(delay_seconds=1.5):
+    lock = _SNAPSHOT_REFRESH_LOCK
+    pending = _SNAPSHOT_REFRESH_PENDING
+    if lock.locked() or pending.is_set():
         return False
-    thread = threading.Thread(target=_warm_snapshot, name="kz-seo-geo-snapshot", daemon=True)
-    thread.start()
+    pending.set()
+    timer = threading.Timer(max(0.0, float(delay_seconds)), _warm_snapshot, args=(lock, pending))
+    timer.name = "kz-seo-geo-snapshot"
+    timer.daemon = True
+    timer.start()
     return True
 
 
@@ -121,7 +129,7 @@ def _fast_health_payload():
         "snapshot_available": bool(cached),
         "snapshot_saved_at": (cached or {}).get("_snapshot_saved_at") or "",
         "snapshot_age_seconds": round(age, 1) if age is not None else None,
-        "refresh_inflight": _SNAPSHOT_REFRESH_LOCK.locked(),
+        "refresh_inflight": _SNAPSHOT_REFRESH_LOCK.locked() or _SNAPSHOT_REFRESH_PENDING.is_set(),
         "requests": int(_FAST_GET_STATS.get("requests") or 0),
         "errors": int(_FAST_GET_STATS.get("errors") or 0),
         "last_ok_at": _FAST_GET_STATS.get("last_ok_at") or "",
@@ -135,7 +143,7 @@ def _fast_dashboard_response():
     cached = _load_last_good_payload()
     if cached:
         age = _snapshot_age_seconds(cached)
-        _kick_snapshot_refresh()
+        _kick_snapshot_refresh(delay_seconds=2.0)
         health = cached.setdefault("service_health", {})
         health["snapshot_saved_at"] = cached.get("_snapshot_saved_at") or ""
         health["snapshot_age_seconds"] = round(age, 1) if age is not None else None
@@ -167,7 +175,7 @@ def _fast_dashboard_response():
         "snapshot_mode": True,
         "truth": "正在后台生成完整真实快照；首屏不等待远程连接器。",
     }
-    _kick_snapshot_refresh()
+    _kick_snapshot_refresh(delay_seconds=2.0)
     return _mark_fast_ok(payload)
 
 
@@ -397,7 +405,9 @@ def install():
     if _INSTALLED:
         return
     ensure_baseline()
-    _kick_snapshot_refresh()
+    # Do not build a full connector snapshot while the HTTP server and browser
+    # are still starting. The first SEO/GEO read returns local/last-good truth
+    # immediately and schedules enrichment after the response path is usable.
     original_get = server.DashboardHandler.do_GET
     original_post = server.DashboardHandler.do_POST
 

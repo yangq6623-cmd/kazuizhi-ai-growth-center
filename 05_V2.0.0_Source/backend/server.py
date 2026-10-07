@@ -623,6 +623,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 class DashboardServer(ThreadingHTTPServer):
     allow_reuse_address = False
+    # Chrome opens several owner-shell scripts/iframes/API calls together.
+    # The stdlib default listen backlog is too small for this desktop app and
+    # can make a healthy 127.0.0.1 service look offline during a burst.
+    request_queue_size = 64
+    daemon_threads = True
 
     def server_bind(self):
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):

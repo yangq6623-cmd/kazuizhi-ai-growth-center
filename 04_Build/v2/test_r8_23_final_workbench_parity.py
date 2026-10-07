@@ -30,6 +30,8 @@ BUILD_INFO = SRC / "web" / "build_info.js"
 STORAGE = SRC / "core" / "storage.py"
 GEO_JOB_PATCH = SRC / "core" / "geo_phase3_job_patch.py"
 R8_20_PATCH = SRC / "backend" / "r8_20_seo_geo_growth_patch.py"
+SERVER = SRC / "backend" / "server.py"
+R8_13_PATCH = SRC / "backend" / "r8_13_seo_geo_patch.py"
 
 
 def text(path: Path) -> str:
@@ -58,8 +60,16 @@ def main() -> None:
     storage = text(STORAGE)
     geo_job_patch = text(GEO_JOB_PATCH)
     r8_20_patch = text(R8_20_PATCH)
+    server = text(SERVER)
+    r8_13_patch = text(R8_13_PATCH)
 
     assert "r8_20_seo_geo_growth_patch" in run
+    for marker in ("SCHEDULER_STARTUP_GRACE_SECONDS = 12", "CONTENT_STARTUP_GRACE_SECONDS = 25", "VIDEO_STARTUP_GRACE_SECONDS = 35", "HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45", "next_heavy_at = time.monotonic()"):
+        assert marker in run, marker
+    for marker in ("request_queue_size = 64", "daemon_threads = True"):
+        assert marker in server, marker
+    for marker in ("_SNAPSHOT_REFRESH_PENDING", "threading.Timer", "_kick_snapshot_refresh(delay_seconds=2.0)"):
+        assert marker in r8_13_patch, marker
     assert "R8-20 compatibility patch" in truth_patch
     for marker in ("r8_22_autonomy_convergence_patch", "r8_23_growth_os_patch"):
         assert marker in truth_patch, marker

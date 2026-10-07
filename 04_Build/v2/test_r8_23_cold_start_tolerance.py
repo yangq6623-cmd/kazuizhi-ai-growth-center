@@ -2,7 +2,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WEB = ROOT / "05_V2.0.0_Source" / "web"
+SRC = ROOT / "05_V2.0.0_Source"
+WEB = SRC / "web"
 
 
 def require(condition, message):
@@ -14,6 +15,9 @@ def main():
     startup = (WEB / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
     seo_geo = (WEB / "r8_13_seo_geo.html").read_text(encoding="utf-8")
     index = (WEB / "index.html").read_text(encoding="utf-8")
+    run = (SRC / "run.py").read_text(encoding="utf-8")
+    server = (SRC / "backend" / "server.py").read_text(encoding="utf-8")
+    seo_patch = (SRC / "backend" / "r8_13_seo_geo_patch.py").read_text(encoding="utf-8")
 
     require("const SCRIPT_TIMEOUT_MS = 12000" in startup, "cold-start module timeout is too short")
     require("SCRIPT_RETRY_DELAY_MS" in startup, "startup has no one-time retry for a busy local server")
@@ -31,6 +35,13 @@ def main():
     require("LAST_GOOD_KEY" in seo_geo and "restoreLastGood" in seo_geo and "persistLastGood" in seo_geo, "SEO/GEO page cannot preserve a real last-good snapshot across iframe reloads")
     require("build_info.js?probe=" in seo_geo, "SEO/GEO status does not distinguish static local service health from a busy API queue")
     require('src="r8_12_startup_coordinator.js" data-r812-startup-coordinator="1"' in index, "the startup coordinator still depends on a later dynamic loader")
+    require("request_queue_size = 64" in server and "daemon_threads = True" in server, "local HTTP server cannot absorb the owner-shell cold-start burst")
+    for token in ("SCHEDULER_STARTUP_GRACE_SECONDS = 12", "CONTENT_STARTUP_GRACE_SECONDS = 25", "RELAY_STARTUP_GRACE_SECONDS = 20", "VIDEO_STARTUP_GRACE_SECONDS = 35", "HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45"):
+        require(token in run, f"background worker cold-start grace missing: {token}")
+    require("next_heavy_at = time.monotonic()" in run and "HEAVY_CONTROL_INTERVAL_SECONDS" in run, "heavy control/network work still starts on tick zero")
+    require("_SNAPSHOT_REFRESH_PENDING" in seo_patch and "threading.Timer" in seo_patch, "SEO/GEO full snapshot refresh still competes with the response path")
+    install_block = seo_patch.split("def install():", 1)[1].split("original_get =", 1)[0]
+    require("_kick_snapshot_refresh()" not in install_block, "SEO/GEO full snapshot still starts during module import")
     print("PASS: cold-start UI loading tolerates a busy but healthy local SEO/GEO server")
 
 

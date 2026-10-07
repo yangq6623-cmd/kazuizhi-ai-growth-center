@@ -76,6 +76,12 @@ from promotion.video_worker import run_pending as run_pending_videos
 SCHEDULER_INTERVAL_SECONDS = 15
 CONTENT_WORKER_INTERVAL_SECONDS = 60
 VIDEO_WORKER_INTERVAL_SECONDS = 15
+SCHEDULER_STARTUP_GRACE_SECONDS = 12
+CONTENT_STARTUP_GRACE_SECONDS = 25
+RELAY_STARTUP_GRACE_SECONDS = 20
+VIDEO_STARTUP_GRACE_SECONDS = 35
+HEAVY_CONTROL_INTERVAL_SECONDS = 300
+HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45
 MAX_PROCESS_RESTARTS_10_MIN = 5
 
 
@@ -130,14 +136,20 @@ def start_scheduler():
     runtime_set_worker_enabled("scheduler_core", True, "15s control lane")
 
     def loop():
+        if stop.wait(SCHEDULER_STARTUP_GRACE_SECONDS):
+            return
         tick = 0
+        next_heavy_at = time.monotonic() + max(
+            0, HEAVY_CONTROL_STARTUP_GRACE_SECONDS - SCHEDULER_STARTUP_GRACE_SECONDS
+        )
         while not stop.is_set():
             try:
                 reconcile_command_execution()
                 ensure_daily_workforce()
                 ensure_daily_review()
                 run_due_jobs()
-                if tick % 20 == 0:
+                now = time.monotonic()
+                if now >= next_heavy_at:
                     manager_report = refresh_decision_center()
                     export_decision_handoff(manager_report)
                     _sync_r8_17_remote_agent()
@@ -151,6 +163,7 @@ def start_scheduler():
                         and int((seo_geo_dashboard().get("summary") or {}).get("public_pages") or 0) > 0
                     ):
                         run_seo_technical_audit(seo_geo_dashboard())
+                    next_heavy_at = time.monotonic() + HEAVY_CONTROL_INTERVAL_SECONDS
                 _runtime_mark("scheduler_core", ok=True, detail=f"tick={tick}")
             except Exception as error:
                 _runtime_mark("scheduler_core", ok=False, error=error, detail=f"tick={tick}", force_persist=True)
@@ -169,6 +182,8 @@ def start_content_execution_worker():
     runtime_set_worker_enabled("content_execution", True, "60s AI/content/publish lane")
 
     def loop():
+        if stop.wait(CONTENT_STARTUP_GRACE_SECONDS):
+            return
         cycle = 0
         while not stop.is_set():
             try:
@@ -204,6 +219,8 @@ def start_chatgpt_relay_worker():
     runtime_set_worker_enabled("chatgpt_relay", True, f"poll={relay_poll_seconds()}s")
 
     def loop():
+        if stop.wait(RELAY_STARTUP_GRACE_SECONDS):
+            return
         cycle = 0
         while not stop.is_set():
             try:
@@ -231,6 +248,8 @@ def start_video_production_worker():
     runtime_set_worker_enabled("video_worker", True, "15s GPU/video lane")
 
     def loop():
+        if stop.wait(VIDEO_STARTUP_GRACE_SECONDS):
+            return
         cycle = 0
         while not stop.is_set():
             try:
