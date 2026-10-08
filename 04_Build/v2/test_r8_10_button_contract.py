@@ -21,9 +21,11 @@ def main() -> None:
     routes = {
         "老板总控": "dashboard",
         "AI决策中心": "workflow",
+        "内容创导": "content-studio",
         "执行中心": "operational-hub",
         "待我处理": "r810-attention",
         "经营结果": "analytics",
+        "SEO/GEO增长": "r813-seo-geo",
         "自进化中心": "r810-evolution",
     }
     for label, target in routes.items():
@@ -31,9 +33,20 @@ def main() -> None:
         require(JS, f"target:'{target}'", f"route target {target}")
         if target.startswith("r810-"):
             require(JS, f"ensureProxyPage('{target}'", f"synthetic page {target}")
+        elif target == "content-studio":
+            shell = (WEB / "content-studio-shell.js").read_text(encoding="utf-8")
+            startup = (WEB / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+            require(shell, "PAGE_ID = 'content-studio'", "content studio synthetic page")
+            require(startup, "content_studio", "content studio lazy bundle")
+            require(startup, "showImmediateLazyTarget(target)", "immediate lazy route feedback")
         elif target == "operational-hub":
             require(APP, "section.id='operational-hub'", "dynamically created execution page")
             require(APP, "button.dataset.page='operational-hub'", "execution navigation proxy")
+        elif target == "r813-seo-geo":
+            startup = (WEB / "r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+            bridge = (WEB / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
+            require(startup, "seo_geo", "SEO/GEO lazy bundle")
+            require(bridge, "PAGE_ID = 'r813-seo-geo'", "SEO/GEO synthetic page")
         else:
             require(INDEX, f'id="{target}"', f"existing page {target}")
 
