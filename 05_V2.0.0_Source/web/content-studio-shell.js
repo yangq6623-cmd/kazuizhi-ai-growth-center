@@ -52,15 +52,22 @@
 
   function ensurePage(main) {
     let page = document.getElementById(PAGE_ID);
-    if (page) return page;
-    page = document.createElement('section');
-    page.id = PAGE_ID;
-    page.className = 'page content-studio-page';
-    page.innerHTML = `
-      <div class="content-studio-shell" aria-label="卡嘴子 AI 内容创导平台">
-        <iframe id="${FRAME_ID}" class="content-studio-frame" title="卡嘴子 AI 内容创导平台" src="/content-studio.html?entry=overview" loading="lazy" scrolling="auto"></iframe>
-      </div>`;
-    main.appendChild(page);
+    if (!page) {
+      page = document.createElement('section');
+      page.id = PAGE_ID;
+      page.className = 'page content-studio-page';
+      main.appendChild(page);
+    }
+    page.classList.add('content-studio-page');
+    // The startup coordinator may create a lightweight immediate-response shell
+    // before this lazy module arrives. Upgrade that shell in place instead of
+    // treating its existence as proof that the real Content Studio is mounted.
+    if (!page.querySelector(`#${FRAME_ID}`)) {
+      page.innerHTML = `
+        <div class="content-studio-shell" aria-label="卡嘴子 AI 内容创导平台">
+          <iframe id="${FRAME_ID}" class="content-studio-frame" title="卡嘴子 AI 内容创导平台" src="/content-studio.html?entry=overview" loading="eager" scrolling="auto"></iframe>
+        </div>`;
+    }
     return page;
   }
 
