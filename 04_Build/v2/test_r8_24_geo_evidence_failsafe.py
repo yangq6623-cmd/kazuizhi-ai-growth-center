@@ -75,6 +75,7 @@ def run() -> None:
         assert recovered["available_sections"] == 4
         assert recovered["formal_ab_completed"] == 0
         print("PASS: GEO 50-question fail-safe, no false A/B, 12s watchdog and recovery")
+        bridge._geo_evidence_snapshot = original
         original_file = bridge._geo_snapshot_file
         questions = bridge._geo_evidence_seed()["questions"]
         names = bridge.geo_validation_api.geo_core
