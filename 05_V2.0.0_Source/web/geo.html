@@ -23,6 +23,10 @@
     body.geo-direct-embed .geo-direct-top,body.geo-direct-embed .geo-direct-note{display:none}
     body.geo-direct-embed .geo-direct-main{max-width:none;margin:0;padding:0 2px 18px}
     body.geo-direct-embed .geo-direct-seo-placeholder{display:none}
+    .geo-direct-fallback{margin:8px 2px 14px;padding:18px 20px;border:1px solid #dbe5f3;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(24,52,93,.04);color:#52647d}
+    .geo-direct-fallback b{display:block;margin-bottom:5px;color:#18345c;font-size:15px}.geo-direct-fallback span{display:block;font-size:12px;line-height:1.6}
+    .geo-direct-fallback button{margin-top:10px;border:1px solid #c9d7ed;border-radius:8px;background:#fff;color:#285fc9;padding:7px 11px;font-weight:700;cursor:pointer}
+    body:has(#search-growth-switch) .geo-direct-fallback{display:none}
     @media(max-width:720px){.geo-direct-top{align-items:flex-start;padding:12px 14px}.geo-direct-main{padding:14px}.geo-direct-top h1{font-size:17px}}
   </style>
 </head>
@@ -33,6 +37,11 @@
   </header>
   <main class="geo-direct-main">
     <p class="geo-direct-note">正式运营以“一次启动、持续自治”为主：豆包 API C级运营 Signal 自动进入机会识别、总控策略判断、AI员工执行、真实发布、复测和 Before / After。正式 A/B Evidence 保持独立真值，只作为旁路正式验证，不再阻塞运营主链。OpenAI API 不参与运行，正常推广不设人工审核。</p>
+    <div id="geo-direct-fallback" class="geo-direct-fallback">
+      <b>GEO 工作台正在加载…</b>
+      <span>页面框架已经打开。#683 会先完成界面首屏，再延迟启动豆包 50 问后台任务，避免自动执行抢占首次加载。</span>
+      <button type="button" onclick="location.reload()">重新加载 GEO</button>
+    </div>
     <section id="search" class="page active">
       <div class="geo-direct-seo-placeholder">
         SEO 保持现有运行并作为 GEO 执行能力之一。需要查看原 SEO/GEO 增长中心时，<a href="/index.html">返回主控制台</a>。
