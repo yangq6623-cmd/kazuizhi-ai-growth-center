@@ -183,8 +183,10 @@ def main() -> None:
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
     assert geo_growth_ui.count("async function load(){") == 1
     assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
-    for marker in ("GEO 自动增长数据等待超时", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe"):
+    for marker in ("GEO 自动增长数据等待超时", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer"):
         assert marker in geo_growth_ui, marker
+    for marker in ("recoverGeoWorkbench", "connector", "window.__KZ_GEO_GROWTH_OS_BOOT__?.()", "window.searchGrowthActivate?.()"):
+        assert marker in geo_html, marker
 
     for marker in (
         "geo2-refresh", "geo2-copy", "geo2-chatgpt", "writeClipboard",
@@ -231,6 +233,8 @@ def main() -> None:
     assert "read_only_status_no_sync" in geo_growth_core
     assert "deferred_requeued" in geo_growth_core
     assert "_clear_blocker" in geo_growth_core
+    assert "def arm_unattended()" in geo_growth_core
+    assert '"execution": "deferred_to_scheduler"' in geo_growth_core
     assert "_JSON_IO_LOCK = threading.RLock()" in storage
     assert "for attempt in range(8)" in storage
 
@@ -252,7 +256,7 @@ def main() -> None:
         "geo_growth_orchestrator as geo_growth", "geo_growth.run_once(force=force)",
         "_GEO_GROWTH_AUTO_START_DELAY_SECONDS = 20", "threading.Timer",
         "_schedule_geo_growth_auto_start", "_ensure_geo_growth_auto_running",
-        "geo_growth.start()", "owner_paused", "protect_first_paint_then_auto_start",
+        "geo_growth.arm_unattended()", "owner_paused", "protect_first_paint_then_auto_start",
         '"/api/r8-24/geo-growth"', '"/api/r8-24/geo-growth/start"',
         '"/api/r8-24/geo-growth/pause"', '"/api/r8-24/geo-growth/resume"',
         '"/api/r8-24/geo-growth/run"', '"/api/r8-24/geo-growth/retry"',

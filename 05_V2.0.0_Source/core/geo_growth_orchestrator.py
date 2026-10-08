@@ -515,6 +515,28 @@ def status():
     }
 
 
+def arm_unattended():
+    """Enable the GEO Growth OS without running heavy work on the HTTP startup path.
+
+    #688 separates state arming from execution. The normal scheduler will pick
+    up the enabled loop after the owner UI has painted, so automatic operation
+    remains on while first-open API/iframe requests stay responsive.
+    """
+    data = _load()
+    if data.get("paused"):
+        return status()
+    data["enabled"] = True
+    data["paused"] = False
+    data["last_error"] = ""
+    data["last_result"] = {
+        "action": "arm_unattended",
+        "execution": "deferred_to_scheduler",
+        "at": now_iso(),
+    }
+    _save(data)
+    return status()
+
+
 def start():
     data = _load()
     data["enabled"] = True

@@ -96,7 +96,7 @@ def _combined_run(force=False):
 
 
 def _ensure_geo_growth_auto_running():
-    """#687 make the whole GEO Growth OS unattended after the UI first paint."""
+    """#688 arm unattended GEO without doing heavy synchronous work at first open."""
     current = geo_growth.status()
 
     # An explicit owner pause is a hard stop. Auto-start never overrides it.
@@ -107,22 +107,15 @@ def _ensure_geo_growth_auto_running():
             "state": current.get("state"),
         }
 
-    if not current.get("enabled"):
-        state = geo_growth.start()
-        return {
-            "started": True,
-            "reason": "growth_os_auto_started",
-            "state": state.get("state"),
-        }
-
-    # Already enabled: kick one safe pass after startup so fresh cloud receipts
-    # can enter the opportunity -> AI employee -> publish -> retest pipeline.
-    result = geo_growth.run_once(force=True)
+    # Only persist the enabled state here. The existing scheduler executes the
+    # real operating pass later; startup must not compete with GEO iframe/API
+    # reads for JSON locks, network routes or AI workers.
+    state = geo_growth.arm_unattended()
     return {
-        "started": False,
-        "reason": "already_enabled_kicked",
-        "state": geo_growth.status().get("state"),
-        "result": result,
+        "started": not bool(current.get("enabled")),
+        "reason": "growth_os_armed_scheduler_will_run",
+        "state": state.get("state"),
+        "execution": "deferred_to_scheduler",
     }
 
 
@@ -136,9 +129,8 @@ def _schedule_geo_growth_auto_start():
         try:
             _ensure_geo_growth_auto_running()
         except (OSError, ValueError, RuntimeError, TypeError, KeyError):
-            # geo_growth.start/run_once persist their own owner-visible errors.
-            # Startup must remain non-fatal even if one downstream capability
-            # is temporarily unavailable.
+            # Arming is deliberately lightweight. Startup must remain non-fatal
+            # even if persisted state is temporarily unavailable.
             pass
 
     timer = threading.Timer(_GEO_GROWTH_AUTO_START_DELAY_SECONDS, invoke)

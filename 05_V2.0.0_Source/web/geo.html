@@ -68,5 +68,19 @@
   <script src="geo-phase2-analysis.js"></script>
   <script src="geo-phase3.js"></script>
   <script src="geo-growth-os.js"></script>
+  <script>
+    // #688 self-heal: if the bundled first boot raced with another GEO module,
+    // retry the owner workbench after the DOM settles. Never leave a connector
+    // matrix above an empty 720px workspace.
+    (() => {
+      const recoverGeoWorkbench = () => {
+        const pane = document.getElementById('geo-growth-pane');
+        if (!pane || document.getElementById('geo-growth-os')) return;
+        try { window.__KZ_GEO_GROWTH_OS_BOOT__?.(); } catch (_) {}
+        try { window.searchGrowthActivate?.(); } catch (_) {}
+      };
+      [300, 900, 1800, 3200, 5200, 9000].forEach(delay => setTimeout(recoverGeoWorkbench, delay));
+    })();
+  </script>
 </body>
 </html>

@@ -1,6 +1,13 @@
 (() => {
   'use strict';
-  if (window.__KZ_GEO_GROWTH_OS__) return;
+  if (window.__KZ_GEO_GROWTH_OS__) {
+    // operational-search.js can bundle this file and geo.html also loads it
+    // directly. If the first boot hit a transient DOM/API race, the second load
+    // must actively retry instead of returning forever with only the connector
+    // matrix visible.
+    try { window.__KZ_GEO_GROWTH_OS_BOOT__?.(); } catch (_) {}
+    return;
+  }
   window.__KZ_GEO_GROWTH_OS__ = true;
 
   const byId = id => document.getElementById(id);
@@ -9,6 +16,7 @@
   let busy = false;
   let attempts = 0;
   let activeFilter = "all";
+  let pollTimer = null;
 
   async function json(path, options={}) {
     const controller=new AbortController();
@@ -275,29 +283,36 @@
   }
 
   function start(){
-    if(!ensureStructure()){
+    try{
+      if(!ensureStructure()){
+        attempts+=1;
+        if(attempts<40)setTimeout(start,250);
+        return;
+      }
+      attempts=0;
+      bind();
+      // Paint the complete GEO shell before waiting for any API. A slow local
+      // endpoint must never leave the owner staring at a blank 720px iframe.
+      if(!cache)render({
+        state:'stopped',
+        summary:{},
+        cloud:{},
+        policy:{},
+        publish_connector:{},
+        technical_blockers:[],
+        opportunities:[],
+        pipeline:[],
+        formal_ab_completed:0,
+        formal_ab_target:50,
+        mission:'正在恢复 GEO 运行状态…'
+      });
+      load();
+      if(!pollTimer)pollTimer=setInterval(()=>{if(!busy)load();},10000);
+    }catch(error){
       attempts+=1;
-      if(attempts<30)setTimeout(start,250);
-      return;
+      console.warn('GEO Growth OS boot retry',error);
+      if(attempts<40)setTimeout(start,Math.min(1500,250+attempts*50));
     }
-    bind();
-    // Paint the complete GEO shell before waiting for any API. A slow local
-    // endpoint must never leave the owner staring at a blank 720px iframe.
-    if(!cache)render({
-      state:'stopped',
-      summary:{},
-      cloud:{},
-      policy:{},
-      publish_connector:{},
-      technical_blockers:[],
-      opportunities:[],
-      pipeline:[],
-      formal_ab_completed:0,
-      formal_ab_target:50,
-      mission:'正在恢复 GEO 运行状态…'
-    });
-    load();
-    setInterval(()=>{if(!busy)load();},10000);
   }
 
   window.__KZ_GEO_GROWTH_OS_BOOT__=start;
