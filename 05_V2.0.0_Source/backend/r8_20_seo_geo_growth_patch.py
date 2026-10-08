@@ -283,9 +283,21 @@ def _geo_evidence_snapshot():
     if not isinstance(receipts_payload, dict):
         receipts_error = "receipts_schema_invalid"
         receipts_payload = {"receipts": []}
-    questions = list((qset or {}).get("questions") or [])
-    tasks = [row for row in (queue_payload.get("tasks") or []) if isinstance(row, dict)]
-    all_receipts = [row for row in (receipts_payload.get("receipts") or []) if isinstance(row, dict)]
+    raw_questions = qset.get("questions") or []
+    if not isinstance(raw_questions, list) or any(not isinstance(x, dict) for x in raw_questions):
+        q_error = "question_rows_schema_invalid"
+        raw_questions = geo_validation_api.geo_core._fixed_questions()
+    questions = list(raw_questions)
+    raw_tasks = queue_payload.get("tasks") or []
+    if not isinstance(raw_tasks, list):
+        queue_error = "queue_rows_schema_invalid"
+        raw_tasks = []
+    tasks = [row for row in raw_tasks if isinstance(row, dict)]
+    raw_receipts = receipts_payload.get("receipts") or []
+    if not isinstance(raw_receipts, list):
+        receipts_error = "receipt_rows_schema_invalid"
+        raw_receipts = []
+    all_receipts = [row for row in raw_receipts if isinstance(row, dict)]
     recent_receipts = list(reversed(all_receipts))[:50]
 
     task_counts = Counter(str(item.get("state") or "unknown") for item in tasks)
@@ -306,6 +318,16 @@ def _geo_evidence_snapshot():
         and item.get("evidence_level") in geo_validation_api.geo_core.OFFICIAL_EVIDENCE_LEVELS
     ]
     formal_ids = {item.get("question_id") for item in official if item.get("question_id")}
+    # Formal Evidence can be human-captured or truly automated. Distinguish
+    # these without counting Doubao C-level auxiliary answers as external A/B.
+    manual_ids = {
+        item.get("question_id") for item in official
+        if item.get("question_id") and str(item.get("test_method") or "").lower() in {"manual", "browser"}
+    }
+    automated_ids = {
+        item.get("question_id") for item in official
+        if item.get("question_id") and str(item.get("test_method") or "").lower() == "api"
+    }
     total = len(questions) or 50
 
     health = {
@@ -328,6 +350,8 @@ def _geo_evidence_snapshot():
             "tested": len(formal_ids),
             "remaining": max(0, total - len(formal_ids)),
             "evidence_count": len(official),
+            "manual_tested": len(manual_ids),
+            "automatic_tested": len(automated_ids),
         },
         "question_set": {
             "version": (qset or {}).get("version") or geo_validation_api.geo_core.QUESTION_SET_VERSION,
@@ -343,6 +367,8 @@ def _geo_evidence_snapshot():
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
         "formal_ab_completed": len(formal_ids),
         "formal_ab_target": total,
+        "formal_ab_manual": len(manual_ids),
+        "formal_ab_automatic": len(automated_ids),
         "dashboard": dashboard,
         "questions": questions,
         "question_set": qset or {},
@@ -403,6 +429,9 @@ def install():
                 return
             if path == "/api/r8-24/geo-growth/evidence":
                 handler._json_ok(_geo_evidence_cached())
+                return
+            if path == "/api/r8-24/geo-growth/questions-baseline":
+                handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())

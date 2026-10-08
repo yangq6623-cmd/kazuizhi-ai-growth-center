@@ -216,6 +216,16 @@ def assert_geo_advanced(driver):
         raise AssertionError("GEO Evidence/Receipt still shows perpetual loading")
     if not driver.find_element(By.ID, "geo-os-today").text.strip():
         raise AssertionError("GEO today truthful activity ledger is missing")
+    baseline = driver.execute_async_script("""
+      const done=arguments[0];
+      fetch('/api/r8-24/geo-growth/questions-baseline',{cache:'no-store'})
+        .then(async r=>({ok:r.ok,data:await r.json()}))
+        .then(done).catch(error=>done({ok:false,error:String(error)}));
+    """)
+    if not baseline.get("ok") or len((baseline.get("data") or {}).get("questions") or []) != 50:
+        raise AssertionError(f"independent GEO50 baseline endpoint did not work: {baseline}")
+    if "人工验证" not in inline.text or "自动正式验证" not in inline.text:
+        raise AssertionError("GEO manual and automatic formal results are not separated")
     for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")

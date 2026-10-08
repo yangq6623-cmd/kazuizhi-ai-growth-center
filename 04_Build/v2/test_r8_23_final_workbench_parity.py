@@ -259,11 +259,11 @@ def main() -> None:
     assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
     assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
     assert "geo_validation.dashboard()" in r8_13_patch
-    for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备网页验证1题", "固定 50 问与执行状态", "/api/r8-24/geo-growth/evidence/prepare", "/api/r8-24/geo-growth/evidence/receipt"):
+    for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备人工网页验证1题", "固定 50 问与执行状态", "/api/r8-24/geo-growth/questions-baseline", "loadAdvancedBaseline()", "/api/r8-24/geo-growth/evidence/prepare", "/api/r8-24/geo-growth/evidence/receipt"):
         assert marker in geo_growth_ui, marker
     assert 'id="r813-geo-frame"' not in seo_bridge
     r8_20_patch = text(SRC / "backend" / "r8_20_seo_geo_growth_patch.py")
-    for marker in ("/api/r8-24/geo-growth/evidence", "def _geo_evidence_snapshot()", "def _geo_snapshot_file(", "lock_free_atomic_files", "data_root()", "available_sections", "geo_validation_api._prepare_browser_task"):
+    for marker in ("/api/r8-24/geo-growth/evidence", "/api/r8-24/geo-growth/questions-baseline", "def _geo_evidence_snapshot()", "def _geo_snapshot_file(", "lock_free_atomic_files", "formal_ab_manual", "formal_ab_automatic", "data_root()", "available_sections", "geo_validation_api._prepare_browser_task"):
         assert marker in r8_20_patch, marker
     assert "geo_growth.fast_status()" not in r8_20_patch[r8_20_patch.index("def _geo_evidence_snapshot()"):r8_20_patch.index("def _schedule_geo_growth_auto_start()")]
     for marker in ("def _geo_evidence_cached()", "def _geo_evidence_update_cache(token)", '"snapshot_ready": False', '"retry_after_ms": 1300', "_GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS", "_geo_evidence_seed("):

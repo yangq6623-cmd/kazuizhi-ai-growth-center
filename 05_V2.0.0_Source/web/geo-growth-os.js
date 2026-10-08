@@ -32,6 +32,7 @@
   let advancedRetryCount=0;
   let advancedRetryTimer=null;
   let advancedLastGood=null;
+  let advancedBaselineLoaded=false;
   let advancedLastAttemptAt=0;
 
   async function json(path, options={}) {
@@ -319,7 +320,7 @@
       <div class="geo-adv-toolbar">
         <button id="geo-adv-refresh" type="button">刷新证据</button>
         <button id="geo-adv-bootstrap" type="button">核验固定50问</button>
-        <button id="geo-adv-one" class="primary" type="button">准备网页验证1题</button>
+        <button id="geo-adv-one" class="primary" type="button">准备人工网页验证1题</button>
         <button id="geo-adv-ten" type="button">准备10题</button>
       </div>
       <div id="geo-adv-kpis" class="geo-adv-kpis"></div>
@@ -380,10 +381,31 @@
       root=byId('geo-advanced-inline');
     }
     bindAdvanced();
+    if(!advancedBaselineLoaded)loadAdvancedBaseline();
     // Main GEO status repaints every 10s: don't restart evidence retrieval or
     // erase partial 50-question rows on every repaint.
     if(Date.now()-advancedLastAttemptAt>20000 && (!advancedLastGood || Date.now()-advancedFetchedAt>45000))loadAdvanced(false);
     return true;
+  }
+
+  async function loadAdvancedBaseline(){
+    if(advancedBaselineLoaded)return;
+    advancedBaselineLoaded=true;
+    try{
+      const seed=await json('/api/r8-24/geo-growth/questions-baseline',{timeoutMs:4000});
+      if(advancedLastGood)return;
+      const items=Array.isArray(seed.questions)?seed.questions:[];
+      if(items.length!==50)throw Error('固定50问基准数量异常');
+      const qbox=byId('geo-adv-questions');
+      if(qbox&&(qbox.textContent.includes('正在读取')||qbox.textContent.trim()==='')){
+        qbox.innerHTML=items.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>正式验证待同步</td><td>—</td></tr>`).join('');
+      }
+      const s=byId('geo-adv-state');
+      if(s&&s.textContent.includes('读取'))s.textContent='50问基准可用 · 正式证据待同步';
+    }catch(error){
+      advancedBaselineLoaded=false;
+      setAdvancedMessage('固定50问加载失败：'+error.message+'。本地服务/数据接口需要检查。',true);
+    }
   }
 
   async function loadAdvanced(force=false){
@@ -397,6 +419,7 @@
     try{
       const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:8000});
       if(snapshot.snapshot_ready===false){
+        if(!advancedBaselineLoaded)loadAdvancedBaseline();
         // Unlike #731, the first response contains the canonical 50 questions.
         // Render them immediately, even if the receipt ledger cannot be read.
         const questions=Array.isArray(snapshot.questions)?snapshot.questions:[];
@@ -416,7 +439,7 @@
         document.documentElement.dataset.kzGeoAdvancedSections=String(snapshot.available_sections||1);
         advancedRetryCount+=1;
         const problem=String(snapshot.last_refresh_error||'');
-        if(state){state.textContent=problem?'数据读取受阻 · 1/4':`50问已显示 · 1/4`;state.className='geo-adv-state'+(problem?' bad':'');}
+        if(state){state.textContent=problem?'证据读取异常 · 50问独立可用':`50问基准可用 · Evidence同步中`;state.className='geo-adv-state'+(problem?' bad':'');}
         setAdvancedMessage(problem?'后台诊断：'+problem:'50问基准已显示，后台正在同步正式证据和任务回执。',Boolean(problem));
         if(advancedRetryCount<=10)advancedRetryTimer=setTimeout(()=>loadAdvanced(true),Math.max(1300,Number(snapshot.retry_after_ms||1300)));
         return;
@@ -440,6 +463,8 @@
       const kpis=[
         ['正式 A/B',`${formalCompleted} / ${formalTarget}`,'唯一正式GEO成绩'],
         ['Evidence',Number(official.evidence_count||officialReceipts.length),'可追溯正式证据'],
+        ['人工验证',Number(snapshot.formal_ab_manual??official.manual_tested??0),'真实人工外部AI会话'],
+        ['自动正式验证',Number(snapshot.formal_ab_automatic??official.automatic_tested??0),'仅独立外部AI的A级/B级API证据'],
         ['排队',Number(qsum.queued||0),'等待执行'],
         ['执行中',Number(qsum.running||0),'真实验证任务'],
         ['待授权',Number(qsum.authorization_required||0),'仅真实阻塞'],
@@ -488,8 +513,9 @@
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox&&!advancedLastGood)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>50问基准保留；主 GEO 自动运营不受影响。</small></div>';
       const qbox=byId('geo-adv-questions');
-      if(qbox&&!qbox.querySelectorAll('tr').length)qbox.innerHTML='<tr><td colspan="5">50问基准读取失败，请重试。</td></tr>';
-      setAdvancedMessage(error.message,true);
+      if(qbox&&!qbox.querySelectorAll('tr').length)qbox.innerHTML='<tr><td colspan="5">固定50问基准正在通过独立接口加载，请检查本地服务。</td></tr>';
+      loadAdvancedBaseline();
+      setAdvancedMessage('正式证据读取失败：'+error.message+'；固定50问会独立加载，自动运营状态需查看最近调度回执。',true);
     }finally{advancedBusy=false}
   }
 
