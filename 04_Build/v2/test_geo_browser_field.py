@@ -61,7 +61,7 @@ def main():
             "required_markers": required,
         }
         print("PASS: real Chrome mounted visible GEO Growth OS")
-        print(json.dumps(result, ensure_ascii=False))
+        print(json.dumps(result, ensure_ascii=True))
     finally:
         driver.quit()
 
