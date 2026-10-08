@@ -54,6 +54,38 @@ def main():
     assert "24小时验收" in validation["truth"]
     assert all("授权至少一个搜索站长平台" != x.get("title") for x in state["human_items"])
 
+    # Simulate public deployment and search-submit exceptions in the same
+    # autonomous cycle. Neither failure may abort the other stage or produce
+    # a fake PUBLISHED/SUBMITTED receipt.
+    from core import seo_geo_autonomy as worker
+    old_ready = worker._external_readiness
+    old_deploy = worker.seo_public_deployer.deploy_pending
+    old_indexnow = worker.search_engine_submitter.initialize_indexnow
+    old_submit = worker.search_engine_submitter.submit_pending
+    try:
+        worker._external_readiness = lambda snap: {
+            "publish_connector_ready": True,
+            "publish_connector_reason": "",
+            "ready_search_connectors": ["indexnow"],
+        }
+        def raising_public(**kwargs):
+            raise OSError("synthetic_public_deploy_failure")
+        def raising_submit(**kwargs):
+            raise OSError("synthetic_search_submit_failure")
+        worker.seo_public_deployer.deploy_pending = raising_public
+        worker.search_engine_submitter.initialize_indexnow = lambda: {"ready": True}
+        worker.search_engine_submitter.submit_pending = raising_submit
+        recovered = worker.run_once(force=True)
+        assert recovered["public_deploy"]["reason"] == "public_deploy_worker_error", recovered
+        assert recovered["search_submit"]["reason"] == "search_submit_worker_error", recovered
+        assert recovered["counts"]["public_pages"] >= 0
+        assert recovered["search_submit"]["submitted_count"] == 0
+    finally:
+        worker._external_readiness = old_ready
+        worker.seo_public_deployer.deploy_pending = old_deploy
+        worker.search_engine_submitter.initialize_indexnow = old_indexnow
+        worker.search_engine_submitter.submit_pending = old_submit
+
     ui = (SOURCE / "web" / "r8_14_seo_geo_autonomy_ui.js").read_text(encoding="utf-8")
     for marker in ("观察模式", "半自动", "自治模式", "待人工处理", "/api/r8-14/seo-geo/autonomy"):
         assert marker in ui, marker

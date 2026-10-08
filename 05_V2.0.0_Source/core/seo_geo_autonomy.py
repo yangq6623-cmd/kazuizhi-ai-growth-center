@@ -301,7 +301,22 @@ def run_once(force=False):
     if mode == "autonomous" and data["policy"].get("auto_publish_when_connector_ready", True):
         if readiness["publish_connector_ready"]:
             _close_human_item(data, "seo_public_deploy_connector")
-            public_deploy = seo_public_deployer.deploy_pending(limit=20)
+            try:
+                public_deploy = seo_public_deployer.deploy_pending(limit=20)
+                _close_human_item(data, "seo_public_deploy_worker_error")
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                public_deploy = {
+                    "skipped": True,
+                    "reason": "public_deploy_worker_error",
+                    "failed": [{"reason": type(error).__name__, "details": str(error)[:400]}],
+                    "published": [],
+                }
+                _add_human_item(
+                    data, "seo_public_deploy_worker_error",
+                    "SEO自动发布执行异常",
+                    f"{type(error).__name__}: {str(error)[:400]}",
+                    "发布未计入成功；下一次自治调度会自动重试，不阻断搜索提交与日志回执。",
+                )
             failures = list(public_deploy.get("failed") or [])
             if failures:
                 _add_human_item(
@@ -350,10 +365,26 @@ def run_once(force=False):
             # Initialize IndexNow as soon as verified public deployment is
             # available.  This persists a real key-file verification result;
             # it does not claim a search-engine receipt by itself.
-            if readiness["publish_connector_ready"]:
-                search_engine_submitter.initialize_indexnow()
-            search_submit = search_engine_submitter.submit_pending(limit=3)
-            refreshed_search = search_engine_submitter.status()
+            try:
+                if readiness["publish_connector_ready"]:
+                    search_engine_submitter.initialize_indexnow()
+                search_submit = search_engine_submitter.submit_pending(limit=3)
+                refreshed_search = search_engine_submitter.status()
+                _close_human_item(data, "seo_search_worker_error")
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                search_submit = {
+                    "skipped": True,
+                    "reason": "search_submit_worker_error",
+                    "submitted_count": 0,
+                    "failed": [{"reason": type(error).__name__, "details": str(error)[:400]}],
+                }
+                refreshed_search = {"ready_engines": []}
+                _add_human_item(
+                    data, "seo_search_worker_error",
+                    "SEO搜索提交执行异常",
+                    f"{type(error).__name__}: {str(error)[:400]}",
+                    "本轮没有计入已提交；下一次自治周期重试，并保留其他已成功发布的公网回执。",
+                )
             if refreshed_search.get("ready_engines"):
                 _close_human_item(data, "seo_search_connector")
             else:
