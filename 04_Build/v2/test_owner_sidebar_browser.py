@@ -116,9 +116,15 @@ def assert_seo_geo(driver):
         if loading.is_displayed():
             raise AssertionError("主平台 GEO 仍停留在初始化提示")
 
-    state = driver.find_element(By.ID, "geo-os-state").text.strip()
+    state = WebDriverWait(driver, 8).until(
+        lambda d: (d.find_element(By.ID, "geo-os-state").text or "").strip()
+        if d.find_elements(By.ID, "geo-os-state")
+        else ""
+    )
     if not state:
         raise AssertionError("主平台 GEO 状态标签为空")
+    if state == "未启动":
+        raise AssertionError("GEO 工作台已显示，但自动运营仍处于未启动状态")
 
     # The legacy full GEO document remains background/advanced tooling only.
     # A slow or failed iframe must not blank the owner-facing core panel.

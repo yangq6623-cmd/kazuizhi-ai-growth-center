@@ -360,17 +360,26 @@ def _arm_unattended_cloud_scan():
 
 
 def _schedule_unattended_cloud_scan():
-    """#683 defer the cloud worker until the owner shell and GEO iframe can paint."""
+    """Defer first paint, then keep retrying the saved Doubao route until ready."""
     global _AUTO_ARM_TIMER
     if _AUTO_ARM_TIMER is not None and _AUTO_ARM_TIMER.is_alive():
         return {"scheduled": False, "reason": "already_scheduled"}
 
+    attempts = {"count": 0, "max": 40}
+
     def invoke():
+        global _AUTO_ARM_TIMER
+        attempts["count"] += 1
+        retry = False
         try:
-            _arm_unattended_cloud_scan()
+            result = _arm_unattended_cloud_scan()
+            retry = (
+                not result.get("executor_ready")
+                and result.get("reason") != "owner_paused"
+                and attempts["count"] < attempts["max"]
+            )
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-            # Background startup errors are owner-visible state, never a reason
-            # to break the local HTTP server or leave GEO as a blank iframe.
+            retry = attempts["count"] < attempts["max"]
             try:
                 data = geo_autonomy._load()
                 data["last_error"] = f"自动GEO延迟启动失败: {str(error)[:720]}"
@@ -378,6 +387,13 @@ def _schedule_unattended_cloud_scan():
                 geo_autonomy._save(data)
             except (OSError, ValueError, RuntimeError, TypeError, KeyError):
                 pass
+
+        if retry:
+            timer = threading.Timer(15, invoke)
+            timer.daemon = True
+            timer.name = "r8-19-geo-auto-arm-retry"
+            _AUTO_ARM_TIMER = timer
+            timer.start()
 
     timer = threading.Timer(_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS, invoke)
     timer.daemon = True
@@ -387,7 +403,9 @@ def _schedule_unattended_cloud_scan():
     return {
         "scheduled": True,
         "delay_seconds": _UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS,
-        "reason": "protect_geo_first_open",
+        "retry_seconds": 15,
+        "max_attempts": attempts["max"],
+        "reason": "protect_first_paint_then_retry_until_verified_route_ready",
     }
 
 

@@ -63,6 +63,23 @@ def _load():
     value.setdefault("policy", deepcopy(DEFAULT["policy"]))
     for key, default in DEFAULT["policy"].items():
         value["policy"].setdefault(key, deepcopy(default))
+
+    # #717 production migration: there is no explicit "stop" owner action;
+    # Pause is the only intentional human stop. Historical builds persisted
+    # enabled=False, which left an upgraded field install showing "未启动"
+    # forever even though autonomous mode is the product contract.
+    if not value.get("paused") and not value.get("enabled"):
+        value["enabled"] = True
+        value["last_error"] = ""
+        value["last_result"] = {
+            "action": "upgrade_auto_arm",
+            "reason": "historical stopped state migrated to unattended operation",
+            "at": now_iso(),
+        }
+        value["schema"] = SCHEMA
+        value["updated_at"] = now_iso()
+        write_json(STORE, value)
+
     value["opportunities"] = list(value.get("opportunities") or [])[-MAX_OPPORTUNITIES:]
     value["processed_signal_ids"] = list(value.get("processed_signal_ids") or [])[-2000:]
     value["history"] = list(value.get("history") or [])[-MAX_HISTORY:]

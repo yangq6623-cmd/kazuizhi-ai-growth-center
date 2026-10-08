@@ -149,7 +149,8 @@ def main() -> None:
     index_html = text(INDEX)
     assert 'src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"' in index_html
     render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
-    assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadWorkspaceIfNeeded(target);")
+    assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("ensureParentGeoCore();")
+    assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadGeoAdvancedInBackground();")
     for marker in ("_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12", "threading.Timer", "_schedule_unattended_cloud_scan", "protect_geo_first_open"):
         assert marker in r8_14_patch, marker
     for marker in ("geo-direct-fallback", "GEO 工作台正在加载", "body:has(#search-growth-switch)"):
@@ -243,6 +244,9 @@ def main() -> None:
     assert "read_only_status_no_sync" in geo_growth_core
     assert "deferred_requeued" in geo_growth_core
     assert "_clear_blocker" in geo_growth_core
+    assert "historical stopped state migrated to unattended operation" in geo_growth_core
+    assert "protect_first_paint_then_retry_until_verified_route_ready" in r8_14_patch
+    assert '"retry_seconds": 15' in r8_14_patch
     assert "def arm_unattended()" in geo_growth_core
     assert '"execution": "deferred_to_scheduler"' in geo_growth_core
     assert "def fast_status()" in geo_growth_core
