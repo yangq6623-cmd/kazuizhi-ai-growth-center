@@ -151,7 +151,7 @@ def main() -> None:
     render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
     assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("ensureParentGeoCore();")
     assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadGeoAdvancedInBackground();")
-    for marker in ("_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12", "threading.Timer", "_schedule_unattended_cloud_scan", "protect_geo_first_open"):
+    for marker in ("_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12", "threading.Timer", "_schedule_unattended_cloud_scan", "protect_first_paint_then_retry_until_verified_route_ready", '"retry_seconds": 15', '"max_attempts": attempts["max"]'):
         assert marker in r8_14_patch, marker
     for marker in ("geo-direct-fallback", "GEO 工作台正在加载", "body:has(#search-growth-switch)"):
         assert marker in geo_html, marker
