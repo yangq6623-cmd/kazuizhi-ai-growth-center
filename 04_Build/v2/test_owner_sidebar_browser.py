@@ -226,7 +226,7 @@ def assert_geo_advanced(driver):
         raise AssertionError(f"independent GEO50 baseline endpoint did not work: {baseline}")
     if "人工验证" not in inline.text or "自动正式验证" not in inline.text:
         raise AssertionError("GEO manual and automatic formal results are not separated")
-    for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
+    for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备人工网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")
     if driver.find_elements(By.ID, "r813-geo-frame"):

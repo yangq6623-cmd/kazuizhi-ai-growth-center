@@ -75,6 +75,34 @@ def run() -> None:
         assert recovered["available_sections"] == 4
         assert recovered["formal_ab_completed"] == 0
         print("PASS: GEO 50-question fail-safe, no false A/B, 12s watchdog and recovery")
+        original_file = bridge._geo_snapshot_file
+        questions = bridge._geo_evidence_seed()["questions"]
+        names = bridge.geo_validation_api.geo_core
+        data = {
+            names.QUESTION_SET_PATH: {"version": names.QUESTION_SET_VERSION, "questions": questions},
+            names.QUEUE_PATH: {"tasks": []},
+            names.RECEIPTS_PATH: {"receipts": [
+                {"question_id": questions[0]["question_id"], "official_truth": True, "evidence_level": "A", "test_method": "browser"},
+                {"question_id": questions[1]["question_id"], "official_truth": True, "evidence_level": "A", "test_method": "manual"},
+                {"question_id": questions[2]["question_id"], "official_truth": False, "evidence_level": "C", "test_method": "api"},
+            ]},
+        }
+        try:
+            bridge._geo_snapshot_file = lambda path, default: (data.get(path,default), "")
+            proof = bridge._geo_evidence_snapshot()
+            assert proof["formal_ab_completed"] == 2, proof
+            assert proof["formal_ab_manual"] == 2 and proof["formal_ab_automatic"] == 0, proof
+            assert proof["available_sections"] == 4 and len(proof["questions"]) == 50
+            # Corrupt one legacy section: the rest remain readable and no
+            # fake zero is allowed to replace prior official receipts.
+            data[names.QUEUE_PATH] = {"tasks": "legacy_bad_shape"}
+            partial = bridge._geo_evidence_snapshot()
+            assert partial["available_sections"] == 3
+            assert len(partial["questions"]) == 50
+            assert partial["formal_ab_completed"] == 2
+        finally:
+            bridge._geo_snapshot_file = original_file
+        print("PASS: GEO manual 2/50 != automatic 0/50; legacy queue corruption isolated")
     finally:
         gate.set()
         bridge._geo_evidence_snapshot = original
