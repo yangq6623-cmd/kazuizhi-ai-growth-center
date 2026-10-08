@@ -523,6 +523,25 @@ def fast_status():
     data = _load()
     items = list(reversed(data.get("opportunities") or []))
     counts = _state_counts(items)
+    # Owner-facing "today" is explicitly distinct from lifetime counters.
+    # No public URL / verified publish timestamp => NOT a successful release.
+    today = now_iso()[:10]
+    published_today = [
+        item for item in items
+        if str(item.get("published_at") or "").startswith(today)
+        and str(item.get("public_url") or "").startswith(("https://", "http://"))
+    ]
+    new_today = [
+        item for item in items
+        if str(item.get("created_at") or "").startswith(today)
+    ]
+    last_run_at = str(data.get("last_run_at") or "")
+    try:
+        from datetime import timezone
+        stamp = datetime.fromisoformat(last_run_at) if last_run_at else None
+        age_minutes = max(0, int((datetime.now().astimezone() - stamp.astimezone()).total_seconds() // 60)) if stamp else None
+    except (ValueError, TypeError):
+        age_minutes = None
 
     try:
         receipts = geo.receipts(1000)
@@ -578,6 +597,17 @@ def fast_status():
         "paused": bool(data.get("paused")),
         "mission": data.get("mission") or DEFAULT["mission"],
         "policy": deepcopy(data.get("policy") or {}),
+        "today_activity": {
+            "date": today,
+            "new_opportunities": len(new_today),
+            "verified_publications": len(published_today),
+            "published_urls": [item.get("public_url") for item in published_today[:10]],
+            "last_run_at": last_run_at,
+            "last_run_age_minutes": age_minutes,
+            "last_run_error": str(data.get("last_error") or "")[:200],
+            "scheduler_fresh": bool(data.get("enabled")) and not bool(data.get("paused"))
+                             and age_minutes is not None and age_minutes <= 15,
+        },
         "formal_ab_completed": len(formal_ids),
         "formal_ab_target": 50,
         "cloud": {
