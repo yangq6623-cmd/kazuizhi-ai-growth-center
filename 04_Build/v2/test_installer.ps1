@@ -55,42 +55,8 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     Write-Host 'PASS: installed GEO owner runtime responds quickly and ships self-healing workbench assets'
 }
 function Assert-GeoBrowserDom([int]$Port) {
-    $base = "http://127.0.0.1:$Port"
-    $edgeCandidates = @(
-        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
-    )
-    $edge = $edgeCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
-    if (-not $edge) { throw 'Microsoft Edge is required for GEO browser DOM smoke test on Windows runner' }
-
-    $url = "$base/geo.html?embed=1&field-smoke=692"
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $edge
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    foreach ($arg in @('--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--virtual-time-budget=9000','--dump-dom',$url)) {
-        [void]$psi.ArgumentList.Add($arg)
-    }
-    $proc = New-Object System.Diagnostics.Process
-    $proc.StartInfo = $psi
-    [void]$proc.Start()
-    if (-not $proc.WaitForExit(20000)) {
-        try { $proc.Kill($true) } catch {}
-        throw 'GEO browser DOM smoke timed out'
-    }
-    $dom = $proc.StandardOutput.ReadToEnd()
-    $err = $proc.StandardError.ReadToEnd()
-    if ($proc.ExitCode -ne 0) { throw "Edge GEO DOM smoke failed: $($proc.ExitCode) $err" }
-
-    foreach ($marker in @('id="search-growth-switch"','id="geo-growth-pane"','id="geo-growth-os"','id="geo-os-state"','GEO 自动增长工作台')) {
-        if ($dom -notmatch [regex]::Escape($marker)) { throw "Installed GEO browser DOM missing: $marker" }
-    }
-    if ($dom -match 'GEO 工作台正在加载…</b>\s*<span>页面框架已经打开') {
-        $hasGrowth = $dom -match 'id="geo-growth-os"'
-        if (-not $hasGrowth) { throw 'Installed GEO browser remained on fallback-only shell' }
-    }
-    Write-Host 'PASS: installed GEO page executes in real Edge and mounts the full Growth OS DOM'
+    & $Python (Join-Path $PSScriptRoot 'test_geo_browser_field.py') --port $Port
+    if ($LASTEXITCODE -ne 0) { throw 'Installed GEO real-browser DOM smoke failed' }
 }
 
 function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
@@ -102,6 +68,7 @@ function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
         if ($Exact -and $raw.Trim() -ne $Expected[$relative]) { throw "Clean reinstall changed persistent user file: $relative" }
     }
 }
+$runtime = $null
 try {
     $installerText = Get-Content -LiteralPath $installerScript -Raw
     if ($installerText -notmatch '\{userstartup\}\\卡嘴子 AI 后台自动运行 R8-23') { throw 'Installer is missing the per-user background autostart shortcut' }
@@ -163,10 +130,31 @@ try {
     Assert-PersistentFiles $persistentFiles $false
     Write-Host 'PASS: R8-23 Final Workbench install, GEO owner HTTP smoke, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
+    if ($null -ne $runtime) {
+        try {
+            $runtime.Refresh()
+            if (-not $runtime.HasExited) {
+                Stop-Process -Id $runtime.Id -Force -ErrorAction SilentlyContinue
+                try { $runtime.WaitForExit(5000) | Out-Null } catch {}
+            }
+        } catch {}
+    }
     $env:LOCALAPPDATA = $oldLocalAppData
     if (Test-Path -LiteralPath $testRoot) {
         $resolved = (Resolve-Path $testRoot).Path
         if (-not $resolved.StartsWith($baseTemp + '\', [System.StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to clean non-temporary path: $resolved" }
-        Remove-Item -LiteralPath $resolved -Recurse -Force
+        $removed = $false
+        for ($cleanupAttempt = 0; $cleanupAttempt -lt 10; $cleanupAttempt++) {
+            try {
+                Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
+                $removed = $true
+                break
+            } catch {
+                Start-Sleep -Milliseconds (300 + ($cleanupAttempt * 200))
+            }
+        }
+        if (-not $removed -and (Test-Path -LiteralPath $resolved)) {
+            Write-Warning "Deferred cleanup of locked CI test directory: $resolved"
+        }
     }
 }

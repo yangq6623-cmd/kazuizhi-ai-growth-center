@@ -1,0 +1,74 @@
+import argparse
+import json
+import sys
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, required=True)
+    args = parser.parse_args()
+
+    url = f"http://127.0.0.1:{args.port}/geo.html?embed=1&field-smoke=694"
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--no-first-run")
+    options.add_argument("--window-size=1600,1200")
+
+    driver = webdriver.Chrome(options=options)
+    try:
+        driver.set_page_load_timeout(20)
+        driver.get(url)
+        wait = WebDriverWait(driver, 12)
+        wait.until(lambda d: d.find_elements(By.ID, "search-growth-switch"))
+        wait.until(lambda d: d.find_elements(By.ID, "geo-growth-pane"))
+        wait.until(lambda d: d.find_elements(By.ID, "geo-growth-os"))
+        wait.until(lambda d: d.find_elements(By.ID, "geo-os-state"))
+
+        growth = driver.find_element(By.ID, "geo-growth-os")
+        state = driver.find_element(By.ID, "geo-os-state").text.strip()
+        fallback = driver.find_element(By.ID, "geo-direct-fallback")
+        fallback_display = driver.execute_script("return getComputedStyle(arguments[0]).display", fallback)
+        growth_display = driver.execute_script("return getComputedStyle(arguments[0]).display", growth)
+
+        if growth_display == "none":
+            raise AssertionError("GEO Growth OS exists but is not visible")
+        if fallback_display != "none":
+            raise AssertionError("GEO page is still showing fallback shell instead of the full workbench")
+        if not state:
+            raise AssertionError("GEO Growth OS state badge is empty")
+
+        text = driver.find_element(By.ID, "geo-growth-pane").text
+        required = ["GEO 自动增长工作台", "当前 Mission", "运营 Signal", "正式 A/B"]
+        missing = [marker for marker in required if marker not in text]
+        if missing:
+            raise AssertionError(f"GEO workbench missing visible markers: {missing}")
+
+        result = {
+            "ok": True,
+            "url": url,
+            "state": state,
+            "fallback_display": fallback_display,
+            "growth_display": growth_display,
+            "required_markers": required,
+        }
+        print("PASS: real Chrome mounted visible GEO Growth OS")
+        print(json.dumps(result, ensure_ascii=False))
+    finally:
+        driver.quit()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"FAIL: real Chrome GEO field smoke: {exc}", file=sys.stderr)
+        raise

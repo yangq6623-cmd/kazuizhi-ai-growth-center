@@ -1,1 +1,2 @@
 pyinstaller==6.11.1
+selenium==4.35.0
