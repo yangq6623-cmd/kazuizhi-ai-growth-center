@@ -103,14 +103,14 @@ def assert_seo_geo(driver):
 
     geo_tab = driver.find_element(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
     geo_tab.click()
-    geo_frame = WebDriverWait(driver, 20).until(
+    geo_frame = WebDriverWait(driver, 10).until(
         lambda d: d.find_element(By.ID, "r813-geo-frame")
         if d.find_elements(By.ID, "r813-geo-frame") and d.find_element(By.ID, "r813-geo-frame").is_displayed()
         else None
     )
     driver.switch_to.frame(geo_frame)
     try:
-        growth = WebDriverWait(driver, 20).until(
+        growth = WebDriverWait(driver, 10).until(
             lambda d: d.find_element(By.ID, "geo-growth-os")
             if d.find_elements(By.ID, "geo-growth-os") and d.find_element(By.ID, "geo-growth-os").is_displayed()
             else None
@@ -143,6 +143,12 @@ def main():
     driver = webdriver.Chrome(options=options)
     results = []
     try:
+        # Reproduce a slower field PC/browser instead of validating only on a
+        # fast clean GitHub runner. Owner navigation must still converge.
+        try:
+            driver.execute_cdp_cmd("Emulation.setCPUThrottlingRate", {"rate": 4})
+        except Exception:
+            pass
         driver.set_page_load_timeout(25)
         driver.get(url)
         wait = WebDriverWait(driver, 20)
