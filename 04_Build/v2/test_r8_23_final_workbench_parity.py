@@ -144,7 +144,7 @@ def main() -> None:
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     for marker in ("frameAtWantedLocation", "workspaceDomReady", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "9000", "<5"):
         assert marker in seo_bridge, marker
-    for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "loadGeoAdvancedInBackground", "GEO 自动增长工作台正在准备"):
+    for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "bindGeoAdvancedTools", "GEO 自动增长工作台正在准备", "advanced=1"):
         assert marker in seo_bridge, marker
     index_html = text(INDEX)
     assert 'src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"' in index_html
@@ -252,6 +252,15 @@ def main() -> None:
     assert "def fast_status()" in geo_growth_core
     fast_status_block = geo_growth_core[geo_growth_core.index("def fast_status()"):geo_growth_core.index("def status()")]
     assert '"status_mode": "fast_snapshot"' in fast_status_block
+    publish_bridge = text(SRC / "core" / "geo_growth_publish_bridge.py")
+    assert "_ORIGINAL_FAST_STATUS = geo_growth.fast_status" in publish_bridge
+    assert "geo_growth.fast_status = fast_status" in publish_bridge
+    r8_13_patch = text(R8_13_PATCH)
+    assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
+    assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
+    assert "geo_validation.dashboard()" in r8_13_patch
+    for marker in ("geo-direct-advanced", "kzGeoAdvancedReady", "#geo-growth-advanced-body"):
+        assert marker in geo_html, marker
     # Check executable call patterns, not explanatory docstring text.
     assert "= geo_autonomy.status()" not in fast_status_block
     assert "return geo_autonomy.status()" not in fast_status_block

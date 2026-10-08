@@ -225,7 +225,7 @@
           <div class="r813-growth-pane" data-r813-pane="geo" hidden>
             <div id="geo-growth-pane" class="r813-geo-core-host">
               <div id="r813-geo-core-loading" class="r813-geo-core-loading">GEO 自动增长工作台正在准备，核心界面直接由主平台加载，不再依赖 iframe 首次导航。</div>
-              <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO高级证据与网页验证" src="about:blank" data-src="/geo.html?embed=1" scrolling="no"></iframe>
+              <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO高级证据与网页验证" src="about:blank" data-src="/geo.html?embed=1&advanced=1" scrolling="no"></iframe>
             </div>
           </div>
         </div>`;
@@ -284,12 +284,18 @@
     return parentGeoCoreReady();
   }
 
-  function loadGeoAdvancedInBackground(){
-    const frame=document.getElementById('r813-geo-frame');
-    if(!frame)return;
-    // Advanced evidence tools remain available, but their iframe cannot block
-    // the owner-facing GEO core from rendering.
-    window.setTimeout(()=>loadWorkspaceIfNeeded('geo'),1600);
+  function bindGeoAdvancedTools(){
+    const advanced=document.getElementById('geo-growth-advanced');
+    if(!advanced||advanced.dataset.kzAdvancedBound==='1')return false;
+    advanced.dataset.kzAdvancedBound='1';
+    advanced.addEventListener('toggle',()=>{
+      if(!advanced.open)return;
+      loadWorkspaceIfNeeded('geo');
+      const frame=document.getElementById('r813-geo-frame');
+      [500,1400,2800].forEach(delay=>window.setTimeout(()=>scheduleFrameFit(frame),delay));
+    });
+    if(advanced.open)loadWorkspaceIfNeeded('geo');
+    return true;
   }
 
   function loadWorkspaceIfNeeded(kind){
@@ -297,7 +303,7 @@
     const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
     if(!frame)return;
     wireFrame(frame,target);
-    const wanted=frame.dataset.src||(target==='geo'?'/geo.html?embed=1':'/r8_13_seo_geo.html?embed=1');
+    const wanted=frame.dataset.src||(target==='geo'?'/geo.html?embed=1&advanced=1':'/r8_13_seo_geo.html?embed=1');
     if(frame.dataset.kzLoaded==='1'&&frameAtWantedLocation(frame,wanted)){scheduleFrameFit(frame);return}
     if(frame.dataset.kzLoading==='1')return;
     const attempts=Number(frame.dataset.kzLoadAttempts||0);
@@ -330,7 +336,7 @@
     page.querySelectorAll('[data-r813-pane]').forEach(pane=>{pane.hidden=pane.dataset.r813Pane!==target;});
     if(target==='geo'){
       ensureParentGeoCore();
-      loadGeoAdvancedInBackground();
+      [80,260,700].forEach(delay=>window.setTimeout(bindGeoAdvancedTools,delay));
     }else{
       loadWorkspaceIfNeeded('seo');
     }

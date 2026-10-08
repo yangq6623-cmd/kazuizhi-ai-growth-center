@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from backend import server
 from core import seo_geo_autonomy as seo_autonomy
 from core import seo_observability
+from core import geo_validation
 from core.storage import data_root, now_iso, write_json
 from core.seo_geo_growth import (
     configure,
@@ -107,6 +108,34 @@ def _kick_snapshot_refresh(delay_seconds=1.5):
     return True
 
 
+def _overlay_formal_geo_truth(payload):
+    """Make the legacy SEO summary read the same official GEO truth ledger."""
+    result = deepcopy(payload)
+    try:
+        truth = geo_validation.dashboard()
+        official = truth.get("official") or {}
+        question_set = truth.get("question_set") or {}
+        tested = int(official.get("tested") or 0)
+        geo = result.setdefault("geo", {})
+        geo.update({
+            "questions": int(question_set.get("total") or geo.get("questions") or 50),
+            "tested_questions": tested,
+            "observations": tested,
+            "mentioned": int(official.get("mentioned") or 0),
+            "cited": int(official.get("cited") or 0),
+            "recommended": int(official.get("recommended") or 0),
+            "mention_rate": official.get("mention_rate") if tested else 0,
+            "citation_rate": official.get("citation_rate") if tested else 0,
+            "recommendation_rate": official.get("recommendation_rate") if tested else 0,
+            "measurement_state": official.get("measurement_state") or ("measured" if tested else "not_started"),
+            "truth_source": "r8-19-official-evidence",
+            "evidence_count": int(official.get("evidence_count") or 0),
+        })
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        pass
+    return result
+
+
 def _mark_fast_ok(payload):
     _FAST_GET_STATS["requests"] = int(_FAST_GET_STATS.get("requests") or 0) + 1
     _FAST_GET_STATS["last_ok_at"] = now_iso()
@@ -149,7 +178,7 @@ def _fast_dashboard_response():
         health["snapshot_age_seconds"] = round(age, 1) if age is not None else None
         health["snapshot_mode"] = True
         health["truth"] = "页面优先读取最近一次成功持久化的真实快照，并在后台异步刷新；快照时间单独标注，不把缓存冒充为新的外部回执。"
-        return _mark_fast_ok(cached)
+        return _mark_fast_ok(_overlay_formal_geo_truth(cached))
 
     # Never make the first page paint wait on optional remote connectors.
     # Return the local ledger immediately, then enrich/persist the full snapshot
@@ -176,7 +205,7 @@ def _fast_dashboard_response():
         "truth": "正在后台生成完整真实快照；首屏不等待远程连接器。",
     }
     _kick_snapshot_refresh(delay_seconds=2.0)
-    return _mark_fast_ok(payload)
+    return _mark_fast_ok(_overlay_formal_geo_truth(payload))
 
 
 def _optional_status(label, reader, fallback):
@@ -388,6 +417,7 @@ def _dashboard_payload():
     payload["evidence_summary"] = _staging_evidence(payload)
     payload["revenue_os"] = _revenue_feedback()
     payload["unattended_validation"] = seo_autonomy.validation_status()
+    payload = _overlay_formal_geo_truth(payload)
     geo = payload.setdefault("geo", {})
     geo["measurement_state"] = "measured" if int(geo.get("observations") or 0) > 0 else "not_started"
     payload["service_health"] = {

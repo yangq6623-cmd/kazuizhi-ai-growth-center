@@ -126,10 +126,49 @@ def assert_seo_geo(driver):
     if state == "未启动":
         raise AssertionError("GEO 工作台已显示，但自动运营仍处于未启动状态")
 
-    # The legacy full GEO document remains background/advanced tooling only.
-    # A slow or failed iframe must not blank the owner-facing core panel.
+    # Formal A/B count in the legacy SEO summary and the new Growth OS must use
+    # the same official Evidence truth ledger.
+    parity = driver.execute_async_script("""
+      const done=arguments[0];
+      Promise.all([
+        fetch('/api/r8-13/seo-geo',{cache:'no-store'}).then(r=>r.json()),
+        fetch('/api/r8-24/geo-growth/fast',{cache:'no-store'}).then(r=>r.json())
+      ]).then(([legacy,growth])=>done({
+        legacy:Number((legacy.data||legacy).geo?.tested_questions||0),
+        growth:Number((growth.data||growth).formal_ab_completed||0),
+        source:String((legacy.data||legacy).geo?.truth_source||'')
+      })).catch(error=>done({error:String(error)}));
+    """)
+    if parity.get("error"):
+        raise AssertionError(f"GEO truth parity request failed: {parity['error']}")
+    if parity.get("legacy") != parity.get("growth") or parity.get("source") != "r8-19-official-evidence":
+        raise AssertionError(f"GEO official truth mismatch: {parity}")
+
+    advanced = driver.find_element(By.ID, "geo-growth-advanced")
+    summary = advanced.find_element(By.TAG_NAME, "summary")
+    driver.execute_script("arguments[0].click();", summary)
+    advanced_frame = WebDriverWait(driver, 12).until(
+        lambda d: d.find_element(By.ID, "r813-geo-frame")
+        if d.find_elements(By.ID, "r813-geo-frame") and d.find_element(By.ID, "r813-geo-frame").is_displayed()
+        else None
+    )
+    driver.switch_to.frame(advanced_frame)
+    try:
+        WebDriverWait(driver, 15).until(
+            lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedReady === '1'")
+        )
+        if not driver.find_element(By.ID, "geo-growth-advanced").get_attribute("open"):
+            raise AssertionError("高级 GEO Evidence 工具没有真正展开")
+        fallback = driver.find_element(By.ID, "geo-direct-fallback")
+        if fallback.is_displayed():
+            raise AssertionError("高级 GEO 工具仍停留在初始化 fallback")
+        if driver.find_element(By.ID, "geo-growth-os").is_displayed():
+            raise AssertionError("高级工具 iframe 错误重复显示 GEO 主核心面板")
+    finally:
+        driver.switch_to.default_content()
+
     if not driver.find_element(By.ID, "geo-growth-os").is_displayed():
-        raise AssertionError("高级 GEO iframe 状态影响了主平台核心面板")
+        raise AssertionError("高级 GEO 工具展开影响了主平台核心面板")
 
 
 def main():

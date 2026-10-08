@@ -17,6 +17,7 @@ from integrations import seo_public_deployer
 _INSTALLED = False
 _ORIGINAL_RUN = geo_growth.run_once
 _ORIGINAL_STATUS = geo_growth.status
+_ORIGINAL_FAST_STATUS = geo_growth.fast_status
 _ORIGINAL_RETRY = geo_growth.retry_failed
 _LOOP_LOCK = threading.Lock()
 _PUBLISH_BLOCKER_CODES = {
@@ -140,8 +141,7 @@ def run_once(force=False):
     finally:
         _LOOP_LOCK.release()
 
-def status():
-    snap = _ORIGINAL_STATUS()
+def _decorate_snapshot(snap):
     connector = seo_public_deployer.status()
     snap["publish_connector"] = {
         "configured": bool(connector.get("configured")),
@@ -170,6 +170,16 @@ def status():
     return snap
 
 
+def status():
+    return _decorate_snapshot(_ORIGINAL_STATUS())
+
+
+def fast_status():
+    # The main GEO screen polls fast_status(); it must expose the same truthful
+    # publish readiness/blocker information as the full status endpoint.
+    return _decorate_snapshot(_ORIGINAL_FAST_STATUS())
+
+
 def retry_failed():
     _ORIGINAL_RETRY()
     run_once(force=True)
@@ -182,6 +192,7 @@ def install():
         return
     geo_growth.run_once = run_once
     geo_growth.status = status
+    geo_growth.fast_status = fast_status
     geo_growth.retry_failed = retry_failed
     geo_growth._kz_r8_24_publish_bridge = True
     _INSTALLED = True
