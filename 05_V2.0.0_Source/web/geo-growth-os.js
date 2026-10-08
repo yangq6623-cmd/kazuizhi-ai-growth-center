@@ -1,13 +1,13 @@
 (() => {
   'use strict';
-  if (window.__KZ_GEO_GROWTH_OS__) {
-    // operational-search.js can bundle this file and geo.html also loads it
-    // directly. If the first boot hit a transient DOM/API race, the second load
-    // must actively retry instead of returning forever with only the connector
-    // matrix visible.
-    try { window.__KZ_GEO_GROWTH_OS_BOOT__?.(); } catch (_) {}
+  if (window.__KZ_GEO_GROWTH_OS__ && typeof window.__KZ_GEO_GROWTH_OS_BOOT__ === 'function') {
+    // A healthy bundled copy already finished initialization. Reuse it.
+    try { window.__KZ_GEO_GROWTH_OS_BOOT__(); } catch (_) {}
     return;
   }
+  // #692 recovery rule: a bundled copy may set the sentinel and then fail
+  // before exporting BOOT. The direct copy must complete initialization in
+  // that stale-sentinel state instead of returning forever.
   window.__KZ_GEO_GROWTH_OS__ = true;
 
   const byId = id => document.getElementById(id);
