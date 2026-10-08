@@ -74,6 +74,7 @@
   window.addEventListener('kz:lazy-workspace-ready', event => {
     if (event.detail?.name === 'content_studio') { attempts = 0; converge(); }
   });
+  window.addEventListener('kz:content-studio-mounted', () => { attempts = 0; converge(); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', converge, {once:true});
   else converge();
 })();

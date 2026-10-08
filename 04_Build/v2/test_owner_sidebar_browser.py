@@ -93,13 +93,35 @@ def assert_execution_center(driver):
 
 def assert_seo_geo(driver):
     WebDriverWait(driver, 15).until(lambda d: d.find_elements(By.CSS_SELECTOR, "#r813-seo-geo .r813-growth-tabs"))
-    frame = WebDriverWait(driver, 15).until(
+    seo_frame = WebDriverWait(driver, 15).until(
         lambda d: d.find_element(By.ID, "r813-seo-frame")
         if d.find_elements(By.ID, "r813-seo-frame")
         else None
     )
-    if not frame.is_displayed():
+    if not seo_frame.is_displayed():
         raise AssertionError("SEO/GEO 主工作区已创建但 SEO iframe 不可见")
+
+    geo_tab = driver.find_element(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
+    geo_tab.click()
+    geo_frame = WebDriverWait(driver, 20).until(
+        lambda d: d.find_element(By.ID, "r813-geo-frame")
+        if d.find_elements(By.ID, "r813-geo-frame") and d.find_element(By.ID, "r813-geo-frame").is_displayed()
+        else None
+    )
+    driver.switch_to.frame(geo_frame)
+    try:
+        growth = WebDriverWait(driver, 20).until(
+            lambda d: d.find_element(By.ID, "geo-growth-os")
+            if d.find_elements(By.ID, "geo-growth-os") and d.find_element(By.ID, "geo-growth-os").is_displayed()
+            else None
+        )
+        if not growth.is_displayed():
+            raise AssertionError("集成 GEO 工作台存在但不可见")
+        fallback = driver.find_element(By.ID, "geo-direct-fallback")
+        if driver.execute_script("return getComputedStyle(arguments[0]).display", fallback) != "none":
+            raise AssertionError("集成 GEO 仍停留在 fallback/初始化壳")
+    finally:
+        driver.switch_to.default_content()
 
 
 def main():
@@ -130,6 +152,22 @@ def main():
                 "return ['ready','degraded'].includes(document.documentElement.dataset.kzStartupPhase || '')"
             )
         )
+        direct_shells = driver.execute_script(
+            "return {content: typeof window.openKazuizhiContentStudio === 'function', geo: !!window.KZR813SeoGeoBridge?.open};"
+        )
+        if not direct_shells.get("content") or not direct_shells.get("geo"):
+            raise AssertionError(f"owner route shells were not loaded directly: {direct_shells}")
+
+        driver.execute_script("""
+          const originalFetch = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = String(input && input.url ? input.url : input || '');
+            if (/content-studio-shell\\.js|content-pipeline-host\\.js|r8_13_seo_geo_bridge\\.js/.test(url)) {
+              return Promise.reject(new Error('field-smoke: dynamic owner-shell fetch blocked'));
+            }
+            return originalFetch(input, init);
+          };
+        """)
 
         for label, target in PRIMARY_ROUTES:
             started = time.monotonic()

@@ -130,6 +130,19 @@
     }catch(_){return false}
   }
 
+  function workspaceDomReady(frame, kind){
+    try{
+      const doc=frame?.contentDocument;
+      if(!doc||doc.readyState!=='complete')return false;
+      if(kind==='geo'){
+        const growth=doc.getElementById('geo-growth-os');
+        if(!growth)return false;
+        return doc.defaultView?.getComputedStyle(growth)?.display!=='none';
+      }
+      return Boolean(doc.getElementById('search-growth-switch')||doc.getElementById('search')||doc.querySelector('.search-growth-shell'));
+    }catch(_){return false}
+  }
+
   function wireFrame(frame, kind){
     if(!frame||frame.dataset.kzFinalWired==='1')return;
     frame.dataset.kzFinalWired='1';
@@ -145,6 +158,21 @@
       }
       if(kind==='seo')decorateLegacySeo(frame); else injectFinalUx(frame);
       scheduleFrameFit(frame);
+      if(kind==='geo'){
+        [500,1400,3000,5200].forEach(delay=>window.setTimeout(()=>{
+          if(workspaceDomReady(frame,'geo')){
+            frame.dataset.kzLoaded='1';
+            frame.dataset.kzLoading='0';
+            frame.dataset.kzLoadAttempts='0';
+            return;
+          }
+          if(delay===5200&&desiredWorkspace==='geo'){
+            frame.dataset.kzLoaded='0';
+            frame.dataset.kzLoading='0';
+            if(Number(frame.dataset.kzLoadAttempts||0)<5)loadWorkspaceIfNeeded('geo');
+          }
+        },delay));
+      }
       try{
         frame.contentWindow?.addEventListener('focus',()=>scheduleFrameFit(frame));
         frame.contentWindow?.addEventListener('resize',()=>scheduleFrameFit(frame));
@@ -217,10 +245,10 @@
       if(frame.dataset.kzLoaded==='1'&&frameAtWantedLocation(frame,wanted))return;
       frame.dataset.kzLoading='0';
       frame.dataset.kzLoaded='0';
-      if(Number(frame.dataset.kzLoadAttempts||0)<3&&desiredWorkspace===target){
+      if(Number(frame.dataset.kzLoadAttempts||0)<5&&desiredWorkspace===target){
         loadWorkspaceIfNeeded(target);
       }
-    },5000);
+    },9000);
   }
 
   function renderWorkspace(name){
@@ -312,14 +340,24 @@
 
   function ensureNav(){
     const primary=document.querySelector('.r810-primary-nav');
-    if(!primary||primary.querySelector('[data-target="r813-seo-geo"]'))return;
-    const button=document.createElement('button');
-    button.className='r810-nav-button';
-    button.dataset.target=PAGE_ID;
-    button.innerHTML='<span class="r810-icon">搜</span><span>SEO/GEO增长</span>';
-    const evolution=primary.querySelector('[data-target="r810-evolution"]');
-    if(evolution)primary.insertBefore(button,evolution); else primary.appendChild(button);
-    button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();activate()},{capture:true});
+    if(!primary)return;
+    let button=primary.querySelector('[data-target="r813-seo-geo"]');
+    if(!button){
+      button=document.createElement('button');
+      button.className='r810-nav-button';
+      button.dataset.target=PAGE_ID;
+      button.innerHTML='<span class="r810-icon">搜</span><span>SEO/GEO增长</span>';
+      const evolution=primary.querySelector('[data-target="r810-evolution"]');
+      if(evolution)primary.insertBefore(button,evolution); else primary.appendChild(button);
+    }
+    if(button.dataset.kzSeoGeoFallbackBound!=='1'){
+      button.dataset.kzSeoGeoFallbackBound='1';
+      button.addEventListener('click',event=>{
+        if(event.defaultPrevented)return;
+        event.preventDefault();
+        activate();
+      });
+    }
   }
 
   ensurePage();

@@ -64,13 +64,11 @@
       ['/r8_11_execution_tab_hotfix.js', 'r811ExecutionTabHotfix'],
     ],
     // Keep SEO/GEO lazy, but make the first click execute prefetched source.
-    seo_geo: [
-      ['/r8_13_seo_geo_bridge.js', 'r813SeoGeo'],
-    ],
-    content_studio: [
-      ['/content-studio-shell.js', 'contentStudioShell'],
-      ['/content-pipeline-host.js', 'contentPipelineHost'],
-    ],
+    // Owner navigation shells are loaded directly by index.html. Their heavy
+    // iframe documents remain on-demand, so clicking them never depends on a
+    // first-click JavaScript fetch succeeding on the local server.
+    seo_geo: [],
+    content_studio: [],
     connections: [
       ['/kz_site_tools.js', 'kzSiteTools'],
       ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
@@ -402,6 +400,10 @@
   }
 
   function showImmediateLazyTarget(target) {
+    if (target === 'content-studio' && typeof window.openKazuizhiContentStudio === 'function') {
+      window.openKazuizhiContentStudio('overview');
+      return;
+    }
     if (target === 'content-studio' || target === 'operational-hub') ensureImmediateLazyPage(target);
     if (['workflow','content-studio','operational-hub','connections'].includes(target)) {
       activateOwnerPage(target);
@@ -440,15 +442,15 @@
       button.dataset.kzLoading = '1';
       try {
         const bundleReady = await loadLazyBundle(bundle);
-        if (!bundleReady && target !== 'r813-seo-geo') {
-          button.title = '工作区模块暂未就绪，页面会保留并可再次点击重试';
+        if (!bundleReady) {
+          button.title = '部分增强模块暂未就绪；基础工作区仍可继续使用';
           const feedback = document.getElementById('action-feedback');
           if (feedback) {
             feedback.hidden = false;
+            feedback.dataset.kzLazyRouteError = '1';
             feedback.className = 'action-feedback error';
-            feedback.textContent = '工作区模块暂未加载完成；主界面已响应，请再次点击重试。';
+            feedback.textContent = '部分增强模块暂未加载完成；基础工作区已经打开，系统会继续自动恢复。';
           }
-          return;
         }
         if (target === 'workflow') {
           activateOwnerPage('workflow');
@@ -470,6 +472,12 @@
           activateOwnerPage('connections');
         }
       } finally {
+        const feedback = document.getElementById('action-feedback');
+        if (feedback?.dataset.kzLazyRouteError === '1' && document.getElementById(target)?.classList.contains('active')) {
+          feedback.hidden = true;
+          feedback.textContent = '';
+          delete feedback.dataset.kzLazyRouteError;
+        }
         button.removeAttribute('aria-busy');
         delete button.dataset.kzLoading;
       }

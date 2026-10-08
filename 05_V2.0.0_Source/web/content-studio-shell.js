@@ -113,6 +113,7 @@
   }
 
   function openStudio(route='overview') {
+    ensure(true);
     activateOuterPage();
     syncOuterTitle(route);
     routeFrame(route);
@@ -138,7 +139,14 @@
       button.innerHTML = '<span class="r810-icon">创</span><span>内容创导</span>';
       const decision = primary.querySelector('.r810-nav-button[data-target="workflow"]');
       if (decision) decision.insertAdjacentElement('afterend', button); else primary.appendChild(button);
-      button.addEventListener('click', () => openStudio('overview'));
+    }
+    if (button.dataset.kzContentStudioFallbackBound !== '1') {
+      button.dataset.kzContentStudioFallbackBound = '1';
+      button.addEventListener('click', event => {
+        if (event.defaultPrevented) return;
+        event.preventDefault();
+        openStudio('overview');
+      });
     }
     return true;
   }
@@ -168,13 +176,19 @@
     } catch (_) {}
   }
 
-  function ensure() {
+  function ensure(mountFrame=false) {
     installStyle();
     const nav = document.querySelector('aside nav');
     const main = document.querySelector('main');
     if (!nav || !main) return false;
     dedupeBaselines();
     ensureLegacyRoute(nav);
+    const ready = ensureOwnerNavigation(nav);
+    if (!ready) return false;
+
+    document.documentElement.dataset.kzContentStudio = 'ready';
+    if (!mountFrame) return true;
+
     const page = ensurePage(main);
     const frame = page?.querySelector(`#${FRAME_ID}`);
     if (frame && !frame.dataset.kzStableBound) {
@@ -185,21 +199,18 @@
       });
     }
     if (frame?.contentDocument?.readyState === 'complete') injectSimpleMode(frame);
-    const ready = ensureOwnerNavigation(nav);
-    if (ready) {
-      document.documentElement.dataset.kzContentStudio = 'ready';
-      if (
-        document.documentElement.dataset.kzActivePage === PAGE_ID ||
-        nav.querySelector('.r810-nav-button[data-target="content-studio"]')?.classList.contains('active')
-      ) activateOuterPage();
-      return true;
-    }
-    return false;
+    window.dispatchEvent(new CustomEvent('kz:content-studio-mounted'));
+
+    if (
+      document.documentElement.dataset.kzActivePage === PAGE_ID ||
+      nav.querySelector('.r810-nav-button[data-target="content-studio"]')?.classList.contains('active')
+    ) activateOuterPage();
+    return true;
   }
 
   function converge() {
     if (retryTimer) window.clearTimeout(retryTimer);
-    if (ensure()) return;
+    if (ensure(false)) return;
     ensureAttempts += 1;
     if (ensureAttempts < 24) retryTimer = window.setTimeout(converge, 180);
   }
