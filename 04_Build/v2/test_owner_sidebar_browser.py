@@ -190,8 +190,14 @@ def assert_geo_advanced(driver):
         body_text = driver.execute_script(
             "return (document.getElementById('geo-growth-pane')?.innerText || '').trim();"
         )
-        if len(body_text) < 300 or "网页验证工作台" not in body_text or "网页真实验证1题" not in body_text:
-            raise AssertionError(f"高级 GEO 工具内容为空或不完整，字符数={len(body_text)}")
+        workbench_text = driver.find_element(By.CSS_SELECTOR, ".geo-browser-workbench").text.strip()
+        workbench_height = driver.execute_script(
+            "return Math.round(document.querySelector('.geo-browser-workbench')?.getBoundingClientRect().height || 0);"
+        )
+        if len(body_text) < 300 or len(workbench_text) < 80 or int(workbench_height or 0) < 120:
+            raise AssertionError(
+                f"高级 GEO 工具内容为空或不完整，body={len(body_text)}，workbench={len(workbench_text)}，height={workbench_height}"
+            )
         height = driver.execute_script(
             "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
         )
