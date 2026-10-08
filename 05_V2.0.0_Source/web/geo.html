@@ -87,24 +87,27 @@
       if(fallback)fallback.hidden=true;
     })();
   </script>
-  <script src="operational-search.js"></script>
-  <script src="geo-autonomy.js"></script>
-  <script src="seo-geo-growth-intelligence.js"></script>
-  <script src="seo-geo-connector-matrix.js"></script>
-  <script src="geo-phase1-field-fix.js"></script>
+  <!-- #711: mount the owner GEO workbench before any legacy/advanced module
+       can block the page. The field machine showed the initialization shell
+       while later synchronous scripts were still executing. -->
+  <script src="geo-growth-os.js"></script>
+  <script defer src="operational-search.js"></script>
+  <script defer src="geo-autonomy.js"></script>
+  <script defer src="seo-geo-growth-intelligence.js"></script>
+  <script defer src="seo-geo-connector-matrix.js"></script>
+  <script defer src="geo-phase1-field-fix.js"></script>
   <script>
     // The field-fix layer is the sole owner of Phase-1 button actions. Mark the
     // visual-polish repair as already owned so its legacy capture handler cannot
     // shadow or race the real field action handler.
     if(window.__KZ_R819_GEO_FIELD_FIX__)document.documentElement.dataset.kzGeoInteractionRepair='1';
   </script>
-  <script src="geo-phase1-ui-polish.js"></script>
-  <script src="geo-phase1-live-gate.js"></script>
-  <script src="seo-geo-phase1-final.js"></script>
-  <script src="geo-owner-ux.js"></script>
-  <script src="geo-phase2-analysis.js"></script>
-  <script src="geo-phase3.js"></script>
-  <script src="geo-growth-os.js"></script>
+  <script defer src="geo-phase1-ui-polish.js"></script>
+  <script defer src="geo-phase1-live-gate.js"></script>
+  <script defer src="seo-geo-phase1-final.js"></script>
+  <script defer src="geo-owner-ux.js"></script>
+  <script defer src="geo-phase2-analysis.js"></script>
+  <script defer src="geo-phase3.js"></script>
   <script>
     // #688 self-heal: if the bundled first boot raced with another GEO module,
     // retry the owner workbench after the DOM settles. Never leave a connector
