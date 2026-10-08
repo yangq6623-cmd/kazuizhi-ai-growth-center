@@ -354,6 +354,52 @@
     return button;
   }
 
+  function ensureImmediateLazyPage(target) {
+    const main = document.querySelector('main');
+    const nav = document.querySelector('aside nav');
+    if (!main || !nav) return null;
+    let page = document.getElementById(target);
+    const copy = {
+      'content-studio': ['卡嘴子 AI 内容创导平台', '内容情报、策划、导演、生产、质检与成片统一协同'],
+      'operational-hub': ['执行中心', '增长战役、内容生产、发布准备、搜索增长与经营结果'],
+    }[target];
+    if (!copy) return page;
+    if (!page) {
+      page = document.createElement('section');
+      page.id = target;
+      page.className = 'page';
+      if (target === 'content-studio') {
+        page.innerHTML = '<div class="r812-lazy-route-loading"><b>正在打开内容创导…</b><span>首次进入会加载内容生产工作区，页面已响应，不需要重复点击。</span></div>';
+      } else {
+        page.classList.add('operational-hub-page');
+        page.innerHTML = '<iframe id="operational-frame" class="operational-hub-frame" title="R8 内容生产与发布闭环" src="/operational.html?embedded=1" loading="eager"></iframe>';
+      }
+      main.appendChild(page);
+    }
+    let proxy = nav.querySelector(`.nav[data-page="${target}"]`);
+    if (!proxy) {
+      proxy = document.createElement('button');
+      proxy.className = 'nav r810-legacy-route';
+      proxy.dataset.page = target;
+      proxy.hidden = true;
+      nav.appendChild(proxy);
+    }
+    proxy.dataset.title = copy[0];
+    proxy.dataset.subtitle = copy[1];
+    return page;
+  }
+
+  function showImmediateLazyTarget(target) {
+    if (target === 'content-studio' || target === 'operational-hub') ensureImmediateLazyPage(target);
+    if (['workflow','content-studio','operational-hub','connections'].includes(target)) {
+      if (typeof window.openPage === 'function') window.openPage(target);
+      else {
+        document.querySelectorAll('main > .page').forEach(node => node.classList.toggle('active', node.id === target));
+        document.documentElement.dataset.kzActivePage = target;
+      }
+    }
+  }
+
   function installLazyWorkspaceRoutes() {
     ensureLazyNavButton('content-studio', '内容创导', '创', 'operational-hub');
     ensureLazyNavButton('r813-seo-geo', 'SEO/GEO增长', '搜', 'r810-evolution');
@@ -374,12 +420,22 @@
 
       event.preventDefault();
       event.stopImmediatePropagation();
-      button.disabled = true;
+      // #700 owner-route contract: the click must visibly change the page
+      // immediately. Heavy lazy modules may load afterwards, but a user should
+      // never see an apparently dead Content Studio / Execution button.
+      showImmediateLazyTarget(target);
+      button.setAttribute('aria-busy','true');
       button.dataset.kzLoading = '1';
       try {
         const bundleReady = await loadLazyBundle(bundle);
         if (!bundleReady && target !== 'r813-seo-geo') {
-          button.title = '工作区模块暂未就绪，请再次点击重试';
+          button.title = '工作区模块暂未就绪，页面会保留并可再次点击重试';
+          const feedback = document.getElementById('action-feedback');
+          if (feedback) {
+            feedback.hidden = false;
+            feedback.className = 'action-feedback error';
+            feedback.textContent = '工作区模块暂未加载完成；主界面已响应，请再次点击重试。';
+          }
           return;
         }
         if (target === 'workflow') {
@@ -400,7 +456,7 @@
           if (typeof window.openPage === 'function') window.openPage('connections');
         }
       } finally {
-        button.disabled = false;
+        button.removeAttribute('aria-busy');
         delete button.dataset.kzLoading;
       }
     }, true);
