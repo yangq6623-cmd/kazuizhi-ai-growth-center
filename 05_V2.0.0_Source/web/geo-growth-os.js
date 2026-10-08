@@ -107,6 +107,7 @@
           <article><span>当前 Mission</span><b id="geo-os-mission">正在读取…</b><small>正常 GEO / SEO / 内容优化默认全权自治，无人工审核步骤；技术阻塞只影响对应子任务。</small></article>
           <article><span>成本与资源策略</span><b>OpenAI API：禁用 · 新增付费依赖：0</b><small id="geo-os-resources">执行资源：豆包 API / 本地模型 / RTX 3060 / 平台现有功能</small></article>
         </div>
+        <div id="geo-os-today" class="geo-os-message" role="status">今日数据核验中：仅实际取得公网回执才计为发布成功。</div>
         <div id="geo-os-kpis" class="geo-os-kpis"></div>
         <div id="geo-os-pipeline" class="geo-os-pipeline"></div>
         <div class="geo-os-grid">
@@ -179,6 +180,16 @@
       const ready=Boolean(publish.ready);
       publishLine.textContent=`发布通道：${ready?'已就绪':(publish.reason||'等待检查')} · 待发布 ${Number(summary.waiting_publish||0)}`;
       publishLine.className=ready?'ok':Number(summary.waiting_publish||0)>0?'bad':'wait';
+    }
+
+    const today=data.today_activity||{};
+    const daily=byId('geo-os-today');
+    if(daily){
+      const fresh=today.scheduler_fresh===true;
+      const last=String(today.last_run_at||'尚无执行记录');
+      const waiting=Number(summary.waiting_publish||0);
+      daily.textContent=`今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
+      daily.style.color=fresh?'#49667e':'#986000';
     }
 
     const kpis=[
