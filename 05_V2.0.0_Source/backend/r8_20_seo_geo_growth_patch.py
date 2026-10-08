@@ -7,6 +7,7 @@ unchanged and independently evidence-gated.
 from __future__ import annotations
 
 import json
+import threading
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
@@ -22,6 +23,8 @@ from integrations import seo_geo_connector_router_v2 as connector_router
 _INSTALLED = False
 _ORIGINAL_RUN = seo_core.run_once
 _ORIGINAL_STATUS = seo_core.status
+_GEO_GROWTH_AUTO_START_DELAY_SECONDS = 20
+_GEO_GROWTH_AUTO_START_TIMER = None
 
 
 def _origin_allowed(handler):
@@ -90,6 +93,64 @@ def _combined_run(force=False):
     result["connector_routes"] = connector_routes
     result["runtime_health"] = runtime_resilience.snapshot()
     return result
+
+
+def _ensure_geo_growth_auto_running():
+    """#687 make the whole GEO Growth OS unattended after the UI first paint."""
+    current = geo_growth.status()
+
+    # An explicit owner pause is a hard stop. Auto-start never overrides it.
+    if current.get("paused"):
+        return {
+            "started": False,
+            "reason": "owner_paused",
+            "state": current.get("state"),
+        }
+
+    if not current.get("enabled"):
+        state = geo_growth.start()
+        return {
+            "started": True,
+            "reason": "growth_os_auto_started",
+            "state": state.get("state"),
+        }
+
+    # Already enabled: kick one safe pass after startup so fresh cloud receipts
+    # can enter the opportunity -> AI employee -> publish -> retest pipeline.
+    result = geo_growth.run_once(force=True)
+    return {
+        "started": False,
+        "reason": "already_enabled_kicked",
+        "state": geo_growth.status().get("state"),
+        "result": result,
+    }
+
+
+def _schedule_geo_growth_auto_start():
+    """Defer full-loop start so GEO/SEO first-open remains fast and reliable."""
+    global _GEO_GROWTH_AUTO_START_TIMER
+    if _GEO_GROWTH_AUTO_START_TIMER is not None and _GEO_GROWTH_AUTO_START_TIMER.is_alive():
+        return {"scheduled": False, "reason": "already_scheduled"}
+
+    def invoke():
+        try:
+            _ensure_geo_growth_auto_running()
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            # geo_growth.start/run_once persist their own owner-visible errors.
+            # Startup must remain non-fatal even if one downstream capability
+            # is temporarily unavailable.
+            pass
+
+    timer = threading.Timer(_GEO_GROWTH_AUTO_START_DELAY_SECONDS, invoke)
+    timer.daemon = True
+    timer.name = "r8-24-geo-growth-auto-start"
+    _GEO_GROWTH_AUTO_START_TIMER = timer
+    timer.start()
+    return {
+        "scheduled": True,
+        "delay_seconds": _GEO_GROWTH_AUTO_START_DELAY_SECONDS,
+        "reason": "protect_first_paint_then_auto_start",
+    }
 
 
 def install():
@@ -267,6 +328,11 @@ def install():
     server.DashboardHandler._kz_r8_20_seo_geo_growth = True
     server.DashboardHandler._kz_r8_21_unified_connectors = True
     server.DashboardHandler._kz_r8_24_geo_growth_os = True
+
+    # #687: #683 already protects the first paint and starts the Doubao scan.
+    # Start the top-level GEO Growth OS a few seconds later as well, so the
+    # owner never has to press "启动 GEO 自动运营" in normal operation.
+    _schedule_geo_growth_auto_start()
     _INSTALLED = True
 
 

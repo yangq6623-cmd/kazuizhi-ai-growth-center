@@ -250,6 +250,9 @@ def main() -> None:
     # Scheduler/API integration is automatic and uses the existing R8-20 lane.
     for marker in (
         "geo_growth_orchestrator as geo_growth", "geo_growth.run_once(force=force)",
+        "_GEO_GROWTH_AUTO_START_DELAY_SECONDS = 20", "threading.Timer",
+        "_schedule_geo_growth_auto_start", "_ensure_geo_growth_auto_running",
+        "geo_growth.start()", "owner_paused", "protect_first_paint_then_auto_start",
         '"/api/r8-24/geo-growth"', '"/api/r8-24/geo-growth/start"',
         '"/api/r8-24/geo-growth/pause"', '"/api/r8-24/geo-growth/resume"',
         '"/api/r8-24/geo-growth/run"', '"/api/r8-24/geo-growth/retry"',
