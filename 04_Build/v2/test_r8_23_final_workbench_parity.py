@@ -34,6 +34,7 @@ GEO_JOB_PATCH = SRC / "core" / "geo_phase3_job_patch.py"
 R8_20_PATCH = SRC / "backend" / "r8_20_seo_geo_growth_patch.py"
 SERVER = SRC / "backend" / "server.py"
 R8_13_PATCH = SRC / "backend" / "r8_13_seo_geo_patch.py"
+R8_14_PATCH = SRC / "backend" / "r8_14_seo_geo_autonomy_patch.py"
 
 
 def text(path: Path) -> str:
@@ -66,6 +67,7 @@ def main() -> None:
     r8_20_patch = text(R8_20_PATCH)
     server = text(SERVER)
     r8_13_patch = text(R8_13_PATCH)
+    r8_14_patch = text(R8_14_PATCH)
 
     assert "r8_20_seo_geo_growth_patch" in run
     for marker in ("SCHEDULER_STARTUP_GRACE_SECONDS = 12", "CONTENT_STARTUP_GRACE_SECONDS = 25", "VIDEO_STARTUP_GRACE_SECONDS = 35", "HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45", "next_heavy_at = time.monotonic()"):
@@ -142,6 +144,12 @@ def main() -> None:
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     for marker in ("frameAtWantedLocation", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "5000"):
         assert marker in seo_bridge, marker
+    render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
+    assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadWorkspaceIfNeeded(target);")
+    for marker in ("_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12", "threading.Timer", "_schedule_unattended_cloud_scan", "protect_geo_first_open"):
+        assert marker in r8_14_patch, marker
+    for marker in ("geo-direct-fallback", "GEO 工作台正在加载", "body:has(#search-growth-switch)"):
+        assert marker in geo_html, marker
     assert "frame.dataset.kzLoaded='1';\n    frame.src=wanted;" not in seo_bridge
     for marker in ("Promise.allSettled", "GEO 主界面已先恢复", "KZ_GEO_TIMEOUT"):
         assert marker in operational_search, marker
