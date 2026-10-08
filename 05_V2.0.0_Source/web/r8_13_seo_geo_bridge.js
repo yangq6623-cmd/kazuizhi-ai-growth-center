@@ -23,6 +23,7 @@
       .r813-growth-tab b{display:block;font-size:13px}.r813-growth-tab span{display:block;font-size:11px;color:#7a8ba0;margin-top:2px}
       .r813-growth-tab.active{border-color:#2563eb;background:#eef4ff;color:#1f5dcc;box-shadow:0 0 0 2px rgba(37,99,235,.06)}
       .r813-growth-pane{display:block;overflow:visible}.r813-growth-pane[hidden]{display:none!important}
+      .r813-geo-core-host{display:block;min-height:360px}.r813-geo-core-loading{margin:4px 0 12px;padding:12px 14px;border:1px solid #dbe5f3;border-radius:8px;background:#fff;color:#52647d;font-size:12px}
       .r813-growth-frame{display:block;width:100%;height:720px;min-height:720px;max-height:none;border:0;background:#f4f7fb;border-radius:10px;overflow:hidden}
       @media(max-width:900px){.r813-growth-tabs{padding:8px}.r813-growth-tab{min-width:0;flex:1}.r813-growth-frame{min-height:720px}}
     `;
@@ -222,7 +223,10 @@
             <iframe id="r813-seo-frame" class="r813-growth-frame" title="SEO增长中心" src="about:blank" data-src="/r8_13_seo_geo.html?embed=1" scrolling="no"></iframe>
           </div>
           <div class="r813-growth-pane" data-r813-pane="geo" hidden>
-            <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO增长中心" src="about:blank" data-src="/geo.html?embed=1" scrolling="no"></iframe>
+            <div id="geo-growth-pane" class="r813-geo-core-host">
+              <div id="r813-geo-core-loading" class="r813-geo-core-loading">GEO 自动增长工作台正在准备，核心界面直接由主平台加载，不再依赖 iframe 首次导航。</div>
+              <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO高级证据与网页验证" src="about:blank" data-src="/geo.html?embed=1" scrolling="no"></iframe>
+            </div>
           </div>
         </div>`;
       document.querySelector('main')?.appendChild(page);
@@ -246,6 +250,46 @@
       legacy.appendChild(proxy);
     }
     return page;
+  }
+
+  function parentGeoCoreReady(){
+    const panel=document.getElementById('geo-growth-os');
+    return Boolean(panel&&panel.getClientRects().length);
+  }
+
+  function ensureParentGeoCore(){
+    const pane=document.getElementById('geo-growth-pane');
+    if(!pane)return false;
+    try{window.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(error){console.warn('parent GEO core boot deferred',error)}
+    if(parentGeoCoreReady()){
+      document.getElementById('r813-geo-core-loading')?.remove();
+      return true;
+    }
+    // The core script is loaded directly by index.html. This recovery is only
+    // for a partial/stale browser page and never depends on the GEO iframe.
+    if(!document.querySelector('script[data-kz-parent-geo-core-recovery="1"]')){
+      const script=document.createElement('script');
+      script.src='/geo-growth-os.js?owner-recovery='+Date.now();
+      script.dataset.kzParentGeoCoreRecovery='1';
+      script.addEventListener('load',()=>{
+        try{window.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(_){}
+        if(parentGeoCoreReady())document.getElementById('r813-geo-core-loading')?.remove();
+      },{once:true});
+      document.body.appendChild(script);
+    }
+    [100,350,900,1800,3200].forEach(delay=>window.setTimeout(()=>{
+      try{window.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(_){}
+      if(parentGeoCoreReady())document.getElementById('r813-geo-core-loading')?.remove();
+    },delay));
+    return parentGeoCoreReady();
+  }
+
+  function loadGeoAdvancedInBackground(){
+    const frame=document.getElementById('r813-geo-frame');
+    if(!frame)return;
+    // Advanced evidence tools remain available, but their iframe cannot block
+    // the owner-facing GEO core from rendering.
+    window.setTimeout(()=>loadWorkspaceIfNeeded('geo'),1600);
   }
 
   function loadWorkspaceIfNeeded(kind){
@@ -284,10 +328,15 @@
       button.setAttribute('aria-selected',String(active));
     });
     page.querySelectorAll('[data-r813-pane]').forEach(pane=>{pane.hidden=pane.dataset.r813Pane!==target;});
-    loadWorkspaceIfNeeded(target);
+    if(target==='geo'){
+      ensureParentGeoCore();
+      loadGeoAdvancedInBackground();
+    }else{
+      loadWorkspaceIfNeeded('seo');
+    }
     try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
     const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
-    scheduleFrameFit(frame);
+    if(target==='seo')scheduleFrameFit(frame);
     window.setTimeout(()=>{
       try{frame?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}
       fitFrame(frame);
@@ -320,7 +369,8 @@
     const seo=document.getElementById('r813-seo-frame');
     const geo=document.getElementById('r813-geo-frame');
     try{seo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO refresh deferred',error)}
-    try{geo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('GEO refresh deferred',error)}
+    ensureParentGeoCore();
+    try{geo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('GEO advanced refresh deferred',error)}
     scheduleFrameFit(seo);scheduleFrameFit(geo);
     window.setTimeout(()=>{
       try{seo?.contentWindow?.__KZ_GROWTH_RESIZE__?.();geo?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}

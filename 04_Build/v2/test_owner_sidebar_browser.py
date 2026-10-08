@@ -103,25 +103,27 @@ def assert_seo_geo(driver):
 
     geo_tab = driver.find_element(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
     geo_tab.click()
-    geo_frame = WebDriverWait(driver, 10).until(
-        lambda d: d.find_element(By.ID, "r813-geo-frame")
-        if d.find_elements(By.ID, "r813-geo-frame") and d.find_element(By.ID, "r813-geo-frame").is_displayed()
+
+    growth = WebDriverWait(driver, 6).until(
+        lambda d: d.find_element(By.ID, "geo-growth-os")
+        if d.find_elements(By.ID, "geo-growth-os") and d.find_element(By.ID, "geo-growth-os").is_displayed()
         else None
     )
-    driver.switch_to.frame(geo_frame)
-    try:
-        growth = WebDriverWait(driver, 10).until(
-            lambda d: d.find_element(By.ID, "geo-growth-os")
-            if d.find_elements(By.ID, "geo-growth-os") and d.find_element(By.ID, "geo-growth-os").is_displayed()
-            else None
-        )
-        if not growth.is_displayed():
-            raise AssertionError("集成 GEO 工作台存在但不可见")
-        fallback = driver.find_element(By.ID, "geo-direct-fallback")
-        if driver.execute_script("return getComputedStyle(arguments[0]).display", fallback) != "none":
-            raise AssertionError("集成 GEO 仍停留在 fallback/初始化壳")
-    finally:
-        driver.switch_to.default_content()
+    if not growth.is_displayed():
+        raise AssertionError("主平台直载 GEO 自动增长工作台存在但不可见")
+    if driver.find_elements(By.ID, "r813-geo-core-loading"):
+        loading = driver.find_element(By.ID, "r813-geo-core-loading")
+        if loading.is_displayed():
+            raise AssertionError("主平台 GEO 仍停留在初始化提示")
+
+    state = driver.find_element(By.ID, "geo-os-state").text.strip()
+    if not state:
+        raise AssertionError("主平台 GEO 状态标签为空")
+
+    # The legacy full GEO document remains background/advanced tooling only.
+    # A slow or failed iframe must not blank the owner-facing core panel.
+    if not driver.find_element(By.ID, "geo-growth-os").is_displayed():
+        raise AssertionError("高级 GEO iframe 状态影响了主平台核心面板")
 
 
 def main():
@@ -159,9 +161,9 @@ def main():
             )
         )
         direct_shells = driver.execute_script(
-            "return {content: typeof window.openKazuizhiContentStudio === 'function', geo: !!window.KZR813SeoGeoBridge?.open};"
+            "return {content: typeof window.openKazuizhiContentStudio === 'function', geo: !!window.KZR813SeoGeoBridge?.open, geoCore: typeof window.__KZ_GEO_GROWTH_OS_BOOT__ === 'function'};"
         )
-        if not direct_shells.get("content") or not direct_shells.get("geo"):
+        if not direct_shells.get("content") or not direct_shells.get("geo") or not direct_shells.get("geoCore"):
             raise AssertionError(f"owner route shells were not loaded directly: {direct_shells}")
 
         driver.execute_script("""

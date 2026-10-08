@@ -144,6 +144,10 @@ def main() -> None:
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     for marker in ("frameAtWantedLocation", "workspaceDomReady", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "9000", "<5"):
         assert marker in seo_bridge, marker
+    for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "loadGeoAdvancedInBackground", "GEO 自动增长工作台正在准备"):
+        assert marker in seo_bridge, marker
+    index_html = text(WEB / "index.html")
+    assert 'src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"' in index_html
     render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
     assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadWorkspaceIfNeeded(target);")
     for marker in ("_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12", "threading.Timer", "_schedule_unattended_cloud_scan", "protect_geo_first_open"):
