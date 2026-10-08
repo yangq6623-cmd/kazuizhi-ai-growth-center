@@ -130,6 +130,26 @@
     }catch(_){return false}
   }
 
+  function ensureGeoCoreInFrame(frame){
+    try{
+      const win=frame?.contentWindow;
+      const doc=frame?.contentDocument;
+      if(!win||!doc||doc.readyState==='loading')return false;
+      if(doc.getElementById('geo-growth-os'))return true;
+      if(typeof win.__KZ_GEO_GROWTH_OS_BOOT__==='function'){
+        win.__KZ_GEO_GROWTH_OS_BOOT__();
+        return Boolean(doc.getElementById('geo-growth-os'));
+      }
+      if(doc.querySelector('script[data-kz-parent-geo-core-recovery="1"]'))return false;
+      const script=doc.createElement('script');
+      script.src='/geo-growth-os.js?parent-recovery='+Date.now();
+      script.dataset.kzParentGeoCoreRecovery='1';
+      script.addEventListener('load',()=>{try{win.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(_){}},{once:true});
+      (doc.head||doc.body||doc.documentElement).appendChild(script);
+      return false;
+    }catch(_){return false}
+  }
+
   function workspaceDomReady(frame, kind){
     try{
       const doc=frame?.contentDocument;
@@ -159,13 +179,14 @@
       if(kind==='seo')decorateLegacySeo(frame); else injectFinalUx(frame);
       scheduleFrameFit(frame);
       if(kind==='geo'){
-        [500,1400,3000,5200].forEach(delay=>window.setTimeout(()=>{
+        [350,900,1800,3200,5200].forEach(delay=>window.setTimeout(()=>{
           if(workspaceDomReady(frame,'geo')){
             frame.dataset.kzLoaded='1';
             frame.dataset.kzLoading='0';
             frame.dataset.kzLoadAttempts='0';
             return;
           }
+          ensureGeoCoreInFrame(frame);
           if(delay===5200&&desiredWorkspace==='geo'){
             frame.dataset.kzLoaded='0';
             frame.dataset.kzLoading='0';
