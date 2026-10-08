@@ -482,6 +482,109 @@ def _pipeline(items):
     ]
 
 
+def _pipeline_fast(items, signal_count):
+    """Pure in-memory pipeline rendering for the owner status endpoint."""
+    return [
+        {"id": "signal", "label": "豆包运营Signal", "count": int(signal_count or 0), "state": "active" if signal_count else "waiting"},
+        {"id": "opportunity", "label": "机会识别", "count": len(items), "state": "active" if items else "waiting"},
+        {"id": "decision", "label": "总控策略判断", "count": len(items), "state": "active" if items else "waiting"},
+        {"id": "execute", "label": "AI员工执行", "count": sum(1 for x in items if x.get("job_id")), "state": "active" if any(x.get("job_id") for x in items) else "waiting"},
+        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if x.get("public_url")), "state": "active" if any(x.get("public_url") for x in items) else "waiting"},
+        {"id": "retest", "label": "自动复测", "count": sum(1 for x in items if x.get("after_signal_id")), "state": "active" if any(x.get("after_signal_id") for x in items) else "waiting"},
+        {"id": "learn", "label": "Before / After", "count": sum(1 for x in items if x.get("state") == "completed"), "state": "active" if any(x.get("state") == "completed" for x in items) else "waiting"},
+    ]
+
+
+def fast_status():
+    """#689 owner-facing snapshot that never runs analysis or orchestration.
+
+    The #688 field failure showed the shell could paint while /api/r8-24/geo-growth
+    stayed pending. The old status path entered geo_autonomy.status(), which can
+    reconcile Phase-2 truth and traverse several ledgers. That work is correct
+    for background execution but is not acceptable on a UI polling request.
+    """
+    data = _load()
+    items = list(reversed(data.get("opportunities") or []))
+    counts = _state_counts(items)
+
+    try:
+        receipts = geo.receipts(1000)
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        receipts = []
+
+    auxiliary = [
+        row for row in receipts
+        if str(row.get("evidence_level") or "") == "C"
+        and not bool(row.get("official_truth"))
+        and row.get("provider") == geo_cloud_executor.PROVIDER
+    ]
+    formal_ids = {
+        row.get("question_id")
+        for row in receipts
+        if row.get("official_truth")
+        and row.get("evidence_level") in geo.OFFICIAL_EVIDENCE_LEVELS
+        and row.get("question_id")
+    }
+
+    cloud_data = read_json(geo_autonomy.STORE, {})
+    target = max(1, min(int(cloud_data.get("target") or 1), 50))
+    cycle_started_at = str(cloud_data.get("cycle_started_at") or "")
+    cloud_ids = {
+        row.get("question_id")
+        for row in auxiliary
+        if row.get("question_id")
+        and (
+            not cycle_started_at
+            or str(row.get("tested_at") or row.get("finished_at") or row.get("created_at") or "") >= cycle_started_at
+        )
+    }
+    completed = min(target, len(cloud_ids))
+    if cloud_data.get("enabled") and cloud_data.get("paused"):
+        cloud_state = "paused"
+    elif cloud_data.get("enabled") and completed >= target:
+        cloud_state = "monitoring"
+    elif cloud_data.get("enabled"):
+        cloud_state = "running"
+    else:
+        cloud_state = "idle"
+
+    try:
+        executor = geo_cloud_executor.status()
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        executor = {"ready": False, "label": "豆包API"}
+
+    return {
+        "schema": SCHEMA,
+        "status_mode": "fast_snapshot",
+        "state": "paused" if data.get("paused") else "running" if data.get("enabled") else "stopped",
+        "enabled": bool(data.get("enabled")),
+        "paused": bool(data.get("paused")),
+        "mission": data.get("mission") or DEFAULT["mission"],
+        "policy": deepcopy(data.get("policy") or {}),
+        "formal_ab_completed": len(formal_ids),
+        "formal_ab_target": 50,
+        "cloud": {
+            "state": cloud_state,
+            "completed": completed,
+            "target": target,
+            "provider": executor.get("label") or "豆包API",
+            "ready": bool(executor.get("ready")),
+        },
+        "summary": {
+            **counts,
+            "signals": len(auxiliary),
+            "technical_blockers": len(data.get("technical_blockers") or []),
+        },
+        "pipeline": _pipeline_fast(items, len(auxiliary)),
+        "opportunities": items[:30],
+        "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
+        "last_run_at": data.get("last_run_at") or "",
+        "last_error": data.get("last_error") or "",
+        "last_result": deepcopy(data.get("last_result") or {}),
+        "truth_rule": "豆包API C级结果用于运营Signal和自动优化；正式A/B Evidence独立计分，任何C级结果、内容生成或发布均不会冒充正式GEO提升。",
+    }
+
+
 def status():
     # read_only_status_no_sync: polling the dashboard must never mutate SEO/GEO ledgers.
     data = _load()
@@ -524,7 +627,7 @@ def arm_unattended():
     """
     data = _load()
     if data.get("paused"):
-        return status()
+        return fast_status()
     data["enabled"] = True
     data["paused"] = False
     data["last_error"] = ""
@@ -534,7 +637,7 @@ def arm_unattended():
         "at": now_iso(),
     }
     _save(data)
-    return status()
+    return fast_status()
 
 
 def start():
@@ -551,7 +654,7 @@ def start():
     data["last_result"] = {"action": "start", "at": now_iso()}
     _save(data)
     run_once(force=True)
-    return status()
+    return fast_status()
 
 
 def pause():
@@ -560,7 +663,7 @@ def pause():
     data["paused"] = True
     data["last_result"] = {"action": "pause", "at": now_iso()}
     _save(data)
-    return status()
+    return fast_status()
 
 
 def resume():
@@ -571,7 +674,7 @@ def resume():
     data["last_result"] = {"action": "resume", "at": now_iso()}
     _save(data)
     run_once(force=True)
-    return status()
+    return fast_status()
 
 
 def retry_failed():
@@ -601,7 +704,7 @@ def retry_failed():
     data["last_result"] = {"action": "retry_failed", "retried": retried, "deferred_requeued": deferred, "at": now_iso()}
     _save(data)
     r7_engine.run_due_jobs()
-    return status()
+    return fast_status()
 
 def run_once(force=False):
     if not _RUN_LOCK.acquire(blocking=False):

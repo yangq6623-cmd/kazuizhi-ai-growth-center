@@ -244,11 +244,11 @@
   async function load(){
     if(!ensureStructure()) return null;
     try{
-      const data=await json('/api/r8-24/geo-growth');
+      const data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:4000});
       render(data);
       return data;
     }catch(error){
-      if(byId('geo-os-message')) byId('geo-os-message').textContent=`GEO Growth OS 暂不可用：${error.message}`;
+      if(byId('geo-os-message')) byId('geo-os-message').textContent=`GEO 状态快照暂未返回：${error.message}；界面继续保留并自动重试。`;
       return null;
     }
   }
@@ -261,7 +261,7 @@
     if(button){ button.disabled=true; button.textContent='处理中…'; button.setAttribute('aria-busy','true'); }
     try{
       const data=await post(path,body);
-      render(data.growth||await json('/api/r8-24/geo-growth'));
+      render(data.growth||await json('/api/r8-24/geo-growth/fast',{timeoutMs:4000}));
     }catch(error){
       if(byId('geo-os-message')) byId('geo-os-message').textContent=error.message;
     }finally{

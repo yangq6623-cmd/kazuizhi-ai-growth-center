@@ -77,7 +77,7 @@ def _combined_status():
     result["r8_20_growth"] = growth.status(30)
     result["connector_routes"] = connector_router.snapshot(check_live=False)
     result["runtime_health"] = runtime_resilience.snapshot()
-    result["geo_growth_os"] = geo_growth.status()
+    result["geo_growth_os"] = geo_growth.fast_status()
     return result
 
 
@@ -97,7 +97,7 @@ def _combined_run(force=False):
 
 def _ensure_geo_growth_auto_running():
     """#688 arm unattended GEO without doing heavy synchronous work at first open."""
-    current = geo_growth.status()
+    current = geo_growth.fast_status()
 
     # An explicit owner pause is a hard stop. Auto-start never overrides it.
     if current.get("paused"):
@@ -162,8 +162,8 @@ def install():
             if path == "/operational-search.js":
                 _serve_operational_search(handler)
                 return
-            if path == "/api/r8-24/geo-growth":
-                handler._json_ok(geo_growth.status())
+            if path in {"/api/r8-24/geo-growth", "/api/r8-24/geo-growth/fast"}:
+                handler._json_ok(geo_growth.fast_status())
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())
@@ -224,7 +224,7 @@ def install():
                     result = geo_growth.retry_failed()
                 else:
                     result = geo_growth.run_once(force=bool(payload.get("force", True)))
-                handler._json_ok({"result": result, "growth": geo_growth.status()})
+                handler._json_ok({"result": result, "growth": geo_growth.fast_status()})
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
             return
@@ -242,7 +242,7 @@ def install():
                 handler._json_ok({
                     "result": result,
                     "growth": growth.status(int(payload.get("days") or 30)),
-                    "geo_growth_os": geo_growth.status(),
+                    "geo_growth_os": geo_growth.fast_status(),
                     "connector_routes": connector_router.snapshot(check_live=False),
                     "runtime_health": runtime_resilience.snapshot(),
                     # Keep the R8-21 compatibility marker visible while R8-24
@@ -308,7 +308,7 @@ def install():
             handler._json_ok({
                 "result": result,
                 "growth": growth.status(int(payload.get("days") or 30)),
-                "geo_growth_os": geo_growth.status(),
+                "geo_growth_os": geo_growth.fast_status(),
                 "connector_routes": connector_router.snapshot(check_live=False),
                 "runtime_health": runtime_resilience.snapshot(),
             })

@@ -183,7 +183,7 @@ def main() -> None:
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
     assert geo_growth_ui.count("async function load(){") == 1
     assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
-    for marker in ("GEO 自动增长数据等待超时", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer"):
+    for marker in ("GEO 自动增长数据等待超时", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer", "/api/r8-24/geo-growth/fast", "timeoutMs:4000", "状态快照暂未返回"):
         assert marker in geo_growth_ui, marker
     for marker in ("recoverGeoWorkbench", "connector", "window.__KZ_GEO_GROWTH_OS_BOOT__?.()", "window.searchGrowthActivate?.()"):
         assert marker in geo_html, marker
@@ -235,6 +235,12 @@ def main() -> None:
     assert "_clear_blocker" in geo_growth_core
     assert "def arm_unattended()" in geo_growth_core
     assert '"execution": "deferred_to_scheduler"' in geo_growth_core
+    assert "def fast_status()" in geo_growth_core
+    fast_status_block = geo_growth_core[geo_growth_core.index("def fast_status()"):geo_growth_core.index("def status()")]
+    assert '"status_mode": "fast_snapshot"' in fast_status_block
+    assert "geo_autonomy.status()" not in fast_status_block
+    assert "geo.dashboard()" not in fast_status_block
+    assert "geo_analysis.refresh" not in fast_status_block
     assert "_JSON_IO_LOCK = threading.RLock()" in storage
     assert "for attempt in range(8)" in storage
 
@@ -261,6 +267,7 @@ def main() -> None:
         '"/api/r8-24/geo-growth/pause"', '"/api/r8-24/geo-growth/resume"',
         '"/api/r8-24/geo-growth/run"', '"/api/r8-24/geo-growth/retry"',
         "geo-growth-os.js", "_kz_r8_24_geo_growth_os",
+        '"/api/r8-24/geo-growth/fast"', "geo_growth.fast_status()",
     ):
         assert marker in r8_20_patch, marker
 
