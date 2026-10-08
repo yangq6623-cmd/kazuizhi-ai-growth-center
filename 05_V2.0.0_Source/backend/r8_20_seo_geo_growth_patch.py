@@ -30,6 +30,59 @@ _ORIGINAL_STATUS = seo_core.status
 _GEO_GROWTH_AUTO_START_DELAY_SECONDS = 20
 _GEO_GROWTH_AUTO_START_TIMER = None
 
+# Owner read-only snapshots are produced outside the request thread. A heavy
+# Windows GEO storage operation must not hold the HTTP handler open for 4+ s.
+_GEO_EVIDENCE_LOCK = threading.Lock()
+_GEO_EVIDENCE_CACHE = {"payload": None, "updated": 0.0, "refreshing": False, "error": ""}
+_GEO_EVIDENCE_TTL_SECONDS = 20
+
+def _geo_evidence_cached():
+    now = time.monotonic()
+    with _GEO_EVIDENCE_LOCK:
+        cache = _GEO_EVIDENCE_CACHE
+        payload = cache.get("payload")
+        age = (now - cache.get("updated", 0.0)) if payload else None
+        if not cache["refreshing"] and (payload is None or age >= _GEO_EVIDENCE_TTL_SECONDS):
+            cache["refreshing"] = True
+            thread = threading.Thread(target=_geo_evidence_update_cache, name="kz-geo-evidence-snapshot", daemon=True)
+            thread.start()
+        if payload is not None:
+            response = dict(payload)
+            response["snapshot_ready"] = True
+            response["snapshot_age_seconds"] = round(age, 1)
+            response["snapshot_stale"] = bool(age >= 60)
+            response["refreshing"] = bool(cache["refreshing"])
+            response["last_refresh_error"] = str(cache["error"] or "")[:240]
+            return response
+        return {
+            "snapshot_mode": "async_warming",
+            "snapshot_ready": False,
+            "snapshot_stale": False,
+            "refreshing": True,
+            "formal_ab_completed": None,
+            "formal_ab_target": 50,
+            "available_sections": 0,
+            "total_sections": 4,
+            "questions": [],
+            "queue": [],
+            "receipts": [],
+            "health": {},
+            "retry_after_ms": 1400,
+            "last_refresh_error": str(cache["error"] or "")[:240],
+        }
+
+def _geo_evidence_update_cache():
+    try:
+        result = _geo_evidence_snapshot()
+        # Serialize on the worker so malformed historical rows cannot make the
+        # HTTP response fail mid-stream.
+        json.dumps(result, ensure_ascii=False)
+        with _GEO_EVIDENCE_LOCK:
+            _GEO_EVIDENCE_CACHE.update(payload=result, updated=time.monotonic(), error="", refreshing=False)
+    except Exception as error:
+        with _GEO_EVIDENCE_LOCK:
+            _GEO_EVIDENCE_CACHE.update(error=f"{type(error).__name__}: {str(error)[:180]}", refreshing=False)
+
 
 def _origin_allowed(handler):
     origin = handler.headers.get("Origin")
@@ -297,7 +350,7 @@ def install():
                 handler._json_ok(geo_growth.fast_status())
                 return
             if path == "/api/r8-24/geo-growth/evidence":
-                handler._json_ok(_geo_evidence_snapshot())
+                handler._json_ok(_geo_evidence_cached())
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())

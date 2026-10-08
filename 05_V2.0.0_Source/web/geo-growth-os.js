@@ -28,6 +28,10 @@
   let pollTimer = null;
   let advancedTask = null;
   let advancedBusy = false;
+  let advancedFetchedAt=0;
+  let advancedRetryCount=0;
+  let advancedRetryTimer=null;
+  let advancedLastGood=null;
 
   async function json(path, options={}) {
     const controller=new AbortController();
@@ -364,17 +368,30 @@
       root=byId('geo-advanced-inline');
     }
     bindAdvanced();
-    loadAdvanced(false);
+    if(!advancedLastGood || Date.now()-advancedFetchedAt>45000)loadAdvanced(false);
     return true;
   }
 
   async function loadAdvanced(force=false){
-    if(advancedBusy&&!force)return;
+    if(advancedBusy)return;
+    if(!force&&advancedLastGood&&Date.now()-advancedFetchedAt<45000)return;
     advancedBusy=true;
+    if(advancedRetryTimer){clearTimeout(advancedRetryTimer);advancedRetryTimer=null;}
     const state=byId('geo-adv-state');
-    if(state){state.textContent='读取中';state.className='geo-adv-state'}
+    if(state&&!advancedLastGood){state.textContent='正在准备证据快照';state.className='geo-adv-state'}
     try{
-      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:4000});
+      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:8000});
+      if(snapshot.snapshot_ready===false){
+        advancedRetryCount+=1;
+        const problem=String(snapshot.last_refresh_error||'');
+        if(state){state.textContent=advancedRetryCount>8?'读取延迟 · 可重试':'正在读取真实证据';state.className='geo-adv-state';}
+        setAdvancedMessage(problem?'后台证据快照生成未完成：'+problem:'首次读取证据中，主 GEO 运营继续运行。',advancedRetryCount>8);
+        if(advancedRetryCount<=8)advancedRetryTimer=setTimeout(()=>loadAdvanced(true),Number(snapshot.retry_after_ms||1400));
+        return;
+      }
+      advancedRetryCount=0;
+      advancedLastGood=snapshot;
+      advancedFetchedAt=Date.now();
       const dashboard=snapshot.dashboard||{};
       const questions=snapshot.questions||[];
       const queue=snapshot.queue||[];
@@ -426,7 +443,7 @@
         byId('geo-adv-question').value=running.question_text||'';
       }
       if(state){
-        state.textContent=available>=total?`数据正常 · ${available}/${total}`:`部分可用 · ${available}/${total}`;
+        state.textContent=snapshot.snapshot_stale?'历史快照 · 正在更新':available>=total?`数据正常 · ${available}/${total}`:`部分可用 · ${available}/${total}`;
         state.className=`geo-adv-state ${available>=total?'ok':''}`;
       }
       document.documentElement.dataset.kzGeoAdvancedInlineReady='1';
@@ -435,7 +452,7 @@
       else if(available<total)setAdvancedMessage(`高级证据已有 ${available}/${total} 个数据区可用；其余后台重试中。`);
       else setAdvancedMessage('');
     }catch(error){
-      if(state){state.textContent='读取失败 · 可重试';state.className='geo-adv-state bad'}
+      if(state){state.textContent=advancedLastGood?'最新读取失败 · 显示上次成功数据':'读取失败 · 可重试';state.className='geo-adv-state bad'}
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>主 GEO 自动运营继续工作；点击“刷新证据”即可重新读取。</small></div>';
       const qbox=byId('geo-adv-questions');

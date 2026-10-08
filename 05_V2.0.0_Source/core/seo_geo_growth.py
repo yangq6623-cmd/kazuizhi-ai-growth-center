@@ -643,6 +643,17 @@ def dashboard():
     today = datetime.now().astimezone().date().isoformat()
     discovered_today = sum(1 for x in opportunities if str(x.get("discovered_at") or "").startswith(today))
     planned_today = sum(1 for x in assets if str(x.get("created_at") or "").startswith(today))
+    published_today = [
+        x for x in assets if str(x.get("published_at") or "").startswith(today)
+        and _stage_at_least(x, "PUBLISHED")
+        and str(x.get("public_url") or "").startswith(("https://", "http://"))
+    ]
+    submitted_today = [
+        x for x in assets if any(
+            str(receipt.get("at") or "").startswith(today)
+            for receipt in (x.get("submission_receipts") or []) if isinstance(receipt, dict)
+        )
+    ]
     published = counts["published"]
     submitted = counts["submitted"]
     crawled = counts["crawled"]
@@ -657,6 +668,8 @@ def dashboard():
             "today_opportunities": discovered_today,
             "keyword_total": len(opportunities),
             "today_planned": planned_today,
+            "today_published_verified": len(published_today),
+            "today_submitted_receipted": len(submitted_today),
             "public_pages": published,
             "submitted_urls": submitted,
             "crawled_urls": crawled,
@@ -664,6 +677,10 @@ def dashboard():
             "ranked_urls": ranked,
             "conversions": conversions,
         },
+        "today_publication_receipts": [
+            {"asset_id": x.get("id"), "public_url": x.get("public_url"), "published_at": x.get("published_at")}
+            for x in sorted(published_today, key=lambda a: a.get("published_at") or "", reverse=True)[:20]
+        ],
         "funnel": {"generated": counts["generated"], "published": published, "submitted": submitted, "crawled": crawled, "indexed": indexed},
         "geo": _geo_summary(data),
         "opportunities": sorted(deepcopy(opportunities), key=lambda x: (_priority_score(x.get("priority")), x.get("keyword") or ""))[:50],
