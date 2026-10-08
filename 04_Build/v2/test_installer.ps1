@@ -135,6 +135,8 @@ try {
     if ($runtime.HasExited) { throw 'Active-runtime upgrade setup failed: runtime exited early' }
     Assert-GeoOwnerRuntime $port
     Assert-GeoBrowserDom $port
+    & $Python (Join-Path $PSScriptRoot 'test_owner_sidebar_browser.py') --port $port
+    if ($LASTEXITCODE -ne 0) { throw 'Owner sidebar real-Chrome interaction smoke failed' }
     Install-R8
     try { $runtime.WaitForExit(5000) | Out-Null } catch {}
     $runtime.Refresh()
@@ -148,7 +150,7 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data' }
     Assert-PersistentFiles $persistentFiles $false
-    Write-Host 'PASS: R8-23 Final Workbench install, GEO owner HTTP smoke, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
+    Write-Host 'PASS: R8-23 Final Workbench install, GEO owner browser smoke, all-sidebar real Chrome click smoke, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
     if ($null -ne $runtime) {
         try {
