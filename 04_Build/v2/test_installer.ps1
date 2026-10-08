@@ -57,7 +57,7 @@ function Assert-GeoOwnerRuntime([int]$Port) {
 function Assert-GeoBrowserDom([int]$Port) {
     $base = "http://127.0.0.1:$Port"
     $edgeCandidates = @(
-        "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
         "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
     )
     $edge = $edgeCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
