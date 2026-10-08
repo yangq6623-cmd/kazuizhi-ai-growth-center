@@ -101,12 +101,29 @@
     }
   }
 
-  function openStudio(route='overview') {
-    if (typeof window.openPage === 'function') window.openPage(PAGE_ID);
-    else document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === PAGE_ID));
+  function activateOuterPage() {
+    const page = document.getElementById(PAGE_ID);
+    if (!page) return false;
+    try { if (typeof window.openPage === 'function') window.openPage(PAGE_ID); } catch (_) {}
+    document.querySelectorAll('main > .page').forEach(node => node.classList.toggle('active', node === page));
+    page.hidden = false;
+    document.documentElement.dataset.kzActivePage = PAGE_ID;
     setVisibleNavActive();
+    return true;
+  }
+
+  function openStudio(route='overview') {
+    activateOuterPage();
     syncOuterTitle(route);
     routeFrame(route);
+    // A lazy module or maintenance pass may complete in the same tick as the
+    // route click. Re-assert the owner page after the iframe has had a chance
+    // to mount so Content Studio can never exist invisibly behind another page.
+    [0, 80, 220, 600].forEach(delay => window.setTimeout(() => {
+      if (document.querySelector('.r810-nav-button[data-target="content-studio"]')?.classList.contains('active')) {
+        activateOuterPage();
+      }
+    }, delay));
     window.scrollTo({top:0, behavior:'auto'});
   }
 
@@ -171,6 +188,10 @@
     const ready = ensureOwnerNavigation(nav);
     if (ready) {
       document.documentElement.dataset.kzContentStudio = 'ready';
+      if (
+        document.documentElement.dataset.kzActivePage === PAGE_ID ||
+        nav.querySelector('.r810-nav-button[data-target="content-studio"]')?.classList.contains('active')
+      ) activateOuterPage();
       return true;
     }
     return false;
