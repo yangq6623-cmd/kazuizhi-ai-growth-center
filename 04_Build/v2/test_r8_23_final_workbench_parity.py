@@ -263,6 +263,9 @@ def main() -> None:
     # from Python, and the browser must never need a duplicate baseline GET.
     import json as _json
     import re as _re
+    import sys as _sys
+    if str(SRC) not in _sys.path:
+        _sys.path.insert(0, str(SRC))
     from core.geo_validation import _fixed_questions as _geo_fixed_questions
     found = _re.search(r"const OFFLINE_GEO50=Object.freeze\((\[.*?\])\);", geo_growth_ui)
     assert found, "GEO50 bundled snapshot missing"
