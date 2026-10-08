@@ -19,6 +19,41 @@ function Verify-Runtime([string]$Exe) {
     & $Python (Join-Path $PSScriptRoot 'verify_r8_operational.py') --exe $Exe
     if ($LASTEXITCODE -ne 0) { throw 'V2.2 autonomous runtime verification failed' }
 }
+function Assert-GeoOwnerRuntime([int]$Port) {
+    $base = "http://127.0.0.1:$Port"
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        try {
+            $health = Invoke-RestMethod -Uri "$base/api/status" -Method Get -TimeoutSec 2
+            if ($health.status -eq 'online') { $ready = $true; break }
+        } catch {}
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not $ready) { throw 'Installed runtime did not become HTTP-ready for GEO field smoke test' }
+
+    foreach ($route in @('/api/r8-24/geo-growth/fast','/api/r8-24/geo-growth')) {
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $snapshot = Invoke-RestMethod -Uri ($base + $route) -Method Get -TimeoutSec 4
+        $watch.Stop()
+        if ($watch.Elapsed.TotalSeconds -gt 4.0) { throw "GEO owner snapshot exceeded 4 seconds: $route" }
+        if ($snapshot.status_mode -ne 'fast_snapshot') { throw "GEO owner snapshot did not use fast mode: $route" }
+        if ([string]::IsNullOrWhiteSpace([string]$snapshot.state)) { throw "GEO owner snapshot missing state: $route" }
+        if ([string]::IsNullOrWhiteSpace([string]$snapshot.mission)) { throw "GEO owner snapshot missing mission: $route" }
+        if ([int]$snapshot.formal_ab_target -ne 50) { throw "GEO owner snapshot lost formal A/B target: $route" }
+        if ($null -eq $snapshot.summary -or $null -eq $snapshot.cloud) { throw "GEO owner snapshot missing summary/cloud: $route" }
+    }
+
+    $geoHtml = (Invoke-WebRequest -Uri "$base/geo.html?embed=1" -UseBasicParsing -TimeoutSec 4).Content
+    foreach ($marker in @('geo-growth-os.js','recoverGeoWorkbench','GEO 工作台正在加载')) {
+        if ($geoHtml -notmatch [regex]::Escape($marker)) { throw "Installed GEO HTML missing recovery marker: $marker" }
+    }
+
+    $bundle = (Invoke-WebRequest -Uri "$base/operational-search.js" -UseBasicParsing -TimeoutSec 4).Content
+    foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','GEO 自动增长数据等待超时')) {
+        if ($bundle -notmatch [regex]::Escape($marker)) { throw "Installed GEO bundle missing fast-owner marker: $marker" }
+    }
+    Write-Host 'PASS: installed GEO owner runtime responds quickly and ships self-healing workbench assets'
+}
 function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     foreach ($relative in $Expected.Keys) {
         $path = Join-Path $dataRoot $relative
@@ -72,6 +107,7 @@ try {
     Start-Sleep -Seconds 2
     $runtime.Refresh()
     if ($runtime.HasExited) { throw 'Active-runtime upgrade setup failed: runtime exited early' }
+    Assert-GeoOwnerRuntime $port
     Install-R8
     try { $runtime.WaitForExit(5000) | Out-Null } catch {}
     $runtime.Refresh()
@@ -85,7 +121,7 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data' }
     Assert-PersistentFiles $persistentFiles $false
-    Write-Host 'PASS: R8-23 Final Workbench install, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
+    Write-Host 'PASS: R8-23 Final Workbench install, GEO owner HTTP smoke, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
     $env:LOCALAPPDATA = $oldLocalAppData
     if (Test-Path -LiteralPath $testRoot) {
