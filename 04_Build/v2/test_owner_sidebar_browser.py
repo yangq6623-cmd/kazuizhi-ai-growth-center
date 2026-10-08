@@ -180,12 +180,17 @@ def assert_geo_advanced(driver):
 
     evidence = driver.execute_async_script("""
       const done=arguments[0];
+      const started=performance.now();
       fetch('/api/r8-24/geo-growth/evidence',{cache:'no-store'})
-        .then(async r=>({ok:r.ok,status:r.status,body:await r.json().catch(()=>({}))}))
-        .then(done).catch(error=>done({ok:false,error:String(error)}));
+        .then(async r=>({ok:r.ok,status:r.status,body:await r.json().catch(()=>({})),client_ms:performance.now()-started}))
+        .then(done).catch(error=>done({ok:false,error:String(error),client_ms:performance.now()-started}));
     """)
     if not evidence.get("ok"):
         raise AssertionError(f"R8-24 GEO Evidence endpoint failed: {evidence}")
+    if float(evidence.get("client_ms") or 99999) > 2000:
+        raise AssertionError(f"R8-24 GEO Evidence endpoint too slow: {evidence.get('client_ms')}ms")
+    if (evidence.get("body") or {}).get("snapshot_mode") != "lock_free_atomic_files":
+        raise AssertionError(f"R8-24 GEO Evidence did not use lock-free snapshot: {(evidence.get('body') or {}).get('snapshot_mode')}")
     evidence_body = evidence.get("body") or {}
     health = evidence_body.get("health") or {}
     if not all((health.get(key) or {}).get("ok") for key in ("dashboard","questions","queue","receipts")):

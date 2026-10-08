@@ -374,7 +374,7 @@
     const state=byId('geo-adv-state');
     if(state){state.textContent='读取中';state.className='geo-adv-state'}
     try{
-      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:12000});
+      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:4000});
       const dashboard=snapshot.dashboard||{};
       const questions=snapshot.questions||[];
       const queue=snapshot.queue||[];
@@ -435,7 +435,11 @@
       else if(available<total)setAdvancedMessage(`高级证据已有 ${available}/${total} 个数据区可用；其余后台重试中。`);
       else setAdvancedMessage('');
     }catch(error){
-      if(state){state.textContent='加载异常';state.className='geo-adv-state bad'}
+      if(state){state.textContent='读取失败 · 可重试';state.className='geo-adv-state bad'}
+      const receiptBox=byId('geo-adv-receipts');
+      if(receiptBox)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>主 GEO 自动运营继续工作；点击“刷新证据”即可重新读取。</small></div>';
+      const qbox=byId('geo-adv-questions');
+      if(qbox)qbox.innerHTML='<tr><td colspan="5">证据快照读取失败；主运营不受影响，可点击刷新证据。</td></tr>';
       setAdvancedMessage(error.message,true);
     }finally{advancedBusy=false}
   }

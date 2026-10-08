@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import threading
+import time
+from collections import Counter
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
 from backend import r8_19_geo_validation_patch as geo_validation_api
 from core import runtime_resilience
+from core.storage import data_root
 from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
 from core import seo_geo_growth_intelligence as growth
@@ -120,55 +123,131 @@ def _ensure_geo_growth_auto_running():
     }
 
 
-def _geo_evidence_snapshot():
-    """Return all advanced GEO truth in one R8-24-owned response.
+def _geo_snapshot_file(relative_path, default):
+    """Read one atomically-replaced JSON file without waiting on the global JSON lock.
 
-    Each section is isolated so a slow/non-critical read cannot erase the
-    already-known formal A/B count from the running Growth OS.
+    GEO writers already use tempfile + os.replace, so a reader can safely take a
+    point-in-time snapshot.  If Windows briefly denies a read during replacement,
+    retry a few milliseconds instead of blocking the owner UI behind worker I/O.
     """
-    growth_status = geo_growth.fast_status()
-    payload = {
-        "formal_ab_completed": int(growth_status.get("formal_ab_completed") or 0),
-        "formal_ab_target": int(growth_status.get("formal_ab_target") or 50),
-        "dashboard": {},
-        "questions": [],
-        "queue": [],
-        "receipts": [],
-        "health": {},
+    path = data_root() / relative_path
+    if not path.exists():
+        return default, ""
+    last_error = ""
+    for delay in (0.0, 0.01, 0.03, 0.08):
+        if delay:
+            time.sleep(delay)
+        try:
+            return json.loads(path.read_text(encoding="utf-8")), ""
+        except (OSError, ValueError) as error:
+            last_error = str(error)
+    return default, last_error or "snapshot_unavailable"
+
+
+def _geo_evidence_snapshot():
+    """Fast, lock-free advanced GEO truth snapshot owned by R8-24.
+
+    The normal storage API serializes every JSON read/write under one process-wide
+    RLock. During a busy GEO cycle that is correct for mutation paths but can make
+    an owner GET wait behind retries.  This endpoint is read-only and consumes the
+    same atomically-replaced files directly, so advanced Evidence never blocks the
+    main GEO workbench or sits at "读取中" for 12 seconds.
+    """
+    started = time.perf_counter()
+
+    qset, q_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.QUESTION_SET_PATH,
+        {},
+    )
+    if not (qset or {}).get("questions"):
+        fallback_questions = geo_validation_api.geo_core._fixed_questions()
+        counts = Counter(item.get("question_type") or "unknown" for item in fallback_questions)
+        qset = {
+            "version": geo_validation_api.geo_core.QUESTION_SET_VERSION,
+            "counts": dict(counts),
+            "questions": fallback_questions,
+            "immutable_within_version": True,
+        }
+
+    queue_payload, queue_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.QUEUE_PATH,
+        {"tasks": []},
+    )
+    receipts_payload, receipts_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.RECEIPTS_PATH,
+        {"receipts": []},
+    )
+
+    questions = list((qset or {}).get("questions") or [])
+    tasks = list((queue_payload or {}).get("tasks") or [])
+    all_receipts = list((receipts_payload or {}).get("receipts") or [])
+    recent_receipts = list(reversed(all_receipts))[:50]
+
+    task_counts = Counter(str(item.get("state") or "unknown") for item in tasks)
+    queue_summary = {
+        "total": len(tasks),
+        "queued": task_counts.get("queued", 0),
+        "running": task_counts.get("running", 0),
+        "succeeded": task_counts.get("succeeded", 0),
+        "failed": task_counts.get("failed", 0),
+        "paused": task_counts.get("paused", 0),
+        "authorization_required": task_counts.get("authorization_required", 0),
+        "tasks": tasks,
     }
 
-    def read(name, fn, fallback):
-        try:
-            value = fn()
-            payload["health"][name] = {"ok": True, "error": ""}
-            return value
-        except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError) as error:
-            payload["health"][name] = {"ok": False, "error": str(error)}
-            return fallback
+    official = [
+        item for item in all_receipts
+        if item.get("official_truth")
+        and item.get("evidence_level") in geo_validation_api.geo_core.OFFICIAL_EVIDENCE_LEVELS
+    ]
+    formal_ids = {item.get("question_id") for item in official if item.get("question_id")}
+    total = len(questions) or 50
 
-    payload["dashboard"] = read("dashboard", geo_validation_api._dashboard_with_executor, {})
-    qset = read("questions", geo_validation_api.question_set, {})
-    queue = read("queue", geo_validation_api.queue_summary, {})
-    receipt_rows = read("receipts", lambda: geo_validation_api.receipts(50), [])
+    health = {
+        "dashboard": {"ok": True, "error": ""},
+        "questions": {"ok": not bool(q_error), "error": q_error},
+        "queue": {"ok": not bool(queue_error), "error": queue_error},
+        "receipts": {"ok": not bool(receipts_error), "error": receipts_error},
+    }
+    # A missing file is a valid empty state on first run; only a failed direct
+    # parse/read is unhealthy. The fixed 50 baseline is available in-process.
+    if not q_error:
+        health["questions"]["ok"] = True
+    if not queue_error:
+        health["queue"]["ok"] = True
+    if not receipts_error:
+        health["receipts"]["ok"] = True
 
-    payload["questions"] = list((qset or {}).get("questions") or [])
-    payload["question_set"] = qset or {}
-    payload["queue"] = list((queue or {}).get("tasks") or [])
-    payload["queue_summary"] = queue or {}
-    payload["receipts"] = list(receipt_rows or [])
+    dashboard = {
+        "official": {
+            "tested": len(formal_ids),
+            "remaining": max(0, total - len(formal_ids)),
+            "evidence_count": len(official),
+        },
+        "question_set": {
+            "version": (qset or {}).get("version") or geo_validation_api.geo_core.QUESTION_SET_VERSION,
+            "total": total,
+            "counts": (qset or {}).get("counts") or {},
+        },
+        "queue": {key: value for key, value in queue_summary.items() if key != "tasks"},
+    }
 
-    official = (payload["dashboard"] or {}).get("official") or {}
-    if int(official.get("tested") or 0) > payload["formal_ab_completed"]:
-        payload["formal_ab_completed"] = int(official.get("tested") or 0)
-    payload["formal_ab_target"] = int(
-        ((payload["dashboard"] or {}).get("question_set") or {}).get("total")
-        or (qset or {}).get("total")
-        or payload["formal_ab_target"]
-        or 50
-    )
-    payload["available_sections"] = sum(1 for value in payload["health"].values() if value.get("ok"))
-    payload["total_sections"] = len(payload["health"])
-    return payload
+    available = sum(1 for value in health.values() if value.get("ok"))
+    return {
+        "snapshot_mode": "lock_free_atomic_files",
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+        "formal_ab_completed": len(formal_ids),
+        "formal_ab_target": total,
+        "dashboard": dashboard,
+        "questions": questions,
+        "question_set": qset or {},
+        "queue": tasks,
+        "queue_summary": queue_summary,
+        "receipts": recent_receipts,
+        "health": health,
+        "available_sections": available,
+        "total_sections": 4,
+    }
 
 
 def _schedule_geo_growth_auto_start():
