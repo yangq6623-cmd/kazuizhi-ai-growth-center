@@ -147,6 +147,24 @@ def assert_seo_geo(driver):
     elif parity.get("source") not in {"r8-19-official-evidence", "r8-13-legacy-observation"}:
         raise AssertionError(f"GEO truth source is unknown when no formal Evidence exists: {parity}")
 
+
+
+
+def assert_geo_advanced(driver):
+    # Run the heavy advanced Evidence/browser tool check after the complete
+    # sidebar pass. This proves the tool works without letting its background
+    # browser modules distort the timing of unrelated navigation checks.
+    click_route(driver, "r813-seo-geo")
+    geo_tab = WebDriverWait(driver, 10).until(
+        lambda d: d.find_element(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
+        if d.find_elements(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
+        else None
+    )
+    driver.execute_script("arguments[0].click();", geo_tab)
+    WebDriverWait(driver, 8).until(
+        lambda d: d.find_elements(By.ID, "geo-growth-os") and d.find_element(By.ID, "geo-growth-os").is_displayed()
+    )
+
     advanced = driver.find_element(By.ID, "geo-growth-advanced")
     summary = advanced.find_element(By.TAG_NAME, "summary")
     driver.execute_script("arguments[0].click();", summary)
@@ -160,7 +178,8 @@ def assert_seo_geo(driver):
         WebDriverWait(driver, 15).until(
             lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedReady === '1'")
         )
-        if not driver.find_element(By.ID, "geo-growth-advanced").get_attribute("open"):
+        inner_advanced = driver.find_element(By.ID, "geo-growth-advanced")
+        if not inner_advanced.get_attribute("open"):
             raise AssertionError("高级 GEO Evidence 工具没有真正展开")
         fallback = driver.find_element(By.ID, "geo-direct-fallback")
         if fallback.is_displayed():
@@ -173,6 +192,9 @@ def assert_seo_geo(driver):
     if not driver.find_element(By.ID, "geo-growth-os").is_displayed():
         raise AssertionError("高级 GEO 工具展开影响了主平台核心面板")
 
+    # A user must still be able to leave GEO with one click after the advanced
+    # iframe is live. This catches navigation ownership regressions explicitly.
+    click_route(driver, "dashboard")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -239,9 +261,17 @@ def main():
 
         for label, target, action in SECONDARY_ROUTES:
             started = time.monotonic()
-            click_route(driver, target, action=action)
+            try:
+                click_route(driver, target, action=action)
+            except Exception as error:
+                active = driver.execute_script("return [...document.querySelectorAll('main > .page.active')].map(x=>x.id);")
+                raise AssertionError(f"左侧导航失败：{label} -> {target}/{action or 'normal'}；当前活动页={active}") from error
             elapsed = round(time.monotonic() - started, 2)
             results.append({"label": label, "target": target, "action": action, "seconds": elapsed, "ok": True})
+
+        assert_geo_advanced(driver)
+        results.append({"label": "GEO高级证据工具", "target": "r813-seo-geo", "seconds": 0, "ok": True})
+        results.append({"label": "高级GEO后返回老板总控", "target": "dashboard", "seconds": 0, "ok": True})
 
         expected = {x[1] for x in PRIMARY_ROUTES} | {x[1] for x in SECONDARY_ROUTES}
         tested = {row["target"] for row in results}
