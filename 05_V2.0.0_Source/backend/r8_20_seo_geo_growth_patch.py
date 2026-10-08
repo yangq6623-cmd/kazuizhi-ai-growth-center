@@ -109,6 +109,22 @@ def _geo_evidence_cached():
             reason = reason or "后台证据读取线程未返回；50问基准可查看，其他证据暂不可用"
         return _geo_evidence_seed(reason, bool(state["refreshing"]))
 
+def _geo_evidence_health():
+    """Nonblocking diagnostics; no GEO file reads, provider calls or secrets."""
+    with _GEO_EVIDENCE_LOCK:
+        state=_GEO_EVIDENCE_CACHE
+        return {
+            "evidence_ready": state.get("payload") is not None,
+            "refreshing": bool(state.get("refreshing")),
+            "read_seconds": round(max(0.0, time.monotonic()-state["started"]), 2) if state.get("started") else 0,
+            "worker_count": sum(t.is_alive() for t in (state.get("workers") or [])),
+            "last_error": str(state.get("error") or "")[:240],
+            "baseline_count": 50,
+            "external_ai_verification": "requires_independently_authorized_provider",
+            "truth": "离线50问不等于50次正式验证；豆包C级辅助不计正式A/B",
+        }
+
+
 def _geo_evidence_update_cache(token):
     try:
         result = _geo_evidence_snapshot()
@@ -432,6 +448,9 @@ def install():
                 return
             if path == "/api/r8-24/geo-growth/questions-baseline":
                 handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
+                return
+            if path == "/api/r8-24/geo-growth/evidence-health":
+                handler._json_ok(_geo_evidence_health())
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())

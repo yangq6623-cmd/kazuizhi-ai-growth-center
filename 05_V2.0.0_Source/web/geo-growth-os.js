@@ -32,6 +32,25 @@
   let advancedRetryCount=0;
   let advancedRetryTimer=null;
   let advancedLastGood=null;
+  // Snapshot of immutable GEO50-V2-20260930 from core/geo_validation.py.
+  // This is only question wording, never fabricated Evidence or A/B grades.
+  const OFFLINE_GEO50=Object.freeze([{"question_id":"GEO50-D01","question_text":"涟水县哪里可以找水电维修师傅？","question_type":"discovery"},{"question_id":"GEO50-D02","question_text":"涟水家里跳闸了找谁上门处理？","question_type":"discovery"},{"question_id":"GEO50-D03","question_text":"涟水卫生间漏水哪里能找人维修？","question_type":"discovery"},{"question_id":"GEO50-D04","question_text":"涟水县水管爆了有没有上门维修？","question_type":"discovery"},{"question_id":"GEO50-D05","question_text":"涟水管道疏通找哪种本地服务比较方便？","question_type":"discovery"},{"question_id":"GEO50-D06","question_text":"涟水县马桶堵了哪里找师傅？","question_type":"discovery"},{"question_id":"GEO50-D07","question_text":"涟水洗衣机不排水哪里可以上门维修？","question_type":"discovery"},{"question_id":"GEO50-D08","question_text":"涟水县冰箱不制冷找谁维修？","question_type":"discovery"},{"question_id":"GEO50-D09","question_text":"涟水空调不制冷哪里有上门维修？","question_type":"discovery"},{"question_id":"GEO50-D10","question_text":"涟水哪里可以找安装灯具的师傅？","question_type":"discovery"},{"question_id":"GEO50-D11","question_text":"涟水县哪里找家具安装师傅？","question_type":"discovery"},{"question_id":"GEO50-D12","question_text":"涟水有没有可以发布维修需求的平台？","question_type":"discovery"},{"question_id":"GEO50-D13","question_text":"涟水附近维修师傅怎么找比较可靠？","question_type":"discovery"},{"question_id":"GEO50-D14","question_text":"涟水县本地生活维修服务怎么找？","question_type":"discovery"},{"question_id":"GEO50-D15","question_text":"涟水晚上水管漏水还能在哪里找维修？","question_type":"discovery"},{"question_id":"GEO50-D16","question_text":"涟水家里没电了应该找哪类师傅？","question_type":"discovery"},{"question_id":"GEO50-D17","question_text":"涟水厨房下水道堵了哪里找人疏通？","question_type":"discovery"},{"question_id":"GEO50-D18","question_text":"涟水热水器坏了哪里可以找上门维修？","question_type":"discovery"},{"question_id":"GEO50-D19","question_text":"涟水县电视坏了有没有上门维修服务？","question_type":"discovery"},{"question_id":"GEO50-D20","question_text":"涟水装窗帘在哪里找本地安装师傅？","question_type":"discovery"},{"question_id":"GEO50-D21","question_text":"涟水安装水龙头哪里可以找人？","question_type":"discovery"},{"question_id":"GEO50-D22","question_text":"涟水县居民有小任务想找附近的人帮忙怎么办？","question_type":"discovery"},{"question_id":"GEO50-D23","question_text":"涟水哪里可以发布社区跑腿小任务？","question_type":"discovery"},{"question_id":"GEO50-D24","question_text":"涟水宝妈想接附近的小任务可以去哪里找？","question_type":"discovery"},{"question_id":"GEO50-D25","question_text":"涟水附近有没有社区互助任务平台？","question_type":"discovery"},{"question_id":"GEO50-D26","question_text":"涟水县上门维修一般怎么找本地师傅？","question_type":"discovery"},{"question_id":"GEO50-D27","question_text":"涟水水电安装和维修能不能一次找本地师傅解决？","question_type":"discovery"},{"question_id":"GEO50-D28","question_text":"涟水维修需求怎么发布才能让附近师傅看到？","question_type":"discovery"},{"question_id":"GEO50-D29","question_text":"涟水县找上门服务有什么本地渠道？","question_type":"discovery"},{"question_id":"GEO50-D30","question_text":"涟水居民临时需要人帮忙处理社区小事去哪里发布？","question_type":"discovery"},{"question_id":"GEO50-C01","question_text":"涟水找维修师傅用什么平台比较方便？","question_type":"commercial"},{"question_id":"GEO50-C02","question_text":"涟水县本地维修平台哪个好用？","question_type":"commercial"},{"question_id":"GEO50-C03","question_text":"涟水水电维修有哪些值得考虑的本地平台？","question_type":"commercial"},{"question_id":"GEO50-C04","question_text":"涟水水管漏水想尽快上门维修，推荐怎么找？","question_type":"commercial"},{"question_id":"GEO50-C05","question_text":"涟水管道疏通通过哪个本地渠道找师傅更方便？","question_type":"commercial"},{"question_id":"GEO50-C06","question_text":"涟水家电维修上门服务有哪些平台可以选？","question_type":"commercial"},{"question_id":"GEO50-C07","question_text":"涟水找安装师傅有什么本地平台推荐？","question_type":"commercial"},{"question_id":"GEO50-C08","question_text":"涟水发布维修需求用什么方式更容易找到附近师傅？","question_type":"commercial"},{"question_id":"GEO50-C09","question_text":"涟水发布社区小任务有什么本地平台推荐？","question_type":"commercial"},{"question_id":"GEO50-C10","question_text":"涟水宝妈想接附近任务，哪些本地渠道值得看看？","question_type":"commercial"},{"question_id":"GEO50-B01","question_text":"卡嘴子是什么平台？","question_type":"brand"},{"question_id":"GEO50-B02","question_text":"卡嘴子主要提供哪些本地服务？","question_type":"brand"},{"question_id":"GEO50-B03","question_text":"卡嘴子目前重点服务哪些地区？","question_type":"brand"},{"question_id":"GEO50-B04","question_text":"卡嘴子能不能发布水电维修需求？","question_type":"brand"},{"question_id":"GEO50-B05","question_text":"卡嘴子能不能找家电维修师傅？","question_type":"brand"},{"question_id":"GEO50-B06","question_text":"卡嘴子能不能发布管道疏通需求？","question_type":"brand"},{"question_id":"GEO50-B07","question_text":"卡嘴子能不能找安装师傅？","question_type":"brand"},{"question_id":"GEO50-B08","question_text":"卡嘴子能不能发布个人小任务？","question_type":"brand"},{"question_id":"GEO50-B09","question_text":"卡嘴子是直营维修公司还是本地服务连接平台？","question_type":"brand"},{"question_id":"GEO50-B10","question_text":"卡嘴子和涟水县本地维修服务有什么关系？","question_type":"brand"}]);
+  const offlineQuestionRows=()=>OFFLINE_GEO50.map(item=>
+    `<tr><td>${esc(item.question_id)}</td><td>${esc(item.question_text)}</td><td>${esc(item.question_type)}</td><td>真实证据待同步</td><td>—</td></tr>`
+  ).join('');
+  function showOffline50(){
+    const el=byId('geo-adv-questions');
+    if(!el || el.dataset.live==='1')return;
+    el.innerHTML=offlineQuestionRows();
+    el.dataset.offlineBaseline='1';
+    document.documentElement.dataset.kzGeoFixedBaselineReady='50';
+    const badge=byId('geo-adv-state');
+    if(badge && ['准备中','读取中','读取失败 · 可重试'].some(x=>badge.textContent.includes(x))){
+      badge.textContent='50问基准可用 · 正式证据待同步';
+      badge.className='geo-adv-state';
+    }
+  }
+
   let advancedBaselineLoaded=false;
   let advancedLastAttemptAt=0;
 
@@ -381,6 +400,7 @@
       root=byId('geo-advanced-inline');
     }
     bindAdvanced();
+    showOffline50();
     if(!advancedBaselineLoaded)loadAdvancedBaseline();
     // Main GEO status repaints every 10s: don't restart evidence retrieval or
     // erase partial 50-question rows on every repaint.
@@ -397,14 +417,15 @@
       const items=Array.isArray(seed.questions)?seed.questions:[];
       if(items.length!==50)throw Error('固定50问基准数量异常');
       const qbox=byId('geo-adv-questions');
-      if(qbox&&(qbox.textContent.includes('正在读取')||qbox.textContent.trim()==='')){
+      if(qbox && qbox.dataset.live!=='1'){
         qbox.innerHTML=items.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>正式验证待同步</td><td>—</td></tr>`).join('');
       }
       const s=byId('geo-adv-state');
       if(s&&s.textContent.includes('读取'))s.textContent='50问基准可用 · 正式证据待同步';
     }catch(error){
       advancedBaselineLoaded=false;
-      setAdvancedMessage('固定50问加载失败：'+error.message+'。本地服务/数据接口需要检查。',true);
+      showOffline50();
+      setAdvancedMessage('固定50问已用离线基准显示；服务器核验失败：'+error.message+'。正式证据未确认。',true);
     }
   }
 
@@ -415,7 +436,7 @@
     advancedLastAttemptAt=Date.now();
     if(advancedRetryTimer){clearTimeout(advancedRetryTimer);advancedRetryTimer=null;}
     const state=byId('geo-adv-state');
-    if(state&&!advancedLastGood&&advancedRetryCount===0){state.textContent='正在读取，先显示50问基准';state.className='geo-adv-state'}
+    if(state&&!advancedLastGood&&advancedRetryCount===0){state.textContent='50问已显示 · 正在同步证据';state.className='geo-adv-state'}
     try{
       const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:8000});
       if(snapshot.snapshot_ready===false){
@@ -424,7 +445,7 @@
         // Render them immediately, even if the receipt ledger cannot be read.
         const questions=Array.isArray(snapshot.questions)?snapshot.questions:[];
         const qbox=byId('geo-adv-questions');
-        if(qbox)qbox.innerHTML=questions.length?questions.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>待读取</td><td>—</td></tr>`).join(''):'<tr><td colspan="5">50问基准未能读取，请重试。</td></tr>';
+        if(qbox){qbox.innerHTML=questions.length?questions.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>待读取</td><td>—</td></tr>`).join(''):offlineQuestionRows();qbox.dataset.live='0';}
         const kpiBox=byId('geo-adv-kpis');
         const total=questions.length||Number(snapshot.formal_ab_target||50);
         if(kpiBox)kpiBox.innerHTML=[
@@ -476,12 +497,12 @@
       queue.forEach(task=>{taskByQ[task.question_id]=task});
       const rows=questions.slice(0,50);
       const qbox=byId('geo-adv-questions');
-      if(qbox)qbox.innerHTML=rows.length?rows.map(item=>{
+      if(qbox){qbox.dataset.live=rows.length?'1':'0';qbox.innerHTML=rows.length?rows.map(item=>{
         const task=taskByQ[item.question_id]||{};
         const status=task.state||item.state||'unstarted';
         const evidence=task.evidence_id||item.evidence||'—';
         return `<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td><span class="geo-adv-pill ${status==='succeeded'?'ok':''}">${esc(status)}</span></td><td>${esc(evidence)}</td></tr>`;
-      }).join(''):'<tr><td colspan="5">固定问题库暂未返回。</td></tr>';
+      }).join(''):offlineQuestionRows();}
 
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox)receiptBox.innerHTML=receipts.slice(0,10).length?receipts.slice(0,10).map(item=>`<div class="geo-adv-receipt"><b>${esc(item.question_text||item.question_id||'GEO Evidence')}</b><small>${esc(item.provider||'--')} · ${esc(item.evidence_level||'C')}级 · ${esc(item.evidence_id||item.receipt_id||'--')}</small><small>${esc(item.tested_at||'')}</small></div>`).join(''):'<div class="geo-adv-receipt"><b>暂无正式 Receipt</b><small>真实外部验证完成后会自动出现在这里。</small></div>';
@@ -509,13 +530,16 @@
       else if(available<total)setAdvancedMessage(`高级证据已有 ${available}/${total} 个数据区可用；其余后台重试中。`);
       else setAdvancedMessage('');
     }catch(error){
-      if(state){state.textContent=advancedLastGood?'最新读取失败 · 显示上次成功数据':'读取失败 · 可重试';state.className='geo-adv-state bad'}
+      if(state){state.textContent=advancedLastGood?'最新读取失败 · 显示上次成功数据':'证据读取失败 · 固定50问可用';state.className='geo-adv-state bad'}
+      json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:2500}).then(info=>{
+        if(info?.last_error)setAdvancedMessage('GEO证据诊断：'+info.last_error+'；50问离线可用，正式分数仍以真实回执为准。',true);
+      }).catch(()=>{});
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox&&!advancedLastGood)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>50问基准保留；主 GEO 自动运营不受影响。</small></div>';
       const qbox=byId('geo-adv-questions');
-      if(qbox&&!qbox.querySelectorAll('tr').length)qbox.innerHTML='<tr><td colspan="5">固定50问基准正在通过独立接口加载，请检查本地服务。</td></tr>';
+      showOffline50();
       loadAdvancedBaseline();
-      setAdvancedMessage('正式证据读取失败：'+error.message+'；固定50问会独立加载，自动运营状态需查看最近调度回执。',true);
+      setAdvancedMessage('正式证据读取失败：'+error.message+'；50问可用，正式A/B和Receipt未知，检查后台诊断。',true);
     }finally{advancedBusy=false}
   }
 

@@ -259,7 +259,7 @@ def main() -> None:
     assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
     assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
     assert "geo_validation.dashboard()" in r8_13_patch
-    for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备人工网页验证1题", "固定 50 问与执行状态", "/api/r8-24/geo-growth/questions-baseline", "loadAdvancedBaseline()", "/api/r8-24/geo-growth/evidence/prepare", "/api/r8-24/geo-growth/evidence/receipt"):
+    for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备人工网页验证1题", "固定 50 问与执行状态", "/api/r8-24/geo-growth/questions-baseline", "loadAdvancedBaseline()", "OFFLINE_GEO50", "/api/r8-24/geo-growth/evidence/prepare", "/api/r8-24/geo-growth/evidence/receipt"):
         assert marker in geo_growth_ui, marker
     assert 'id="r813-geo-frame"' not in seo_bridge
     r8_20_patch = text(SRC / "backend" / "r8_20_seo_geo_growth_patch.py")

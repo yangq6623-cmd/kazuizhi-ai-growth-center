@@ -226,6 +226,24 @@ def assert_geo_advanced(driver):
         raise AssertionError(f"independent GEO50 baseline endpoint did not work: {baseline}")
     if "人工验证" not in inline.text or "自动正式验证" not in inline.text:
         raise AssertionError("GEO manual and automatic formal results are not separated")
+    # A field machine may be unable to reach both GET APIs: the real Chrome
+    # DOM must still display all 50 canonical questions without inventing A/B.
+    driver.execute_script("""
+      const original = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url=String(input?.url || input || '');
+        if(url.includes('/api/r8-24/geo-growth/evidence') ||
+           url.includes('/api/r8-24/geo-growth/questions-baseline'))
+          return Promise.reject(new Error('field-simulated-evidence-outage'));
+        return original(input,init);
+      };
+      const body=document.getElementById('geo-growth-advanced-body');
+      if(body)body.innerHTML='';
+    """)
+    driver.execute_script("window.KZGeoAdvancedInline.mount();")
+    WebDriverWait(driver, 6).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "#geo-adv-questions tr")) == 50)
+    if driver.execute_script("return document.documentElement.dataset.kzGeoFixedBaselineReady") != "50":
+        raise AssertionError("Chrome did not render fixed 50 question baseline without evidence APIs")
     for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备人工网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")
