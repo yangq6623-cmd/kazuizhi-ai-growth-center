@@ -39,6 +39,7 @@ def run() -> None:
             bridge._GEO_EVIDENCE_CACHE.update({
                 "payload": None, "updated": 0.0, "started": 0.0,
                 "refreshing": False, "error": "", "attempt": 0, "workers": [],
+                "last_read_duration": None, "payload_bytes": 0,
             })
 
     bridge._geo_evidence_snapshot = slow_snapshot
@@ -74,6 +75,18 @@ def run() -> None:
         assert recovered["snapshot_ready"], "the stalled read did not recover"
         assert recovered["available_sections"] == 4
         assert recovered["formal_ab_completed"] == 0
+        diagnostics = bridge._geo_evidence_health()
+        assert diagnostics["evidence_ready"] is True and diagnostics["worker_count"] == 0, diagnostics
+        assert diagnostics["payload_bytes"] > 0
+        assert diagnostics["available_sections"] == 4
+        assert isinstance(diagnostics["last_read_duration_seconds"], (float, int))
+        with bridge._GEO_EVIDENCE_LOCK:
+            bridge._GEO_EVIDENCE_CACHE["started"] = time.monotonic() - 826.81
+            bridge._GEO_EVIDENCE_CACHE["refreshing"] = False
+        idle = bridge._geo_evidence_health()
+        assert idle["read_seconds"] == 0.0, idle
+        assert idle["cache_age_seconds"] is not None, idle
+        print("PASS: idle GEO Evidence cache does not report 826 seconds of active read")
         print("PASS: GEO 50-question fail-safe, no false A/B, 12s watchdog and recovery")
         bridge._geo_evidence_snapshot = original
         original_file = bridge._geo_snapshot_file

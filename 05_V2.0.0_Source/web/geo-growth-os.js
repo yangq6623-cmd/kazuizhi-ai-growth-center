@@ -58,15 +58,18 @@
     const controller=new AbortController();
     const timeoutMs=Number(options.timeoutMs||15000);
     const timer=setTimeout(()=>controller.abort('kz_geo_os_timeout'),timeoutMs);
+    let stage='等待服务器响应';
+    const started=Date.now();
     try{
       const clean={...options};delete clean.timeoutMs;
       const response=await fetch(path,{cache:'no-store',signal:controller.signal,...clean});
+      stage='下载并解析 JSON';
       const body=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(body.error||body.message||`GEO Growth OS 返回 ${response.status}`);
       return body;
     }catch(error){
       if(controller.signal.aborted||error?.name==='AbortError'||String(error?.message||'').includes('aborted')){
-        throw new Error(`GEO 自动增长数据等待超时（${Math.round(timeoutMs/1000)}秒）；主界面已保留，后台继续重试。`);
+        throw new Error(`GEO 数据请求超时（${Math.round((Date.now()-started)/1000)}秒，${stage}）；主界面已保留。接口：${path}`);
       }
       throw error;
     }finally{clearTimeout(timer)}

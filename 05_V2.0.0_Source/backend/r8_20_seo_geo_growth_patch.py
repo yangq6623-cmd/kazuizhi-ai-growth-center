@@ -38,6 +38,7 @@ _GEO_EVIDENCE_LOCK = threading.Lock()
 _GEO_EVIDENCE_CACHE = {
     "payload": None, "updated": 0.0, "started": 0.0, "refreshing": False,
     "error": "", "attempt": 0, "workers": [],
+    "last_read_duration": None, "payload_bytes": 0,
 }
 _GEO_EVIDENCE_TTL_SECONDS = 20
 _GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS = 12
@@ -123,15 +124,32 @@ def _schedule_geo_evidence_prewarm():
 
 
 def _geo_evidence_health():
-    """Nonblocking diagnostics; no GEO file reads, provider calls or secrets."""
+    """Nonblocking cache diagnostics, without reading GEO data files or API keys.
+
+    read_seconds is the elapsed time of an ACTIVE refresh, not the age of an
+    old worker start time.  A ready cache must never show hundreds of seconds
+    of supposed read time after the worker already completed.
+    """
     with _GEO_EVIDENCE_LOCK:
-        state=_GEO_EVIDENCE_CACHE
+        state = _GEO_EVIDENCE_CACHE
+        now = time.monotonic()
+        active = bool(state.get("refreshing"))
+        ready = state.get("payload") is not None
+        payload = state.get("payload") or {}
         return {
-            "evidence_ready": state.get("payload") is not None,
-            "refreshing": bool(state.get("refreshing")),
-            "read_seconds": round(max(0.0, time.monotonic()-state["started"]), 2) if state.get("started") else 0,
+            "evidence_ready": ready,
+            "refreshing": active,
+            "read_seconds": round(max(0.0, now - state["started"]), 2)
+                if active and state.get("started") else 0.0,
             "worker_count": sum(t.is_alive() for t in (state.get("workers") or [])),
             "last_error": str(state.get("error") or "")[:240],
+            "cache_age_seconds": round(max(0.0, now - state["updated"]), 2)
+                if ready and state.get("updated") else None,
+            "last_read_duration_seconds": state.get("last_read_duration"),
+            "payload_bytes": int(state.get("payload_bytes") or 0),
+            "snapshot_mode": str(payload.get("snapshot_mode") or "") if ready else "",
+            "available_sections": payload.get("available_sections") if ready else None,
+            "total_sections": payload.get("total_sections") if ready else None,
             "baseline_count": 50,
             "external_ai_verification": "requires_independently_authorized_provider",
             "truth": "离线50问不等于50次正式验证；豆包C级辅助不计正式A/B",
@@ -139,18 +157,28 @@ def _geo_evidence_health():
 
 
 def _geo_evidence_update_cache(token):
+    started = time.monotonic()
     try:
         result = _geo_evidence_snapshot()
-        json.dumps(result, ensure_ascii=False)
+        payload_bytes = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        finished = time.monotonic()
         with _GEO_EVIDENCE_LOCK:
             state = _GEO_EVIDENCE_CACHE
             if state["attempt"] == token:
-                state.update(payload=result, updated=time.monotonic(), error="", refreshing=False)
+                state.update(
+                    payload=result, updated=finished, error="", refreshing=False,
+                    last_read_duration=round(finished-started, 3),
+                    payload_bytes=payload_bytes,
+                )
     except Exception as error:
+        finished = time.monotonic()
         with _GEO_EVIDENCE_LOCK:
             state = _GEO_EVIDENCE_CACHE
             if state["attempt"] == token:
-                state.update(error=f"{type(error).__name__}: {str(error)[:180]}", refreshing=False)
+                state.update(
+                    error=f"{type(error).__name__}: {str(error)[:180]}", refreshing=False,
+                    last_read_duration=round(finished-started, 3),
+                )
 
 
 def _origin_allowed(handler):
