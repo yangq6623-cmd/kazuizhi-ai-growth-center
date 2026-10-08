@@ -226,6 +226,9 @@
   function renderWorkspace(name){
     const page=ensurePage();
     const target=name==='geo'?'geo':'seo';
+    // Record the requested workspace before loading it so the first-load retry
+    // timer always knows which iframe is still active.
+    desiredWorkspace=target;
     page.querySelectorAll('[data-r813-workspace]').forEach(button=>{
       const active=button.dataset.r813Workspace===target;
       button.classList.toggle('active',active);
@@ -233,7 +236,6 @@
     });
     page.querySelectorAll('[data-r813-pane]').forEach(pane=>{pane.hidden=pane.dataset.r813Pane!==target;});
     loadWorkspaceIfNeeded(target);
-    desiredWorkspace=target;
     try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
     const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
     scheduleFrameFit(frame);
