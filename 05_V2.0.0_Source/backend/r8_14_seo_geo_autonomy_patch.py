@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -293,6 +294,8 @@ def _combined_run_once(force=False):
 
 
 _UNATTENDED_CLOUD_TARGET = 50
+_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS = 12
+_AUTO_ARM_TIMER = None
 
 
 def _arm_unattended_cloud_scan():
@@ -353,6 +356,38 @@ def _arm_unattended_cloud_scan():
         "reason": "already_running_or_monitoring",
         "target": current_target,
         "executor_ready": True,
+    }
+
+
+def _schedule_unattended_cloud_scan():
+    """#683 defer the cloud worker until the owner shell and GEO iframe can paint."""
+    global _AUTO_ARM_TIMER
+    if _AUTO_ARM_TIMER is not None and _AUTO_ARM_TIMER.is_alive():
+        return {"scheduled": False, "reason": "already_scheduled"}
+
+    def invoke():
+        try:
+            _arm_unattended_cloud_scan()
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            # Background startup errors are owner-visible state, never a reason
+            # to break the local HTTP server or leave GEO as a blank iframe.
+            try:
+                data = geo_autonomy._load()
+                data["last_error"] = f"自动GEO延迟启动失败: {str(error)[:720]}"
+                data["last_run_at"] = now_iso()
+                geo_autonomy._save(data)
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+                pass
+
+    timer = threading.Timer(_UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS, invoke)
+    timer.daemon = True
+    timer.name = "r8-19-geo-auto-arm-after-ui"
+    _AUTO_ARM_TIMER = timer
+    timer.start()
+    return {
+        "scheduled": True,
+        "delay_seconds": _UNATTENDED_CLOUD_STARTUP_DELAY_SECONDS,
+        "reason": "protect_geo_first_open",
     }
 
 
@@ -441,10 +476,11 @@ def install():
     server.DashboardHandler._kz_r8_14_seo_geo_autonomy = True
     server.DashboardHandler._kz_r8_19_geo_autonomy = True
 
-    # #682: the user's verified Doubao/cloud route is an unattended executor.
-    # Auto-arm the C-level 50-question scan on startup so no 1/3/10/50 button
-    # is required. Formal A/B Evidence remains separately truth-gated.
-    _arm_unattended_cloud_scan()
+    # #683: preserve #682 unattended behavior, but never start the cloud
+    # network worker during module/server bootstrap. Give the owner shell and
+    # GEO iframe a clean first-paint window, then auto-arm the verified route.
+    _recover_stale_running_tasks()
+    _schedule_unattended_cloud_scan()
     _INSTALLED = True
 
 
