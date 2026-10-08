@@ -54,6 +54,45 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     }
     Write-Host 'PASS: installed GEO owner runtime responds quickly and ships self-healing workbench assets'
 }
+function Assert-GeoBrowserDom([int]$Port) {
+    $base = "http://127.0.0.1:$Port"
+    $edgeCandidates = @(
+        "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+    )
+    $edge = $edgeCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+    if (-not $edge) { throw 'Microsoft Edge is required for GEO browser DOM smoke test on Windows runner' }
+
+    $url = "$base/geo.html?embed=1&field-smoke=692"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $edge
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($arg in @('--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--virtual-time-budget=9000','--dump-dom',$url)) {
+        [void]$psi.ArgumentList.Add($arg)
+    }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+    if (-not $proc.WaitForExit(20000)) {
+        try { $proc.Kill($true) } catch {}
+        throw 'GEO browser DOM smoke timed out'
+    }
+    $dom = $proc.StandardOutput.ReadToEnd()
+    $err = $proc.StandardError.ReadToEnd()
+    if ($proc.ExitCode -ne 0) { throw "Edge GEO DOM smoke failed: $($proc.ExitCode) $err" }
+
+    foreach ($marker in @('id="search-growth-switch"','id="geo-growth-pane"','id="geo-growth-os"','id="geo-os-state"','GEO 自动增长工作台')) {
+        if ($dom -notmatch [regex]::Escape($marker)) { throw "Installed GEO browser DOM missing: $marker" }
+    }
+    if ($dom -match 'GEO 工作台正在加载…</b>\s*<span>页面框架已经打开') {
+        $hasGrowth = $dom -match 'id="geo-growth-os"'
+        if (-not $hasGrowth) { throw 'Installed GEO browser remained on fallback-only shell' }
+    }
+    Write-Host 'PASS: installed GEO page executes in real Edge and mounts the full Growth OS DOM'
+}
+
 function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     foreach ($relative in $Expected.Keys) {
         $path = Join-Path $dataRoot $relative
@@ -108,6 +147,7 @@ try {
     $runtime.Refresh()
     if ($runtime.HasExited) { throw 'Active-runtime upgrade setup failed: runtime exited early' }
     Assert-GeoOwnerRuntime $port
+    Assert-GeoBrowserDom $port
     Install-R8
     try { $runtime.WaitForExit(5000) | Out-Null } catch {}
     $runtime.Refresh()

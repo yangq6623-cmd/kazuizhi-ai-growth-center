@@ -51,26 +51,58 @@
 
   function installWorkspace(){
     const page=byId('search');
-    if(!page||byId('search-growth-switch'))return;
-    const original=[...page.childNodes];
-    const switcher=document.createElement('div');
-    switcher.id='search-growth-switch';
-    switcher.className='search-growth-switch';
-    switcher.setAttribute('role','tablist');
-    switcher.innerHTML=`
-      <button type="button" class="growth-tab" data-growth-tab="seo" role="tab">SEO 增长<span>保持现有运行</span></button>
-      <button type="button" class="growth-tab" data-growth-tab="geo" role="tab">GEO 增长<span>R8-19 · 浏览器优先</span></button>`;
-    const seoPane=document.createElement('div');
-    seoPane.id='seo-growth-pane';seoPane.className='growth-pane';
-    original.forEach(node=>seoPane.appendChild(node));
-    const geoPane=document.createElement('div');
-    geoPane.id='geo-growth-pane';geoPane.className='growth-pane geo-growth-pane';geoPane.hidden=true;
-    geoPane.innerHTML=geoMarkup();
-    page.appendChild(switcher);page.appendChild(seoPane);page.appendChild(geoPane);
-    page.querySelectorAll('[data-growth-tab]').forEach(button=>button.addEventListener('click',()=>selectWorkspace(button.dataset.growthTab,true)));
+    if(!page)return;
+
+    let switcher=byId('search-growth-switch');
+    let seoPane=byId('seo-growth-pane');
+    let geoPane=byId('geo-growth-pane');
+
+    if(!switcher){
+      const original=[...page.childNodes];
+      switcher=document.createElement('div');
+      switcher.id='search-growth-switch';
+      switcher.className='search-growth-switch';
+      switcher.setAttribute('role','tablist');
+      switcher.innerHTML=`
+        <button type="button" class="growth-tab" data-growth-tab="seo" role="tab">SEO 增长<span>保持现有运行</span></button>
+        <button type="button" class="growth-tab" data-growth-tab="geo" role="tab">GEO 增长<span>R8-19 · 浏览器优先</span></button>`;
+      seoPane=document.createElement('div');
+      seoPane.id='seo-growth-pane';seoPane.className='growth-pane';
+      original.forEach(node=>seoPane.appendChild(node));
+      geoPane=document.createElement('div');
+      geoPane.id='geo-growth-pane';geoPane.className='growth-pane geo-growth-pane';geoPane.hidden=true;
+      page.appendChild(switcher);page.appendChild(seoPane);page.appendChild(geoPane);
+    }else{
+      // #692: geo.html may have created a minimal shell before this bundle
+      // arrived. Hydrate that shell instead of returning and leaving it empty.
+      if(!seoPane){
+        seoPane=document.createElement('div');
+        seoPane.id='seo-growth-pane';seoPane.className='growth-pane';seoPane.hidden=true;
+        page.appendChild(seoPane);
+      }
+      if(!geoPane){
+        geoPane=document.createElement('div');
+        geoPane.id='geo-growth-pane';geoPane.className='growth-pane geo-growth-pane';
+        page.appendChild(geoPane);
+      }
+    }
+
+    if(!geoPane.dataset.kzLegacyHydrated){
+      const directStatus=geoPane.querySelector('.geo-direct-inline-status');
+      geoPane.innerHTML=geoMarkup();
+      geoPane.dataset.kzLegacyHydrated='1';
+      directStatus?.remove();
+    }
+
+    page.querySelectorAll('[data-growth-tab]').forEach(button=>{
+      if(button.dataset.kzGrowthBound==='1')return;
+      button.dataset.kzGrowthBound='1';
+      button.addEventListener('click',()=>selectWorkspace(button.dataset.growthTab,true));
+    });
     const saved=localStorage.getItem(WORKSPACE_KEY)==='geo'?'geo':'seo';
     selectWorkspace(saved,false);
     bindGeoActions();
+    window.dispatchEvent(new Event('kz:geo-workspace-hydrated'));
   }
 
   function geoMarkup(){return `

@@ -52,8 +52,45 @@
     const geoParams=new URLSearchParams(location.search);
     if(geoParams.get('embed')==='1')document.body.classList.add('geo-direct-embed');
     try{localStorage.setItem('kz-search-growth-workspace','geo')}catch(_){ }
+
+    // #692 hard fallback: build the owner GEO container in this document itself.
+    // The full operational-search bundle may hydrate it later, but the owner
+    // must never depend on that bundle merely to obtain a visible workspace.
+    (() => {
+      const page=document.getElementById('search');
+      if(!page)return;
+      window.__KZ_GEO_DIRECT_SCAFFOLD__=true;
+      if(!document.getElementById('search-growth-switch')){
+        const switcher=document.createElement('div');
+        switcher.id='search-growth-switch';
+        switcher.className='search-growth-switch';
+        switcher.setAttribute('role','tablist');
+        switcher.innerHTML='<button type="button" class="growth-tab" data-growth-tab="seo" role="tab">SEO 增长<span>返回完整 SEO 页面查看</span></button><button type="button" class="growth-tab active" data-growth-tab="geo" role="tab" aria-selected="true">GEO 增长<span>R8-24 · 自动增长工作台</span></button>';
+        page.appendChild(switcher);
+      }
+      if(!document.getElementById('seo-growth-pane')){
+        const seoPane=document.createElement('div');
+        seoPane.id='seo-growth-pane';
+        seoPane.className='growth-pane';
+        seoPane.hidden=true;
+        page.appendChild(seoPane);
+      }
+      if(!document.getElementById('geo-growth-pane')){
+        const geoPane=document.createElement('div');
+        geoPane.id='geo-growth-pane';
+        geoPane.className='growth-pane geo-growth-pane';
+        geoPane.dataset.kzDirectScaffold='1';
+        geoPane.innerHTML='<div class="geo-direct-inline-status" style="margin:8px 0;padding:12px 14px;border:1px solid #dbe5f3;border-radius:8px;background:#fff;color:#52647d;font-size:12px">GEO 核心工作台正在初始化，后台自动化与界面加载已分离。</div>';
+        page.appendChild(geoPane);
+      }
+      const fallback=document.getElementById('geo-direct-fallback');
+      if(fallback)fallback.hidden=true;
+    })();
   </script>
   <script src="operational-search.js"></script>
+  <script src="geo-autonomy.js"></script>
+  <script src="seo-geo-growth-intelligence.js"></script>
+  <script src="seo-geo-connector-matrix.js"></script>
   <script src="geo-phase1-field-fix.js"></script>
   <script>
     // The field-fix layer is the sole owner of Phase-1 button actions. Mark the
@@ -75,9 +112,14 @@
     (() => {
       const recoverGeoWorkbench = () => {
         const pane = document.getElementById('geo-growth-pane');
-        if (!pane || document.getElementById('geo-growth-os')) return;
+        if (!pane) return;
         try { window.__KZ_GEO_GROWTH_OS_BOOT__?.(); } catch (_) {}
         try { window.searchGrowthActivate?.(); } catch (_) {}
+        if(document.getElementById('geo-growth-os')){
+          pane.querySelector('.geo-direct-inline-status')?.remove();
+          const fallback=document.getElementById('geo-direct-fallback');
+          if(fallback)fallback.hidden=true;
+        }
       };
       [300, 900, 1800, 3200, 5200, 9000].forEach(delay => setTimeout(recoverGeoWorkbench, delay));
     })();
