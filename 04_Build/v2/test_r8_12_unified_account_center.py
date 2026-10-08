@@ -65,8 +65,12 @@ def check_owner_runtime_contract():
     assert "button.disabled = active" not in route_bootstrap
     assert "30000" in route_bootstrap
     assert "lazyPromises.delete(name)" in coordinator
-    assert "seo_geo: [" in coordinator
-    assert "['/r8_13_seo_geo_bridge.js', 'r813SeoGeo']" in coordinator
+    assert "seo_geo: []" in coordinator
+    assert "content_studio: []" in coordinator
+    index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'src="content-studio-shell.js" data-kz-content-studio-shell-direct="1"' in index
+    assert 'src="content-pipeline-host.js" data-kz-content-pipeline-host-direct="1"' in index
+    assert 'src="r8_13_seo_geo_bridge.js" data-r813-seo-geo-direct="1"' in index
     assert "sourceCache" in coordinator and "sourcePromises" in coordinator
     assert "primeScriptSources" in coordinator
     seo_bridge = (ROOT / "web" / "r8_13_seo_geo_bridge.js").read_text(encoding="utf-8")
