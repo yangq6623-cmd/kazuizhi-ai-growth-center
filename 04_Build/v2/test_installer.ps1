@@ -49,7 +49,7 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     }
 
     $bundle = (Invoke-WebRequest -Uri "$base/operational-search.js" -UseBasicParsing -TimeoutSec 4).Content
-    foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','GEO 自动增长数据等待超时')) {
+    foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','GEO 数据请求超时')) {
         if ($bundle -notmatch [regex]::Escape($marker)) { throw "Installed GEO bundle missing fast-owner marker: $marker" }
     }
     # Real browser DOM coverage is executed below through Selenium:
