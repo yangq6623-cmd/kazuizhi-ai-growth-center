@@ -52,7 +52,27 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','GEO 自动增长数据等待超时')) {
         if ($bundle -notmatch [regex]::Escape($marker)) { throw "Installed GEO bundle missing fast-owner marker: $marker" }
     }
-    Write-Host 'PASS: installed GEO owner runtime responds quickly and ships self-healing workbench assets'
+    $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    $browserCandidates = @(
+        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $pf86 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'),
+        (Join-Path $pf86 'Microsoft\Edge\Application\msedge.exe')
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    if (-not $browserCandidates) { throw 'No installed Chromium browser available for GEO DOM smoke test' }
+    $browser = $browserCandidates[0]
+    $domFile = Join-Path $testRoot 'geo-dom.html'
+    $args = @('--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--virtual-time-budget=12000','--dump-dom',"$base/geo.html?embed=1")
+    $proc = Start-Process -FilePath $browser -ArgumentList $args -PassThru -NoNewWindow -RedirectStandardOutput $domFile
+    if (-not $proc.WaitForExit(20000)) { try { $proc.Kill() } catch {}; throw 'Headless GEO DOM smoke timed out' }
+    if ($proc.ExitCode -ne 0) { throw "Headless GEO DOM smoke failed: $($proc.ExitCode)" }
+    $dom = Get-Content -LiteralPath $domFile -Raw
+    foreach ($marker in @('id="search-growth-switch"','id="geo-growth-pane"','id="geo-growth-os"','GEO 自动增长工作台')) {
+        if ($dom -notmatch [regex]::Escape($marker)) { throw "Installed GEO DOM did not fully mount: $marker" }
+    }
+    if ($dom -match '页面框架已经打开。#683') { throw 'Installed GEO DOM still contains stale #683 fallback contract' }
+
+    Write-Host 'PASS: installed GEO owner runtime responds quickly and real Chromium DOM mounts the GEO Growth OS'
 }
 function Assert-GeoBrowserDom([int]$Port) {
     & $Python (Join-Path $PSScriptRoot 'test_geo_browser_field.py') --port $Port
