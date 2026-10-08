@@ -175,16 +175,30 @@ def assert_geo_advanced(driver):
     )
     driver.switch_to.frame(advanced_frame)
     try:
-        WebDriverWait(driver, 15).until(
+        WebDriverWait(driver, 18).until(
             lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedReady === '1'")
         )
-        inner_advanced = driver.find_element(By.ID, "geo-growth-advanced")
-        if not inner_advanced.get_attribute("open"):
-            raise AssertionError("高级 GEO Evidence 工具没有真正展开")
+        WebDriverWait(driver, 8).until(
+            lambda d: d.find_elements(By.CSS_SELECTOR, ".geo-browser-workbench")
+            and d.find_element(By.CSS_SELECTOR, ".geo-browser-workbench").is_displayed()
+            and d.find_elements(By.ID, "geo-browser-one")
+            and d.find_element(By.ID, "geo-browser-one").is_displayed()
+        )
         fallback = driver.find_element(By.ID, "geo-direct-fallback")
         if fallback.is_displayed():
             raise AssertionError("高级 GEO 工具仍停留在初始化 fallback")
-        if driver.find_element(By.ID, "geo-growth-os").is_displayed():
+        body_text = driver.execute_script(
+            "return (document.getElementById('geo-growth-pane')?.innerText || '').trim();"
+        )
+        if len(body_text) < 300 or "网页验证工作台" not in body_text or "网页真实验证1题" not in body_text:
+            raise AssertionError(f"高级 GEO 工具内容为空或不完整，字符数={len(body_text)}")
+        height = driver.execute_script(
+            "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+        )
+        if int(height or 0) <= 720:
+            raise AssertionError(f"高级 GEO 工具仍是空白默认高度：{height}")
+        growth = driver.find_elements(By.ID, "geo-growth-os")
+        if growth and growth[0].is_displayed():
             raise AssertionError("高级工具 iframe 错误重复显示 GEO 主核心面板")
     finally:
         driver.switch_to.default_content()

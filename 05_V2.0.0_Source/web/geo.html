@@ -23,11 +23,11 @@
     body.geo-direct-embed .geo-direct-top,body.geo-direct-embed .geo-direct-note{display:none}
     body.geo-direct-embed .geo-direct-main{max-width:none;margin:0;padding:0 2px 18px}
     body.geo-direct-embed .geo-direct-seo-placeholder{display:none}
-    body.geo-direct-advanced .geo-direct-top,body.geo-direct-advanced .geo-direct-note,body.geo-direct-advanced #search-growth-switch,body.geo-direct-advanced #geo-growth-os,body.geo-direct-advanced .geo-direct-inline-status,body.geo-direct-advanced #geo-direct-fallback{display:none!important}
+    body.geo-direct-advanced .geo-direct-top,body.geo-direct-advanced .geo-direct-note,body.geo-direct-advanced #search-growth-switch,body.geo-direct-advanced #seo-growth-pane,body.geo-direct-advanced #geo-growth-os,body.geo-direct-advanced .geo-direct-inline-status{display:none!important}
     body.geo-direct-advanced .geo-direct-main{max-width:none;margin:0;padding:0;background:#f5f7fb}
-    body.geo-direct-advanced #geo-growth-advanced{display:block!important;margin:0!important;border:0!important;background:transparent!important}
-    body.geo-direct-advanced #geo-growth-advanced>summary{display:none!important}
-    body.geo-direct-advanced #geo-growth-advanced-body{display:block!important}
+    body.geo-direct-advanced #search,body.geo-direct-advanced #geo-growth-pane{display:block!important;min-height:0!important;margin:0!important;padding:0!important}
+    body.geo-direct-advanced #geo-direct-fallback{display:block!important;margin:0!important;border-radius:8px!important}
+    html[data-kz-geo-advanced-ready="1"] body.geo-direct-advanced #geo-direct-fallback{display:none!important}
     .geo-direct-fallback{margin:8px 2px 14px;padding:18px 20px;border:1px solid #dbe5f3;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(24,52,93,.04);color:#52647d}
     .geo-direct-fallback b{display:block;margin-bottom:5px;color:#18345c;font-size:15px}.geo-direct-fallback span{display:block;font-size:12px;line-height:1.6}
     .geo-direct-fallback button{margin-top:10px;border:1px solid #c9d7ed;border-radius:8px;background:#fff;color:#285fc9;padding:7px 11px;font-weight:700;cursor:pointer}
@@ -136,19 +136,29 @@
   <script>
     (() => {
       if(geoParams.get('advanced')!=='1')return;
+      const fallback=document.getElementById('geo-direct-fallback');
+      if(fallback){
+        const title=fallback.querySelector('b');
+        const note=fallback.querySelector('span');
+        if(title)title.textContent='高级证据 / 网页验证工具正在加载…';
+        if(note)note.textContent='正在挂载真实 Evidence、Receipt、50问与网页验证工作台；只有工具内容实际可见后才判定加载完成。';
+      }
       const exposeAdvanced = () => {
-        try { window.__KZ_GEO_GROWTH_OS_BOOT__?.(); } catch (_) {}
-        const advanced=document.getElementById('geo-growth-advanced');
-        if(!advanced)return false;
-        advanced.open=true;
-        document.getElementById('geo-growth-os')?.setAttribute('aria-hidden','true');
+        try { window.searchGrowthActivate?.(); } catch (_) {}
+        const pane=document.getElementById('geo-growth-pane');
+        const workbench=pane?.querySelector('.geo-browser-workbench');
+        const action=pane?.querySelector('#geo-browser-one');
+        const tested=pane?.querySelector('#geo-tested');
+        const text=String(pane?.innerText||'').trim();
+        const visible=workbench&&getComputedStyle(workbench).display!=='none';
+        const hydrated=pane?.dataset.kzLegacyHydrated==='1';
+        if(!(hydrated&&visible&&action&&tested&&text.length>300))return false;
         document.querySelector('.geo-direct-inline-status')?.remove();
-        const fallback=document.getElementById('geo-direct-fallback');
-        if(fallback)fallback.hidden=true;
         document.documentElement.dataset.kzGeoAdvancedReady='1';
+        document.documentElement.dataset.kzGeoAdvancedText=String(text.length);
         return true;
       };
-      [0,200,500,1000,1800,3200,5200].forEach(delay=>setTimeout(exposeAdvanced,delay));
+      [0,120,300,650,1200,2200,3600,5200,7600,9000].forEach(delay=>setTimeout(exposeAdvanced,delay));
     })();
   </script>
 </body>

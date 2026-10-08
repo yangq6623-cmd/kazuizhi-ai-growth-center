@@ -1,5 +1,14 @@
 (() => {
   'use strict';
+  const kzGeoParams = new URLSearchParams(location.search);
+  if (kzGeoParams.get('advanced') === '1') {
+    // #725: the embedded advanced view is the legacy Evidence/browser toolbox.
+    // Do not mount a second Growth OS core inside it; operational-search.js owns
+    // the advanced tools and the parent page owns the main GEO Growth OS.
+    window.__KZ_GEO_GROWTH_OS__ = true;
+    window.__KZ_GEO_GROWTH_OS_BOOT__ = () => false;
+    return;
+  }
   if (window.__KZ_GEO_GROWTH_OS__ && typeof window.__KZ_GEO_GROWTH_OS_BOOT__ === 'function') {
     // A healthy bundled copy already finished initialization. Reuse it.
     try { window.__KZ_GEO_GROWTH_OS_BOOT__(); } catch (_) {}

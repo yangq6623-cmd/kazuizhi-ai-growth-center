@@ -151,11 +151,26 @@
     }catch(_){return false}
   }
 
+  function isAdvancedGeoFrame(frame){
+    try{
+      const href=String(frame?.contentWindow?.location?.href||frame?.dataset?.src||'');
+      return new URL(href,location.href).searchParams.get('advanced')==='1';
+    }catch(_){return String(frame?.dataset?.src||'').includes('advanced=1')}
+  }
+
   function workspaceDomReady(frame, kind){
     try{
       const doc=frame?.contentDocument;
       if(!doc||doc.readyState!=='complete')return false;
       if(kind==='geo'){
+        if(isAdvancedGeoFrame(frame)){
+          const pane=doc.getElementById('geo-growth-pane');
+          const workbench=doc.querySelector('.geo-browser-workbench');
+          const action=doc.getElementById('geo-browser-one');
+          const text=String(pane?.innerText||'').trim();
+          const visible=workbench&&doc.defaultView?.getComputedStyle(workbench)?.display!=='none';
+          return doc.documentElement.dataset.kzGeoAdvancedReady==='1' && Boolean(visible&&action&&text.length>300);
+        }
         const growth=doc.getElementById('geo-growth-os');
         if(!growth)return false;
         return doc.defaultView?.getComputedStyle(growth)?.display!=='none';
@@ -172,23 +187,29 @@
       const wanted=frame.dataset.src||(kind==='geo'?'/geo.html?embed=1':'/r8_13_seo_geo.html?embed=1');
       frame.dataset.kzLoading='0';
       if(frameAtWantedLocation(frame,wanted)){
-        frame.dataset.kzLoaded='1';
-        frame.dataset.kzLoadAttempts='0';
+        // GEO readiness is content-based. A successful navigation to geo.html
+        // is not enough because deferred scripts may still be hydrating the
+        // advanced Evidence toolbox.
+        frame.dataset.kzLoaded=kind==='geo'?(workspaceDomReady(frame,'geo')?'1':'0'):'1';
+        if(frame.dataset.kzLoaded==='1')frame.dataset.kzLoadAttempts='0';
       }else{
         frame.dataset.kzLoaded='0';
       }
       if(kind==='seo')decorateLegacySeo(frame); else injectFinalUx(frame);
       scheduleFrameFit(frame);
       if(kind==='geo'){
-        [350,900,1800,3200,5200].forEach(delay=>window.setTimeout(()=>{
+        [350,900,1800,3200,5200,9000].forEach(delay=>window.setTimeout(()=>{
           if(workspaceDomReady(frame,'geo')){
             frame.dataset.kzLoaded='1';
             frame.dataset.kzLoading='0';
             frame.dataset.kzLoadAttempts='0';
+            scheduleFrameFit(frame);
             return;
           }
-          ensureGeoCoreInFrame(frame);
-          if(delay===5200&&desiredWorkspace==='geo'){
+          // advanced=1 intentionally suppresses the Growth OS core. Injecting it
+          // here recreated the race that produced the user's blank 720px box.
+          if(!isAdvancedGeoFrame(frame))ensureGeoCoreInFrame(frame);
+          if(delay===9000&&desiredWorkspace==='geo'){
             frame.dataset.kzLoaded='0';
             frame.dataset.kzLoading='0';
             if(Number(frame.dataset.kzLoadAttempts||0)<5)loadWorkspaceIfNeeded('geo');
