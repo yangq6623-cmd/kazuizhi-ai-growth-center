@@ -389,14 +389,26 @@
     return page;
   }
 
+  function activateOwnerPage(target) {
+    const page = document.getElementById(target);
+    if (!page) return false;
+    try { if (typeof window.openPage === 'function') window.openPage(target); } catch (_) {}
+    document.querySelectorAll('main > .page').forEach(node => node.classList.toggle('active', node === page));
+    document.documentElement.dataset.kzActivePage = target;
+    document.querySelectorAll('.r810-nav-button[data-target]').forEach(button => {
+      button.classList.toggle('active', button.dataset.target === target && button.dataset.action !== 'advanced');
+    });
+    return true;
+  }
+
   function showImmediateLazyTarget(target) {
     if (target === 'content-studio' || target === 'operational-hub') ensureImmediateLazyPage(target);
     if (['workflow','content-studio','operational-hub','connections'].includes(target)) {
-      if (typeof window.openPage === 'function') window.openPage(target);
-      else {
-        document.querySelectorAll('main > .page').forEach(node => node.classList.toggle('active', node.id === target));
-        document.documentElement.dataset.kzActivePage = target;
-      }
+      activateOwnerPage(target);
+      [90, 260].forEach(delay => window.setTimeout(() => {
+        const button = document.querySelector(`.r810-nav-button[data-target="${target}"]`);
+        if (button?.getAttribute('aria-busy') === 'true' || button?.classList.contains('active')) activateOwnerPage(target);
+      }, delay));
     }
   }
 
@@ -439,8 +451,11 @@
           return;
         }
         if (target === 'workflow') {
-          if (typeof window.openPage === 'function') window.openPage('workflow');
-        } else if (target === 'content-studio') window.openKazuizhiContentStudio?.('overview');
+          activateOwnerPage('workflow');
+        } else if (target === 'content-studio') {
+          window.openKazuizhiContentStudio?.('overview');
+          activateOwnerPage('content-studio');
+        }
         else if (target === 'r813-seo-geo') {
           const ready = await ensureSeoGeoBridge();
           if (ready) window.KZR813SeoGeoBridge.open();
@@ -450,10 +465,9 @@
           }
         }
         else if (target === 'operational-hub') {
-          if (typeof window.openPage === 'function') window.openPage('operational-hub');
-          else document.querySelectorAll('.page').forEach(node => node.classList.toggle('active', node.id === 'operational-hub'));
+          activateOwnerPage('operational-hub');
         } else if (target === 'connections') {
-          if (typeof window.openPage === 'function') window.openPage('connections');
+          activateOwnerPage('connections');
         }
       } finally {
         button.removeAttribute('aria-busy');
