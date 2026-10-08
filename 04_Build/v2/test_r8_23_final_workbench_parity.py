@@ -216,6 +216,9 @@ def main() -> None:
     ):
         assert marker in geo_growth_ui or marker in geo_html, marker
     assert "geo-os-controls .geo-os-runtime" not in geo_growth_ui
+    assert "typeof window.__KZ_GEO_GROWTH_OS_BOOT__ === 'function'" in geo_growth_ui
+    assert "stale-sentinel" in geo_growth_ui
+    assert "#692 正在恢复 GEO 工作台组件" in geo_html
 
     # C-level operating signals may drive work, but formal A/B truth remains
     # separate. The local controller is the 7x24 executor; it must not require
