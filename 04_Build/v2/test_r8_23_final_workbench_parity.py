@@ -144,7 +144,7 @@ def main() -> None:
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
     for marker in ("frameAtWantedLocation", "workspaceDomReady", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "9000", "<5"):
         assert marker in seo_bridge, marker
-    for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "bindGeoAdvancedTools", "isAdvancedGeoFrame", "kzGeoAdvancedReady", "GEO 自动增长工作台正在准备", "advanced=1"):
+    for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "bindGeoAdvancedTools", "KZGeoAdvancedInline", "核心界面与高级证据工具均由主平台直接加载"):
         assert marker in seo_bridge, marker
     index_html = text(INDEX)
     assert 'src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"' in index_html
@@ -156,7 +156,7 @@ def main() -> None:
     for marker in ("geo-direct-fallback", "GEO 工作台正在加载", "body:has(#search-growth-switch)"):
         assert marker in geo_html, marker
     assert geo_html.index('<script src="geo-growth-os.js"></script>') < geo_html.index('<script defer src="operational-search.js"></script>')
-    for marker in ("ensureGeoCoreInFrame", "parent-recovery", "data-kz-parent-geo-core-recovery", "[350,900,1800,3200,5200,9000]", "if(!isAdvancedGeoFrame(frame))ensureGeoCoreInFrame(frame)"):
+    for marker in ("ensureGeoCoreInFrame", "parent-recovery", "data-kz-parent-geo-core-recovery"):
         assert marker in seo_bridge, marker
     assert "frame.dataset.kzLoaded='1';\n    frame.src=wanted;" not in seo_bridge
     for marker in ("Promise.allSettled", "GEO 主界面已先恢复", "KZ_GEO_TIMEOUT"):
@@ -259,10 +259,9 @@ def main() -> None:
     assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
     assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
     assert "geo_validation.dashboard()" in r8_13_patch
-    for marker in ("geo-direct-advanced", "kzGeoAdvancedReady", "geo-browser-workbench", "kzLegacyHydrated", "高级证据 / 网页验证工具正在加载"):
-        assert marker in geo_html, marker
-    assert "kzGeoParams.get('advanced') === '1'" in geo_growth_ui
-    assert "window.__KZ_GEO_GROWTH_OS_BOOT__ = () => false" in geo_growth_ui
+    for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备网页验证1题", "固定 50 问与执行状态", "/api/r8-19/geo/browser/prepare", "/api/r8-19/geo/browser/receipt"):
+        assert marker in geo_growth_ui, marker
+    assert 'id="r813-geo-frame"' not in seo_bridge
     # Check executable call patterns, not explanatory docstring text.
     assert "= geo_autonomy.status()" not in fast_status_block
     assert "return geo_autonomy.status()" not in fast_status_block

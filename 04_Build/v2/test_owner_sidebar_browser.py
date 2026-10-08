@@ -151,9 +151,6 @@ def assert_seo_geo(driver):
 
 
 def assert_geo_advanced(driver):
-    # Run the heavy advanced Evidence/browser tool check after the complete
-    # sidebar pass. This proves the tool works without letting its background
-    # browser modules distort the timing of unrelated navigation checks.
     click_route(driver, "r813-seo-geo")
     geo_tab = WebDriverWait(driver, 10).until(
         lambda d: d.find_element(By.CSS_SELECTOR, '#r813-seo-geo [data-r813-workspace="geo"]')
@@ -168,52 +165,24 @@ def assert_geo_advanced(driver):
     advanced = driver.find_element(By.ID, "geo-growth-advanced")
     summary = advanced.find_element(By.TAG_NAME, "summary")
     driver.execute_script("arguments[0].click();", summary)
-    advanced_frame = WebDriverWait(driver, 12).until(
-        lambda d: d.find_element(By.ID, "r813-geo-frame")
-        if d.find_elements(By.ID, "r813-geo-frame") and d.find_element(By.ID, "r813-geo-frame").is_displayed()
+
+    WebDriverWait(driver, 15).until(
+        lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedInlineReady === '1'")
+    )
+    inline = WebDriverWait(driver, 8).until(
+        lambda d: d.find_element(By.ID, "geo-advanced-inline")
+        if d.find_elements(By.ID, "geo-advanced-inline") and d.find_element(By.ID, "geo-advanced-inline").is_displayed()
         else None
     )
-    driver.switch_to.frame(advanced_frame)
-    try:
-        WebDriverWait(driver, 18).until(
-            lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedReady === '1'")
-        )
-        WebDriverWait(driver, 8).until(
-            lambda d: d.find_elements(By.CSS_SELECTOR, ".geo-browser-workbench")
-            and d.find_element(By.CSS_SELECTOR, ".geo-browser-workbench").is_displayed()
-            and d.find_elements(By.ID, "geo-browser-one")
-            and d.find_element(By.ID, "geo-browser-one").is_displayed()
-        )
-        fallback = driver.find_element(By.ID, "geo-direct-fallback")
-        if fallback.is_displayed():
-            raise AssertionError("高级 GEO 工具仍停留在初始化 fallback")
-        body_text = driver.execute_script(
-            "return (document.getElementById('geo-growth-pane')?.innerText || '').trim();"
-        )
-        workbench_text = driver.find_element(By.CSS_SELECTOR, ".geo-browser-workbench").text.strip()
-        workbench_height = driver.execute_script(
-            "return Math.round(document.querySelector('.geo-browser-workbench')?.getBoundingClientRect().height || 0);"
-        )
-        if len(body_text) < 300 or len(workbench_text) < 80 or int(workbench_height or 0) < 120:
-            raise AssertionError(
-                f"高级 GEO 工具内容为空或不完整，body={len(body_text)}，workbench={len(workbench_text)}，height={workbench_height}"
-            )
-        height = driver.execute_script(
-            "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
-        )
-        if int(height or 0) <= 720:
-            raise AssertionError(f"高级 GEO 工具仍是空白默认高度：{height}")
-        growth = driver.find_elements(By.ID, "geo-growth-os")
-        if growth and growth[0].is_displayed():
-            raise AssertionError("高级工具 iframe 错误重复显示 GEO 主核心面板")
-    finally:
-        driver.switch_to.default_content()
+    body_text = inline.text.strip()
+    if len(body_text) < 250:
+        raise AssertionError(f"高级 GEO 原生工具内容不足：{len(body_text)}")
+    for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
+        if marker not in body_text:
+            raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")
+    if driver.find_elements(By.ID, "r813-geo-frame"):
+        raise AssertionError("GEO 高级工具仍依赖旧 iframe")
 
-    if not driver.find_element(By.ID, "geo-growth-os").is_displayed():
-        raise AssertionError("高级 GEO 工具展开影响了主平台核心面板")
-
-    # A user must still be able to leave GEO with one click after the advanced
-    # iframe is live. This catches navigation ownership regressions explicitly.
     click_route(driver, "dashboard")
 
 def main():

@@ -245,8 +245,7 @@
           </div>
           <div class="r813-growth-pane" data-r813-pane="geo" hidden>
             <div id="geo-growth-pane" class="r813-geo-core-host">
-              <div id="r813-geo-core-loading" class="r813-geo-core-loading">GEO 自动增长工作台正在准备，核心界面直接由主平台加载，不再依赖 iframe 首次导航。</div>
-              <iframe id="r813-geo-frame" class="r813-growth-frame" title="GEO高级证据与网页验证" src="about:blank" data-src="/geo.html?embed=1&advanced=1" scrolling="no"></iframe>
+              <div id="r813-geo-core-loading" class="r813-geo-core-loading">GEO 自动增长工作台正在准备，核心界面与高级证据工具均由主平台直接加载。</div>
             </div>
           </div>
         </div>`;
@@ -311,11 +310,9 @@
     advanced.dataset.kzAdvancedBound='1';
     advanced.addEventListener('toggle',()=>{
       if(!advanced.open)return;
-      loadWorkspaceIfNeeded('geo');
-      const frame=document.getElementById('r813-geo-frame');
-      [500,1400,2800].forEach(delay=>window.setTimeout(()=>scheduleFrameFit(frame),delay));
+      window.KZGeoAdvancedInline?.mount?.();
     });
-    if(advanced.open)loadWorkspaceIfNeeded('geo');
+    if(advanced.open)window.KZGeoAdvancedInline?.mount?.();
     return true;
   }
 
@@ -362,12 +359,13 @@
       loadWorkspaceIfNeeded('seo');
     }
     try{localStorage.setItem(WORKSPACE_KEY,target)}catch(_){}
-    const frame=document.getElementById(target==='geo'?'r813-geo-frame':'r813-seo-frame');
-    if(target==='seo')scheduleFrameFit(frame);
-    window.setTimeout(()=>{
-      try{frame?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}
-      fitFrame(frame);
-    },180);
+    const frame=document.getElementById('r813-seo-frame');
+    if(target==='seo'){
+      scheduleFrameFit(frame);
+      window.setTimeout(()=>{try{frame?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}fitFrame(frame);},180);
+    }else{
+      window.setTimeout(()=>window.KZGeoAdvancedInline?.mount?.(),120);
+    }
   }
 
   function activate(){
@@ -394,15 +392,11 @@
 
   function refresh(){
     const seo=document.getElementById('r813-seo-frame');
-    const geo=document.getElementById('r813-geo-frame');
     try{seo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('SEO refresh deferred',error)}
     ensureParentGeoCore();
-    try{geo?.contentWindow?.searchGrowthActivate?.()}catch(error){console.warn('GEO advanced refresh deferred',error)}
-    scheduleFrameFit(seo);scheduleFrameFit(geo);
-    window.setTimeout(()=>{
-      try{seo?.contentWindow?.__KZ_GROWTH_RESIZE__?.();geo?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}
-      fitFrame(seo);fitFrame(geo);
-    },220);
+    window.KZGeoAdvancedInline?.refresh?.();
+    scheduleFrameFit(seo);
+    window.setTimeout(()=>{try{seo?.contentWindow?.__KZ_GROWTH_RESIZE__?.()}catch(_){}fitFrame(seo);},220);
   }
 
   window.KZR813SeoGeoBridge={open:activate,openGeo:()=>activateWorkspace('geo'),openSeo:()=>activateWorkspace('seo'),refresh,fitFrame:fitActiveFrame};

@@ -26,6 +26,8 @@
   let attempts = 0;
   let activeFilter = "all";
   let pollTimer = null;
+  let advancedTask = null;
+  let advancedBusy = false;
 
   async function json(path, options={}) {
     const controller=new AbortController();
@@ -67,6 +69,12 @@
       .geo-os-blockers{padding:8px 10px;max-height:360px;overflow:auto}.geo-os-blocker{padding:9px 0;border-bottom:1px solid #edf1f6}.geo-os-blocker:last-child{border-bottom:0}.geo-os-blocker b{display:block;font-size:10px;color:#a14c18}.geo-os-blocker span{display:block;margin-top:3px;font-size:9px;color:#758398;line-height:1.5}.geo-os-ok{padding:18px 8px;color:#39805a;font-size:10px;text-align:center}
       .geo-os-message{margin-top:9px;min-height:16px;font-size:10px;color:#5e6e84}.geo-os-truth{margin-top:8px;padding:8px 10px;border-radius:6px;background:#f7f9fc;color:#65758b;font-size:9px;line-height:1.5}
       #geo-growth-advanced{margin-top:14px;border:1px solid #dce4ef;border-radius:9px;background:#fff;overflow:hidden}#geo-growth-advanced>summary{cursor:pointer;list-style:none;padding:11px 13px;background:#f9fbfd;color:#52657f;font-size:11px;font-weight:800}#geo-growth-advanced>summary::-webkit-details-marker{display:none}#geo-growth-advanced>summary:after{content:'展开';float:right;color:#7c8aa0;font-size:9px}#geo-growth-advanced[open]>summary:after{content:'收起'}#geo-growth-advanced-body{padding:0 12px 12px}
+      .geo-adv-inline{padding:12px 0 2px}.geo-adv-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:12px 14px;border:1px solid #dfe7f2;border-radius:8px;background:#f8fbff}.geo-adv-head h3{margin:0 0 4px;font-size:14px;color:#18345c}.geo-adv-head p{margin:0;color:#718096;font-size:10px;line-height:1.5}.geo-adv-state{padding:5px 8px;border-radius:5px;background:#eef4ff;color:#255dae;font-size:9px;font-weight:800;white-space:nowrap}.geo-adv-state.ok{background:#e9f8ef;color:#237345}.geo-adv-state.bad{background:#ffeded;color:#b12e2e}
+      .geo-adv-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}.geo-adv-toolbar button,.geo-adv-form button{border:1px solid #bfd0e7;border-radius:6px;background:#fff;color:#285da8;padding:7px 10px;font-size:10px;font-weight:750;cursor:pointer}.geo-adv-toolbar button.primary,.geo-adv-form button.primary{background:#2563dc;border-color:#2563dc;color:#fff}.geo-adv-toolbar button:disabled,.geo-adv-form button:disabled{opacity:.55;cursor:not-allowed}
+      .geo-adv-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:10px 0}.geo-adv-kpis article{border:1px solid #e2e9f2;border-radius:7px;background:#fff;padding:9px}.geo-adv-kpis span{display:block;color:#7b899d;font-size:9px}.geo-adv-kpis b{display:block;margin-top:3px;color:#203754;font-size:16px}.geo-adv-kpis small{display:block;margin-top:2px;color:#94a0af;font-size:8px}
+      .geo-adv-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:10px}.geo-adv-card{border:1px solid #e1e8f1;border-radius:8px;background:#fff;padding:11px}.geo-adv-card h4{margin:0 0 9px;color:#263b57;font-size:11px}.geo-adv-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}.geo-adv-form label{display:grid;gap:4px;color:#6d7c90;font-size:9px}.geo-adv-form label.wide{grid-column:1/-1}.geo-adv-form input,.geo-adv-form select,.geo-adv-form textarea{width:100%;box-sizing:border-box;border:1px solid #ccd8e7;border-radius:6px;background:#fff;padding:7px 8px;color:#24384f;font:inherit}.geo-adv-form textarea{min-height:72px;resize:vertical}.geo-adv-form .actions{grid-column:1/-1;display:flex;gap:8px;align-items:center}.geo-adv-form .actions span{color:#7f8da0;font-size:9px}
+      .geo-adv-table-wrap{max-height:360px;overflow:auto;border:1px solid #edf1f6;border-radius:6px}.geo-adv-table{width:100%;border-collapse:collapse;font-size:9px}.geo-adv-table th,.geo-adv-table td{padding:7px 8px;border-bottom:1px solid #edf1f6;text-align:left;vertical-align:top}.geo-adv-table th{position:sticky;top:0;background:#fafcff;color:#64748b}.geo-adv-pill{display:inline-block;padding:3px 5px;border-radius:4px;background:#eef4ff;color:#2c5fa8;font-weight:750}.geo-adv-pill.ok{background:#e9f8ef;color:#237345}.geo-adv-receipts{display:grid;gap:7px;max-height:360px;overflow:auto}.geo-adv-receipt{border:1px solid #edf1f6;border-radius:6px;padding:8px}.geo-adv-receipt b{display:block;color:#2a3f5d;font-size:10px}.geo-adv-receipt small{display:block;margin-top:3px;color:#8794a6;font-size:8px}.geo-adv-health{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.geo-adv-health span{padding:4px 6px;border-radius:4px;background:#f1f5f9;color:#607086;font-size:8px}.geo-adv-health span.ok{background:#e9f8ef;color:#237345}.geo-adv-message{margin-top:8px;min-height:16px;color:#65758b;font-size:9px}
+      @media(max-width:980px){.geo-adv-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.geo-adv-grid{grid-template-columns:1fr}.geo-adv-form{grid-template-columns:1fr}}
       @media(max-width:1180px){.geo-os-toolbar{grid-template-columns:1fr}.geo-os-runtime-card{grid-template-columns:auto 1fr}.geo-os-grid{grid-template-columns:1fr}.geo-os-policy{grid-template-columns:1fr}}
       @media(max-width:760px){.geo-os-head{display:block}.geo-os-state{margin-top:8px}.geo-os-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.geo-os-actions button{width:100%;min-width:0}.geo-os-runtime-card{grid-template-columns:1fr}.geo-os-runtime-card>span{grid-row:auto}.geo-os-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.geo-os-pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}}
     `;
@@ -126,7 +134,16 @@
       pane.insertBefore(advanced,panel.nextSibling);
     }
     const body=byId('geo-growth-advanced-body');
-    [...pane.children].forEach(child=>{ if(child!==panel && child!==advanced) body.appendChild(child); });
+    // #727: the owner page no longer embeds geo.html for advanced tools.
+    // Any legacy loading shell/iframe is removed; the native toolbox below is
+    // mounted directly in this document and therefore cannot be blanked by an
+    // iframe navigation race.
+    [...pane.children].forEach(child=>{ if(child!==panel && child!==advanced) child.remove(); });
+    if(advanced.dataset.kzInlineBound!=='1'){
+      advanced.dataset.kzInlineBound='1';
+      advanced.addEventListener('toggle',()=>{ if(advanced.open)mountAdvanced(); });
+    }
+    if(advanced.open)mountAdvanced();
     return true;
   }
 
@@ -279,6 +296,186 @@
       await load();
     }
   }
+
+  function advancedMarkup(){
+    return `<section id="geo-advanced-inline" class="geo-adv-inline">
+      <div class="geo-adv-head"><div><h3>高级证据 / 网页验证 / 开发验收工具</h3><p>直接读取正式 A/B Evidence、固定 50 问、执行队列和 Receipt；不再通过嵌套 iframe 加载。</p></div><span id="geo-adv-state" class="geo-adv-state">准备中</span></div>
+      <div class="geo-adv-toolbar">
+        <button id="geo-adv-refresh" type="button">刷新证据</button>
+        <button id="geo-adv-bootstrap" type="button">核验固定50问</button>
+        <button id="geo-adv-one" class="primary" type="button">准备网页验证1题</button>
+        <button id="geo-adv-ten" type="button">准备10题</button>
+      </div>
+      <div id="geo-adv-kpis" class="geo-adv-kpis"></div>
+      <div class="geo-adv-grid">
+        <article class="geo-adv-card">
+          <h4>真实外部 AI 网页 → Evidence / Receipt</h4>
+          <div class="geo-adv-form">
+            <label>外部AI平台<select id="geo-adv-platform"><option value="chatgpt_web">ChatGPT 网页版</option><option value="gemini_web">Gemini 网页版</option><option value="copilot_web">Copilot 网页版</option><option value="qwen_web">通义千问网页版</option><option value="deepseek_web">DeepSeek 网页版</option><option value="doubao_web">豆包网页版</option><option value="custom_web">其他真实外部AI网页</option></select></label>
+            <label>Task ID<input id="geo-adv-task" readonly placeholder="先准备网页验证任务"></label>
+            <label class="wide">固定问题<textarea id="geo-adv-question" readonly placeholder="系统自动填入固定50问中的题目"></textarea></label>
+            <label class="wide">真实外部页面 URL<input id="geo-adv-url" type="url" placeholder="https://真实外部AI会话地址"></label>
+            <label class="wide">引用 URL（每行一个）<textarea id="geo-adv-citations" placeholder="https://example.com/source"></textarea></label>
+            <label class="wide">外部 AI 完整原始回答<textarea id="geo-adv-answer" placeholder="粘贴真实外部AI完整回答"></textarea></label>
+            <div class="actions"><button id="geo-adv-submit" class="primary" type="button">保存真实 Evidence / Receipt</button><span>只保存真实外部结果；不会把豆包普通 API 或本地模型冒充正式 A/B。</span></div>
+          </div>
+          <div id="geo-adv-message" class="geo-adv-message"></div>
+        </article>
+        <article class="geo-adv-card">
+          <h4>最近 Evidence / Receipt</h4>
+          <div id="geo-adv-receipts" class="geo-adv-receipts"><div>正在读取…</div></div>
+          <div id="geo-adv-health" class="geo-adv-health"></div>
+        </article>
+      </div>
+      <article class="geo-adv-card" style="margin-top:10px">
+        <h4>固定 50 问与执行状态</h4>
+        <div class="geo-adv-table-wrap"><table class="geo-adv-table"><thead><tr><th>ID</th><th>问题</th><th>类型</th><th>状态</th><th>证据</th></tr></thead><tbody id="geo-adv-questions"><tr><td colspan="5">正在读取…</td></tr></tbody></table></div>
+      </article>
+    </section>`;
+  }
+
+  function setAdvancedMessage(message,bad=false){
+    const node=byId('geo-adv-message');
+    if(node){node.textContent=message||'';node.style.color=bad?'#ad2c2c':'#65758b';}
+  }
+
+  function bindAdvanced(){
+    const root=byId('geo-advanced-inline');
+    if(!root||root.dataset.bound==='1')return;
+    root.dataset.bound='1';
+    byId('geo-adv-refresh')?.addEventListener('click',()=>loadAdvanced(true));
+    byId('geo-adv-bootstrap')?.addEventListener('click',async e=>{
+      e.currentTarget.disabled=true;
+      try{await post('/api/r8-19/geo/bootstrap',{});setAdvancedMessage('固定50问基准已核验。');await loadAdvanced(true)}
+      catch(error){setAdvancedMessage(error.message,true)}
+      finally{e.currentTarget.disabled=false}
+    });
+    byId('geo-adv-one')?.addEventListener('click',e=>prepareAdvancedBrowser(1,e.currentTarget));
+    byId('geo-adv-ten')?.addEventListener('click',e=>prepareAdvancedBrowser(10,e.currentTarget));
+    byId('geo-adv-submit')?.addEventListener('click',e=>submitAdvancedReceipt(e.currentTarget));
+  }
+
+  function mountAdvanced(){
+    const body=byId('geo-growth-advanced-body');
+    if(!body)return false;
+    let root=byId('geo-advanced-inline');
+    if(!root){
+      body.innerHTML=advancedMarkup();
+      root=byId('geo-advanced-inline');
+    }
+    bindAdvanced();
+    loadAdvanced(false);
+    return true;
+  }
+
+  async function loadAdvanced(force=false){
+    if(advancedBusy&&!force)return;
+    advancedBusy=true;
+    const state=byId('geo-adv-state');
+    if(state){state.textContent='读取中';state.className='geo-adv-state'}
+    try{
+      const calls=[
+        json('/api/r8-19/geo',{timeoutMs:6000}),
+        json('/api/r8-19/geo/questions',{timeoutMs:6000}),
+        json('/api/r8-19/geo/queue',{timeoutMs:6000}),
+        json('/api/r8-19/geo/receipts?limit=50',{timeoutMs:6000})
+      ];
+      const settled=await Promise.allSettled(calls);
+      const ok=i=>settled[i]?.status==='fulfilled'?settled[i].value:null;
+      const dashboard=ok(0)||{}, questions=ok(1)?.questions||[], queue=ok(2)?.tasks||[], receipts=ok(3)?.receipts||[];
+      const official=dashboard.official||{}, qset=dashboard.question_set||{}, qsum=dashboard.queue||{};
+      const officialReceipts=receipts.filter(x=>x.official_truth);
+      const kpis=[
+        ['正式 A/B',`${Number(official.tested||0)} / ${Number(qset.total||50)}`,'唯一正式GEO成绩'],
+        ['Evidence',Number(official.evidence_count||officialReceipts.length),'可追溯正式证据'],
+        ['排队',Number(qsum.queued||0),'等待执行'],
+        ['执行中',Number(qsum.running||0),'真实验证任务'],
+        ['待授权',Number(qsum.authorization_required||0),'仅真实阻塞'],
+      ];
+      const kpiBox=byId('geo-adv-kpis');
+      if(kpiBox)kpiBox.innerHTML=kpis.map(x=>`<article><span>${esc(x[0])}</span><b>${esc(x[1])}</b><small>${esc(x[2])}</small></article>`).join('');
+
+      const taskByQ={};
+      queue.forEach(task=>{taskByQ[task.question_id]=task});
+      const rows=questions.slice(0,50);
+      const qbox=byId('geo-adv-questions');
+      if(qbox)qbox.innerHTML=rows.length?rows.map(item=>{
+        const task=taskByQ[item.question_id]||{};
+        const status=task.state||item.state||'unstarted';
+        const evidence=task.evidence_id||item.evidence||'—';
+        return `<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td><span class="geo-adv-pill ${status==='succeeded'?'ok':''}">${esc(status)}</span></td><td>${esc(evidence)}</td></tr>`;
+      }).join(''):'<tr><td colspan="5">固定问题库暂未返回。</td></tr>';
+
+      const receiptBox=byId('geo-adv-receipts');
+      if(receiptBox)receiptBox.innerHTML=receipts.slice(0,10).length?receipts.slice(0,10).map(item=>`<div class="geo-adv-receipt"><b>${esc(item.question_text||item.question_id||'GEO Evidence')}</b><small>${esc(item.provider||'--')} · ${esc(item.evidence_level||'C')}级 · ${esc(item.evidence_id||item.receipt_id||'--')}</small><small>${esc(item.tested_at||'')}</small></div>`).join(''):'<div class="geo-adv-receipt"><b>暂无正式 Receipt</b><small>真实外部验证完成后会自动出现在这里。</small></div>';
+
+      const health=byId('geo-adv-health');
+      if(health)health.innerHTML=settled.map((x,i)=>`<span class="${x.status==='fulfilled'?'ok':''}">${['总览','50问','队列','Receipt'][i]}：${x.status==='fulfilled'?'正常':'重试中'}</span>`).join('');
+
+      const running=[...queue].reverse().find(x=>x.state==='running'&&x.test_method==='browser');
+      if(running&&!advancedTask){
+        advancedTask=running;
+        byId('geo-adv-task').value=running.task_id||'';
+        byId('geo-adv-question').value=running.question_text||'';
+      }
+      if(state){
+        const failed=settled.filter(x=>x.status==='rejected').length;
+        state.textContent=failed?`部分可用 · ${4-failed}/4`:'已加载';
+        state.className=`geo-adv-state ${failed?'':'ok'}`;
+      }
+      document.documentElement.dataset.kzGeoAdvancedInlineReady='1';
+      if(settled.every(x=>x.status==='rejected'))setAdvancedMessage('高级工具数据接口暂未响应；界面已保留，可点击刷新。',true);
+    }catch(error){
+      if(state){state.textContent='加载异常';state.className='geo-adv-state bad'}
+      setAdvancedMessage(error.message,true);
+    }finally{advancedBusy=false}
+  }
+
+  async function prepareAdvancedBrowser(limit,button){
+    button.disabled=true;
+    const old=button.textContent;
+    try{
+      button.textContent='准备中…';
+      await post('/api/r8-19/geo/bootstrap',{});
+      const platform=byId('geo-adv-platform')?.value||'custom_web';
+      const reply=await post('/api/r8-19/geo/browser/prepare',{limit,platform});
+      const task=reply.result?.claim?.task||{};
+      advancedTask=task;
+      byId('geo-adv-task').value=task.task_id||'';
+      byId('geo-adv-question').value=task.question_text||'';
+      setAdvancedMessage(task.task_id?`已准备 ${limit} 题；当前 Task ${task.task_id}。`:'未取得可执行题目。',!task.task_id);
+      await loadAdvanced(true);
+    }catch(error){setAdvancedMessage(error.message,true)}
+    finally{button.disabled=false;button.textContent=old}
+  }
+
+  async function submitAdvancedReceipt(button){
+    button.disabled=true;
+    const old=button.textContent;
+    try{
+      const taskId=String(byId('geo-adv-task')?.value||'').trim();
+      const sessionUrl=String(byId('geo-adv-url')?.value||'').trim();
+      const rawAnswer=String(byId('geo-adv-answer')?.value||'').trim();
+      if(!taskId)throw new Error('请先准备网页验证任务。');
+      if(!sessionUrl||!rawAnswer)throw new Error('请填写真实外部页面 URL 和完整原始回答。');
+      const citationUrls=String(byId('geo-adv-citations')?.value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      button.textContent='保存中…';
+      const reply=await post('/api/r8-19/geo/browser/receipt',{
+        task_id:taskId,
+        platform:byId('geo-adv-platform')?.value||'custom_web',
+        session_url:sessionUrl,
+        raw_answer:rawAnswer,
+        citation_urls:citationUrls
+      });
+      ['geo-adv-task','geo-adv-question','geo-adv-url','geo-adv-citations','geo-adv-answer'].forEach(id=>{const node=byId(id);if(node)node.value=''});
+      advancedTask=null;
+      setAdvancedMessage(`已保存正式 ${reply.result?.evidence_level||'A'}级 Evidence：${reply.result?.evidence_id||''}`);
+      await loadAdvanced(true);
+    }catch(error){setAdvancedMessage(error.message,true)}
+    finally{button.disabled=false;button.textContent=old}
+  }
+
+  window.KZGeoAdvancedInline={mount:mountAdvanced,refresh:()=>loadAdvanced(true)};
 
   function bind(){
     const panel=byId('geo-growth-os');
