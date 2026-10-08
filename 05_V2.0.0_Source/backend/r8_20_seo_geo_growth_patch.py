@@ -42,6 +42,7 @@ _GEO_EVIDENCE_CACHE = {
 _GEO_EVIDENCE_TTL_SECONDS = 20
 _GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS = 12
 _GEO_EVIDENCE_MAX_WORKERS = 2
+_GEO_EVIDENCE_PREWARM_TIMER = None
 
 def _geo_evidence_seed(reason="", loading=True):
     # This deterministic, read-only function never accesses the Windows JSON
@@ -108,6 +109,18 @@ def _geo_evidence_cached():
         if not can_start and not state["refreshing"]:
             reason = reason or "后台证据读取线程未返回；50问基准可查看，其他证据暂不可用"
         return _geo_evidence_seed(reason, bool(state["refreshing"]))
+
+def _schedule_geo_evidence_prewarm():
+    """Warm read-only cache after HTTP routes install; no synchronous disk I/O."""
+    global _GEO_EVIDENCE_PREWARM_TIMER
+    if _GEO_EVIDENCE_PREWARM_TIMER is not None:
+        return
+    timer = threading.Timer(3.0, _geo_evidence_cached)
+    timer.daemon = True
+    timer.name = "kz-geo-evidence-prewarm"
+    _GEO_EVIDENCE_PREWARM_TIMER = timer
+    timer.start()
+
 
 def _geo_evidence_health():
     """Nonblocking diagnostics; no GEO file reads, provider calls or secrets."""
@@ -633,6 +646,7 @@ def install():
     # #687: #683 already protects the first paint and starts the Doubao scan.
     # Start the top-level GEO Growth OS a few seconds later as well, so the
     # owner never has to press "启动 GEO 自动运营" in normal operation.
+    _schedule_geo_evidence_prewarm()
     _schedule_geo_growth_auto_start()
     _INSTALLED = True
 

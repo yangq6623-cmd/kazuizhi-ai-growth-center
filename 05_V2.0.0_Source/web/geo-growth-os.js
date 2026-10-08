@@ -402,6 +402,10 @@
     bindAdvanced();
     showOffline50();
     if(!advancedBaselineLoaded)loadAdvancedBaseline();
+    const receipt=byId('geo-adv-receipts');
+    if(receipt&&!advancedLastGood&&receipt.textContent.includes('正在读取')){
+      receipt.innerHTML='<div class="geo-adv-receipt"><b>正在连接正式 Evidence</b><small>固定50问已可查看；正式验证数据需要独立后端回执。</small></div>';
+    }
     // Main GEO status repaints every 10s: don't restart evidence retrieval or
     // erase partial 50-question rows on every repaint.
     if(Date.now()-advancedLastAttemptAt>20000 && (!advancedLastGood || Date.now()-advancedFetchedAt>45000))loadAdvanced(false);
@@ -411,21 +415,14 @@
   async function loadAdvancedBaseline(){
     if(advancedBaselineLoaded)return;
     advancedBaselineLoaded=true;
-    try{
-      const seed=await json('/api/r8-24/geo-growth/questions-baseline',{timeoutMs:4000});
-      if(advancedLastGood)return;
-      const items=Array.isArray(seed.questions)?seed.questions:[];
-      if(items.length!==50)throw Error('固定50问基准数量异常');
-      const qbox=byId('geo-adv-questions');
-      if(qbox && qbox.dataset.live!=='1'){
-        qbox.innerHTML=items.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>正式验证待同步</td><td>—</td></tr>`).join('');
-      }
-      const s=byId('geo-adv-state');
-      if(s&&s.textContent.includes('读取'))s.textContent='50问基准可用 · 正式证据待同步';
-    }catch(error){
-      advancedBaselineLoaded=false;
-      showOffline50();
-      setAdvancedMessage('固定50问已用离线基准显示；服务器核验失败：'+error.message+'。正式证据未确认。',true);
+    // #743: Do not make a duplicate /api/r8-24/geo-growth/questions-baseline
+    // request from this heavily polled owner workbench. The exact immutable
+    // canonical 50 questions are embedded at build time, parity checked in CI.
+    // This is NOT an independent external AI test, receipt or formal A/B result.
+    showOffline50();
+    const rows=byId('geo-adv-questions')?.querySelectorAll('tr')||[];
+    if(rows.length!==50 && !advancedLastGood){
+      setAdvancedMessage('内置50问列表不完整，请重新安装或检查静态资源。',true);
     }
   }
 
@@ -462,7 +459,10 @@
         const problem=String(snapshot.last_refresh_error||'');
         if(state){state.textContent=problem?'证据读取异常 · 50问独立可用':`50问基准可用 · Evidence同步中`;state.className='geo-adv-state'+(problem?' bad':'');}
         setAdvancedMessage(problem?'后台诊断：'+problem:'50问基准已显示，后台正在同步正式证据和任务回执。',Boolean(problem));
-        if(advancedRetryCount<=10)advancedRetryTimer=setTimeout(()=>loadAdvanced(true),Math.max(1300,Number(snapshot.retry_after_ms||1300)));
+        if(advancedRetryCount<=10){
+          const delay=Math.min(30000,Math.max(5000,Number(snapshot.retry_after_ms||1300))*(1+Math.floor(advancedRetryCount/3)));
+          advancedRetryTimer=setTimeout(()=>loadAdvanced(true),delay);
+        }
         return;
       }
       advancedRetryCount=0;
@@ -531,15 +531,15 @@
       else setAdvancedMessage('');
     }catch(error){
       if(state){state.textContent=advancedLastGood?'最新读取失败 · 显示上次成功数据':'证据读取失败 · 固定50问可用';state.className='geo-adv-state bad'}
-      json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:2500}).then(info=>{
-        if(info?.last_error)setAdvancedMessage('GEO证据诊断：'+info.last_error+'；50问离线可用，正式分数仍以真实回执为准。',true);
-      }).catch(()=>{});
+      // A failed Evidence GET on an overloaded local HTTP server must not
+      // automatically create another health request and compound the overload.
+      // Operators may inspect /api/r8-24/geo-growth/evidence-health separately.
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox&&!advancedLastGood)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>50问基准保留；主 GEO 自动运营不受影响。</small></div>';
       const qbox=byId('geo-adv-questions');
       showOffline50();
       loadAdvancedBaseline();
-      setAdvancedMessage('正式证据读取失败：'+error.message+'；50问可用，正式A/B和Receipt未知，检查后台诊断。',true);
+      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；固定50问正常，正式A/B与Receipt维持待核实。请稍后点击「刷新证据」。',true);
     }finally{advancedBusy=false}
   }
 

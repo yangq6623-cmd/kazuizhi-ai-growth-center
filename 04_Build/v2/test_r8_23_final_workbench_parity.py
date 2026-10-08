@@ -259,6 +259,19 @@ def main() -> None:
     assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
     assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
     assert "geo_validation.dashboard()" in r8_13_patch
+    # #743 parity: offline question wording must be the exact canonical GEO50
+    # from Python, and the browser must never need a duplicate baseline GET.
+    import json as _json
+    import re as _re
+    from core.geo_validation import _fixed_questions as _geo_fixed_questions
+    found = _re.search(r"const OFFLINE_GEO50=Object.freeze\((\[.*?\])\);", geo_growth_ui)
+    assert found, "GEO50 bundled snapshot missing"
+    bundled = _json.loads(found.group(1))
+    canonical = [{key: row[key] for key in ("question_id", "question_text", "question_type")}
+                 for row in _geo_fixed_questions()]
+    assert bundled == canonical, "GEO50 bundled questions differ from canonical Python source"
+    baseline_fn = geo_growth_ui.split("async function loadAdvancedBaseline(){", 1)[1].split("async function loadAdvanced(", 1)[0]
+    assert "await json(" not in baseline_fn and "showOffline50()" in baseline_fn
     for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备人工网页验证1题", "固定 50 问与执行状态", "/api/r8-24/geo-growth/questions-baseline", "loadAdvancedBaseline()", "OFFLINE_GEO50", "/api/r8-24/geo-growth/evidence/prepare", "/api/r8-24/geo-growth/evidence/receipt"):
         assert marker in geo_growth_ui, marker
     assert 'id="r813-geo-frame"' not in seo_bridge
