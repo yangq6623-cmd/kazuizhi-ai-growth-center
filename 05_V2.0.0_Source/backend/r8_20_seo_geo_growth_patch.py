@@ -11,6 +11,7 @@ import threading
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
+from backend import r8_19_geo_validation_patch as geo_validation_api
 from core import runtime_resilience
 from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
@@ -119,6 +120,57 @@ def _ensure_geo_growth_auto_running():
     }
 
 
+def _geo_evidence_snapshot():
+    """Return all advanced GEO truth in one R8-24-owned response.
+
+    Each section is isolated so a slow/non-critical read cannot erase the
+    already-known formal A/B count from the running Growth OS.
+    """
+    growth_status = geo_growth.fast_status()
+    payload = {
+        "formal_ab_completed": int(growth_status.get("formal_ab_completed") or 0),
+        "formal_ab_target": int(growth_status.get("formal_ab_target") or 50),
+        "dashboard": {},
+        "questions": [],
+        "queue": [],
+        "receipts": [],
+        "health": {},
+    }
+
+    def read(name, fn, fallback):
+        try:
+            value = fn()
+            payload["health"][name] = {"ok": True, "error": ""}
+            return value
+        except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError) as error:
+            payload["health"][name] = {"ok": False, "error": str(error)}
+            return fallback
+
+    payload["dashboard"] = read("dashboard", geo_validation_api._dashboard_with_executor, {})
+    qset = read("questions", geo_validation_api.question_set, {})
+    queue = read("queue", geo_validation_api.queue_summary, {})
+    receipt_rows = read("receipts", lambda: geo_validation_api.receipts(50), [])
+
+    payload["questions"] = list((qset or {}).get("questions") or [])
+    payload["question_set"] = qset or {}
+    payload["queue"] = list((queue or {}).get("tasks") or [])
+    payload["queue_summary"] = queue or {}
+    payload["receipts"] = list(receipt_rows or [])
+
+    official = (payload["dashboard"] or {}).get("official") or {}
+    if int(official.get("tested") or 0) > payload["formal_ab_completed"]:
+        payload["formal_ab_completed"] = int(official.get("tested") or 0)
+    payload["formal_ab_target"] = int(
+        ((payload["dashboard"] or {}).get("question_set") or {}).get("total")
+        or (qset or {}).get("total")
+        or payload["formal_ab_target"]
+        or 50
+    )
+    payload["available_sections"] = sum(1 for value in payload["health"].values() if value.get("ok"))
+    payload["total_sections"] = len(payload["health"])
+    return payload
+
+
 def _schedule_geo_growth_auto_start():
     """Defer full-loop start so GEO/SEO first-open remains fast and reliable."""
     global _GEO_GROWTH_AUTO_START_TIMER
@@ -164,6 +216,9 @@ def install():
                 return
             if path in {"/api/r8-24/geo-growth", "/api/r8-24/geo-growth/fast"}:
                 handler._json_ok(geo_growth.fast_status())
+                return
+            if path == "/api/r8-24/geo-growth/evidence":
+                handler._json_ok(_geo_evidence_snapshot())
                 return
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())
@@ -225,6 +280,28 @@ def install():
                 else:
                     result = geo_growth.run_once(force=bool(payload.get("force", True)))
                 handler._json_ok({"result": result, "growth": geo_growth.fast_status()})
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
+        if path in {
+            "/api/r8-24/geo-growth/evidence/bootstrap",
+            "/api/r8-24/geo-growth/evidence/prepare",
+            "/api/r8-24/geo-growth/evidence/receipt",
+        }:
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                if path.endswith("/bootstrap"):
+                    result = geo_validation_api.bootstrap_question_set(force=bool(payload.get("force")))
+                elif path.endswith("/prepare"):
+                    result = geo_validation_api._prepare_browser_task(payload)
+                else:
+                    result = geo_validation_api.geo_browser_validation.record_browser_result(payload)
+                    geo_validation_api._refresh_analysis()
+                handler._json_ok({"result": result, "evidence": _geo_evidence_snapshot()})
             except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
                 handler._json_error(400, error)
             return

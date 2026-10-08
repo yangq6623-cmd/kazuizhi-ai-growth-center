@@ -346,7 +346,7 @@
     byId('geo-adv-refresh')?.addEventListener('click',()=>loadAdvanced(true));
     byId('geo-adv-bootstrap')?.addEventListener('click',async e=>{
       e.currentTarget.disabled=true;
-      try{await post('/api/r8-19/geo/bootstrap',{});setAdvancedMessage('固定50问基准已核验。');await loadAdvanced(true)}
+      try{await post('/api/r8-24/geo-growth/evidence/bootstrap',{});setAdvancedMessage('固定50问基准已核验。');await loadAdvanced(true)}
       catch(error){setAdvancedMessage(error.message,true)}
       finally{e.currentTarget.disabled=false}
     });
@@ -374,19 +374,22 @@
     const state=byId('geo-adv-state');
     if(state){state.textContent='读取中';state.className='geo-adv-state'}
     try{
-      const calls=[
-        json('/api/r8-19/geo',{timeoutMs:6000}),
-        json('/api/r8-19/geo/questions',{timeoutMs:6000}),
-        json('/api/r8-19/geo/queue',{timeoutMs:6000}),
-        json('/api/r8-19/geo/receipts?limit=50',{timeoutMs:6000})
-      ];
-      const settled=await Promise.allSettled(calls);
-      const ok=i=>settled[i]?.status==='fulfilled'?settled[i].value:null;
-      const dashboard=ok(0)||{}, questions=ok(1)?.questions||[], queue=ok(2)?.tasks||[], receipts=ok(3)?.receipts||[];
-      const official=dashboard.official||{}, qset=dashboard.question_set||{}, qsum=dashboard.queue||{};
+      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:12000});
+      const dashboard=snapshot.dashboard||{};
+      const questions=snapshot.questions||[];
+      const queue=snapshot.queue||[];
+      const receipts=snapshot.receipts||[];
+      const official=dashboard.official||{};
+      const qset=snapshot.question_set||dashboard.question_set||{};
+      const qsum=snapshot.queue_summary||dashboard.queue||{};
+      const health=snapshot.health||{};
+      const available=Number(snapshot.available_sections||0);
+      const total=Number(snapshot.total_sections||4);
       const officialReceipts=receipts.filter(x=>x.official_truth);
+      const formalCompleted=Math.max(Number(snapshot.formal_ab_completed||0),Number(official.tested||0));
+      const formalTarget=Number(snapshot.formal_ab_target||qset.total||50);
       const kpis=[
-        ['正式 A/B',`${Number(official.tested||0)} / ${Number(qset.total||50)}`,'唯一正式GEO成绩'],
+        ['正式 A/B',`${formalCompleted} / ${formalTarget}`,'唯一正式GEO成绩'],
         ['Evidence',Number(official.evidence_count||officialReceipts.length),'可追溯正式证据'],
         ['排队',Number(qsum.queued||0),'等待执行'],
         ['执行中',Number(qsum.running||0),'真实验证任务'],
@@ -409,8 +412,12 @@
       const receiptBox=byId('geo-adv-receipts');
       if(receiptBox)receiptBox.innerHTML=receipts.slice(0,10).length?receipts.slice(0,10).map(item=>`<div class="geo-adv-receipt"><b>${esc(item.question_text||item.question_id||'GEO Evidence')}</b><small>${esc(item.provider||'--')} · ${esc(item.evidence_level||'C')}级 · ${esc(item.evidence_id||item.receipt_id||'--')}</small><small>${esc(item.tested_at||'')}</small></div>`).join(''):'<div class="geo-adv-receipt"><b>暂无正式 Receipt</b><small>真实外部验证完成后会自动出现在这里。</small></div>';
 
-      const health=byId('geo-adv-health');
-      if(health)health.innerHTML=settled.map((x,i)=>`<span class="${x.status==='fulfilled'?'ok':''}">${['总览','50问','队列','Receipt'][i]}：${x.status==='fulfilled'?'正常':'重试中'}</span>`).join('');
+      const healthBox=byId('geo-adv-health');
+      const labels={dashboard:'总览',questions:'50问',queue:'队列',receipts:'Receipt'};
+      if(healthBox)healthBox.innerHTML=Object.keys(labels).map(key=>{
+        const item=health[key]||{ok:false,error:'未返回'};
+        return `<span class="${item.ok?'ok':''}" title="${esc(item.error||'')}">${labels[key]}：${item.ok?'正常':'重试中'}</span>`;
+      }).join('');
 
       const running=[...queue].reverse().find(x=>x.state==='running'&&x.test_method==='browser');
       if(running&&!advancedTask){
@@ -419,12 +426,14 @@
         byId('geo-adv-question').value=running.question_text||'';
       }
       if(state){
-        const failed=settled.filter(x=>x.status==='rejected').length;
-        state.textContent=failed?`部分可用 · ${4-failed}/4`:'已加载';
-        state.className=`geo-adv-state ${failed?'':'ok'}`;
+        state.textContent=available>=total?`数据正常 · ${available}/${total}`:`部分可用 · ${available}/${total}`;
+        state.className=`geo-adv-state ${available>=total?'ok':''}`;
       }
       document.documentElement.dataset.kzGeoAdvancedInlineReady='1';
-      if(settled.every(x=>x.status==='rejected'))setAdvancedMessage('高级工具数据接口暂未响应；界面已保留，可点击刷新。',true);
+      document.documentElement.dataset.kzGeoAdvancedSections=String(available);
+      if(available===0)setAdvancedMessage('高级证据数据暂未返回；主GEO自动运营不受影响，可点击刷新重试。',true);
+      else if(available<total)setAdvancedMessage(`高级证据已有 ${available}/${total} 个数据区可用；其余后台重试中。`);
+      else setAdvancedMessage('');
     }catch(error){
       if(state){state.textContent='加载异常';state.className='geo-adv-state bad'}
       setAdvancedMessage(error.message,true);
@@ -438,7 +447,7 @@
       button.textContent='准备中…';
       await post('/api/r8-19/geo/bootstrap',{});
       const platform=byId('geo-adv-platform')?.value||'custom_web';
-      const reply=await post('/api/r8-19/geo/browser/prepare',{limit,platform});
+      const reply=await post('/api/r8-24/geo-growth/evidence/prepare',{limit,platform});
       const task=reply.result?.claim?.task||{};
       advancedTask=task;
       byId('geo-adv-task').value=task.task_id||'';
@@ -460,7 +469,7 @@
       if(!sessionUrl||!rawAnswer)throw new Error('请填写真实外部页面 URL 和完整原始回答。');
       const citationUrls=String(byId('geo-adv-citations')?.value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
       button.textContent='保存中…';
-      const reply=await post('/api/r8-19/geo/browser/receipt',{
+      const reply=await post('/api/r8-24/geo-growth/evidence/receipt',{
         task_id:taskId,
         platform:byId('geo-adv-platform')?.value||'custom_web',
         session_url:sessionUrl,

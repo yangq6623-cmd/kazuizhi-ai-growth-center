@@ -177,6 +177,30 @@ def assert_geo_advanced(driver):
     body_text = inline.text.strip()
     if len(body_text) < 250:
         raise AssertionError(f"高级 GEO 原生工具内容不足：{len(body_text)}")
+
+    evidence = driver.execute_async_script("""
+      const done=arguments[0];
+      fetch('/api/r8-24/geo-growth/evidence',{cache:'no-store'})
+        .then(async r=>({ok:r.ok,status:r.status,body:await r.json().catch(()=>({}))}))
+        .then(done).catch(error=>done({ok:false,error:String(error)}));
+    """)
+    if not evidence.get("ok"):
+        raise AssertionError(f"R8-24 GEO Evidence endpoint failed: {evidence}")
+    evidence_body = evidence.get("body") or {}
+    health = evidence_body.get("health") or {}
+    if not all((health.get(key) or {}).get("ok") for key in ("dashboard","questions","queue","receipts")):
+        raise AssertionError(f"GEO advanced evidence sections not all healthy: {health}")
+    if int(evidence_body.get("available_sections") or 0) != 4:
+        raise AssertionError(f"GEO advanced evidence is not 4/4: {evidence_body.get('available_sections')}")
+    growth = driver.execute_async_script("""
+      const done=arguments[0];
+      fetch('/api/r8-24/geo-growth/fast',{cache:'no-store'})
+        .then(r=>r.json()).then(done).catch(error=>done({error:String(error)}));
+    """)
+    if int(evidence_body.get("formal_ab_completed") or 0) != int((growth or {}).get("formal_ab_completed") or 0):
+        raise AssertionError(f"formal A/B mismatch between advanced and Growth OS: evidence={evidence_body.get('formal_ab_completed')} growth={(growth or {}).get('formal_ab_completed')}")
+    if driver.execute_script("return document.documentElement.dataset.kzGeoAdvancedSections") != "4":
+        raise AssertionError("高级 GEO 前端没有达到 4/4 数据可用状态")
     for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")

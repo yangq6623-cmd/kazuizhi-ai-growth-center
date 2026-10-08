@@ -262,6 +262,11 @@ def main() -> None:
     for marker in ("geo-advanced-inline", "KZGeoAdvancedInline", "kzGeoAdvancedInlineReady", "准备网页验证1题", "固定 50 问与执行状态", "/api/r8-19/geo/browser/prepare", "/api/r8-19/geo/browser/receipt"):
         assert marker in geo_growth_ui, marker
     assert 'id="r813-geo-frame"' not in seo_bridge
+    r8_20_patch = text(SRC / "backend" / "r8_20_seo_geo_growth_patch.py")
+    for marker in ("/api/r8-24/geo-growth/evidence", "def _geo_evidence_snapshot()", "available_sections", "geo_validation_api._prepare_browser_task"):
+        assert marker in r8_20_patch, marker
+    for marker in ("/api/r8-24/geo-growth/evidence", "kzGeoAdvancedSections", "数据正常"):
+        assert marker in geo_growth_ui, marker
     # Check executable call patterns, not explanatory docstring text.
     assert "= geo_autonomy.status()" not in fast_status_block
     assert "return geo_autonomy.status()" not in fast_status_block
