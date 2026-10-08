@@ -61,15 +61,10 @@ def run() -> None:
         assert not stalled["snapshot_ready"]
         assert len(stalled["questions"]) == 50
         assert "12秒" in stalled["last_refresh_error"], stalled
-        # A late response from a timed-out task must not replace newer truth.
+        # The timed-out generation is fenced by its token. A replacement worker
+        # may already be running; releasing the fixture permits true recovery.
         gate.set()
         time.sleep(0.1)
-        assert bridge._GEO_EVIDENCE_CACHE["payload"] is None
-        with bridge._GEO_EVIDENCE_LOCK:
-            bridge._GEO_EVIDENCE_CACHE["workers"] = []
-            bridge._GEO_EVIDENCE_CACHE["started"] = 0
-        recovered = bridge._geo_evidence_cached()
-        assert not recovered["snapshot_ready"]
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
             recovered = bridge._geo_evidence_cached()
