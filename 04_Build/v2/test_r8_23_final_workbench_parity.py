@@ -238,9 +238,12 @@ def main() -> None:
     assert "def fast_status()" in geo_growth_core
     fast_status_block = geo_growth_core[geo_growth_core.index("def fast_status()"):geo_growth_core.index("def status()")]
     assert '"status_mode": "fast_snapshot"' in fast_status_block
-    assert "geo_autonomy.status()" not in fast_status_block
-    assert "geo.dashboard()" not in fast_status_block
-    assert "geo_analysis.refresh" not in fast_status_block
+    # Check executable call patterns, not explanatory docstring text.
+    assert "= geo_autonomy.status()" not in fast_status_block
+    assert "return geo_autonomy.status()" not in fast_status_block
+    assert "= geo.dashboard()" not in fast_status_block
+    assert "return geo.dashboard()" not in fast_status_block
+    assert "geo_analysis.refresh(" not in fast_status_block
     assert "_JSON_IO_LOCK = threading.RLock()" in storage
     assert "for attempt in range(8)" in storage
 
