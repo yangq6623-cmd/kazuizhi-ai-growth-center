@@ -13,9 +13,11 @@
   const PRIMARY = [
     {label:'老板总控', icon:'总', target:'dashboard'},
     {label:'AI决策中心', icon:'策', target:'workflow'},
-    {label:'执行中心', icon:'执', target:'operational-hub'},
+    {label:'内容创导', icon:'创', target:'content-studio', lazy:true},
+    {label:'执行中心', icon:'执', target:'operational-hub', lazy:true},
     {label:'待我处理', icon:'待', target:'r810-attention', badge:true},
     {label:'经营结果', icon:'果', target:'analytics'},
+    {label:'SEO/GEO增长', icon:'搜', target:'r813-seo-geo', lazy:true},
     {label:'自进化中心', icon:'进', target:'r810-evolution'},
   ];
   const SECONDARY = [
@@ -93,7 +95,7 @@
       [...nav.children].forEach(child=>child.classList.add('r810-legacy-route'));
       const title=document.createElement('small'); title.className='r810-nav-title'; title.textContent='自治运营';
       primary=document.createElement('div'); primary.className='r810-primary-nav';
-      primary.innerHTML=PRIMARY.map(item=>`<button class="r810-nav-button${item.target==='dashboard'?' active':''}" data-target="${item.target}"><span class="r810-icon">${item.icon}</span><span>${item.label}</span>${item.badge?'<small id="r810-attention-badge" hidden>0</small>':''}</button>`).join('');
+      primary.innerHTML=PRIMARY.map(item=>`<button class="r810-nav-button${item.target==='dashboard'?' active':''}" data-target="${item.target}"${item.lazy?' data-kz-lazy-route="1"':''}><span class="r810-icon">${item.icon}</span><span>${item.label}</span>${item.badge?'<small id="r810-attention-badge" hidden>0</small>':''}</button>`).join('');
       const secondary=document.createElement('div'); secondary.className='r810-secondary-nav';
       secondary.innerHTML=SECONDARY.map(item=>`<button class="r810-nav-button secondary" data-target="${item.target}"${item.action?` data-action="${item.action}"`:''}><span class="r810-icon">${item.icon}</span><span>${item.label}</span></button>`).join('');
       nav.prepend(title,primary); nav.appendChild(secondary);
