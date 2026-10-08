@@ -142,7 +142,7 @@ def main() -> None:
     assert "button.disabled = active" not in route_bootstrap
     assert 'data-src="/r8_13_seo_geo.html?embed=1"' in seo_bridge
     assert "loadWorkspaceIfNeeded(target)" in seo_bridge
-    for marker in ("frameAtWantedLocation", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "5000"):
+    for marker in ("frameAtWantedLocation", "workspaceDomReady", "kzLoading", "kzLoadAttempts", "frame.dataset.kzLoaded='0'", "reload='+Date.now()", "9000", "<5"):
         assert marker in seo_bridge, marker
     render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
     assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadWorkspaceIfNeeded(target);")
