@@ -32,6 +32,7 @@
   let advancedRetryCount=0;
   let advancedRetryTimer=null;
   let advancedLastGood=null;
+  let advancedLastAttemptAt=0;
 
   async function json(path, options={}) {
     const controller=new AbortController();
@@ -347,7 +348,7 @@
     const root=byId('geo-advanced-inline');
     if(!root||root.dataset.bound==='1')return;
     root.dataset.bound='1';
-    byId('geo-adv-refresh')?.addEventListener('click',()=>loadAdvanced(true));
+    byId('geo-adv-refresh')?.addEventListener('click',()=>{advancedRetryCount=0;loadAdvanced(true)});
     byId('geo-adv-bootstrap')?.addEventListener('click',async e=>{
       e.currentTarget.disabled=true;
       try{await post('/api/r8-24/geo-growth/evidence/bootstrap',{});setAdvancedMessage('固定50问基准已核验。');await loadAdvanced(true)}
@@ -368,7 +369,9 @@
       root=byId('geo-advanced-inline');
     }
     bindAdvanced();
-    if(!advancedLastGood || Date.now()-advancedFetchedAt>45000)loadAdvanced(false);
+    // Main GEO status repaints every 10s: don't restart evidence retrieval or
+    // erase partial 50-question rows on every repaint.
+    if(Date.now()-advancedLastAttemptAt>20000 && (!advancedLastGood || Date.now()-advancedFetchedAt>45000))loadAdvanced(false);
     return true;
   }
 
@@ -376,17 +379,35 @@
     if(advancedBusy)return;
     if(!force&&advancedLastGood&&Date.now()-advancedFetchedAt<45000)return;
     advancedBusy=true;
+    advancedLastAttemptAt=Date.now();
     if(advancedRetryTimer){clearTimeout(advancedRetryTimer);advancedRetryTimer=null;}
     const state=byId('geo-adv-state');
-    if(state&&!advancedLastGood){state.textContent='正在准备证据快照';state.className='geo-adv-state'}
+    if(state&&!advancedLastGood&&advancedRetryCount===0){state.textContent='正在读取，先显示50问基准';state.className='geo-adv-state'}
     try{
       const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:8000});
       if(snapshot.snapshot_ready===false){
+        // Unlike #731, the first response contains the canonical 50 questions.
+        // Render them immediately, even if the receipt ledger cannot be read.
+        const questions=Array.isArray(snapshot.questions)?snapshot.questions:[];
+        const qbox=byId('geo-adv-questions');
+        if(qbox)qbox.innerHTML=questions.length?questions.map(item=>`<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td>待读取</td><td>—</td></tr>`).join(''):'<tr><td colspan="5">50问基准未能读取，请重试。</td></tr>';
+        const kpiBox=byId('geo-adv-kpis');
+        const total=questions.length||Number(snapshot.formal_ab_target||50);
+        if(kpiBox)kpiBox.innerHTML=[
+          ['正式 A/B',`待同步 / ${total}`],
+          ['50问基准',`${questions.length} / ${total}`],
+          ['队列','待同步'],['Receipt','待同步']
+        ].map(x=>`<article><span>${esc(x[0])}</span><b>${esc(x[1])}</b></article>`).join('');
+        const receiptBox=byId('geo-adv-receipts');
+        if(receiptBox)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>证据读取尚未完成</b><small>仅50问基准可用；不把未知的 A/B / Receipt 统计为零。</small></div>';
+        const healthBox=byId('geo-adv-health');
+        if(healthBox)healthBox.innerHTML='<span class="ok">50问：基准可用</span><span>正式 A/B：待同步</span><span>队列：待同步</span><span>Receipt：待同步</span>';
+        document.documentElement.dataset.kzGeoAdvancedSections=String(snapshot.available_sections||1);
         advancedRetryCount+=1;
         const problem=String(snapshot.last_refresh_error||'');
-        if(state){state.textContent=advancedRetryCount>8?'读取延迟 · 可重试':'正在读取真实证据';state.className='geo-adv-state';}
-        setAdvancedMessage(problem?'后台证据快照生成未完成：'+problem:'首次读取证据中，主 GEO 运营继续运行。',advancedRetryCount>8);
-        if(advancedRetryCount<=8)advancedRetryTimer=setTimeout(()=>loadAdvanced(true),Number(snapshot.retry_after_ms||1400));
+        if(state){state.textContent=problem?'数据读取受阻 · 1/4':`50问已显示 · 1/4`;state.className='geo-adv-state'+(problem?' bad':'');}
+        setAdvancedMessage(problem?'后台诊断：'+problem:'50问基准已显示，后台正在同步正式证据和任务回执。',Boolean(problem));
+        if(advancedRetryCount<=10)advancedRetryTimer=setTimeout(()=>loadAdvanced(true),Math.max(1300,Number(snapshot.retry_after_ms||1300)));
         return;
       }
       advancedRetryCount=0;
@@ -454,9 +475,9 @@
     }catch(error){
       if(state){state.textContent=advancedLastGood?'最新读取失败 · 显示上次成功数据':'读取失败 · 可重试';state.className='geo-adv-state bad'}
       const receiptBox=byId('geo-adv-receipts');
-      if(receiptBox)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>主 GEO 自动运营继续工作；点击“刷新证据”即可重新读取。</small></div>';
+      if(receiptBox&&!advancedLastGood)receiptBox.innerHTML='<div class="geo-adv-receipt"><b>Evidence 暂未读取</b><small>50问基准保留；主 GEO 自动运营不受影响。</small></div>';
       const qbox=byId('geo-adv-questions');
-      if(qbox)qbox.innerHTML='<tr><td colspan="5">证据快照读取失败；主运营不受影响，可点击刷新证据。</td></tr>';
+      if(qbox&&!qbox.querySelectorAll('tr').length)qbox.innerHTML='<tr><td colspan="5">50问基准读取失败，请重试。</td></tr>';
       setAdvancedMessage(error.message,true);
     }finally{advancedBusy=false}
   }
