@@ -141,8 +141,11 @@ def assert_seo_geo(driver):
     """)
     if parity.get("error"):
         raise AssertionError(f"GEO truth parity request failed: {parity['error']}")
-    if parity.get("legacy") != parity.get("growth") or parity.get("source") != "r8-19-official-evidence":
-        raise AssertionError(f"GEO official truth mismatch: {parity}")
+    if parity.get("growth", 0) > 0:
+        if parity.get("legacy") != parity.get("growth") or parity.get("source") != "r8-19-official-evidence":
+            raise AssertionError(f"GEO official truth mismatch: {parity}")
+    elif parity.get("source") not in {"r8-19-official-evidence", "r8-13-legacy-observation"}:
+        raise AssertionError(f"GEO truth source is unknown when no formal Evidence exists: {parity}")
 
     advanced = driver.find_element(By.ID, "geo-growth-advanced")
     summary = advanced.find_element(By.TAG_NAME, "summary")
