@@ -109,7 +109,13 @@ def _kick_snapshot_refresh(delay_seconds=1.5):
 
 
 def _overlay_formal_geo_truth(payload):
-    """Make the legacy SEO summary read the same official GEO truth ledger."""
+    """Prefer official A/B truth while preserving legacy local observations.
+
+    R8-13 historically accepted explicit local GEO observations. Existing tests
+    and upgraded installs can legitimately contain those rows before the R8-19
+    official Evidence ledger has any A/B receipts. Once official Evidence exists
+    it becomes authoritative for every owner-facing formal GEO metric.
+    """
     result = deepcopy(payload)
     try:
         truth = geo_validation.dashboard()
@@ -117,20 +123,30 @@ def _overlay_formal_geo_truth(payload):
         question_set = truth.get("question_set") or {}
         tested = int(official.get("tested") or 0)
         geo = result.setdefault("geo", {})
-        geo.update({
-            "questions": int(question_set.get("total") or geo.get("questions") or 50),
-            "tested_questions": tested,
-            "observations": tested,
-            "mentioned": int(official.get("mentioned") or 0),
-            "cited": int(official.get("cited") or 0),
-            "recommended": int(official.get("recommended") or 0),
-            "mention_rate": official.get("mention_rate") if tested else 0,
-            "citation_rate": official.get("citation_rate") if tested else 0,
-            "recommendation_rate": official.get("recommendation_rate") if tested else 0,
-            "measurement_state": official.get("measurement_state") or ("measured" if tested else "not_started"),
-            "truth_source": "r8-19-official-evidence",
-            "evidence_count": int(official.get("evidence_count") or 0),
-        })
+        geo["questions"] = int(question_set.get("total") or geo.get("questions") or 50)
+        if tested > 0:
+            geo.update({
+                "tested_questions": tested,
+                "observations": tested,
+                "mentioned": int(official.get("mentioned") or 0),
+                "cited": int(official.get("cited") or 0),
+                "recommended": int(official.get("recommended") or 0),
+                "mention_rate": official.get("mention_rate"),
+                "citation_rate": official.get("citation_rate"),
+                "recommendation_rate": official.get("recommendation_rate"),
+                "measurement_state": official.get("measurement_state") or "measured",
+                "truth_source": "r8-19-official-evidence",
+                "evidence_count": int(official.get("evidence_count") or 0),
+            })
+        else:
+            # No formal Evidence yet: do not erase a truthful R8-13 observation.
+            legacy_observations = int(geo.get("observations") or 0)
+            geo["measurement_state"] = "measured" if legacy_observations > 0 else (
+                geo.get("measurement_state") or "not_started"
+            )
+            geo["truth_source"] = "r8-13-legacy-observation" if legacy_observations > 0 else "r8-19-official-evidence"
+            geo["formal_tested_questions"] = 0
+            geo["formal_evidence_count"] = 0
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
         pass
     return result
