@@ -146,7 +146,7 @@ def main() -> None:
         assert marker in seo_bridge, marker
     for marker in ("ensureParentGeoCore", "parentGeoCoreReady", "loadGeoAdvancedInBackground", "GEO 自动增长工作台正在准备"):
         assert marker in seo_bridge, marker
-    index_html = text(WEB / "index.html")
+    index_html = text(INDEX)
     assert 'src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"' in index_html
     render_workspace = seo_bridge[seo_bridge.index("function renderWorkspace(name)"):]
     assert render_workspace.index("desiredWorkspace=target;") < render_workspace.index("loadWorkspaceIfNeeded(target);")
