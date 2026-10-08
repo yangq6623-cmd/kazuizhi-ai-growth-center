@@ -266,7 +266,7 @@ def main() -> None:
     for marker in ("/api/r8-24/geo-growth/evidence", "def _geo_evidence_snapshot()", "def _geo_snapshot_file(", "lock_free_atomic_files", "data_root()", "available_sections", "geo_validation_api._prepare_browser_task"):
         assert marker in r8_20_patch, marker
     assert "geo_growth.fast_status()" not in r8_20_patch[r8_20_patch.index("def _geo_evidence_snapshot()"):r8_20_patch.index("def _schedule_geo_growth_auto_start()")]
-    for marker in ("def _geo_evidence_cached()", "def _geo_evidence_update_cache()", '"snapshot_ready": False', '"retry_after_ms": 1400'):
+    for marker in ("def _geo_evidence_cached()", "def _geo_evidence_update_cache(token)", '"snapshot_ready": False', '"retry_after_ms": 1300', "_GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS", "_geo_evidence_seed("):
         assert marker in r8_20_patch, marker
     for marker in ("/api/r8-24/geo-growth/evidence", "kzGeoAdvancedSections", "数据正常"):
         assert marker in geo_growth_ui, marker

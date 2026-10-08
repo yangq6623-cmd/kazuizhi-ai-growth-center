@@ -209,6 +209,13 @@ def assert_geo_advanced(driver):
     WebDriverWait(driver, 12).until(lambda d: d.execute_script("return document.documentElement.dataset.kzGeoAdvancedSections") == "4")
     if driver.execute_script("return document.documentElement.dataset.kzGeoAdvancedSections") != "4":
         raise AssertionError("高级 GEO 前端没有达到 4/4 数据可用状态")
+    rows = driver.find_elements(By.CSS_SELECTOR, "#geo-adv-questions tr")
+    if len(rows) != 50:
+        raise AssertionError(f"高级 GEO 真正渲染的50问数量错误：{len(rows)}")
+    if "正在读取" in driver.find_element(By.ID, "geo-adv-receipts").text:
+        raise AssertionError("GEO Evidence/Receipt still shows perpetual loading")
+    if not driver.find_element(By.ID, "geo-os-today").text.strip():
+        raise AssertionError("GEO today truthful activity ledger is missing")
     for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")
