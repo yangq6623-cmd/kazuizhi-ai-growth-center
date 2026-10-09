@@ -144,6 +144,43 @@ def main():
         assert "</script><script>" not in driver.page_source
         print("PASS: inlined dynamic mission content cannot execute HTML/script injection")
 
+        # #775 regression matching the owner's actual screenshot: the SEO/GEO
+        # page mounts its GEO core in the PARENT index.html, not an iframe.
+        # Blocking ALL geo-growth API replies and the core JS network path must
+        # still leave the genuine owner table visible from the root HTML reply.
+        owner.clear()
+        owner.update(fixture())
+        driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": [
+            "*geo-growth-os.js*", "*/api/r8-24/geo-growth/*",
+        ]})
+        for turn in range(2):
+            driver.get(base + f"/index.html?field-owner={turn}")
+            wait = WebDriverWait(driver, 24)
+            wait.until(lambda d: d.execute_script("""
+              return !!window.KZR813SeoGeoBridge?.openGeo &&
+                !!window.__KZ_GEO_GROWTH_OS_BOOT__;
+            """))
+            driver.execute_script("window.KZR813SeoGeoBridge.openGeo()")
+            wait.until(lambda d: d.execute_script("""
+              const rows=document.getElementById('geo-os-rows');
+              return document.documentElement.dataset.kzGeoPriorityBoot==='ready'
+                && !!rows &&
+                rows.textContent.includes('UNIQUE_775_GEO_OPPORTUNITY');
+            """))
+            assert driver.execute_script("""
+              return ![...document.scripts].some(s=>s.src.includes('geo-growth-os.js'));
+            """)
+            assert "2 / 50" in driver.find_element("id", "geo-os-kpis").text
+            print(f"PASS: parent SEO/GEO owner tab {turn+1}/2 shows real GEO data with fast-ui and core JS GETs blocked")
+
+        with urlopen(base + "/index.html", timeout=4) as response:
+            assert response.headers.get("X-KZ-GEO-Boot") == "owner-inline-snapshot"
+            assert response.headers.get("X-KZ-GEO-Truth") == "snapshot-ready"
+            raw = response.read().decode("utf-8")
+            assert raw.count('id="kz-geo-core-embedded"') == 1
+            assert 'id="kz-geo-fast-bootstrap"' in raw
+        print("PASS: production index.html embeds one authenticated GEO snapshot and one canonical core")
+
         # Legacy advanced mode must retain its own controller, without adding
         # the canonical main GEO core a second time.
         with urlopen(base + "/geo.html?embed=1&advanced=1", timeout=5) as response:
