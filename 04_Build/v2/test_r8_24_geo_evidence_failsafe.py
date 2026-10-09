@@ -189,6 +189,46 @@ def run() -> None:
 
 
 
+def test_geo_truth_unknown_and_stalled_threads():
+    class Blocked:
+        def is_alive(self):
+            return True
+    old=dict(bridge._GEO_FAST_CACHE)
+    try:
+        with bridge._GEO_FAST_LOCK:
+            bridge._GEO_FAST_CACHE.update(payload=None, updated=0,
+                started=time.monotonic()-32, refreshing=False,
+                workers=[Blocked(), Blocked()], error="blocked file read", attempt=12)
+        pending=bridge._geo_fast_cached()
+        assert pending["status_ready"] is False
+        assert pending["pending_reason"] == "blocked_reader_workers"
+        health=bridge._geo_fast_health()
+        assert health["worker_count"] == 2
+        assert health["worker_limit_reached"] is True
+        assert "blocked file read" in health["last_error"]
+        frontend=(SRC/"web"/"geo-growth-os.js").read_text(encoding="utf-8")
+        for text in ("技术阻塞：状态待核查", "后台数据尚未核实",
+                     "worker_limit_reached", "真实机会明细尚未读取"):
+            assert text in frontend, text
+        print("PASS: exhausted snapshot workers show UNKNOWN rather than false zeros")
+    finally:
+        with bridge._GEO_FAST_LOCK:
+            bridge._GEO_FAST_CACHE.clear()
+            bridge._GEO_FAST_CACHE.update(old)
+
+
+def test_late_lazy_module_retry_registration():
+    source=(SRC/"web"/"r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+    assert "scheduleFailedModuleRecovery();" in source
+    assert "failureRecoveryTimer" in source
+    assert "failureRecoveryAttempts" in source
+    assert "network_restored" in source
+    assert "visibilitychange" in source
+    assert "...Object.values(LAZY_SEQUENCE).flat()" in source
+    assert "setTimeout(() => retryFailedModules(`auto_retry_" not in source
+    print("PASS: late lazy module failures register bounded scheduled recovery")
+
+
 def test_evidence_health_fallback_count():
     """Fallback may surface only truthful cached A/B, never baseline as completion."""
     saved = dict(bridge._GEO_EVIDENCE_CACHE)
@@ -413,3 +453,5 @@ if __name__ == "__main__":
     test_compact_owner_http_recovery()
     test_evidence_health_fallback_count()
     test_lazy_module_recovery_registry()
+    test_geo_truth_unknown_and_stalled_threads()
+    test_late_lazy_module_retry_registration()
