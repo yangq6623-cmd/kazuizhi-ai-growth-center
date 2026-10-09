@@ -150,6 +150,16 @@ def main():
         # still leave the genuine owner table visible from the root HTML reply.
         owner.clear()
         owner.update(fixture())
+        # This focused browser fixture imports only GEO endpoints, not the
+        # complete production registry for every owner API. A legacy owner
+        # request may therefore see test-only 404 HTML and invoke alert().
+        # Record these unrelated prompts without allowing them to interrupt
+        # Selenium's GEO route and real table assertions.
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": "window.__KZ_775_TEST_ALERTS__=[];"
+                      "window.alert=(m)=>window.__KZ_775_TEST_ALERTS__.push(String(m));"
+                      "window.confirm=()=>false;"
+        })
         driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": [
             "*geo-growth-os.js*", "*/api/r8-24/geo-growth/*",
         ]})
