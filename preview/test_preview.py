@@ -84,6 +84,24 @@ def run():
         path = ROOT / "preview" / "browser-preview.png"
         driver.save_screenshot(str(path))
         print("SCREENSHOT:", path.name)
+    except Exception:
+        if driver:
+            print("PREVIEW DEBUG:", driver.execute_script("""
+              const f=document.querySelector('#seo-frame');
+              const d=f?.contentDocument;
+              return {
+                outer_text:document.body.innerText.slice(0,550),
+                frame_url:f?.contentWindow?.location?.href,
+                frame_ready:d?.readyState,
+                frame_body_text:d?.body?.innerText.slice(0,850),
+                frame_html: d?.body?.innerHTML.slice(-700),
+                frame_scripts:[...(d?.scripts||[])].map(s=>s.src||'inline').slice(-7),
+                kpi_count: d?.querySelectorAll('#kpis .kpi').length,
+                service_message: d?.querySelector('#service-message')?.textContent
+              }
+            """), flush=True)
+            driver.save_screenshot(str(ROOT / "preview" / "browser-preview.png"))
+        raise
     finally:
         if driver:
             driver.quit()
