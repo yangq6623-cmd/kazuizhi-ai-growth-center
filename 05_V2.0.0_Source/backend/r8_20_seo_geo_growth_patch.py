@@ -60,7 +60,7 @@ def _http_health():
             "inflight_requests": len(active),
             "peak_inflight_requests": _HTTP_DIAG_PEAK_INFLIGHT,
             "completed_requests": _HTTP_DIAG_COMPLETED,
-            "active_slow_requests": [x for x in active if x["elapsed_ms"] >= 1000][:12],
+            "active_slow_requests": [x for x in active if x["elapsed_ms"] >= _HTTP_DIAG_SLOW_SECONDS*1000][:12],
             "recent_slow_requests": list(_HTTP_DIAG_RECENT_SLOW),
             "slow_threshold_ms": round(_HTTP_DIAG_SLOW_SECONDS*1000),
             "privacy": "path_categories_only_no_urls_or_query_strings",
