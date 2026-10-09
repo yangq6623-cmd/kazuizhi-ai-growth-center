@@ -4,6 +4,7 @@ on:
     branches: ['review/geo-770-load-realism-20261009']
     paths:
       - '05_V2.0.0_Source/web/geo-growth-os.js'
+      - '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py'
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '04_Build/v2/test_geo_evidence_source_browser.py'
       - '04_Build/v2/test_owner_sidebar_browser.py'
