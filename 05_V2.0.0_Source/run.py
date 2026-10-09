@@ -62,6 +62,7 @@ from core.seo_geo_growth import dashboard as seo_geo_dashboard
 from core.seo_observability import run as run_seo_technical_audit, should_run_today as seo_technical_audit_due
 from integrations.ai_gateway import run_once as run_ai_gateway
 from integrations.bridge import sync_once as bridge_sync_once
+from integrations.business_data import start_background_refresh as start_business_refresh_worker
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
 from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
 from integrations.remote_agent import auto_import_pairing
@@ -339,6 +340,7 @@ def main():
                 print(f"Initial handoff recovery deferred: {error}", flush=True)
 
             worker_stops = [
+                start_business_refresh_worker(),
                 start_scheduler(),
                 start_content_execution_worker(),
                 start_chatgpt_relay_worker(),
