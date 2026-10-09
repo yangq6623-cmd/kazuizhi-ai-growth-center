@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡嘴子 AI · SEO/GEO 浏览器验收</title>
+<style>
+:root{font-family:"Microsoft YaHei",Inter,system-ui,sans-serif;color:#172b4c;background:#f3f6fb}
+*{box-sizing:border-box}
+body{margin:0;min-width:340px}
+.layout{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}
+aside{position:sticky;top:0;height:100vh;padding:24px 16px;background:#0d223f;color:#e3edfb}
+.brand{display:flex;gap:10px;align-items:center;padding:5px 10px 25px;border-bottom:1px solid #2a4261}
+.logo{width:37px;height:37px;display:grid;place-items:center;background:#2563eb;color:#fff;border-radius:11px;font-weight:900}
+.brand b{font-size:15px}.brand small{display:block;margin-top:4px;color:#91a8c8;font-size:11px}
+nav{padding-top:24px}nav p{margin:0 11px 13px;color:#91a8c8;font-size:11px}
+nav button{width:100%;padding:12px 14px;border:0;border-radius:7px;background:transparent;color:#c4d5ed;text-align:left;font:inherit;font-size:13px;cursor:pointer}
+nav button.active{background:#2563eb;color:#fff;font-weight:800}
+nav button:focus-visible,.tabs button:focus-visible{outline:3px solid #8bb5ff;outline-offset:3px}
+aside .bottom{position:absolute;bottom:24px;left:24px;right:20px;border-top:1px solid #2a4261;padding-top:15px;font-size:11px;color:#91a8c8;line-height:1.7}
+main{min-width:0;padding:22px 24px 30px}
+header{background:#fff;border:1px solid #e3eaf4;border-radius:12px;padding:20px 24px;margin-bottom:13px}
+header .eyebrow{font-size:11px;color:#647eaa}h1{font-size:23px;margin:5px 0 4px}header p{color:#73849a;font-size:12px;margin:0}
+.preview-note{display:flex;align-items:center;gap:13px;justify-content:space-between;border:1px solid #e7c98a;background:#fffbf0;color:#895c16;border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12px}
+.preview-note b{font-size:13px}
+.tabs{display:flex;gap:8px;padding:10px;background:#fff;border:1px solid #dfe7f1;border-radius:10px;margin-bottom:14px}
+.tabs button{min-width:185px;text-align:left;border:1px solid #dbe3ee;border-radius:8px;background:#fff;color:#284363;padding:11px 15px;font:inherit;cursor:pointer}
+.tabs button strong{display:block;font-size:13px}.tabs button small{display:block;color:#7d8da5;font-size:11px;margin-top:2px}.tabs button.active{border-color:#3274e2;background:#eef4ff;color:#1755c7}
+.surface{background:#fff;border:1px solid #dce6f0;border-radius:12px;padding:8px;min-height:72vh}
+.surface[hidden]{display:none}
+#seo-frame{display:block;border:0;width:100%;min-height:980px;height:calc(100vh - 255px);background:#f4f7fb}
+#geo-growth-pane{min-height:550px}
+.loading{padding:28px;font-size:14px;color:#60748f}
+.mode-label{padding:6px 11px;border-radius:999px;background:#fff0cd;color:#8d611d;white-space:nowrap}
+#preview-toast{position:fixed;right:22px;bottom:22px;z-index:1000;background:#102d55;color:#fff;border-radius:8px;padding:12px 17px;box-shadow:0 8px 22px #1a38633b;max-width:460px;font-size:12px}
+#preview-toast[hidden]{display:none}
+@media(max-width:850px){.layout{display:block}aside{position:static;height:auto;padding:12px 15px}.brand{padding:4px 0}.brand small,nav p,aside .bottom{display:none}nav{display:flex;padding:9px 0 0;gap:6px}nav button{width:auto;padding:9px 12px}main{padding:12px}header{padding:13px}.tabs button{min-width:0;flex:1}#seo-frame{height:70vh}.preview-note{align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside>
+  <div class="brand"><div class="logo">KZ</div><div><b>卡嘴子 AI</b><small>AI 自治运营工作台</small></div></div>
+  <nav><p>界面验收</p><button class="active" type="button" data-preview-route="seo">SEO 增长</button><button type="button" data-preview-route="geo">GEO 增长</button></nav>
+  <div class="bottom">SEO / GEO 界面独立预览<br><b>只演示界面，不连接业务数据库</b><br>真实部署需再执行后台验收</div>
+</aside>
+<main>
+<header><span class="eyebrow">卡嘴子 AI · SEO/GEO 界面验收</span><h1>SEO/GEO 增长工作台</h1><p>原版前端源码在线预览 · 无需下载 Windows 安装包</p></header>
+<div class="preview-note" role="status"><div><b>演示模式 / 非真实运营数据</b><div>本页仅验证样式、交互、按钮反馈和信息布局。不会连接 127.0.0.1、豆包、搜索引擎或真实业务接口；请勿填写 Token、密码或客户数据。</div></div><span class="mode-label">只读验收</span></div>
+<div class="tabs" aria-label="SEO/GEO 工作台切换">
+  <button type="button" data-preview-route="seo" class="active"><strong>SEO 增长</strong><small>真实 SEO 前端 · 模拟回执</small></button>
+  <button type="button" data-preview-route="geo"><strong>GEO 增长</strong><small>真实 GEO 前端 · 模拟状态</small></button>
+</div>
+<section class="surface" id="seo-pane" aria-label="SEO 页面预览"><div class="loading" id="seo-loading">正在加载仓库中的 SEO 页面源码…</div><iframe id="seo-frame" title="SEO 增长中心源码预览" hidden></iframe></section>
+<section class="surface" id="geo-pane" aria-label="GEO 页面预览" hidden><div id="geo-growth-pane"></div></section>
+<div id="preview-toast" role="status" hidden></div>
+</main></div>
+<script src="mock-api.js"></script>
+<script>
+(()=>{
+ const scriptBase='../05_V2.0.0_Source/web/';
+ const toast=(msg)=>{const box=document.getElementById('preview-toast');box.textContent=msg;box.hidden=false;clearTimeout(window._previewTimer);window._previewTimer=setTimeout(()=>box.hidden=true,4000)};
+ window.__KZ_PREVIEW_TOAST__=toast;
+ const tabs=[...document.querySelectorAll('[data-preview-route]')];
+ tabs.forEach(el=>el.addEventListener('click',()=>activate(el.dataset.previewRoute)));
+ function activate(which){
+  tabs.forEach(x=>{const selected=x.dataset.previewRoute===which;x.classList.toggle('active',selected);x.setAttribute('aria-pressed',String(selected))});
+  document.getElementById('seo-pane').hidden=which!=='seo';
+  document.getElementById('geo-pane').hidden=which!=='geo';
+  if(which==='geo')window.__KZ_GEO_GROWTH_OS_BOOT__?.();
+  const url=new URL(window.location.href);url.searchParams.set('view',which);history.replaceState(null,'',url);
+ }
+ async function initSeo(){
+  const res=await fetch(scriptBase+'r8_13_seo_geo.html',{cache:'no-store'});
+  if(!res.ok)throw new Error('SEO 原版源码无法读取，HTTP '+res.status);
+  const original=await res.text();
+  if(!original.includes("async function api("))throw new Error('SEO 页面结构已变化，必须同步更新预览注入规则');
+  const scriptTag='<script src="mock-api.js"><\/script>';
+  const withStub=original.replace('<script>',scriptTag+'\n<script>');
+  const warning='<div style="position:sticky;top:0;z-index:99;background:#fff5d9;color:#795313;padding:7px 14px;font-weight:750;font-size:12px">演示样例数据，不连接任何真实接口；凭据配置和第三方授权不可操作。</div>';
+  const doc=withStub.replace('<body>', '<body>'+warning);
+  const frame=document.getElementById('seo-frame');
+  frame.srcdoc=doc;
+  frame.hidden=false;
+  document.getElementById('seo-loading').hidden=true;
+ }
+ initSeo().catch(error=>document.getElementById('seo-loading').textContent='SEO 页面加载失败：'+error.message);
+ const geoScript=document.createElement('script');geoScript.src=scriptBase+'geo-growth-os.js';
+ geoScript.onerror=()=>toast('GEO 原版页面脚本加载失败，请检查预览链接与网络');
+ document.body.appendChild(geoScript);
+ activate(new URLSearchParams(location.search).get('view')==='geo'?'geo':'seo');
+})();
+</script>
+</body></html>
