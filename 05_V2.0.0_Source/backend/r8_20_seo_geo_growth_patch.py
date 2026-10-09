@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
@@ -23,6 +23,49 @@ from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: 
 from core import geo_growth_orchestrator as geo_growth
 from core import geo_growth_publish_bridge as _geo_growth_publish_bridge  # noqa: F401
 from integrations import seo_geo_connector_router_v2 as connector_router
+
+# Read-only loopback HTTP request timing. It is deliberately lightweight and
+# never queries ledgers or external services; it shows when local API or
+# static JS GETs occupy handler threads while Evidence times out.
+_HTTP_DIAG_LOCK = threading.Lock()
+_HTTP_DIAG_INFLIGHT = {}
+_HTTP_DIAG_RECENT_SLOW = deque(maxlen=24)
+_HTTP_DIAG_COMPLETED = 0
+_HTTP_DIAG_PEAK_INFLIGHT = 0
+_HTTP_DIAG_SLOW_SECONDS = 1.0
+
+
+def _http_request_category(path):
+    if path.startswith("/api/r8-24/geo-growth/"):
+        return path
+    if path in {"/api/r7/decision-center", "/api/r7/jobs", "/api/r7/agents"}:
+        return path
+    if path.endswith(".js"):
+        return "static_js"
+    if path.endswith(".html"):
+        return "static_html"
+    return "other"
+
+
+def _http_health():
+    now = time.perf_counter()
+    with _HTTP_DIAG_LOCK:
+        active = [
+            {"kind": kind, "elapsed_ms": round((now-start)*1000)}
+            for kind, start in _HTTP_DIAG_INFLIGHT.values()
+        ]
+        return {
+            "source": "local_http_handlers",
+            "ready": True,
+            "inflight_requests": len(active),
+            "peak_inflight_requests": _HTTP_DIAG_PEAK_INFLIGHT,
+            "completed_requests": _HTTP_DIAG_COMPLETED,
+            "active_slow_requests": [x for x in active if x["elapsed_ms"] >= 1000][:12],
+            "recent_slow_requests": list(_HTTP_DIAG_RECENT_SLOW),
+            "slow_threshold_ms": round(_HTTP_DIAG_SLOW_SECONDS*1000),
+            "privacy": "path_categories_only_no_urls_or_query_strings",
+        }
+
 
 _INSTALLED = False
 _ORIGINAL_RUN = seo_core.run_once
@@ -794,6 +837,9 @@ def install():
             if path == "/api/r8-24/geo-growth/fast-health":
                 handler._json_ok(_geo_fast_health_overview())
                 return
+            if path == "/api/r8-24/geo-growth/http-health":
+                handler._json_ok(_http_health())
+                return
             if path == "/api/r8-24/geo-growth/liveness":
                 # Keep this endpoint independent of JSON disk I/O, the GEO
                 # snapshot cache lock, remote models and worker state.
@@ -975,7 +1021,27 @@ def install():
         except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
-    server.DashboardHandler.do_GET = do_get
+    def monitored_get(handler):
+        global _HTTP_DIAG_COMPLETED, _HTTP_DIAG_PEAK_INFLIGHT
+        started = time.perf_counter()
+        token = id(handler)
+        category = _http_request_category(urlsplit(handler.path).path)
+        with _HTTP_DIAG_LOCK:
+            _HTTP_DIAG_INFLIGHT[token] = (category, started)
+            _HTTP_DIAG_PEAK_INFLIGHT = max(_HTTP_DIAG_PEAK_INFLIGHT, len(_HTTP_DIAG_INFLIGHT))
+        try:
+            return do_get(handler)
+        finally:
+            elapsed = round((time.perf_counter()-started)*1000)
+            with _HTTP_DIAG_LOCK:
+                _HTTP_DIAG_INFLIGHT.pop(token, None)
+                _HTTP_DIAG_COMPLETED += 1
+                if elapsed >= _HTTP_DIAG_SLOW_SECONDS*1000:
+                    _HTTP_DIAG_RECENT_SLOW.append({
+                        "kind": category, "duration_ms": elapsed,
+                    })
+
+    server.DashboardHandler.do_GET = monitored_get
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_r8_20_seo_geo_growth = True
     server.DashboardHandler._kz_r8_21_unified_connectors = True
