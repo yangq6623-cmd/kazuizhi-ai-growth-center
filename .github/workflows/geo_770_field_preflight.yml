@@ -8,6 +8,7 @@ on:
       - '04_Build/v2/test_geo_evidence_source_browser.py'
       - '04_Build/v2/test_owner_sidebar_browser.py'
       - '04_Build/v2/test_r8_24_geo_evidence_failsafe.py'
+      - '04_Build/v2/test_geo_770_http_starvation.py'
       - '.github/workflows/geo_770_field_preflight.yml'
   workflow_dispatch:
 permissions:
@@ -38,6 +39,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
           python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
+          python 04_Build/v2/test_geo_770_http_starvation.py
       - name: Preserve R8 owner parity
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
