@@ -613,6 +613,14 @@ def _geo_owner_index_document(handler):
     core script, but make the first render independent of an additional API.
     """
     html, marker = _geo_owner_index_template()
+    _, core, _ = _geo_priority_html_assets()
+    # The owner's GEO core used to be another independent static request.
+    # Bundle that exact same canonical code, not another app or a fake worker.
+    direct = '<script defer src="geo-growth-os.js" data-kz-parent-geo-core-direct="1"></script>'
+    if html.count(direct) != 1:
+        raise RuntimeError("geo_owner_core_marker_missing")
+    html = html.replace(direct,
+                        '<script id="kz-geo-core-embedded">\n' + core + '\n</script>')
     payload = _geo_fast_ui_compact()
     data = html.replace(marker, _geo_boot_data_script(payload)).encode("utf-8")
     handler.send_response(200)
