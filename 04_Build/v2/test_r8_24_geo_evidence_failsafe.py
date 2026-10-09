@@ -277,7 +277,7 @@ def test_evidence_health_fallback_count():
 def test_optional_webmcp_and_foreground_geo_contract():
     startup=(SRC/"web"/"r8_12_startup_coordinator.js").read_text(encoding="utf-8")
     ui=(SRC/"web"/"geo-growth-os.js").read_text(encoding="utf-8")
-    connections=startup.split("connections: [",1)[1].split("],",1)[0]
+    connections=startup.split("connections: [",1)[1].split("\n    ],",1)[0]
     assert "/kz_site_tools.js" not in connections, "optional unsupported WebMCP must not block local controls"
     assert "/kz_local_direct_ui.js" in connections
     assert "/kz_async_control_ui.js" in connections
