@@ -55,7 +55,14 @@ function Assert-GeoOwnerRuntime([int]$Port) {
             }
             Start-Sleep -Milliseconds 500
         }
-        if (-not $confirmed) { throw "GEO true fast snapshot did not warm within 20 seconds: $route" }
+        if (-not $confirmed) {
+            $diagnostics = 'unavailable'
+            try {
+                $diagnostics = Invoke-RestMethod -Uri "$base/api/r8-24/geo-growth/fast-health" -TimeoutSec 3 | ConvertTo-Json -Compress -Depth 5
+            } catch { $diagnostics = "health request failed: $($_.Exception.Message)" }
+            $pending = if ($null -eq $snapshot) { 'no HTTP snapshot' } else { $snapshot | ConvertTo-Json -Compress -Depth 4 }
+            throw "GEO true fast snapshot did not warm within 20 seconds: $route; diagnostics=$diagnostics; last_response=$pending"
+        }
         if ([string]::IsNullOrWhiteSpace([string]$snapshot.state)) { throw "GEO owner snapshot missing state: $route" }
         if ([string]::IsNullOrWhiteSpace([string]$snapshot.mission)) { throw "GEO owner snapshot missing mission: $route" }
         if ([int]$snapshot.formal_ab_target -ne 50) { throw "GEO owner snapshot lost formal A/B target: $route" }
