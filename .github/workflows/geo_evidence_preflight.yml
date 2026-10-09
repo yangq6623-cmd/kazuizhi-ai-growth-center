@@ -1,0 +1,45 @@
+name: GEO Evidence Internal Preflight (No Installer)
+on:
+  push:
+    branches: ['review/geo-evidence-e2e-20261009']
+    paths:
+      - '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py'
+      - '05_V2.0.0_Source/web/geo-growth-os.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '04_Build/v2/test_r8_24_geo_evidence_failsafe.py'
+      - '04_Build/v2/test_geo_browser_field.py'
+      - '.github/workflows/geo_evidence_preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  internal-tests-only:
+    runs-on: windows-latest
+    timeout-minutes: 16
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime and browser test dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: Verify scripts parse
+        run: |
+          node --check 05_V2.0.0_Source/web/geo-growth-os.js
+          node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
+      - name: GEO backend HTTP evidence and cache fault tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+          python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
+      - name: SEO GEO and startup owner parity gates
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
