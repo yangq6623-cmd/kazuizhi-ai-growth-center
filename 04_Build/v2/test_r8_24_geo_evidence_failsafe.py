@@ -247,6 +247,29 @@ def test_fast_snapshot_does_not_block_http():
             bridge._GEO_FAST_CACHE.update(saved)
 
 
+
+def test_seo_cached_dashboard_is_lock_free():
+    """Cached SEO GET must not reopen the official GEO ledger per browser poll."""
+    from backend import r8_13_seo_geo_patch as seo_bridge
+    with patch.object(seo_bridge, "_load_last_good_payload", return_value={
+        "_snapshot_saved_at": bridge.geo_validation_api.geo_core.now_iso(),
+        "summary": {"public_pages": 20, "submitted_urls": 20, "indexed_urls": 0},
+        "geo": {"truth_source": "r8-19-official-evidence", "tested_questions": 2},
+        "service_health": {},
+    }), patch.object(seo_bridge, "_overlay_formal_geo_truth",
+                    side_effect=RuntimeError("GET must not read GEO ledger")), \
+            patch.object(seo_bridge, "_kick_snapshot_refresh") as schedule:
+        started = time.monotonic()
+        payload = seo_bridge._fast_dashboard_response()
+        assert time.monotonic() - started < 0.5
+        assert payload["geo"]["tested_questions"] == 2
+        assert payload["summary"]["submitted_urls"] == 20
+        assert payload["summary"]["indexed_urls"] == 0
+        schedule.assert_not_called()
+    print("PASS: SEO cached HTTP view never enters global GEO ledger lock")
+
+
 if __name__ == "__main__":
     run()
     test_fast_snapshot_does_not_block_http()
+    test_seo_cached_dashboard_is_lock_free()

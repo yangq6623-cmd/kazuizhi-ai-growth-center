@@ -188,13 +188,19 @@ def _fast_dashboard_response():
     cached = _load_last_good_payload()
     if cached:
         age = _snapshot_age_seconds(cached)
-        _kick_snapshot_refresh(delay_seconds=2.0)
+        # Cached payload already includes the independently verified official GEO
+        # overlay from _dashboard_payload(). Do not re-read the live formal ledger
+        # on each HTTP GET: that used the global JSON RLock and could block the
+        # SEO page, GEO panels, and Evidence GET together under busy writers.
+        # Refresh no more than once per 30s while this owner page is open.
+        if age is None or age >= 30:
+            _kick_snapshot_refresh(delay_seconds=2.0)
         health = cached.setdefault("service_health", {})
         health["snapshot_saved_at"] = cached.get("_snapshot_saved_at") or ""
         health["snapshot_age_seconds"] = round(age, 1) if age is not None else None
         health["snapshot_mode"] = True
         health["truth"] = "页面优先读取最近一次成功持久化的真实快照，并在后台异步刷新；快照时间单独标注，不把缓存冒充为新的外部回执。"
-        return _mark_fast_ok(_overlay_formal_geo_truth(cached))
+        return _mark_fast_ok(cached)
 
     # Never make the first page paint wait on optional remote connectors.
     # Return the local ledger immediately, then enrich/persist the full snapshot
