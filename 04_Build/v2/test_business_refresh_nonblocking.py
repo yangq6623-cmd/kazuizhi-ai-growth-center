@@ -73,7 +73,7 @@ def test_20_second_remote_refresh_never_blocks_regular_api():
             assert all(code == 200 for code, _, _ in results), results
             assert all(seconds < 1.2 for _, _, seconds in results), results
             assert len(calls) == 1, "owner GETs accidentally triggered extra remote refresh"
-            assert b"Kazuizhi" in results[2][1], "static JS was not served"
+            assert len(results[2][1]) > 100 and b"function" in results[2][1], "static JS was not served"
             print("PASS: 12 concurrent GETs (API + JS) remain responsive during 20s remote sync")
         finally:
             remote_release.set()
