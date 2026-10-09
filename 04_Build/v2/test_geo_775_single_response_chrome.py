@@ -104,6 +104,19 @@ def main():
                 "id", "geo-os-kpis").text
             print(f"PASS: restart {i+1}/3 single-response GEO full workbench, secondary HTTP blocked")
 
+        # The local owner must never see a healthy green badge forever if
+        # the inlined snapshot can no longer refresh. Jump Chrome's wall clock
+        # forward to simulate an overloaded machine after two minutes.
+        driver.execute_script("""
+          window.__KZ775_realNow=Date.now.bind(Date);
+          Date.now=()=>window.__KZ775_realNow()+120000;
+        """)
+        WebDriverWait(driver, 16).until(lambda d: d.execute_script("""
+          return (document.getElementById('geo-os-state')?.textContent||'')
+                 .includes('历史状态');
+        """))
+        print("PASS: interrupted GEO refresh automatically marks first-paint truth historical after 90s")
+
         # Inspect actual installed-handler HTML and headers.
         with urlopen(base + "/geo.html?embed=1", timeout=4) as response:
             raw = response.read().decode("utf-8")
