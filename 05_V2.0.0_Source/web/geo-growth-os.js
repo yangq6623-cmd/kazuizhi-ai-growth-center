@@ -29,6 +29,15 @@
     try{
       const value=JSON.parse(node.textContent||'null');
       if(!value||typeof value!=='object'||Array.isArray(value))return null;
+      // The owner may open SEO/GEO long after the root HTML was served.
+      // Account for document age: a 10-minute-old inline snapshot must NOT
+      // impersonate a live running scheduler.
+      const bootAge=Number(value.snapshot_age_seconds);
+      if(Number.isFinite(bootAge)&&bootAge>=0){
+        value.snapshot_age_seconds=bootAge+Math.max(0,performance.now()/1000);
+        value.snapshot_stale=value.snapshot_stale===true ||
+          value.snapshot_age_seconds>=90;
+      }
       document.documentElement.dataset.kzGeoPriorityBoot=
         value.status_ready===true?'ready':'pending';
       return value;
