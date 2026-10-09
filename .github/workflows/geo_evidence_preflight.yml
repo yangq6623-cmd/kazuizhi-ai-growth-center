@@ -33,6 +33,7 @@ jobs:
         run: |
           node --check 05_V2.0.0_Source/web/geo-growth-os.js
           node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
+          python -m py_compile 04_Build/v2/test_geo_browser_field.py 04_Build/v2/test_geo_evidence_source_browser.py
       - name: GEO backend HTTP evidence and cache fault tests
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
