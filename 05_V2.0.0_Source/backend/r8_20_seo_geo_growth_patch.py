@@ -114,6 +114,8 @@ def _geo_fast_cached():
         return {
             "status_mode": "pending_snapshot",
             "status_ready": False,
+            "worker_limit_reached": len(state["workers"]) >= _GEO_FAST_MAX_WORKERS,
+            "pending_reason": "blocked_reader_workers" if len(state["workers"]) >= _GEO_FAST_MAX_WORKERS else "warming",
             "snapshot_stale": False,
             "refreshing": bool(state["refreshing"]),
             "last_refresh_error": str(state["error"] or "")[:200],
@@ -161,6 +163,8 @@ def _geo_fast_health():
             "snapshot_stale": bool(age is not None and age >= 90),
             "refreshing": bool(state["refreshing"]),
             "worker_count": sum(t.is_alive() for t in state["workers"]),
+            "worker_limit_reached": sum(t.is_alive() for t in state["workers"]) >= _GEO_FAST_MAX_WORKERS,
+            "refresh_age_seconds": round(max(0, time.monotonic()-state["started"]), 2) if state["refreshing"] else 0,
             "last_error": str(state["error"] or "")[:200],
         }
 
