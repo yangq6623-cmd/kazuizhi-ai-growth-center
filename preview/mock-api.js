@@ -84,7 +84,11 @@
  },true);
  window.fetch=(request,opts={})=>{
   const target=typeof request==='string'?request:(request?.url||'');
-  const path=new URL(target,location.href).pathname;
+  // about:srcdoc is not a hierarchical URL and cannot be a URL() base.
+  // SEO renders inside an iframe srcdoc; resolve API paths through document.baseURI.
+  const base=document.baseURI && !document.baseURI.startsWith('about:')
+   ? document.baseURI : (window.parent!==window?window.parent.location.href:location.href);
+  const path=new URL(target,base).pathname;
   if(!path.startsWith('/api/'))return origFetch(request,opts);
   const method=String(opts.method||request?.method||'GET').toUpperCase();
   if(method!=='GET'){
