@@ -583,6 +583,49 @@ def _geo_priority_html_assets():
     return template, core, marker
 
 
+def _geo_boot_data_script(payload):
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    # Serialize only the existing independently cached GEO truth. Escape all
+    # HTML delimiters so even untrusted task text cannot close the JSON script.
+    for old, new in (("<", r"\u003c"), (">", r"\u003e"),
+                     ("&", r"\u0026"), ("\u2028", r"\u2028"),
+                     ("\u2029", r"\u2029")):
+        serialized = serialized.replace(old, new)
+    return ('<script id="kz-geo-fast-bootstrap" type="application/json">'
+            + serialized + '</script>')
+
+
+@lru_cache(maxsize=1)
+def _geo_owner_index_template():
+    html = (server.get_web_path() / "index.html").read_text(encoding="utf-8")
+    marker = "<!-- KZ_GEO_OWNER_FAST_BOOT_PAYLOAD -->"
+    if html.count(marker) != 1:
+        raise RuntimeError("geo_owner_boot_marker_missing")
+    return html, marker
+
+
+def _geo_owner_index_document(handler):
+    """Inject the same truthful GEO snapshot into the primary owner console.
+
+    GEO in the owner shell is a PARENT document component, NOT an iframe.
+    Embedding data only in /geo.html fixed the standalone but could not fix the
+    owner's SEO/GEO tab when fast-ui GETs starved. Keep its existing direct
+    core script, but make the first render independent of an additional API.
+    """
+    html, marker = _geo_owner_index_template()
+    payload = _geo_fast_ui_compact()
+    data = html.replace(marker, _geo_boot_data_script(payload)).encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("X-KZ-GEO-Boot", "owner-inline-snapshot")
+    handler.send_header("X-KZ-GEO-Truth",
+                        "snapshot-ready" if payload.get("status_ready") is True
+                        else "snapshot-pending")
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def _geo_priority_document(handler):
     """A single trustworthy HTML response survives later JS/API starvation.
 
@@ -593,17 +636,8 @@ def _geo_priority_document(handler):
     """
     template, core, marker = _geo_priority_html_assets()
     payload = _geo_fast_ui_compact()
-    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    # JSON is inserted in <script type=application/json>. Escape HTML special
-    # characters so even an untrusted task/mission cannot end the script tag.
-    for old, new in (("<", r"\u003c"), (">", r"\u003e"),
-                     ("&", r"\u0026"), ("\u2028", r"\u2028"),
-                     ("\u2029", r"\u2029")):
-        serialized = serialized.replace(old, new)
-    embedded = (
-        '<script id="kz-geo-fast-bootstrap" type="application/json">'
-        + serialized + '</script>\n'
-        '<script id="kz-geo-core-embedded">\n'
+    embedded = _geo_boot_data_script(payload) + (
+        '\n<script id="kz-geo-core-embedded">\n'
         + core + '\n</script>'
     )
     data = template.replace(marker, embedded).encode("utf-8")
@@ -891,6 +925,9 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path in {"/", "/index.html"}:
+                _geo_owner_index_document(handler)
+                return
             if path == "/geo.html" and (
                 (parse_qs(urlsplit(handler.path).query).get("advanced") or [""])[0] != "1"
             ):
