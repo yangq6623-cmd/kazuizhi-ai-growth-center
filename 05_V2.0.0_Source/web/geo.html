@@ -93,6 +93,7 @@
       if(fallback)fallback.hidden=true;
     })();
   </script>
+  <!-- KZ_GEO_PRIORITY_BOOT_PAYLOAD -->
   <!-- #774: desktop field reports show the initial shell while a synchronous
        external GEO script is pending. The lightweight, truthful inline reader
        below runs BEFORE any external scripts and remains useful when a static
@@ -188,6 +189,10 @@
     // usable while that particular asset is delayed on the user's PC.
     (() => {
       if(geoParams.get('advanced')!=='1'){
+        // #775: on the installed local server the complete core and a
+        // truthful current snapshot arrive in the SAME HTML response.
+        // Avoid a second JS GET and first-paint API GET during HTTP contention.
+        if(document.getElementById('kz-geo-core-embedded'))return;
         const core=document.createElement('script');
         core.src='/geo-growth-os.js';core.async=true;
         core.onload=()=>{try{window.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(error){console.warn(error)}};
