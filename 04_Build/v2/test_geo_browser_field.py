@@ -98,6 +98,13 @@ def main():
         # Advanced browser E2E (not just existence of the section). Force a
         # compact Evidence GET rejection; verified cache data must still
         # appear in the UI with a clear "detail unknown" warning.
+        WebDriverWait(driver, 25).until(lambda d: d.execute_async_script("""
+          const done=arguments[0];
+          fetch('/api/r8-24/geo-growth/evidence-health',{cache:'no-store'})
+            .then(r=>r.json()).then(h=>done(h.evidence_ready===true &&
+              h.available_sections===4 && !!h.owner_summary))
+            .catch(()=>done(false));
+        """))
         driver.execute_script("""
           window.__geo_original_fetch = window.fetch;
           window.fetch = function(input,options) {
