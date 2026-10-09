@@ -17,6 +17,15 @@ from backend import r8_20_seo_geo_growth_patch as bridge  # noqa: E402
 
 
 def run() -> None:
+    # Frontend owner status polling must be request-deduplicated and keep its
+    # real data on transient HTTP errors. The existing fast health probe only
+    # diagnoses readiness and must not manufacture KPI statistics.
+    page=(SRC / "web" / "geo-growth-os.js").read_text(encoding="utf-8")
+    for marker in ("statusLoading", "statusFailures", "geo-os-refresh",
+                   "if(!ensureStructure() || statusLoading)",
+                   "geo-growth/fast-health", "timeoutMs:9000"):
+        assert marker in page, marker
+    print("PASS: GEO frontend serial polling, manual refresh, real-snapshot recovery")
     # The refresh must keep cycling without a browser request, and it must
     # delegate file reads to the existing bounded cache worker.
     with patch.object(bridge, "_geo_evidence_cached", return_value={}) as refresh, \

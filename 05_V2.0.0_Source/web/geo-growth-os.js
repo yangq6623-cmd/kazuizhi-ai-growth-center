@@ -26,6 +26,9 @@
   let attempts = 0;
   let activeFilter = "all";
   let pollTimer = null;
+  let statusLoading = false;
+  let statusFailures = 0;
+  let statusRetryTimer = null;
   let advancedTask = null;
   let advancedBusy = false;
   let advancedFetchedAt=0;
@@ -123,6 +126,7 @@
             <button id="geo-os-resume" type="button">恢复</button>
             <button id="geo-os-run" type="button">立即运行一轮</button>
             <button id="geo-os-retry" type="button">重试异常</button>
+            <button id="geo-os-refresh" type="button">刷新状态</button>
           </div>
           <div class="geo-os-runtime-card"><span>运行摘要</span><strong id="geo-os-runtime">正在读取执行状态…</strong><small id="geo-os-publish">发布通道正在检查…</small></div>
         </div>
@@ -330,15 +334,32 @@
   }
 
   async function load(){
-    if(!ensureStructure()) return null;
+    if(!ensureStructure() || statusLoading) return null;
+    statusLoading=true;
     try{
-      const data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:4000});
+      // One owner poll at a time. Screenshot capture, startup preloading and
+      // repeated workbench mounting must not pile up abandoned 4-second GETs.
+      const data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:9000});
+      statusFailures=0;
+      if(statusRetryTimer){clearTimeout(statusRetryTimer);statusRetryTimer=null;}
       render(data);
       return data;
     }catch(error){
-      if(byId('geo-os-message')) byId('geo-os-message').textContent=`GEO 状态快照暂未返回：${error.message}；界面继续保留并自动重试。`;
+      statusFailures+=1;
+      let health=null;
+      try { health=await json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2500}); }
+      catch(_) {};
+      const note=health?.status_ready===true?
+        `后台快照已就绪（${Math.round(Number(health.snapshot_age_seconds||0))}秒前），但浏览器请求延迟。保留真实旧数据并重试；不重置任务成绩。`:
+        health?.status_ready===false?'后台仍在生成真实快照，稍后继续读取。':
+        '本地状态接口尚未响应，正在检查连接与请求排队。';
+      if(byId('geo-os-message'))byId('geo-os-message').textContent=`GEO 状态读取暂缓：${note} ${error.message}`;
+      if(!statusRetryTimer){
+        const delay=Math.min(15000,2000*Math.max(1,statusFailures));
+        statusRetryTimer=setTimeout(()=>{statusRetryTimer=null;if(!statusLoading)load();},delay);
+      }
       return null;
-    }
+    }finally{statusLoading=false;}
   }
 
   async function mutate(button,path,body={}){
@@ -665,6 +686,7 @@
     byId('geo-os-resume')?.addEventListener('click',e=>mutate(e.currentTarget,'/api/r8-24/geo-growth/resume'));
     byId('geo-os-run')?.addEventListener('click',e=>mutate(e.currentTarget,'/api/r8-24/geo-growth/run',{force:true}));
     byId('geo-os-retry')?.addEventListener('click',e=>mutate(e.currentTarget,'/api/r8-24/geo-growth/retry'));
+    byId('geo-os-refresh')?.addEventListener('click',()=>{if(!statusLoading)load();});
   }
 
   function start(){
@@ -693,7 +715,7 @@
         mission:'正在恢复 GEO 运行状态…'
       });
       load();
-      if(!pollTimer)pollTimer=setInterval(()=>{if(!busy)load();},10000);
+      if(!pollTimer)pollTimer=setInterval(()=>{if(!busy&&!statusLoading)load();},10000);
     }catch(error){
       attempts+=1;
       console.warn('GEO Growth OS boot retry',error);

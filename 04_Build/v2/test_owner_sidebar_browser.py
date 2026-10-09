@@ -135,6 +135,18 @@ def assert_seo_geo(driver):
               x.status_mode==='fast_snapshot')).catch(()=>done(false));
     """))
 
+    # The browser itself must recover, not merely a separate direct API call.
+    # A healthy backend with a perpetually disabled GEO owner toolbar is a
+    # failed installed release even if /fast-health reports ready.
+    WebDriverWait(driver, 30).until(lambda d: d.execute_script("""
+      const state=document.getElementById('geo-os-state');
+      const refresh=document.getElementById('geo-os-refresh');
+      return !!(state && refresh && state.textContent &&
+        !state.textContent.includes('正在同步真实状态') &&
+        !state.textContent.includes('读取中') &&
+        document.querySelectorAll('#geo-os-kpis .geo-os-kpi').length>=7);
+    """))
+
     # Formal A/B count in the legacy SEO summary and the new Growth OS must use
     # the same official Evidence truth ledger.
     parity = driver.execute_async_script("""
