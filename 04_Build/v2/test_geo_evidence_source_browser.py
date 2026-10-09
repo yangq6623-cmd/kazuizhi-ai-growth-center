@@ -83,6 +83,17 @@ def main():
         driver.set_page_load_timeout(30)
         driver.get(f"http://127.0.0.1:{server.server_port}/geo.html?embed=1")
         wait = WebDriverWait(driver, 30)
+        from urllib.request import urlopen
+        with urlopen(f"http://127.0.0.1:{server.server_port}/geo.html?embed=1", timeout=4) as check:
+            print("SOURCE GEO HTTP status:", check.status, "bytes:", len(check.read()), flush=True)
+        print("SOURCE GEO browser:", json.dumps(driver.execute_script("""
+          return {title:document.title, ready:document.readyState,
+            body:document.body?.innerText.slice(0,450),
+            scripts:[...document.scripts].map(s=>s.src||'inline').slice(-12),
+            growth:!!document.getElementById('geo-growth-os'),
+            advanced:!!document.getElementById('geo-growth-advanced'),
+            fallback:document.getElementById('geo-direct-fallback')?.innerText.slice(0,190)};
+        """),ensure_ascii=True),flush=True)
         wait.until(lambda d: d.find_elements(By.ID, "geo-growth-advanced"))
         wait.until(lambda d: d.find_elements(By.ID, "geo-os-state"))
         # Real browser / actual JS: force the heavy evidence request to fail.
