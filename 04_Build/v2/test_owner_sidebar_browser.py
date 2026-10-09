@@ -356,6 +356,27 @@ def main():
             except Exception as error:
                 active = driver.execute_script("return [...document.querySelectorAll('main > .page.active')].map(x=>x.id);")
                 raise AssertionError(f"左侧导航失败：{label} -> {target}/{action or 'normal'}；当前活动页={active}") from error
+            # WebMCP is optional and not available in normal Chrome.
+            # Opening Connections must never count its absent optional
+            # registration script as a failed local-control component.
+            if target == "connections" and not action:
+                supported = driver.execute_script("""
+                  return !!((document.modelContext||navigator.modelContext)?.registerTool)
+                """)
+                if not supported:
+                    WebDriverWait(driver, 25).until(lambda d: d.execute_script("""
+                      return document.documentElement.dataset.kzWebmcpCapability==='browser_unsupported'
+                    """))
+                    diagnostic = driver.execute_script("return window.KZStartupDiagnostics?.()")
+                    failed = [row.get("src","") for row in (diagnostic or {}).get("failed_modules",[])]
+                    if "/kz_site_tools.js" in failed:
+                        raise AssertionError("Unsupported optional WebMCP was incorrectly marked as broken")
+                    if not driver.find_elements(By.ID, "r812-startup-diagnostics"):
+                        raise AssertionError("Missing transparent optional WebMCP diagnostics")
+                    note=driver.find_element(By.ID,"r812-startup-diagnostics").text
+                    if "当前浏览器不支持" not in note:
+                        raise AssertionError("Browser WebMCP capability constraint not disclosed")
+                    print("PASS: installed Connections skips unsupported optional WebMCP without false missing module")
             elapsed = round(time.monotonic() - started, 2)
             results.append({"label": label, "target": target, "action": action, "seconds": elapsed, "ok": True})
 
