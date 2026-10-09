@@ -142,7 +142,7 @@ def run_once(force=False):
         _LOOP_LOCK.release()
 
 def _decorate_snapshot(snap, *, snapshot=False):
-    connector = seo_public_deployer.status(snapshot=snapshot)
+    connector = seo_public_deployer.status_snapshot() if snapshot else seo_public_deployer.status()
     snap["publish_connector"] = {
         "configured": bool(connector.get("configured")),
         "enabled": bool(connector.get("enabled")),
