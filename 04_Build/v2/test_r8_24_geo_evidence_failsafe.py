@@ -274,6 +274,24 @@ def test_evidence_health_fallback_count():
             bridge._GEO_EVIDENCE_CACHE.update(saved)
 
 
+def test_optional_webmcp_and_foreground_geo_contract():
+    startup=(SRC/"web"/"r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+    ui=(SRC/"web"/"geo-growth-os.js").read_text(encoding="utf-8")
+    connections=startup.split("connections: [",1)[1].split("],",1)[0]
+    assert "/kz_site_tools.js" not in connections, "optional unsupported WebMCP must not block local controls"
+    assert "/kz_local_direct_ui.js" in connections
+    assert "/kz_async_control_ui.js" in connections
+    for marker in ("OPTIONAL_WEBMCP_MODULE", "hasWebMcp()", "browser_unsupported",
+                   "WebMCP 工具：当前浏览器不支持", "OPTIONAL_WEBMCP_MODULE,"):
+        assert marker in startup, marker
+    for marker in ("isForegroundGeoVisible()", "document.hidden", "getClientRects().length",
+                   "},20000);", "正式 A/B 历史概览", "Evidence 明细与健康接口均未响应",
+                   "主 GEO 已读取的历史 A/B"):
+        assert marker in ui, marker
+    assert "if(!pollTimer)pollTimer=setInterval(()=>{if(!busy&&!statusLoading)load();},10000)" not in ui
+    print("PASS: unsupported WebMCP is optional, hidden GEO polling is gated, fallback is explicitly historical")
+
+
 def test_lazy_module_recovery_registry():
     text=(SRC/"web"/"r8_12_startup_coordinator.js").read_text(encoding="utf-8")
     ui=(SRC/"web"/"geo-growth-os.js").read_text(encoding="utf-8")
@@ -455,3 +473,4 @@ if __name__ == "__main__":
     test_lazy_module_recovery_registry()
     test_geo_truth_unknown_and_stalled_threads()
     test_late_lazy_module_retry_registration()
+    test_optional_webmcp_and_foreground_geo_contract()
