@@ -80,6 +80,22 @@
   const lazyPromises = new Map();
   const sourceCache = new Map();
   const sourcePromises = new Map();
+  // Failures may occur when a workspace is opened long AFTER boot.
+  // A single capped timer prevents duplicate retries and unbounded traffic.
+  let failureRecoveryTimer = null;
+  let failureRecoveryAttempts = 0;
+  function scheduleFailedModuleRecovery() {
+    if (!state.failed_modules.length || failureRecoveryTimer !== null) return;
+    const delay = Math.min(60000, 5000 * Math.pow(2, Math.min(failureRecoveryAttempts, 4)));
+    failureRecoveryTimer = window.setTimeout(async () => {
+      failureRecoveryTimer = null;
+      failureRecoveryAttempts = Math.min(failureRecoveryAttempts + 1, 4);
+      if (state.retrying_failures) { scheduleFailedModuleRecovery(); return; }
+      try { await retryFailedModules('scheduled_recovery'); }
+      catch (error) { console.warn('[KZ startup] module auto-retry failed', error); }
+      finally { if (state.failed_modules.length) scheduleFailedModuleRecovery(); }
+    }, delay);
+  }
 
   function canonicalSourceKey(src) {
     try { return new URL(src, location.href).pathname; } catch { return String(src || ''); }
@@ -220,6 +236,7 @@
     renderStartupDiagnostics();
     console.error('Owner-shell module degraded, continuing startup', failure);
     emit('kz:startup-module-failed', {...failure});
+    scheduleFailedModuleRecovery();
     return failure;
   }
 
@@ -234,6 +251,11 @@
     });
     state.recovered_modules = state.recovered_modules.slice(0, 12);
     state.degraded = state.failed_modules.length > 0;
+    if (!state.failed_modules.length) {
+      if (failureRecoveryTimer !== null) window.clearTimeout(failureRecoveryTimer);
+      failureRecoveryTimer = null;
+      failureRecoveryAttempts = 0;
+    }
     exposeStartupStatus();
     renderStartupDiagnostics();
     emit('kz:startup-module-recovered', {src, recovered_by: recoveredBy});
@@ -661,6 +683,7 @@
     if (!state.failed_modules.length && typeof window.toast === 'function') {
       window.toast(`启动模块已自动恢复：本次恢复 ${state.recovered_modules.length} 个。`, 'success');
     }
+    if (state.failed_modules.length) scheduleFailedModuleRecovery();
     return state.failed_modules.length === 0;
   }
 
@@ -742,9 +765,7 @@
         // Cold-start failures are frequently caused by the local Python server
         // finishing its first evidence query. Retry them after the UI is usable
         // instead of leaving a stale degraded count for the entire session.
-        [1500, 7000, 20000].forEach((delay, index) => {
-          window.setTimeout(() => retryFailedModules(`auto_retry_${index + 1}`), delay);
-        });
+        scheduleFailedModuleRecovery();
       }
       window.setTimeout(() => loadPostReadyModules(), POST_READY_DELAY_MS);
       const warmDocuments = () => prefetchWorkspaceDocuments();
@@ -764,6 +785,14 @@
       window.setTimeout(renderStartupDiagnostics, 80);
     }
   }, true);
+  window.addEventListener('online', () => {
+    if (state.failed_modules.length && !state.retrying_failures)
+      retryFailedModules('network_restored');
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.failed_modules.length)
+      scheduleFailedModuleRecovery();
+  });
   window.KZLoadOwnerWorkspace = loadLazyBundle;
   window.KZRetryFailedStartupModules = retryFailedModules;
   window.KZClearStartupModuleFailure = (src, reason = 'external_recovery') => clearFailure(src, reason);
