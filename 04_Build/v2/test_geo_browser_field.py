@@ -62,6 +62,39 @@ def main():
         }
         print("PASS: real Chrome mounted visible GEO Growth OS")
         print(json.dumps(result, ensure_ascii=True))
+
+        # Real browser failure injection: block only the owner data endpoint.
+        # /fast-health must recover the last truthful summary, not leave the
+        # owner stuck at "syncing" with made-up zeroes.
+        WebDriverWait(driver, 25).until(lambda d: d.execute_script("""
+          const badge=document.getElementById('geo-os-state');
+          return badge && badge.textContent &&
+            !badge.textContent.includes('正在同步真实状态');
+        """))
+        driver.execute_script("""
+          window.__geo_original_fetch = window.fetch;
+          window.fetch = function(input,options) {
+            const url=typeof input==='string'?input:(input?.url||'');
+            if(String(url).includes('/api/r8-24/geo-growth/fast-ui'))
+              return Promise.reject(new Error('simulated owner transport failure'));
+            return window.__geo_original_fetch.call(window,input,options);
+          };
+        """)
+        driver.find_element(By.ID, "geo-os-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          const badge=document.getElementById('geo-os-state');
+          const rows=document.getElementById('geo-os-rows');
+          return !!(badge && badge.textContent.includes('概览已恢复') &&
+            rows && rows.textContent.includes('机会明细暂不可用'));
+        """))
+        driver.execute_script("window.fetch = window.__geo_original_fetch;")
+        driver.find_element(By.ID, "geo-os-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          const badge=document.getElementById('geo-os-state');
+          return !!(badge && !badge.textContent.includes('概览已恢复') &&
+            !badge.textContent.includes('正在同步真实状态'));
+        """))
+        print("PASS: installed GEO browser degrades to genuine health overview and recovers")
     finally:
         driver.quit()
 
