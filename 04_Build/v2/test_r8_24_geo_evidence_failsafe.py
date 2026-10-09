@@ -283,7 +283,73 @@ def test_seo_cached_dashboard_is_lock_free():
     print("PASS: first-paint GEO unknowns do not masquerade as zeros; pause remains available")
 
 
+
+def test_compact_owner_http_recovery():
+    """Large real ledgers must not block or inflate the owner UI transport."""
+    from unittest.mock import patch
+    fixture = {
+        "status_ready": True,
+        "status_mode": "fast_snapshot",
+        "state": "running",
+        "mission": "live owner mission",
+        "enabled": True,
+        "paused": False,
+        "snapshot_age_seconds": 12,
+        "summary": {"signals": 90, "total": 250, "waiting_publish": 10},
+        "cloud": {"state": "running", "completed": 3, "target": 50, "ready": True},
+        "formal_ab_completed": 2,
+        "formal_ab_target": 50,
+        "opportunities": [{
+            "id": str(i), "gap_label": "local repair "+str(i),
+            "state": "waiting_publish", "score": 93,
+            "large_internal_record": "SENSITIVE-EXCLUDED-"+"x"*200000,
+            "question_text": "repair question "*100
+        } for i in range(350)],
+        "last_result": {"never_send": "x"*1000000},
+    }
+    with patch.object(bridge, "_geo_fast_cached", return_value=fixture):
+        compact = bridge._geo_fast_ui_compact()
+        assert compact["status_ready"] and compact["formal_ab_completed"] == 2
+        assert compact["summary"]["total"] == 250
+        assert len(compact["opportunities"]) <= 15
+        output = json.dumps(compact, ensure_ascii=False)
+        assert len(output.encode("utf-8")) < 25000, len(output)
+        assert "SENSITIVE-EXCLUDED" not in output
+        assert "never_send" not in output
+        with patch.object(bridge, "_geo_fast_health", return_value={
+            "status_ready": True, "snapshot_age_seconds": 15,
+            "snapshot_stale": False, "refreshing": False
+        }):
+            with bridge._GEO_FAST_LOCK:
+                old=dict(bridge._GEO_FAST_CACHE)
+                bridge._GEO_FAST_CACHE["payload"]=fixture
+            try:
+                health = bridge._geo_fast_health_overview()
+                assert health["owner_overview"]["formal_ab_completed"] == 2
+                assert health["owner_overview"]["summary"]["total"] == 250
+                assert "opportunities" not in health["owner_overview"]
+            finally:
+                with bridge._GEO_FAST_LOCK:
+                    bridge._GEO_FAST_CACHE.clear()
+                    bridge._GEO_FAST_CACHE.update(old)
+        http = ThreadingHTTPServer(("127.0.0.1", 0), bridge.server.DashboardHandler)
+        http.daemon_threads = True
+        served = threading.Thread(target=http.serve_forever, daemon=True)
+        served.start()
+        try:
+            root=f"http://127.0.0.1:{http.server_address[1]}"
+            with urlopen(root+"/api/r8-24/geo-growth/fast-ui",timeout=2) as response:
+                payload=json.load(response)
+            assert payload["summary"]["total"]==250
+            assert payload["formal_ab_completed"]==2
+            assert len(payload["opportunities"])==15
+        finally:
+            http.shutdown()
+            http.server_close()
+    print("PASS: bounded GEO fast-ui transport, truthful health fallback, large-ledger HTTP")
+
 if __name__ == "__main__":
     run()
     test_fast_snapshot_does_not_block_http()
     test_seo_cached_dashboard_is_lock_free()
+    test_compact_owner_http_recovery()

@@ -192,6 +192,7 @@
     const state=data.state||'unknown';
     const snapshotPending=data.status_ready===false;
     const snapshotStale=data.snapshot_stale===true;
+    const transportDegraded=data.transport_degraded===true;
     const summary=data.summary||{};
     const cloud=data.cloud||{};
     const policy=data.policy||{};
@@ -205,8 +206,8 @@
     const stateText=state==='running'?
       (isVerifiedRunning?'自动运营中':hasRecentRun?'已启用 · 调度待核查':'已启用 · 等待首轮'):
       stateLabel(state);
-    badge.textContent=snapshotPending?'正在同步真实状态':snapshotStale?'历史状态 · 待更新':stateText;
-    badge.className=`geo-os-state ${snapshotPending?'pause':snapshotStale?'bad':state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
+    badge.textContent=snapshotPending?'正在同步真实状态':snapshotStale?'历史状态 · 待更新':transportDegraded?'概览已恢复 · 明细待同步':stateText;
+    badge.className=`geo-os-state ${snapshotPending?'pause':snapshotStale?'bad':transportDegraded?'pause':state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
     badge.title=snapshotPending?'后台快照尚未完成，不能判定实时运行状态':
       snapshotStale?'仅显示历史账本，不能代表当前真实调度':
       state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
@@ -260,12 +261,13 @@
         <td><span class="geo-os-pill ${item.public_url?'ok':item.asset_stage==='QC_PASSED'?'wait':''}">${esc(item.asset_stage||'等待')}</span><small>${item.public_url?esc(item.public_url):'必须有真实公网回执'}</small>${(item.state==='waiting_publish'||item.state==='deferred')?'<button type="button" class="geo-os-mini-action" data-geo-advance="1">立即推进</button>':''}</td>
         <td><span class="geo-os-pill ${stateClass(item.state)}">${esc(result)}</span><small>${item.operating_before_score==null?'C级运营复测，不改变正式A/B':`Before ${item.operating_before_score} → After ${item.operating_after_score}`}</small></td>
       </tr>`;
-    }).join(''):'<tr><td colspan="6" style="padding:18px;text-align:center;color:#8290a3">当前还没有可执行 GEO 缺口。新的豆包 C级 Signal 到达后会自动判断并创建机会。</td></tr>';
+    }).join(''):transportDegraded?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">运行概览已读取，机会明细暂不可用；不代表任务为零。</td></tr>':'<tr><td colspan="6" style="padding:18px;text-align:center;color:#8290a3">当前还没有可执行 GEO 缺口。新的豆包 C级 Signal 到达后会自动判断并创建机会。</td></tr>';
 
     byId('geo-os-blocker-count').textContent=blockers.length?`${blockers.length} 项 · 仅影响子任务`:'当前无阻塞';
     byId('geo-os-blockers').innerHTML=blockers.length?blockers.map(row=>`<div class="geo-os-blocker"><b>${esc(row.code||'技术阻塞')}</b><span>${esc(row.detail||'')}<br>${esc(row.item_id||'')} · 仅影响该子任务，主工作流继续</span><button type="button" class="geo-os-blocker-retry" data-geo-retry-blocker="1">重试异常</button></div>`).join(''):'<div class="geo-os-ok">当前没有技术阻塞，主工作流可继续。</div>';
     byId('geo-os-message').textContent=snapshotPending?
       '正在后台读取 GEO 真实状态；主界面保留，未验证的数据不计为零。':
+      transportDegraded?'已从快速健康通道恢复真实运营概览；机会明细和控制操作等待主接口恢复。':
       snapshotStale?
       '正在显示历史 GEO 快照（'+(data.snapshot_age_seconds??'未知')+'秒前）。后台正在恢复；当前不能据此认定自动调度正常。':
       data.last_error?`最近异常：${data.last_error}`:
@@ -277,16 +279,16 @@
     const run=byId('geo-os-run');
     const retry=byId('geo-os-retry');
     if(start){
-      start.disabled=busy||snapshotPending||snapshotStale||state==='running';
+      start.disabled=busy||snapshotPending||snapshotStale||transportDegraded||state==='running';
       start.textContent=state==='running'?'自动运营已启动':'启动 GEO 自动运营';
       start.classList.toggle('is-running',state==='running');
     }
     // Emergency pause remains available against the last known running state
     // even when the live snapshot is stale; do not lock the owner out.
-    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||snapshotPending||state!=='running'; }
-    if(resume){ resume.hidden=state!=='paused'; resume.disabled=busy||snapshotPending||snapshotStale||state!=='paused'; }
-    if(run) run.disabled=busy||snapshotPending||snapshotStale||state!=='running';
-    if(retry) retry.disabled=busy||snapshotPending||snapshotStale||(Number(summary.failed||0)+Number(summary.technical_blockers||0)===0);
+    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||snapshotPending||transportDegraded||state!=='running'; }
+    if(resume){ resume.hidden=state!=='paused'; resume.disabled=busy||snapshotPending||snapshotStale||transportDegraded||state!=='paused'; }
+    if(run) run.disabled=busy||snapshotPending||snapshotStale||transportDegraded||state!=='running';
+    if(retry) retry.disabled=busy||snapshotPending||snapshotStale||transportDegraded||(Number(summary.failed||0)+Number(summary.technical_blockers||0)===0);
     wireDashboardControls();
     applyFilter(activeFilter,false);
   }
@@ -339,7 +341,16 @@
     try{
       // One owner poll at a time. Screenshot capture, startup preloading and
       // repeated workbench mounting must not pile up abandoned 4-second GETs.
-      const data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:9000});
+      // Keep the full /api/r8-24/geo-growth/fast for diagnostics and legacy clients.
+      // The owner pane only needs bounded fields, not full opportunity ledgers.
+      let data;
+      try {
+        data=await json('/api/r8-24/geo-growth/fast-ui',{timeoutMs:5000});
+      } catch(error) {
+        if(String(error.message||'').includes('404'))
+          data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:5000});
+        else throw error;
+      }
       statusFailures=0;
       if(statusRetryTimer){clearTimeout(statusRetryTimer);statusRetryTimer=null;}
       render(data);
@@ -349,6 +360,21 @@
       let health=null;
       try { health=await json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2500}); }
       catch(_) {};
+      if(health?.status_ready===true && health.owner_overview){
+        const overview=health.owner_overview;
+        // Never fabricate an opportunity list or official result when the
+        // health probe is our only readable source.
+        render({
+          ...overview,
+          status_ready:true,
+          transport_degraded:true,
+          snapshot_age_seconds:health.snapshot_age_seconds,
+          snapshot_stale:health.snapshot_stale,
+          refreshing:health.refreshing,
+          opportunities:[],pipeline:[],technical_blockers:[],
+          publish_connector:{},policy:{}
+        });
+      }
       const note=health?.status_ready===true?
         `后台快照已就绪（${Math.round(Number(health.snapshot_age_seconds||0))}秒前），但浏览器请求延迟。保留真实旧数据并重试；不重置任务成绩。`:
         health?.status_ready===false?'后台仍在生成真实快照，稍后继续读取。':

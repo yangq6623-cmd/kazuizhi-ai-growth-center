@@ -165,6 +165,94 @@ def _geo_fast_health():
         }
 
 
+
+_GEO_UI_OPPORTUNITY_FIELDS = (
+    "id", "gap_label", "service", "question_text", "question_id",
+    "opportunity_score", "priority", "decision", "keyword", "state",
+    "job_state", "asset_stage", "job_id", "public_url", "outcome",
+    "operating_delta", "retest_task_id", "operating_before_score",
+    "operating_after_score",
+)
+
+
+def _geo_fast_ui_compact(snapshot=None):
+    """Bounded read-only owner UI payload, without jobs, receipts or full ledgers.
+
+    Health and UI endpoints draw from the SAME verified snapshot. The owner
+    cannot be led to believe a pending/old snapshot is fresh, and only a real
+    formal A/B count can be shown.
+    """
+    data = snapshot if snapshot is not None else _geo_fast_cached()
+    if data.get("status_ready") is False:
+        return data
+    rows = data.get("opportunities") or []
+    summary = data.get("summary") or {}
+    today = data.get("today_activity") or {}
+    return {
+        "status_mode": "fast_ui_compact",
+        "status_ready": bool(data.get("status_ready")),
+        "snapshot_age_seconds": data.get("snapshot_age_seconds"),
+        "snapshot_stale": bool(data.get("snapshot_stale")),
+        "refreshing": bool(data.get("refreshing")),
+        "last_refresh_error": str(data.get("last_refresh_error") or "")[:180],
+        "state": data.get("state") or "unknown",
+        "enabled": bool(data.get("enabled")),
+        "paused": bool(data.get("paused")),
+        "mission": str(data.get("mission") or "")[:300],
+        "policy": {"execution_resources":
+            [str(v)[:50] for v in (data.get("policy") or {}).get("execution_resources", [])[:8]]},
+        "today_activity": {k: today.get(k) for k in (
+            "date", "new_opportunities", "verified_publications", "last_run_at",
+            "last_run_age_minutes", "last_run_error", "scheduler_fresh")},
+        "summary": {str(k): v for k, v in summary.items()
+                    if isinstance(v, (int, float, bool, str)) and len(str(v)) < 160},
+        "cloud": {k: (data.get("cloud") or {}).get(k) for k in (
+            "state", "completed", "target", "provider", "ready")},
+        "publish_connector": {k: (data.get("publish_connector") or {}).get(k)
+                              for k in ("ready", "configured", "reason")},
+        "pipeline": [
+            {k: row.get(k) for k in ("id", "label", "count", "state")}
+            for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)
+        ],
+        "opportunities": [
+            {k: (str(row[k])[:260] if isinstance(row.get(k), str) else row.get(k))
+             for k in _GEO_UI_OPPORTUNITY_FIELDS if k in row}
+            for row in rows[:15] if isinstance(row, dict)
+        ],
+        "technical_blockers": [
+            {k: str(row.get(k) or "")[:220] for k in ("code", "detail", "item_id")}
+            for row in (data.get("technical_blockers") or [])[:8]
+            if isinstance(row, dict)
+        ],
+        "formal_ab_completed": data.get("formal_ab_completed"),
+        "formal_ab_target": data.get("formal_ab_target") or 50,
+        "last_run_at": data.get("last_run_at") or "",
+        "last_error": str(data.get("last_error") or "")[:180],
+    }
+
+
+def _geo_fast_health_overview():
+    """Small truthful status fallback for a browser with a congested UI GET."""
+    health = _geo_fast_health()
+    if health.get("status_ready"):
+        with _GEO_FAST_LOCK:
+            payload = _GEO_FAST_CACHE.get("payload") or {}
+            health["owner_overview"] = {
+                "state": payload.get("state") or "unknown",
+                "mission": str(payload.get("mission") or "")[:180],
+                "summary": {k: v for k, v in (payload.get("summary") or {}).items()
+                            if isinstance(v, (int, float, bool))},
+                "cloud": {k: (payload.get("cloud") or {}).get(k)
+                          for k in ("state", "completed", "target", "ready")},
+                "formal_ab_completed": payload.get("formal_ab_completed"),
+                "formal_ab_target": payload.get("formal_ab_target") or 50,
+                "today_activity": {k: (payload.get("today_activity") or {}).get(k)
+                                   for k in ("last_run_at", "scheduler_fresh", "new_opportunities",
+                                             "verified_publications")},
+            }
+    return health
+
+
 def _geo_evidence_seed(reason="", loading=True):
     # This deterministic, read-only function never accesses the Windows JSON
     # ledger or the shared I/O lock; it stays usable during a blocked writer.
@@ -673,6 +761,9 @@ def install():
             if path in {"/api/r8-24/geo-growth", "/api/r8-24/geo-growth/fast"}:
                 handler._json_ok(_geo_fast_cached())
                 return
+            if path == "/api/r8-24/geo-growth/fast-ui":
+                handler._json_ok(_geo_fast_ui_compact())
+                return
             if path == "/api/r8-24/geo-growth/evidence":
                 handler._json_ok(_geo_evidence_cached())
                 return
@@ -683,7 +774,7 @@ def install():
                 handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
                 return
             if path == "/api/r8-24/geo-growth/fast-health":
-                handler._json_ok(_geo_fast_health())
+                handler._json_ok(_geo_fast_health_overview())
                 return
             if path == "/api/r8-24/geo-growth/liveness":
                 # Keep this endpoint independent of JSON disk I/O, the GEO

@@ -135,6 +135,19 @@ def assert_seo_geo(driver):
               x.status_mode==='fast_snapshot')).catch(()=>done(false));
     """))
 
+    # Distinct bounded owner transport must be reachable with independently
+    # verified formal truth; the heavy historic /fast route is still preserved.
+    compact = driver.execute_async_script("""
+      const done=arguments[0];
+      fetch('/api/r8-24/geo-growth/fast-ui',{cache:'no-store'})
+        .then(r=>r.json()).then(x=>done({
+          ready:x.status_ready,mode:x.status_mode,
+          ab:x.formal_ab_completed,has_summary:!!x.summary
+        })).catch(e=>done({error:String(e)}));
+    """)
+    if compact.get("error") or not compact.get("ready") or compact.get("mode") != "fast_ui_compact" or not compact.get("has_summary"):
+        raise AssertionError(f"GEO compact browser route not ready: {compact}")
+
     # The browser itself must recover, not merely a separate direct API call.
     # A healthy backend with a perpetually disabled GEO owner toolbar is a
     # failed installed release even if /fast-health reports ready.
