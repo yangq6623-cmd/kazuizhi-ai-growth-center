@@ -20,7 +20,15 @@ def migrate_to_v2_2():
     sources = [path for path in root.rglob("*") if path.is_file()]
     for source in sorted(sources, key=lambda item: item.as_posix()):
         relative = source.relative_to(root)
-        if relative.as_posix() == MARKER or relative.parts[:2] == ("r8", "backup_pre_v2_2"):
+        if (
+            relative.as_posix() == MARKER
+            or relative.parts[:2] == ("r8", "backup_pre_v2_2")
+            # R7 already made this immutable pre-write copy. Copying it into
+            # the R8 snapshot is redundant and can exceed Windows MAX_PATH on
+            # first launch after an overwrite install, before the HTTP server
+            # gets a chance to bind its port.
+            or relative.parts[:2] == ("r7", "backup_r6")
+        ):
             continue
         if source.name.endswith((".tmp", ".uploading")):
             continue

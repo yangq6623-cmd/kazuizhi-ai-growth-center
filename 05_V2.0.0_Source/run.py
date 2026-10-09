@@ -61,6 +61,7 @@ from core.seo_geo_autonomy import status as seo_geo_autonomy_status
 from core.seo_geo_growth import dashboard as seo_geo_dashboard
 from core.seo_observability import run as run_seo_technical_audit, should_run_today as seo_technical_audit_due
 from integrations.ai_gateway import run_once as run_ai_gateway
+from integrations.async_control_bus import start_background_agent, stop_background_agent
 from integrations.bridge import sync_once as bridge_sync_once
 from integrations.business_data import start_background_refresh as start_business_refresh_worker
 from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
@@ -331,6 +332,9 @@ def main():
     worker_stops = []
     try:
         with server:
+            # Port ownership is now proven.  Do not let duplicate desktop
+            # launches start control-bus network/file work before this point.
+            start_background_agent()
             migrate_r6()
             migrate_to_v2_2()
             recover_interrupted()
@@ -359,6 +363,7 @@ def main():
                 _runtime_mark("http_server", ok=False, error=error, detail=f"port={server.server_port}", force_persist=True)
                 raise
     finally:
+        stop_background_agent()
         for stop in worker_stops:
             try:
                 stop.set()

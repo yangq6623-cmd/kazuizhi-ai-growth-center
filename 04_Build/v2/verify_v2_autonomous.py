@@ -57,7 +57,12 @@ class MockAIHandler(BaseHTTPRequestHandler):
 def inspect_source():
     manifest = json.loads((ROOT / "04_Build/v2/r3_preservation.json").read_text(encoding="utf-8"))
     for name, expected in manifest.items():
-        check(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == expected, f"R3/history changed: {name}")
+        # Git stores these preservation fixtures with LF endings, while a
+        # native Windows checkout can materialize the same tracked content as
+        # CRLF.  Hash the canonical Git representation so an EOL-only checkout
+        # difference does not block a legitimate Windows release build.
+        content = (ROOT / name).read_bytes().replace(b"\r\n", b"\n")
+        check(hashlib.sha256(content).hexdigest() == expected, f"R3/history changed: {name}")
     for path in (ROOT / "05_V2.0.0_Source").rglob("*"):
         if path.is_file() and path.suffix not in (".pyc", ".md", ".json"):
             text = path.read_text(encoding="utf-8")
@@ -74,14 +79,24 @@ def exercise(command):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    with tempfile.TemporaryDirectory() as tmp:
+    # Windows Defender/indexing can briefly retain the just-closed runtime log
+    # after every product assertion has passed.  Cleanup must stay best-effort
+    # rather than turning that external file-handle race into a release failure.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         public_report = Path(tmp) / "public-keywords.json"
         public_report.write_text(json.dumps({"keywords": [{"text": "涟水水电工师傅上门服务电话", "score": 73, "last_seen": "2026-09-16"}]}, ensure_ascii=False), encoding="utf-8")
         # The build worker is a non-interactive Windows session, where DPAPI
         # deliberately cannot create a user-bound secret.  Keep the mock key
         # in this child process only; production configuration still persists
         # user credentials through DPAPI and never receives this environment.
-        env = dict(os.environ, LOCALAPPDATA=tmp, KAZUIZHI_AI_REPORT_PATH=str(public_report), KAZUIZHI_AI_API_KEY="test-secret-123")
+        env = dict(
+            os.environ,
+            LOCALAPPDATA=tmp,
+            KAZUIZHI_AI_REPORT_PATH=str(public_report),
+            KAZUIZHI_AI_API_KEY="test-secret-123",
+            PYTHONIOENCODING="utf-8",
+            PYTHONUTF8="1",
+        )
         log_path = Path(tmp) / "runtime.log"
         with open(log_path, "w+", encoding="utf-8") as log:
             process = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=env, stdout=log, stderr=subprocess.STDOUT)

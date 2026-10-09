@@ -748,11 +748,11 @@
 
     state.phase = 'loading_owner_shell';
     exposeStartupStatus();
-    primeScriptSources([
-      ...SCRIPT_SEQUENCE,
-      ...LAZY_SEQUENCE.seo_geo,
-      ...POST_READY_SEQUENCE,
-    ], SCRIPT_TIMEOUT_MS);
+    // Prime only the modules that the following loop consumes immediately.
+    // POST_READY modules already have their own delayed loader. Fetching them
+    // here duplicated cold-start traffic and could occupy Chrome's per-origin
+    // connections while GEO or the Connections page needed a real script/API.
+    primeScriptSources(SCRIPT_SEQUENCE, SCRIPT_TIMEOUT_MS);
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
         state.current_module = src;

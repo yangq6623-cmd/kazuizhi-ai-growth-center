@@ -52,6 +52,7 @@ jobs:
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r8_migration_backup_nesting.py
           python 04_Build/v2/test_r7_block_a.py
           python 04_Build/v2/test_r7_block_b.py
       - name: Verify inherited R8 final control plane and autonomous Mission loop
@@ -95,6 +96,7 @@ jobs:
           python 04_Build/v2/test_r8_22_autonomous_convergence.py
           python 04_Build/v2/test_r8_23_final_growth_os.py
           python 04_Build/v2/test_r8_23_final_workbench_parity.py
+          python 04_Build/v2/test_r8_24_control_plane_compaction.py
           python 04_Build/v2/test_geo_774_async_boot_browser.py
           python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
           python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py

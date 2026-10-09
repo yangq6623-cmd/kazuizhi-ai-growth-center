@@ -20,6 +20,7 @@ from core.storage import now_iso, read_json, write_json
 
 STATE_FILE = "ops/r8_22_autonomous_convergence.json"
 PHASE_RECEIPT_SECONDS = 15 * 60
+MAX_PHASE_RECEIPTS = 192
 CURRENT_PRIORITY = "P0_current_mission"
 BACKLOG_PRIORITY = "P3_backlog"
 
@@ -45,20 +46,123 @@ def _default_state():
     }
 
 
+def _short_text(value, limit=320):
+    return str(value or "")[:limit]
+
+
+def _scalar_map(value, *, limit=32):
+    """Keep only bounded scalar counters/status fields for historical receipts."""
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key, item in value.items():
+        if len(result) >= limit:
+            break
+        if isinstance(item, (bool, int, float)) or item is None:
+            result[str(key)[:80]] = item
+        elif isinstance(item, str):
+            result[str(key)[:80]] = item[:320]
+    return result
+
+
+def _compact_geo_growth(value):
+    if not isinstance(value, dict):
+        return {}
+    return {
+        "state": _short_text(value.get("state"), 80),
+        "enabled": bool(value.get("enabled")),
+        "paused": bool(value.get("paused")),
+        "mission": _short_text(value.get("mission"), 320),
+        "last_run_at": _short_text(value.get("last_run_at"), 80),
+        "last_error": _short_text(value.get("last_error"), 320),
+        "formal_ab_completed": value.get("formal_ab_completed"),
+        "formal_ab_target": value.get("formal_ab_target"),
+        "summary": _scalar_map(value.get("summary"), limit=32),
+        "today_activity": _scalar_map(value.get("today_activity"), limit=16),
+        "cloud": _scalar_map(value.get("cloud"), limit=12),
+    }
+
+
+def _compact_seo_geo(value):
+    """Reduce a live SEO/GEO status tree to durable phase-level evidence.
+
+    The old receipt format copied the complete growth, opportunity, connector,
+    runtime and GEO trees every 15 minutes.  On a real owner ledger, 192
+    receipts grew STATE_FILE to nearly 50 MB.  Every dashboard poll then parsed
+    that file several times under the process-wide JSON lock, starving even
+    static JavaScript and liveness requests.  A phase receipt only needs stable
+    counters and state labels; authoritative detail remains in its source
+    ledgers.
+    """
+    if not isinstance(value, dict):
+        return {"snapshot_mode": "phase_receipt_compact_v1"}
+    growth = value.get("r8_20_growth") if isinstance(value.get("r8_20_growth"), dict) else {}
+    return {
+        "snapshot_mode": "phase_receipt_compact_v1",
+        "enabled": bool(value.get("enabled")),
+        "mode": _short_text(value.get("mode"), 80),
+        "last_run_at": _short_text(value.get("last_run_at"), 80),
+        "human_item_count": value.get("human_item_count"),
+        "today": _scalar_map(value.get("today"), limit=16),
+        "policy": _scalar_map(value.get("policy"), limit=24),
+        "r8_20_growth": {
+            "state": _short_text(growth.get("state"), 80),
+            "last_run_at": _short_text(growth.get("last_run_at"), 80),
+            "summary": _scalar_map(growth.get("summary"), limit=32),
+        },
+        "runtime_health": _scalar_map(value.get("runtime_health"), limit=24),
+        "geo_growth_os": _compact_geo_growth(value.get("geo_growth_os")),
+    }
+
+
+def _compact_phase_receipt(value):
+    if not isinstance(value, dict):
+        return None
+    metrics = value.get("metrics") if isinstance(value.get("metrics"), dict) else {}
+    return {
+        "receipt_id": _short_text(value.get("receipt_id"), 120),
+        "kind": _short_text(value.get("kind"), 80),
+        "created_at": _short_text(value.get("created_at"), 80),
+        "command_id": _short_text(value.get("command_id"), 160),
+        "mission_id": _short_text(value.get("mission_id"), 160),
+        "metrics": {
+            "tasks": _scalar_map(metrics.get("tasks"), limit=16),
+            "seo_geo": _compact_seo_geo(metrics.get("seo_geo")),
+        },
+        "human_blockers": value.get("human_blockers"),
+        "deferred_channels": value.get("deferred_channels"),
+        "truth_note": _short_text(value.get("truth_note"), 500),
+    }
+
+
+def _compact_state_receipts(data):
+    rows = data.get("phase_receipts") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        data["phase_receipts"] = []
+        return True
+    compact = [item for item in (_compact_phase_receipt(row) for row in rows[-MAX_PHASE_RECEIPTS:]) if item]
+    changed = compact != rows
+    data["phase_receipts"] = compact
+    return changed
+
+
 def _load_state():
     data = read_json(STATE_FILE, _default_state())
     if not isinstance(data, dict):
         data = _default_state()
     for key, value in _default_state().items():
         data.setdefault(key, value)
-    if not isinstance(data.get("phase_receipts"), list):
-        data["phase_receipts"] = []
+    if _compact_state_receipts(data):
+        # Persist the one-time legacy shrink immediately.  This turns a real
+        # ~50 MB ledger into a bounded control-plane file before concurrent UI
+        # polls can repeatedly parse and serialize it.
+        write_json(STATE_FILE, data)
     return data
 
 
 def _save_state(data):
     data["updated_at"] = now_iso()
-    data["phase_receipts"] = (data.get("phase_receipts") or [])[-192:]
+    _compact_state_receipts(data)
     return write_json(STATE_FILE, data)
 
 
@@ -366,7 +470,7 @@ def _metrics(command_id=None, mission_id=None):
             "failed": sum(x.get("state") == "failed" for x in current),
             "receipts": sum(isinstance(x.get("execution_receipt"), dict) for x in current),
         },
-        "seo_geo": seo_geo,
+        "seo_geo": _compact_seo_geo(seo_geo),
     }
 
 

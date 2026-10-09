@@ -29,7 +29,23 @@ function Assert-GeoOwnerRuntime([int]$Port) {
         } catch {}
         Start-Sleep -Milliseconds 500
     }
-    if (-not $ready) { throw 'Installed runtime did not become HTTP-ready for GEO field smoke test' }
+    if (-not $ready) {
+        $processDetail = 'runtime process unavailable'
+        try {
+            $script:runtime.Refresh()
+            $processDetail = if ($script:runtime.HasExited) {
+                "runtime exited with code $($script:runtime.ExitCode)"
+            } else {
+                "runtime alive; pid=$($script:runtime.Id); cpu=$([math]::Round($script:runtime.CPU, 2))s"
+            }
+        } catch { $processDetail = "runtime inspection failed: $($_.Exception.Message)" }
+        $listenerDetail = 'no listener'
+        try {
+            $listenerDetail = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
+                ForEach-Object { "listener pid=$($_.OwningProcess) address=$($_.LocalAddress)" }) -join '; '
+        } catch {}
+        throw "Installed runtime did not become HTTP-ready for GEO field smoke test; $processDetail; $listenerDetail; test_root=$testRoot"
+    }
 
     foreach ($route in @('/api/r8-24/geo-growth/fast','/api/r8-24/geo-growth')) {
         # The new safe owner API does not lie about zero metrics on cold start.
@@ -100,6 +116,7 @@ function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     }
 }
 $runtime = $null
+$testSucceeded = $false
 try {
     $installerText = Get-Content -LiteralPath $installerScript -Raw
     if ($installerText -notmatch '\{userstartup\}\\卡嘴子 AI 后台自动运行 R8-23') { throw 'Installer is missing the per-user background autostart shortcut' }
@@ -161,6 +178,7 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstall left application executable' }
     if ((Get-Content -LiteralPath $sentinel -Raw).Trim() -ne 'preserve-v2-user-data') { throw 'Uninstall deleted persistent user data' }
     Assert-PersistentFiles $persistentFiles $false
+    $testSucceeded = $true
     Write-Host 'PASS: R8-23 Final Workbench install, GEO owner browser smoke, all-sidebar real Chrome click smoke, runtime verification, overwrite upgrade, data preservation and uninstall preservation'
 } finally {
     if ($null -ne $runtime) {
@@ -173,7 +191,9 @@ try {
         } catch {}
     }
     $env:LOCALAPPDATA = $oldLocalAppData
-    if (Test-Path -LiteralPath $testRoot) {
+    if ((Test-Path -LiteralPath $testRoot) -and -not $testSucceeded) {
+        Write-Warning "Preserving failed installer test root for diagnosis: $testRoot"
+    } elseif (Test-Path -LiteralPath $testRoot) {
         $resolved = (Resolve-Path $testRoot).Path
         if (-not $resolved.StartsWith($baseTemp + '\', [System.StringComparison]::OrdinalIgnoreCase)) { throw "Refusing to clean non-temporary path: $resolved" }
         $removed = $false

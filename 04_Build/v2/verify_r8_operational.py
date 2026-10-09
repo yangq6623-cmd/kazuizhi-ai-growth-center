@@ -116,8 +116,15 @@ def exercise(command):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
-    with tempfile.TemporaryDirectory() as temporary:
-        env = dict(os.environ, LOCALAPPDATA=temporary)
+    # Runtime assertions are the release gate.  A transient Windows
+    # Defender/indexer handle on runtime.log after shutdown is not.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temporary:
+        env = dict(
+            os.environ,
+            LOCALAPPDATA=temporary,
+            PYTHONIOENCODING="utf-8",
+            PYTHONUTF8="1",
+        )
         log_path = Path(temporary) / "runtime.log"
         with log_path.open("w+", encoding="utf-8") as log:
             process = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=temporary, env=env, stdout=log, stderr=subprocess.STDOUT)

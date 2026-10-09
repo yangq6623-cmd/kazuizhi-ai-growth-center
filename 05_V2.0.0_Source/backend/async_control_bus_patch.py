@@ -5,7 +5,7 @@ import ipaddress
 from urllib.parse import urlsplit
 
 from backend import server
-from integrations.async_control_bus import recent_receipts, start_background_agent, status, sync_once
+from integrations.async_control_bus import recent_receipts, status, sync_once
 
 _INSTALLED = False
 
@@ -69,7 +69,10 @@ def install():
     server.DashboardHandler.do_POST = do_post
     server.DashboardHandler._kz_async_control_bus_patched = True
     _INSTALLED = True
-    start_background_agent()
+    # The real process starts the agent only after create_server() has bound
+    # the loopback port.  Starting it while modules are imported lets a second
+    # desktop launch write shared JSON for several seconds before that launch
+    # discovers the occupied port and exits.
 
 
 install()
