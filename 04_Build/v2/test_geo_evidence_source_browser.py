@@ -8,6 +8,7 @@ import json
 import sys
 import threading
 import time
+from functools import partial
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from selenium import webdriver
@@ -68,7 +69,7 @@ def main():
         old_f = dict(bridge._GEO_FAST_CACHE)
         bridge._GEO_FAST_CACHE.update(payload=owner, updated=time.monotonic(),
                                       refreshing=False, workers=[], error="")
-    server = ThreadingHTTPServer(("127.0.0.1", 0), bridge.server.DashboardHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(bridge.server.DashboardHandler, directory=str(bridge.server.get_web_path())))
     server.daemon_threads = True
     task = threading.Thread(target=server.serve_forever, daemon=True)
     task.start()
