@@ -126,6 +126,15 @@ def assert_seo_geo(driver):
     if state == "未启动":
         raise AssertionError("GEO 工作台已显示，但自动运营仍处于未启动状态")
 
+    # The HTTP fast route has an honest cold-start pending state. Do not test
+    # formal SEO/GEO parity until the background truth snapshot is ready.
+    WebDriverWait(driver, 25).until(lambda d: d.execute_async_script("""
+      const done=arguments[0];
+      fetch('/api/r8-24/geo-growth/fast',{cache:'no-store'})
+        .then(r=>r.json()).then(x=>done(x.status_ready===true &&
+              x.status_mode==='fast_snapshot')).catch(()=>done(false));
+    """))
+
     # Formal A/B count in the legacy SEO summary and the new Growth OS must use
     # the same official Evidence truth ledger.
     parity = driver.execute_async_script("""

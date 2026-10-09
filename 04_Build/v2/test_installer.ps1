@@ -32,11 +32,30 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     if (-not $ready) { throw 'Installed runtime did not become HTTP-ready for GEO field smoke test' }
 
     foreach ($route in @('/api/r8-24/geo-growth/fast','/api/r8-24/geo-growth')) {
-        $watch = [System.Diagnostics.Stopwatch]::StartNew()
-        $snapshot = Invoke-RestMethod -Uri ($base + $route) -Method Get -TimeoutSec 4
-        $watch.Stop()
-        if ($watch.Elapsed.TotalSeconds -gt 4.0) { throw "GEO owner snapshot exceeded 4 seconds: $route" }
-        if ($snapshot.status_mode -ne 'fast_snapshot') { throw "GEO owner snapshot did not use fast mode: $route" }
+        # The new safe owner API does not lie about zero metrics on cold start.
+        # It returns an immediate pending_snapshot while the real ledger is
+        # reconstructed asynchronously. Verify each GET is fast AND the true
+        # snapshot becomes ready within a bounded start-up window.
+        $confirmed = $false
+        $snapshot = $null
+        for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            $snapshot = Invoke-RestMethod -Uri ($base + $route) -Method Get -TimeoutSec 4
+            $watch.Stop()
+            if ($watch.Elapsed.TotalSeconds -gt 4.0) { throw "GEO owner snapshot exceeded 4 seconds: $route" }
+            if ($snapshot.status_mode -eq 'fast_snapshot' -and $snapshot.status_ready -ne $false) {
+                $confirmed = $true
+                break
+            }
+            if ($snapshot.status_mode -ne 'pending_snapshot') {
+                throw "Unexpected GEO owner snapshot mode: $($snapshot.status_mode) $route"
+            }
+            if ($null -ne $snapshot.formal_ab_completed) {
+                throw "Pending GEO snapshot fabricated formal A/B results: $route"
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $confirmed) { throw "GEO true fast snapshot did not warm within 20 seconds: $route" }
         if ([string]::IsNullOrWhiteSpace([string]$snapshot.state)) { throw "GEO owner snapshot missing state: $route" }
         if ([string]::IsNullOrWhiteSpace([string]$snapshot.mission)) { throw "GEO owner snapshot missing mission: $route" }
         if ([int]$snapshot.formal_ab_target -ne 50) { throw "GEO owner snapshot lost formal A/B target: $route" }
