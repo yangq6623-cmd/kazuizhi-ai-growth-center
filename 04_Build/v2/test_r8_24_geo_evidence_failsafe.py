@@ -178,5 +178,75 @@ def run() -> None:
         reset()
 
 
+
+
+def test_fast_snapshot_does_not_block_http():
+    """Both GEO panes must remain responsive while global JSON access stalls."""
+    original_status = bridge.geo_growth.fast_status
+    saved = dict(bridge._GEO_FAST_CACHE)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_status():
+        entered.set()
+        if not release.wait(3):
+            raise TimeoutError("synthetic slow GEO ledger")
+        return {"status_mode": "fast_snapshot", "state": "running",
+                "formal_ab_completed": 2, "formal_ab_target": 50,
+                "summary": {"total": 9}, "pipeline": [], "opportunities": []}
+
+    bridge.geo_growth.fast_status = blocked_status
+    try:
+        with bridge._GEO_FAST_LOCK:
+            bridge._GEO_FAST_CACHE.update({
+                "payload": None, "updated": 0.0, "started": 0.0,
+                "refreshing": False, "error": "", "attempt": 0, "workers": [],
+            })
+        started = time.monotonic()
+        pending = bridge._geo_fast_cached()
+        assert time.monotonic() - started < 0.5
+        assert pending["status_ready"] is False
+        assert pending["formal_ab_completed"] is None
+        assert entered.wait(2), "worker was not started"
+        http = ThreadingHTTPServer(("127.0.0.1", 0), bridge.server.DashboardHandler)
+        http.daemon_threads = True
+        served = threading.Thread(target=http.serve_forever, daemon=True)
+        served.start()
+        try:
+            root = f"http://127.0.0.1:{http.server_address[1]}"
+            for endpoint in ("fast", "fast-health", "evidence-health"):
+                start = time.monotonic()
+                with urlopen(root + "/api/r8-24/geo-growth/" + endpoint, timeout=2) as resp:
+                    payload = json.load(resp)
+                assert time.monotonic() - start < 1.5, endpoint
+                if endpoint == "fast":
+                    assert payload["status_ready"] is False
+                    assert payload["formal_ab_completed"] is None
+        finally:
+            http.shutdown()
+            http.server_close()
+        release.set()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            ready = bridge._geo_fast_cached()
+            if ready["status_ready"]:
+                break
+            time.sleep(0.05)
+        assert ready["status_ready"] is True and ready["formal_ab_completed"] == 2
+        assert ready["snapshot_stale"] is False
+        with bridge._GEO_FAST_LOCK:
+            bridge._GEO_FAST_CACHE["updated"] = time.monotonic() - 100
+        stale = bridge._geo_fast_cached()
+        assert stale["status_ready"] is True and stale["snapshot_stale"] is True
+        print("PASS: fast GEO UI nonblocking, 2/50 truth, stale state and recovery")
+    finally:
+        release.set()
+        bridge.geo_growth.fast_status = original_status
+        with bridge._GEO_FAST_LOCK:
+            bridge._GEO_FAST_CACHE.clear()
+            bridge._GEO_FAST_CACHE.update(saved)
+
+
 if __name__ == "__main__":
     run()
+    test_fast_snapshot_does_not_block_http()

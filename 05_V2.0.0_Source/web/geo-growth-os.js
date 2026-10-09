@@ -176,7 +176,7 @@
     return true;
   }
 
-  function stateLabel(value){ return ({running:'自动运营中',paused:'已暂停',stopped:'未启动'}[value]||value||'未知'); }
+  function stateLabel(value){ return ({running:'自动运营中',paused:'已暂停',stopped:'未启动',unknown:'读取中'}[value]||value||'未知'); }
   function itemState(value){ return ({
     opportunity_created:'机会已建立',ai_employee_queued:'AI员工排队',ai_employee_running:'AI员工执行中',content_ready:'内容已完成',waiting_publish:'等待真实发布',waiting_retest:'等待复测',retest_queued:'复测已排队',completed:'闭环完成',failed:'执行失败',deferred:'子任务延后'
   }[value]||value||'等待'); }
@@ -185,7 +185,9 @@
   function render(data){
     cache=data||{};
     if(!ensureStructure()) return;
-    const state=data.state||'stopped';
+    const state=data.state||'unknown';
+    const snapshotPending=data.status_ready===false;
+    const snapshotStale=data.snapshot_stale===true;
     const summary=data.summary||{};
     const cloud=data.cloud||{};
     const policy=data.policy||{};
@@ -199,8 +201,8 @@
     const stateText=state==='running'?
       (isVerifiedRunning?'自动运营中':hasRecentRun?'已启用 · 调度待核查':'已启用 · 等待首轮'):
       stateLabel(state);
-    badge.textContent=stateText;
-    badge.className=`geo-os-state ${state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
+    badge.textContent=snapshotPending?'正在同步真实状态':snapshotStale?'历史状态 · 待更新':stateText;
+    badge.className=`geo-os-state ${snapshotPending?'pause':snapshotStale?'bad':state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
     badge.title=state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
     byId('geo-os-mission').textContent=data.mission||'等待 Mission';
     byId('geo-os-resources').textContent=`执行资源：${(policy.execution_resources||['doubao_api','local_model','rtx3060','platform_capabilities']).join(' / ')} · 正常推广无需人工审核`;
@@ -229,7 +231,7 @@
       ['等待发布',summary.waiting_publish||0,'等待真实公网回执','waiting_publish'],
       ['等待复测',summary.published_or_waiting_retest||0,'发布后自动复测','retest'],
       ['闭环完成',summary.completed||0,'Before / After','completed'],
-      ['正式 A/B',`${Number(data.formal_ab_completed||0)} / ${Number(data.formal_ab_target||50)}`,'独立正式真值','formal_ab'],
+      ['正式 A/B',data.formal_ab_completed==null?'待同步 / 50':`${Number(data.formal_ab_completed)} / ${Number(data.formal_ab_target||50)}`,'独立正式真值','formal_ab'],
     ];
     byId('geo-os-kpis').innerHTML=kpis.map(x=>`<button type="button" class="geo-os-kpi ${activeFilter===x[3]?'active':''}" data-geo-filter="${esc(x[3])}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></button>`).join('');
 
@@ -251,7 +253,12 @@
 
     byId('geo-os-blocker-count').textContent=blockers.length?`${blockers.length} 项 · 仅影响子任务`:'当前无阻塞';
     byId('geo-os-blockers').innerHTML=blockers.length?blockers.map(row=>`<div class="geo-os-blocker"><b>${esc(row.code||'技术阻塞')}</b><span>${esc(row.detail||'')}<br>${esc(row.item_id||'')} · 仅影响该子任务，主工作流继续</span><button type="button" class="geo-os-blocker-retry" data-geo-retry-blocker="1">重试异常</button></div>`).join(''):'<div class="geo-os-ok">当前没有技术阻塞，主工作流可继续。</div>';
-    byId('geo-os-message').textContent=data.last_error?`最近异常：${data.last_error}`:`主链：Signal → Opportunity → 总控判断 → AI员工 → 发布 → 复测 → Before/After。正式 A/B 作为旁路证据，不阻塞运营主链。`;
+    byId('geo-os-message').textContent=snapshotPending?
+      '正在后台读取 GEO 真实状态；主界面保留，未验证的数据不计为零。':
+      snapshotStale?
+      '正在显示历史 GEO 快照（'+(data.snapshot_age_seconds??'未知')+'秒前）。后台正在恢复；当前不能据此认定自动调度正常。':
+      data.last_error?`最近异常：${data.last_error}`:
+      `主链：Signal → Opportunity → 总控判断 → AI员工 → 发布 → 复测 → Before/After。正式 A/B 作为旁路证据，不阻塞运营主链。`;
 
     const start=byId('geo-os-start');
     const pause=byId('geo-os-pause');
@@ -259,14 +266,14 @@
     const run=byId('geo-os-run');
     const retry=byId('geo-os-retry');
     if(start){
-      start.disabled=busy||state==='running';
+      start.disabled=busy||snapshotPending||snapshotStale||state==='running';
       start.textContent=state==='running'?'自动运营已启动':'启动 GEO 自动运营';
       start.classList.toggle('is-running',state==='running');
     }
-    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||state!=='running'; }
-    if(resume){ resume.hidden=state!=='paused'; resume.disabled=busy||state!=='paused'; }
-    if(run) run.disabled=busy||state!=='running';
-    if(retry) retry.disabled=busy||(Number(summary.failed||0)+Number(summary.technical_blockers||0)===0);
+    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||snapshotPending||snapshotStale||state!=='running'; }
+    if(resume){ resume.hidden=state!=='paused'; resume.disabled=busy||snapshotPending||snapshotStale||state!=='paused'; }
+    if(run) run.disabled=busy||snapshotPending||snapshotStale||state!=='running';
+    if(retry) retry.disabled=busy||snapshotPending||snapshotStale||(Number(summary.failed||0)+Number(summary.technical_blockers||0)===0);
     wireDashboardControls();
     applyFilter(activeFilter,false);
   }

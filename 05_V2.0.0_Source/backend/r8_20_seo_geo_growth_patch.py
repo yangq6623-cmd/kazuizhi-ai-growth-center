@@ -46,6 +46,125 @@ _GEO_EVIDENCE_MAX_WORKERS = 2
 _GEO_EVIDENCE_PREWARM_TIMER = None
 _GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS = 30.0
 
+# /geo-growth/fast previously read multiple JSON ledgers under a global RLock
+# on the HTTP request thread. Busy workers could stall both GEO panels for 4-8s.
+# Fast reads now serve a truthfully aged cached snapshot, rebuilt in the background.
+_GEO_FAST_LOCK = threading.Lock()
+_GEO_FAST_CACHE = {
+    "payload": None, "updated": 0.0, "started": 0.0, "refreshing": False,
+    "error": "", "attempt": 0, "workers": [],
+}
+_GEO_FAST_TTL_SECONDS = 20
+_GEO_FAST_WORKER_TIMEOUT_SECONDS = 15
+_GEO_FAST_MAX_WORKERS = 2
+_GEO_FAST_PREWARM_TIMER = None
+
+def _geo_fast_update_cache(token):
+    try:
+        result = geo_growth.fast_status()
+        if not isinstance(result, dict):
+            raise ValueError("fast_status returned a non-dict result")
+        with _GEO_FAST_LOCK:
+            if _GEO_FAST_CACHE["attempt"] == token:
+                _GEO_FAST_CACHE.update(
+                    payload=result, updated=time.monotonic(), refreshing=False, error="",
+                )
+    except Exception as error:
+        with _GEO_FAST_LOCK:
+            if _GEO_FAST_CACHE["attempt"] == token:
+                _GEO_FAST_CACHE.update(
+                    refreshing=False,
+                    error=f"{type(error).__name__}: {str(error)[:150]}",
+                )
+
+
+def _geo_fast_cached():
+    """Never touch disk, cloud status or the global JSON lock on HTTP threads."""
+    now = time.monotonic()
+    with _GEO_FAST_LOCK:
+        state = _GEO_FAST_CACHE
+        state["workers"] = [t for t in state["workers"] if t.is_alive()]
+        if state["refreshing"] and now - state["started"] > _GEO_FAST_WORKER_TIMEOUT_SECONDS:
+            state["refreshing"] = False
+            state["error"] = "GEO 运行状态后台刷新超时，正在保留上次可用快照"
+            state["attempt"] += 1
+        payload = state["payload"]
+        age = max(0, now - state["updated"]) if payload is not None else None
+        cooldown = now - state["started"] < 3
+        if (payload is None or age >= _GEO_FAST_TTL_SECONDS) and not state["refreshing"] and not cooldown and len(state["workers"]) < _GEO_FAST_MAX_WORKERS:
+            state["attempt"] += 1
+            token = state["attempt"]
+            state["refreshing"] = True
+            state["started"] = now
+            worker = threading.Thread(
+                target=_geo_fast_update_cache, args=(token,),
+                name="kz-geo-fast-status-snapshot", daemon=True,
+            )
+            state["workers"].append(worker)
+            worker.start()
+        if payload is not None:
+            return {
+                **payload,
+                "status_ready": True,
+                "snapshot_stale": bool(age >= 90),
+                "snapshot_age_seconds": round(age, 1),
+                "refreshing": bool(state["refreshing"]),
+                "last_refresh_error": str(state["error"] or "")[:200],
+            }
+        return {
+            "status_mode": "pending_snapshot",
+            "status_ready": False,
+            "snapshot_stale": False,
+            "refreshing": bool(state["refreshing"]),
+            "last_refresh_error": str(state["error"] or "")[:200],
+            "state": "unknown",
+            "mission": "正在读取真实 GEO 运行状态，请稍候",
+            "summary": {}, "pipeline": [], "opportunities": [],
+            "technical_blockers": [], "cloud": {}, "policy": {},
+            "formal_ab_completed": None, "formal_ab_target": 50,
+        }
+
+
+def _geo_fast_periodic_refresh():
+    """Rebuild the UI snapshot independently of browser focus or owner polling."""
+    global _GEO_FAST_PREWARM_TIMER
+    try:
+        _geo_fast_cached()
+    finally:
+        timer = threading.Timer(20.0, _geo_fast_periodic_refresh)
+        timer.daemon = True
+        timer.name = "kz-geo-fast-status-auto-refresh"
+        _GEO_FAST_PREWARM_TIMER = timer
+        timer.start()
+
+
+def _schedule_geo_fast_prewarm():
+    global _GEO_FAST_PREWARM_TIMER
+    if _GEO_FAST_PREWARM_TIMER is not None:
+        return
+    timer = threading.Timer(2.0, _geo_fast_periodic_refresh)
+    timer.daemon = True
+    timer.name = "kz-geo-fast-status-prewarm"
+    _GEO_FAST_PREWARM_TIMER = timer
+    timer.start()
+
+
+def _geo_fast_health():
+    """Nonblocking diagnostic data; no secrets, network access, or disk reads."""
+    with _GEO_FAST_LOCK:
+        state = _GEO_FAST_CACHE
+        age = (max(0, time.monotonic() - state["updated"])
+               if state["payload"] is not None else None)
+        return {
+            "status_ready": state["payload"] is not None,
+            "snapshot_age_seconds": round(age, 2) if age is not None else None,
+            "snapshot_stale": bool(age is not None and age >= 90),
+            "refreshing": bool(state["refreshing"]),
+            "worker_count": sum(t.is_alive() for t in state["workers"]),
+            "last_error": str(state["error"] or "")[:200],
+        }
+
+
 def _geo_evidence_seed(reason="", loading=True):
     # This deterministic, read-only function never accesses the Windows JSON
     # ledger or the shared I/O lock; it stays usable during a blocked writer.
@@ -552,7 +671,7 @@ def install():
                 _serve_operational_search(handler)
                 return
             if path in {"/api/r8-24/geo-growth", "/api/r8-24/geo-growth/fast"}:
-                handler._json_ok(geo_growth.fast_status())
+                handler._json_ok(_geo_fast_cached())
                 return
             if path == "/api/r8-24/geo-growth/evidence":
                 handler._json_ok(_geo_evidence_cached())
@@ -562,6 +681,9 @@ def install():
                 return
             if path == "/api/r8-24/geo-growth/questions-baseline":
                 handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
+                return
+            if path == "/api/r8-24/geo-growth/fast-health":
+                handler._json_ok(_geo_fast_health())
                 return
             if path == "/api/r8-24/geo-growth/liveness":
                 # Keep this endpoint independent of JSON disk I/O, the GEO
@@ -754,6 +876,7 @@ def install():
     # Start the top-level GEO Growth OS a few seconds later as well, so the
     # owner never has to press "启动 GEO 自动运营" in normal operation.
     _schedule_geo_evidence_prewarm()
+    _schedule_geo_fast_prewarm()
     _schedule_geo_growth_auto_start()
     _INSTALLED = True
 
