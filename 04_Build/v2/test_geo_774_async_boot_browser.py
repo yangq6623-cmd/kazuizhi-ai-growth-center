@@ -39,7 +39,20 @@ def main():
         "formal_ab_completed": 2, "formal_ab_target": 50,
     }
     original = geo._geo_fast_ui_compact
+    original_document = geo._geo_priority_document
     geo._geo_fast_ui_compact = lambda: owner
+    # #775 retains the #774 honest JS-less fallback for a static/legacy HTML
+    # response, while test_geo_775_single_response_chrome covers the stronger
+    # bundled HTML+core+snapshot served by the real installed handler.
+    def serve_static_html(handler):
+        data = (SRC / "web" / "geo.html").read_bytes()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/html; charset=utf-8")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    geo._geo_priority_document = serve_static_html
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
         partial(geo.server.DashboardHandler, directory=str(geo.server.get_web_path())),
@@ -116,6 +129,7 @@ def main():
         if driver:
             driver.quit()
         geo._geo_fast_ui_compact = original
+        geo._geo_priority_document = original_document
         server.shutdown()
         server.server_close()
 
