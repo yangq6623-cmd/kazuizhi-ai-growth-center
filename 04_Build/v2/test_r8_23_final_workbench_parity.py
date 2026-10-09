@@ -128,7 +128,7 @@ def main() -> None:
     for marker in ("AbortController", "cache:'no-store'", "decision:", "/decision_center.js", "/r8_13_seo_geo_bridge.js", "lazyPromises.delete(name)", "seo_geo: [", "sourceCache", "sourcePromises", "primeScriptSources", "prefetchWorkspaceDocuments"):
         assert marker in coordinator, marker
     startup = text(SRC / "web" / "r8_12_startup_coordinator.js")
-    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "KZClearStartupModuleFailure", "r812-startup-diagnostics", "auto_retry_", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules", "POST_READY_DELAY_MS = 5000", "POST_READY_TIMEOUT_MS = 45000"):
+    for marker in ("KZStartupDiagnostics", "KZRetryFailedStartupModules", "KZClearStartupModuleFailure", "r812-startup-diagnostics", "scheduleFailedModuleRecovery", "failureRecoveryTimer", "kz:startup-module-recovered", "POST_READY_SEQUENCE", "loadPostReadyModules", "POST_READY_DELAY_MS = 5000", "POST_READY_TIMEOUT_MS = 45000"):
         assert marker in startup, marker
     truth_patch = text(SRC / "web" / "r8_15_ui_truth_patch.js")
     for marker in ("refreshBusy", "AbortController", "scheduleRefresh(1800)", "30000"):
