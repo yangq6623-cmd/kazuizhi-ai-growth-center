@@ -184,12 +184,30 @@ def main():
                 !!window.__KZ_GEO_GROWTH_OS_BOOT__;
             """))
             driver.execute_script("window.KZR813SeoGeoBridge.openGeo()")
-            wait.until(lambda d: d.execute_script("""
-              const rows=document.getElementById('geo-os-rows');
-              return document.documentElement.dataset.kzGeoPriorityBoot==='ready'
-                && !!rows &&
-                rows.textContent.includes('UNIQUE_775_GEO_OPPORTUNITY');
-            """))
+            try:
+                wait.until(lambda d: d.execute_script("""
+                  const rows=document.getElementById('geo-os-rows');
+                  return document.documentElement.dataset.kzGeoPriorityBoot==='ready'
+                    && !!rows &&
+                    rows.textContent.includes('UNIQUE_775_GEO_OPPORTUNITY');
+                """))
+            except Exception:
+                diag = driver.execute_script("""
+                  return {
+                    boot:document.documentElement.dataset.kzGeoPriorityBoot,
+                    phase:document.documentElement.dataset.kzStartupPhase,
+                    parent:!!document.getElementById('geo-growth-pane'),
+                    core:!!document.getElementById('geo-growth-os'),
+                    state:document.getElementById('geo-os-state')?.textContent,
+                    rows:document.getElementById('geo-os-rows')?.textContent.slice(0,350),
+                    message:document.getElementById('geo-os-message')?.textContent,
+                    panelClass:document.getElementById('r813-seo-geo')?.className,
+                    alerts:window.__KZ_775_TEST_ALERTS__?.slice(0,4),
+                    scripts:[...document.scripts].filter(s=>s.id.includes('geo')).map(s=>s.id),
+                  };
+                """)
+                print("DEBUG: parent GEO main-tab load did not converge", json.dumps(diag, ensure_ascii=False), flush=True)
+                raise
             assert driver.execute_script("""
               return ![...document.scripts].some(s=>s.src.includes('geo-growth-os.js'));
             """)
