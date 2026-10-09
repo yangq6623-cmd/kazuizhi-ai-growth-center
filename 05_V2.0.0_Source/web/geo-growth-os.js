@@ -20,6 +20,23 @@
   window.__KZ_GEO_GROWTH_OS__ = true;
 
   const byId = id => document.getElementById(id);
+  // #775: canonical snapshot embedded by local /geo.html in the same response.
+  // This is transport resilience, not a separate producer of GEO metrics.
+  // The source is the existing fast-ui snapshot, including its stale marker.
+  function firstPaintSnapshot(){
+    const node=byId('kz-geo-fast-bootstrap');
+    if(!node)return null;
+    try{
+      const value=JSON.parse(node.textContent||'null');
+      if(!value||typeof value!=='object'||Array.isArray(value))return null;
+      document.documentElement.dataset.kzGeoPriorityBoot=
+        value.status_ready===true?'ready':'pending';
+      return value;
+    }catch(_){
+      document.documentElement.dataset.kzGeoPriorityBoot='invalid';
+      return null;
+    }
+  }
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   let cache = null;
   let busy = false;
@@ -813,20 +830,30 @@
       bind();
       // Paint the complete GEO shell before waiting for any API. A slow local
       // endpoint must never leave the owner staring at a blank 720px iframe.
-      if(!cache)render({
-        state:'unknown',
-        summary:{},
-        cloud:{},
-        policy:{},
-        publish_connector:{},
-        technical_blockers:[],
-        opportunities:[],
-        pipeline:[],
-        status_ready:false,
-        formal_ab_completed:null,
-        formal_ab_target:50,
-        mission:'正在恢复 GEO 运行状态…'
-      });
+      if(!cache){
+        const inline=firstPaintSnapshot();
+        if(inline){
+          render(inline);
+        }else{
+          render({
+            state:'unknown',
+            summary:{},
+            cloud:{},
+            policy:{},
+            publish_connector:{},
+            technical_blockers:[],
+            opportunities:[],
+            pipeline:[],
+            status_ready:false,
+            formal_ab_completed:null,
+            formal_ab_target:50,
+            mission:'正在恢复 GEO 运行状态…'
+          });
+        }
+      }
+      // Background refresh remains authoritative. Even when the local HTTP
+      // handler becomes busy AFTER serving this document, the owner can still
+      // inspect the real first-paint snapshot and its freshness label.
       load();
       if(!pollTimer)pollTimer=setInterval(()=>{
         if(isForegroundGeoVisible()&&!busy&&!statusLoading)load();
