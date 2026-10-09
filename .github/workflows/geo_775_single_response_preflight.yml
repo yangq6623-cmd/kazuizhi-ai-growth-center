@@ -1,0 +1,51 @@
+name: GEO 775 Single-response Owner Boot + Chrome Stress Preflight
+on:
+  push:
+    branches: ['review/geo-775-single-response-boot-20261009']
+    paths:
+      - '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py'
+      - '05_V2.0.0_Source/web/geo.html'
+      - '05_V2.0.0_Source/web/geo-growth-os.js'
+      - '04_Build/v2/test_geo_775_single_response_chrome.py'
+      - '04_Build/v2/test_geo_774_async_boot_browser.py'
+      - '.github/workflows/geo_775_single_response_preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-owner-geo-first-response:
+    runs-on: windows-latest
+    timeout-minutes: 28
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install regression dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: Compile backend and browser regression
+        run: |
+          python -m py_compile 05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py 04_Build/v2/test_geo_775_single_response_chrome.py 04_Build/v2/test_geo_774_async_boot_browser.py
+      - name: Real Chrome - 3 full GEO launches with ALL followup APIs and JS blocked
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_775_single_response_chrome.py
+      - name: Static deployment fallback when no one-response bundling exists
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_774_async_boot_browser.py
+      - name: Evidence real fault and recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_evidence_source_browser.py
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+      - name: Main console and GEO workbench parity
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
+          python 04_Build/v2/test_business_refresh_nonblocking.py
