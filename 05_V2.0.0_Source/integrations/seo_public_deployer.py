@@ -109,10 +109,8 @@ def _target_dir(data: dict) -> Path | None:
     return root / "seo"
 
 
-def status(*, snapshot=False) -> dict:
-    # Read-only owner status bypasses the shared JSON writer lock; a
-    # configured deployment is only "ready" after local directory checks.
-    data = read_json_snapshot(STORE, deepcopy(DEFAULT)) if snapshot else _load()
+def _status_from_config(data) -> dict:
+    # Isolated projection: never mutates the authenticated deployer settings.
     if not isinstance(data, dict):
         data = deepcopy(DEFAULT)
     for key, value in DEFAULT.items():
@@ -166,6 +164,17 @@ def status(*, snapshot=False) -> dict:
         },
         "truth": "写入文件不等于已公开；只有公网URL真实返回2xx，并通过内容、canonical、Schema、robots/indexability校验后才记录 PUBLISHED。",
     }
+
+
+
+def status() -> dict:
+    return _status_from_config(_load())
+
+
+def status_snapshot() -> dict:
+    """Stable read-only API, not subject to legacy status() wrapper signatures."""
+    return _status_from_config(read_json_snapshot(STORE, deepcopy(DEFAULT)))
+
 
 
 def _atomic_copy(source: Path, destination: Path) -> None:
