@@ -129,6 +129,48 @@ def main():
         assert "2 / 50" in cards, cards
         assert driver.find_element(By.ID, "geo-adv-questions").find_elements(By.TAG_NAME,"tr").__len__() == 50
         print("PASS: Evidence recovers 4/4 details, 50 canonical questions, 2 formal, 0 automatic")
+
+        # Second cold browser session: both Evidence endpoints unavailable.
+        # The independently verified GEO main state is already readable; the
+        # UI may show ONLY a labelled historical 2/50, not a fabricated 4/4.
+        driver.get(f"http://127.0.0.1:{server.server_port}/geo.html?embed=1&case=dual-failure")
+        wait.until(lambda d: d.execute_script("""
+          const k=document.getElementById('geo-os-kpis');
+          const badge=document.getElementById('geo-os-state');
+          return !!(k && k.textContent.includes('2 / 50') &&
+            badge && !badge.textContent.includes('正在同步真实状态'));
+        """))
+        driver.execute_script("""
+          window.__oldFetchDual = window.fetch;
+          window.fetch = function(input, options){
+            const url=typeof input==='string'?input:(input?.url||'');
+            if(String(url).includes('/geo-growth/evidence-compact') ||
+               String(url).includes('/geo-growth/evidence-health'))
+              return Promise.reject(new Error('simulated both Evidence endpoints unavailable'));
+            return window.__oldFetchDual.call(this,input,options);
+          };
+        """)
+        advanced = driver.find_element(By.ID,"geo-growth-advanced")
+        advanced.find_element(By.TAG_NAME,"summary").click()
+        wait.until(lambda d: d.execute_script("""
+          return document.documentElement.dataset.kzGeoEvidenceFallback==='1' &&
+            document.getElementById('geo-adv-kpis')?.textContent.includes('历史概览');
+        """))
+        state=driver.find_element(By.ID,"geo-adv-state").text
+        msg=driver.find_element(By.ID,"geo-adv-message").text
+        assert "明细未验证" in state, state
+        assert "2/50" in msg and "历史" in msg and "Receipt" in msg, msg
+        assert driver.find_element(By.ID,"geo-adv-questions").find_elements(By.TAG_NAME,"tr").__len__()==50
+        assert driver.execute_script("return document.documentElement.dataset.kzGeoAdvancedSections")!='4'
+        print("PASS: Chrome dual Evidence endpoint failure retains labelled 2/50 main GEO history, NEVER 4/4")
+        driver.execute_script("window.fetch = window.__oldFetchDual")
+        driver.find_element(By.ID,"geo-adv-refresh").click()
+        wait.until(lambda d: d.execute_script("""
+          return document.documentElement.dataset.kzGeoEvidenceFallback==='0' &&
+            document.documentElement.dataset.kzGeoAdvancedSections==='4';
+        """))
+        print("PASS: Chrome dual-failure recovery restores 4/4 independently verified Evidence")
+
     finally:
         if driver:
             driver.quit()
