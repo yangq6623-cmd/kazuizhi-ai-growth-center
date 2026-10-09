@@ -44,10 +44,12 @@ def test_20_second_remote_refresh_never_blocks_regular_api():
 
     # This patch deliberately exposes the legacy GET hook too: #770 called it
     # on almost every /api/ request, reproducing the actual field failure.
-    with patch.object(business_data, "_read_key", return_value="fake-test-key"), \\
-         patch.object(business_data, "_status_config", return_value={"last_refresh": None}), \\
-         patch.object(business_data, "refresh_business_source", side_effect=blocked_remote), \\
-         patch.object(server, "refresh_business_if_due", blocked_remote, create=True):
+    with (
+        patch.object(business_data, "_read_key", return_value="fake-test-key"),
+        patch.object(business_data, "_status_config", return_value={"last_refresh": None}),
+        patch.object(business_data, "refresh_business_source", side_effect=blocked_remote),
+        patch.object(server, "refresh_business_if_due", blocked_remote, create=True),
+    ):
         stop = business_data.start_background_refresh(
             initial_delay_seconds=0.0, check_interval_seconds=60
         )
