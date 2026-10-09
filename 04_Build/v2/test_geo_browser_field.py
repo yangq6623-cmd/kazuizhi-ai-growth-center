@@ -95,6 +95,38 @@ def main():
             !badge.textContent.includes('正在同步真实状态'));
         """))
         print("PASS: installed GEO browser degrades to genuine health overview and recovers")
+        # A successful HTTP 200 with pending_snapshot must never show
+        # "no blockers", "0 opportunities", or an invented clean status.
+        driver.execute_script("""
+          window.__geo_original_fetch = window.fetch;
+          window.fetch = function(input, options) {
+            const url=typeof input==='string'?input:(input?.url||'');
+            if(String(url).includes('/api/r8-24/geo-growth/fast-ui')) {
+              return Promise.resolve(new Response(JSON.stringify({
+                status_mode:'pending_snapshot',status_ready:false,state:'unknown',
+                mission:'pending',summary:{},opportunities:[],technical_blockers:[],
+                cloud:{},pipeline:[],policy:{},formal_ab_completed:null,formal_ab_target:50
+              }), {status:200,headers:{'Content-Type':'application/json'}}));
+            }
+            return window.__geo_original_fetch.call(window,input,options);
+          };
+        """)
+        driver.find_element(By.ID, "geo-os-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          const count=document.getElementById('geo-os-blocker-count');
+          const rows=document.getElementById('geo-os-rows');
+          const runtime=document.getElementById('geo-os-runtime');
+          return count?.textContent.includes('状态待核查') &&
+            rows?.textContent.includes('尚未读取') &&
+            runtime?.textContent.includes('待核查');
+        """))
+        driver.execute_script("window.fetch = window.__geo_original_fetch;")
+        driver.find_element(By.ID, "geo-os-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          const badge=document.getElementById('geo-os-state');
+          return !!(badge && !badge.textContent.includes('正在同步真实状态'));
+        """))
+        print("PASS: installed GEO pending HTTP-200 is UNKNOWN, not fake zero/healthy")
         # Advanced browser E2E (not just existence of the section). Force a
         # compact Evidence GET rejection; verified cache data must still
         # appear in the UI with a clear "detail unknown" warning.
