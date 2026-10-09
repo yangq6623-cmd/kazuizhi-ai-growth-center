@@ -93,27 +93,140 @@
       if(fallback)fallback.hidden=true;
     })();
   </script>
-  <!-- #711: mount the owner GEO workbench before any legacy/advanced module
-       can block the page. The field machine showed the initialization shell
-       while later synchronous scripts were still executing. -->
-  <script src="geo-growth-os.js"></script>
-  <script defer src="operational-search.js"></script>
-  <script defer src="geo-autonomy.js"></script>
-  <script defer src="seo-geo-growth-intelligence.js"></script>
-  <script defer src="seo-geo-connector-matrix.js"></script>
-  <script defer src="geo-phase1-field-fix.js"></script>
+  <!-- #774: desktop field reports show the initial shell while a synchronous
+       external GEO script is pending. The lightweight, truthful inline reader
+       below runs BEFORE any external scripts and remains useful when a static
+       JavaScript request fails or stalls. No historical count is fabricated. -->
   <script>
-    // The field-fix layer is the sole owner of Phase-1 button actions. Mark the
-    // visual-polish repair as already owned so its legacy capture handler cannot
-    // shadow or race the real field action handler.
-    if(window.__KZ_R819_GEO_FIELD_FIX__)document.documentElement.dataset.kzGeoInteractionRepair='1';
+    (() => {
+      if(geoParams.get('advanced')==='1')return;
+      const pane=document.getElementById('geo-growth-pane');
+      if(!pane)return;
+      const mini=pane.querySelector('.geo-direct-inline-status');
+      if(!mini)return;
+      mini.id='geo-direct-standalone-health';
+      mini.style.cssText='display:block;margin:8px 0 16px;padding:16px 18px;background:#fff;border:1px solid #cfdced;border-radius:10px;color:#243c5b;font:13px/1.65 "Microsoft YaHei",sans-serif';
+      mini.textContent='GEO 后台运行概览正在读取；核心组件加载时，本区域独立显示真实数据。';
+      const make=(parent,tag,content,css='')=>{
+        const el=document.createElement(tag);
+        if(content!==undefined)el.textContent=String(content);
+        if(css)el.style.cssText=css;
+        parent.appendChild(el);return el;
+      };
+      let loading=false;
+      async function refresh(){
+        if(loading||document.getElementById('geo-growth-os'))return;
+        loading=true;
+        const controller=new AbortController();
+        const timer=setTimeout(()=>controller.abort(),6500);
+        try{
+          const res=await fetch('/api/r8-24/geo-growth/fast-ui',{cache:'no-store',signal:controller.signal});
+          if(!res.ok)throw Error('HTTP '+res.status);
+          const data=await res.json();
+          if(!mini.isConnected||document.getElementById('geo-growth-os'))return;
+          mini.replaceChildren();
+          make(mini,'h2','GEO 后台真实运行概览','margin:0 0 6px;font-size:19px');
+          const status=data.status_ready===true?
+            (data.snapshot_stale?'历史快照，待更新':'已读取后台快照'):
+            '后台快照尚未核实';
+          make(mini,'p',status+' · 完整 GEO 工作台组件仍在加载','margin:0 0 9px;color:#825d15');
+          if(data.status_ready===true){
+            const m=data.summary||{};
+            const age=Number(data.snapshot_age_seconds);
+            const a=Number(data.formal_ab_completed);
+            const target=Number(data.formal_ab_target||50);
+            const stats=[
+              ['运营 Signal',m.signals],
+              ['机会池',m.total],
+              ['豆包扫描',data.cloud?.completed==null?'待核查':data.cloud.completed+' / '+(data.cloud.target??50)],
+              ['正式 A/B',Number.isFinite(a)&&Number.isFinite(target)?a+' / '+target:'待核查'],
+            ];
+            const row=make(mini,'div',undefined,'display:flex;flex-wrap:wrap;gap:8px;margin:10px 0');
+            stats.forEach(([name,val])=>{
+              const box=make(row,'div',undefined,'flex:1 1 135px;min-width:120px;padding:10px;border:1px solid #e1e8f4;border-radius:7px;background:#f7faff');
+              make(box,'small',name,'display:block;color:#667790');
+              make(box,'b',val==null?'待核查':val,'display:block;font-size:17px;color:#15385e');
+            });
+            const list=Array.isArray(data.opportunities)?data.opportunities:[];
+            make(mini,'h3','真实 GEO 机会（最多显示前 12 项）','margin:12px 0 5px;font-size:13px');
+            if(list.length)list.slice(0,12).forEach(item=>{
+              make(mini,'div',(item.gap_label||item.service||item.question_text||'机会')+' · '+(item.asset_stage||item.state||'等待'),'padding:6px 0;border-bottom:1px solid #edf1f7');
+            });
+            else make(mini,'p','机会明细尚未读取；不代表机会为零。','color:#825d15');
+            make(mini,'small','快照年龄：'+(Number.isFinite(age)?Math.round(age)+'秒':'未知')+'；此概览不代表真实外部发布或正式验证已完成。','display:block;margin-top:8px;color:#68798e');
+          }
+          const controls=make(mini,'div',undefined,'display:flex;gap:12px;margin-top:12px;align-items:center');
+          const button=make(controls,'button','重新读取真实概览','padding:7px 12px;background:#eaf2ff;color:#1c58b3;border:1px solid #c6d8f4;border-radius:7px;cursor:pointer');
+          button.addEventListener('click',refresh);
+          const link=make(controls,'a','打开 GEO 接口','color:#1b5ac3');
+          link.href='/api/r8-24/geo-growth/fast-ui';link.target='_blank';link.rel='noopener';
+          document.documentElement.dataset.kzGeoStandAloneStatus='snapshot';
+        }catch(err){
+          if(!mini.isConnected||document.getElementById('geo-growth-os'))return;
+          mini.replaceChildren();
+          make(mini,'b','GEO 页面组件暂未加载；后台数据也暂未读取成功');
+          make(mini,'p','独立概览请求失败：'+(err.name==='AbortError'?'6.5秒内未响应':err.message||'未知错误'),'color:#a33434');
+          const button=make(mini,'button','重试读取','padding:7px 12px');
+          button.addEventListener('click',refresh);
+          const link=make(mini,'a','直接打开后台接口','display:block;margin-top:8px;color:#1b5ac3');
+          link.href='/api/r8-24/geo-growth/fast-ui';link.target='_blank';link.rel='noopener';
+          document.documentElement.dataset.kzGeoStandAloneStatus='degraded';
+        }finally{clearTimeout(timer);loading=false;}
+      }
+      refresh();
+      // The fallback is a reader only, not a second GEO automation engine.
+      const check=setInterval(()=>{
+        if(document.getElementById('geo-growth-os')){clearInterval(check);return;}
+        if(!document.hidden)refresh();
+      },30000);
+    })();
   </script>
-  <script defer src="geo-phase1-ui-polish.js"></script>
-  <script defer src="geo-phase1-live-gate.js"></script>
-  <script defer src="seo-geo-phase1-final.js"></script>
-  <script defer src="geo-owner-ux.js"></script>
-  <script defer src="geo-phase2-analysis.js"></script>
-  <script defer src="geo-phase3.js"></script>
+  <script>
+    // #774: regular GEO mode loads only the canonical Growth OS. Legacy R8-19
+    // scripts rebuilt the same DOM and could remove the canonical workbench.
+    // Loading the essential JS asynchronously also keeps the HTML document
+    // usable while that particular asset is delayed on the user's PC.
+    (() => {
+      if(geoParams.get('advanced')!=='1'){
+        const core=document.createElement('script');
+        core.src='/geo-growth-os.js';core.async=true;
+        core.onload=()=>{try{window.__KZ_GEO_GROWTH_OS_BOOT__?.()}catch(error){console.warn(error)}};
+        core.onerror=()=>{
+          const note=document.getElementById('geo-direct-standalone-health');
+          if(note)note.dataset.kzCoreLoadError='true';
+          document.documentElement.dataset.kzGeoCoreScript='failed';
+        };
+        document.body.appendChild(core);
+        return;
+      }
+      // Advanced browser validation remains in its own legacy document mode.
+      // The scripts below are loaded in order only when advanced=1 is requested.
+      const sequence=[
+        'operational-search.js','geo-autonomy.js','seo-geo-growth-intelligence.js',
+        'seo-geo-connector-matrix.js','geo-phase1-field-fix.js',
+        'geo-phase1-ui-polish.js','geo-phase1-live-gate.js',
+        'seo-geo-phase1-final.js','geo-owner-ux.js',
+        'geo-phase2-analysis.js','geo-phase3.js'
+      ];
+      let index=0;
+      const next=()=>{
+        if(index>=sequence.length){
+          try{window.searchGrowthActivate?.()}catch(_){}
+          return;
+        }
+        const source=sequence[index++];
+        const script=document.createElement('script');
+        script.src=source;script.async=false;
+        script.onload=script.onerror=()=>{
+          if(source==='geo-phase1-field-fix.js'&&window.__KZ_R819_GEO_FIELD_FIX__)
+            document.documentElement.dataset.kzGeoInteractionRepair='1';
+          next();
+        };
+        document.body.appendChild(script);
+      };
+      next();
+    })();
+  </script>
   <script>
     // #688 self-heal: if the bundled first boot raced with another GEO module,
     // retry the owner workbench after the DOM settles. Never leave a connector
