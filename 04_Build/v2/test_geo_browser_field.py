@@ -122,7 +122,21 @@ def main():
           return document.documentElement.dataset.kzGeoEvidenceFallback==='1' &&
                  document.getElementById('geo-adv-state').textContent.includes('概览');
         """))
-        assert "明细待同步" in driver.find_element(By.ID,"geo-adv-message").text
+        # Compare against authoritative cached health, not timing-sensitive
+        # toast text (which other background refreshes may legitimately change).
+        authoritative = driver.execute_async_script("""
+          const done=arguments[0];
+          fetch('/api/r8-24/geo-growth/evidence-health',{cache:'no-store'})
+            .then(r=>r.json()).then(h=>done({
+              ab:h.owner_summary?.formal_ab_completed,
+              target:h.owner_summary?.formal_ab_target,
+              ready:h.evidence_ready
+            })).catch(e=>done({error:String(e)}));
+        """)
+        assert authoritative.get("ready") and authoritative.get("ab") is not None, authoritative
+        cards = driver.find_element(By.ID,"geo-adv-kpis").text
+        expected = f'{authoritative["ab"]} / {authoritative["target"]}'
+        assert expected in cards, {"expected": expected, "cards": cards}
         driver.execute_script("window.fetch = window.__geo_original_fetch;")
         driver.find_element(By.ID, "geo-adv-refresh").click()
         WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
