@@ -353,7 +353,7 @@
         `后台快照已就绪（${Math.round(Number(health.snapshot_age_seconds||0))}秒前），但浏览器请求延迟。保留真实旧数据并重试；不重置任务成绩。`:
         health?.status_ready===false?'后台仍在生成真实快照，稍后继续读取。':
         '本地状态接口尚未响应，正在检查连接与请求排队。';
-      if(byId('geo-os-message'))byId('geo-os-message').textContent=`GEO 状态读取暂缓：${note} ${error.message}`;
+      if(byId('geo-os-message'))byId('geo-os-message').textContent=`GEO 状态快照暂未返回：${note} ${error.message}`;
       if(!statusRetryTimer){
         const delay=Math.min(15000,2000*Math.max(1,statusFailures));
         statusRetryTimer=setTimeout(()=>{statusRetryTimer=null;if(!statusLoading)load();},delay);
