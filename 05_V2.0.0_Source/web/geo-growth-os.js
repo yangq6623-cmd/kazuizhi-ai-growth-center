@@ -570,6 +570,7 @@
         return;
       }
       advancedRetryCount=0;
+      document.documentElement.dataset.kzGeoEvidenceFallback='0';
       advancedLastGood=snapshot;
       advancedFetchedAt=Date.now();
       const dashboard=snapshot.dashboard||{};
@@ -645,7 +646,38 @@
       const qbox=byId('geo-adv-questions');
       showOffline50();
       loadAdvancedBaseline();
-      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；50问正常，正式A/B与Receipt维持待核实。系统将自动重试，可点击「诊断读取」查看缓存状态。',true);
+      // A full Evidence request can time out while /evidence-health still
+      // responds. Recover the last server-verified A/B count from the
+      // independent tiny health path; leave queue detail/receipts UNKNOWN.
+      let recovered=false;
+      if(!advancedLastGood){
+        try{
+          const health=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
+          const summary=health.owner_summary||{};
+          if(health.evidence_ready===true && summary.formal_ab_completed!=null){
+            recovered=true;
+            const count=Number(summary.formal_ab_completed);
+            const total=Number(summary.formal_ab_target||50);
+            const age=Number(health.cache_age_seconds||0);
+            const stale=age>=60;
+            const cards=byId('geo-adv-kpis');
+            if(cards)cards.innerHTML=[
+              ['正式 A/B',count+' / '+total],
+              ['人工验证',summary.formal_ab_manual==null?'待核查':summary.formal_ab_manual],
+              ['自动正式验证',summary.formal_ab_automatic==null?'待核查':summary.formal_ab_automatic],
+              ['队列','明细待同步'],['Receipt','明细待同步']
+            ].map(row=>`<article><span>${esc(row[0])}</span><b>${esc(row[1])}</b></article>`).join('');
+            if(state){state.textContent=stale?'历史 Evidence 概览 · 明细待同步':'Evidence 概览已恢复 · 明细待同步';state.className='geo-adv-state '+(stale?'bad':'');}
+            document.documentElement.dataset.kzGeoEvidenceFallback='1';
+            // Only the full evidence-compact reply can declare 4/4
+            // detailed sections usable, never this partial fallback.
+            setAdvancedMessage('正式 Evidence 明细请求超时；已恢复后台真实缓存概览（'+Math.round(age)+'秒前），'+
+              '正式 '+count+'/'+total+'。队列和 Receipt 明细尚未验证，继续后台重试。',true);
+          }
+        }catch(_) {}
+      }
+      if(!recovered)
+        setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；50问正常，正式A/B与Receipt维持待核实。系统将自动重试，可点击「诊断读取」查看缓存状态。',true);
       advancedRetryCount+=1;
       if(byId('geo-growth-advanced')?.open){
         const delay=Math.min(30000,5000*Math.min(advancedRetryCount,6));

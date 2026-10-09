@@ -625,9 +625,20 @@
     state.retrying_failures = true;
     renderStartupDiagnostics();
     const pending = state.failed_modules.map(row => ({...row}));
+    // Failed connection-related modules are LAZY modules. Omitting these
+    // from the recovery registry made the three observed timeout rows
+    // impossible to retry, even when their JS files were already available.
+    const knownRecoveryModules = [
+      ...SCRIPT_SEQUENCE, ...POST_READY_SEQUENCE,
+      ...Object.values(LAZY_SEQUENCE).flat(),
+    ];
     for (const failure of pending) {
-      const tuple = [...SCRIPT_SEQUENCE, ...POST_READY_SEQUENCE].find(([src]) => src === failure.src);
-      if (!tuple) continue;
+      const tuple = knownRecoveryModules.find(([src]) => src === failure.src);
+      if (!tuple) {
+        // Do not silently pretend unknown modules can be auto-recovered.
+        console.warn('[KZ startup] no registered recovery handler', failure.src);
+        continue;
+      }
       const [src, key] = tuple;
       try {
         await loadScript(src, key, false, 30000);

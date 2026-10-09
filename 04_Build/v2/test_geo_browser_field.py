@@ -95,6 +95,34 @@ def main():
             !badge.textContent.includes('正在同步真实状态'));
         """))
         print("PASS: installed GEO browser degrades to genuine health overview and recovers")
+        # Advanced browser E2E (not just existence of the section). Force a
+        # compact Evidence GET rejection; verified cache data must still
+        # appear in the UI with a clear "detail unknown" warning.
+        driver.execute_script("""
+          window.__geo_original_fetch = window.fetch;
+          window.fetch = function(input,options) {
+            const url=typeof input==='string'?input:(input?.url||'');
+            if(String(url).includes('/api/r8-24/geo-growth/evidence-compact'))
+              return Promise.reject(new Error('synthetic Evidence GET failure'));
+            return window.__geo_original_fetch.call(window,input,options);
+          };
+        """)
+        driver.find_element(By.CSS_SELECTOR, "#geo-growth-advanced > summary").click()
+        WebDriverWait(driver, 12).until(lambda d: d.execute_script("""
+          return document.querySelectorAll('#geo-adv-questions tr').length===50;
+        """))
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          return document.documentElement.dataset.kzGeoEvidenceFallback==='1' &&
+                 document.getElementById('geo-adv-state').textContent.includes('概览');
+        """))
+        assert "明细待同步" in driver.find_element(By.ID,"geo-adv-message").text
+        driver.execute_script("window.fetch = window.__geo_original_fetch;")
+        driver.find_element(By.ID, "geo-adv-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.execute_script("""
+          return document.documentElement.dataset.kzGeoAdvancedSections==='4'
+            && document.documentElement.dataset.kzGeoEvidenceFallback==='0';
+        """))
+        print("PASS: installed advanced GEO Evidence failure -> truthful health overview -> 4/4 recovery")
     finally:
         driver.quit()
 

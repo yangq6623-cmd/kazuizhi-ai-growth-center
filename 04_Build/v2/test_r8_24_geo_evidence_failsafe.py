@@ -189,6 +189,64 @@ def run() -> None:
 
 
 
+def test_evidence_health_fallback_count():
+    """Fallback may surface only truthful cached A/B, never baseline as completion."""
+    saved = dict(bridge._GEO_EVIDENCE_CACHE)
+    snapshot = {
+        "snapshot_ready": True, "formal_ab_completed": 2, "formal_ab_target": 50,
+        "formal_ab_manual": 2, "formal_ab_automatic": 0,
+        "available_sections": 4, "total_sections": 4,
+        "dashboard": {"official": {"evidence_count": 2}},
+        "queue_summary": {"queued": 3, "running": 1, "authorization_required": 0},
+    }
+    try:
+        with bridge._GEO_EVIDENCE_LOCK:
+            bridge._GEO_EVIDENCE_CACHE.update(
+                payload=snapshot, updated=time.monotonic()-12, refreshing=False,
+                started=0.0, error="", workers=[], payload_bytes=200,
+            )
+        health = bridge._geo_evidence_health()
+        assert health["evidence_ready"] is True
+        summary=health["owner_summary"]
+        assert summary["formal_ab_completed"]==2
+        assert summary["formal_ab_manual"]==2
+        assert summary["formal_ab_automatic"]==0
+        assert summary["queue_summary"]["queued"]==3
+        http=ThreadingHTTPServer(("127.0.0.1",0),bridge.server.DashboardHandler)
+        http.daemon_threads=True
+        thread=threading.Thread(target=http.serve_forever,daemon=True)
+        thread.start()
+        try:
+            with urlopen(f"http://127.0.0.1:{http.server_address[1]}/api/r8-24/geo-growth/evidence-health", timeout=2) as response:
+                actual=json.load(response)
+            assert actual["owner_summary"]["formal_ab_completed"]==2
+            assert actual["owner_summary"]["formal_ab_automatic"]==0
+        finally:
+            http.shutdown()
+            http.server_close()
+        with bridge._GEO_EVIDENCE_LOCK:
+            bridge._GEO_EVIDENCE_CACHE["payload"]=None
+        assert bridge._geo_evidence_health()["owner_summary"] is None
+        print("PASS: evidence-health fallback exposes true 2/50 and never manufactures evidence")
+    finally:
+        with bridge._GEO_EVIDENCE_LOCK:
+            bridge._GEO_EVIDENCE_CACHE.clear()
+            bridge._GEO_EVIDENCE_CACHE.update(saved)
+
+
+def test_lazy_module_recovery_registry():
+    text=(SRC/"web"/"r8_12_startup_coordinator.js").read_text(encoding="utf-8")
+    ui=(SRC/"web"/"geo-growth-os.js").read_text(encoding="utf-8")
+    for marker in ("...Object.values(LAZY_SEQUENCE).flat()", "knownRecoveryModules",
+                   "kz_site_tools.js", "kz_local_direct_ui.js",
+                   "kz_async_control_ui.js"):
+        assert marker in text, marker
+    for marker in ("kzGeoEvidenceFallback", "/api/r8-24/geo-growth/evidence-health",
+                   "Evidence 概览已恢复", "明细待同步"):
+        assert marker in ui, marker
+    print("PASS: all three connection lazy modules now have a registered retry route")
+
+
 def test_fast_snapshot_does_not_block_http():
     """Both GEO panes must remain responsive while global JSON access stalls."""
     original_status = bridge.geo_growth.fast_status
@@ -353,3 +411,5 @@ if __name__ == "__main__":
     test_fast_snapshot_does_not_block_http()
     test_seo_cached_dashboard_is_lock_free()
     test_compact_owner_http_recovery()
+    test_evidence_health_fallback_count()
+    test_lazy_module_recovery_registry()

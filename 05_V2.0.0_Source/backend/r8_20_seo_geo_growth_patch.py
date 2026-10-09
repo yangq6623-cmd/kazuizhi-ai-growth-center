@@ -428,6 +428,20 @@ def _geo_evidence_health():
             "available_sections": payload.get("available_sections") if ready else None,
             "total_sections": payload.get("total_sections") if ready else None,
             "baseline_count": 50,
+            # The compact UI GET may be queued behind other browser fetches.
+            # This tiny diagnostic path supplies the last REAL verified count,
+            # never synthesized "0" or a fabricated A/B completion.
+            "owner_summary": ({
+                "formal_ab_completed": payload.get("formal_ab_completed"),
+                "formal_ab_target": payload.get("formal_ab_target") or 50,
+                "formal_ab_manual": payload.get("formal_ab_manual"),
+                "formal_ab_automatic": payload.get("formal_ab_automatic"),
+                "official_evidence_count": ((payload.get("dashboard") or {}).get("official") or {}).get("evidence_count"),
+                "queue_summary": {
+                    k: (payload.get("queue_summary") or {}).get(k)
+                    for k in ("queued", "running", "authorization_required")
+                },
+            } if ready else None),
             "external_ai_verification": "requires_independently_authorized_provider",
             "truth": "离线50问不等于50次正式验证；豆包C级辅助不计正式A/B",
         }
