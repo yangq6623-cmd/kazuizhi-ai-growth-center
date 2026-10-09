@@ -155,7 +155,14 @@ def main() -> None:
         assert marker in r8_14_patch, marker
     for marker in ("geo-direct-fallback", "GEO 工作台正在加载", "body:has(#search-growth-switch)"):
         assert marker in geo_html, marker
-    assert geo_html.index('<script src="geo-growth-os.js"></script>') < geo_html.index('<script defer src="operational-search.js"></script>')
+    # #774: direct GEO must not block HTML parsing while core JS is delayed.
+    # Only advanced=1 may load the old R8-19 browser validation suite.
+    assert "core.src='/geo-growth-os.js';core.async=true" in geo_html
+    assert "if(geoParams.get('advanced')!=='1')" in geo_html
+    assert "'operational-search.js','geo-autonomy.js'" in geo_html
+    assert "geo-direct-standalone-health" in geo_html
+    assert "document.documentElement.dataset.kzGeoStandAloneStatus='snapshot'" in geo_html
+    assert '<script src="geo-growth-os.js"></script>' not in geo_html
     for marker in ("ensureGeoCoreInFrame", "parent-recovery", "data-kz-parent-geo-core-recovery"):
         assert marker in seo_bridge, marker
     assert "frame.dataset.kzLoaded='1';\n    frame.src=wanted;" not in seo_bridge
