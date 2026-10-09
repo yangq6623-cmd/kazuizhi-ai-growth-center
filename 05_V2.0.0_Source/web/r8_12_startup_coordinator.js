@@ -70,11 +70,17 @@
     seo_geo: [],
     content_studio: [],
     connections: [
-      ['/kz_site_tools.js', 'kzSiteTools'],
       ['/kz_local_direct_ui.js', 'kzLocalDirectUi'],
       ['/kz_async_control_ui.js', 'kzAsyncControlUi'],
     ],
   };
+  // WebMCP (modelContext.registerTool) is optional and not exposed by
+  // ordinary desktop Chrome. A missing optional browser API must never
+  // stall/flag the essential local-control connection workspace.
+  const OPTIONAL_WEBMCP_MODULE = ['/kz_site_tools.js', 'kzSiteTools'];
+  const hasWebMcp = () => Boolean(
+    (document.modelContext || navigator.modelContext)?.registerTool
+  );
 
   const GENERATED_ID_PREFIXES = ['r8-', 'r810-', 'r811-', 'r812-', 'r813-', 'kz-'];
   const lazyPromises = new Map();
@@ -294,6 +300,17 @@
         const loaded = await loadScriptFailSoft(src, key);
         complete = Boolean(loaded) && complete;
         await yieldToBrowser(70);
+      }
+      if (name === 'connections') {
+        if (hasWebMcp()) {
+          const [src, key] = OPTIONAL_WEBMCP_MODULE;
+          const loaded = await loadScriptFailSoft(src, key);
+          complete = Boolean(loaded) && complete;
+        } else {
+          // State the capability constraint openly; do not pretend WebMCP
+          // was loaded or count it as a broken local connection module.
+          document.documentElement.dataset.kzWebmcpCapability = 'browser_unsupported';
+        }
       }
       if (!complete) return false;
       if (!state.lazy_loaded.includes(name)) state.lazy_loaded.push(name);
@@ -601,7 +618,10 @@
 
     const note = document.createElement('p');
     note.className = 'subtle';
-    note.textContent = `启动阶段：${state.phase} · 当前未恢复 ${state.failed_modules.length} · 本次已自动恢复 ${state.recovered_modules.length}。这里显示真实文件名和浏览器收到的失败原因，不隐藏错误。`;
+    const webMcpHint = hasWebMcp()
+      ? (window.KazuizhiSiteTools?.registered ? 'WebMCP 工具：已注册' : 'WebMCP 工具：支持但尚未完成注册')
+      : 'WebMCP 工具：当前浏览器不支持（可选，不影响本地直连）';
+    note.textContent = `启动阶段：${state.phase} · 当前未恢复 ${state.failed_modules.length} · 本次已自动恢复 ${state.recovered_modules.length}。 ${webMcpHint}。真实加载失败仍保留在下方，不隐藏错误。`;
     card.appendChild(note);
 
     const list = document.createElement('div');
@@ -653,6 +673,7 @@
     const knownRecoveryModules = [
       ...SCRIPT_SEQUENCE, ...POST_READY_SEQUENCE,
       ...Object.values(LAZY_SEQUENCE).flat(),
+      OPTIONAL_WEBMCP_MODULE,
     ];
     for (const failure of pending) {
       const tuple = knownRecoveryModules.find(([src]) => src === failure.src);
