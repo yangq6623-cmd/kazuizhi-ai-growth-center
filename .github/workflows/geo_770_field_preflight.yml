@@ -1,0 +1,48 @@
+name: GEO 770 Field-Load Preflight (No Installer)
+on:
+  push:
+    branches: ['review/geo-770-load-realism-20261009']
+    paths:
+      - '05_V2.0.0_Source/web/geo-growth-os.js'
+      - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
+      - '04_Build/v2/test_geo_evidence_source_browser.py'
+      - '04_Build/v2/test_r8_24_geo_evidence_failsafe.py'
+      - '.github/workflows/geo_770_field_preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 22
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: JS and Python syntax
+        run: |
+          node --check 05_V2.0.0_Source/web/geo-growth-os.js
+          node --check 05_V2.0.0_Source/web/r8_12_startup_coordinator.js
+          python -m py_compile 04_Build/v2/test_geo_evidence_source_browser.py
+      - name: GEO snapshot/optional module regression
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+          python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
+      - name: Preserve R8 owner parity
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
+      - name: Real Chrome dual Evidence failures and recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_evidence_source_browser.py
