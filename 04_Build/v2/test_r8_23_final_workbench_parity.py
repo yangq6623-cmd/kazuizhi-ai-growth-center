@@ -110,7 +110,7 @@ def main() -> None:
     seo_page = text(SRC / "web" / "r8_13_seo_geo.html")
     for marker in ("SEO自动增长主流水线", "RevenueOS经营反馈", "flow-bottleneck", "revenue-feedback"):
         assert marker in seo_page, marker
-    for marker in ("24小时无人值守验收", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED", "搜索提交渠道", "AI / 内容生态监测与发布", "新增付费模型：0", "SEO/GEO实时刷新延后", "probeServiceHealth", "loadBusy", "loadPending", "LAST_GOOD_KEY", "restoreLastGood", "persistLastGood", "build_info.js?probe="):
+    for marker in ("连续运行验收（24小时门槛）", "connector-summary", "360搜索站长平台", "豆包搜索 / 豆包浏览器", "抖音搜索 / 抖音浏览器", "不计SUBMITTED", "搜索提交渠道", "AI / 内容生态监测与发布", "新增付费模型：0", "SEO/GEO实时刷新延后", "probeServiceHealth", "loadBusy", "loadPending", "LAST_GOOD_KEY", "restoreLastGood", "persistLastGood", "build_info.js?probe="):
         assert marker in seo_page, marker
     submitter_source = text(SRC / "integrations" / "search_engine_submitter.py")
     for marker in ("RETRY_BACKOFF_MINUTES", "_record_failure", "_retry_blocked", "automation_summary", "monitoring_channels", "channel_groups", "cost_policy", "reuse_existing_api", "publish_authorized"):
@@ -191,7 +191,7 @@ def main() -> None:
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
     assert geo_growth_ui.count("async function load(){") == 1
     assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
-    for marker in ("GEO 数据请求超时", "等待服务器响应", "下载并解析 JSON", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer", "/api/r8-24/geo-growth/fast", "timeoutMs:4000", "状态快照暂未返回"):
+    for marker in ("evidence-compact", "geo-adv-diagnose", "GEO 数据请求超时", "等待服务器响应", "下载并解析 JSON", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer", "/api/r8-24/geo-growth/fast", "timeoutMs:4000", "状态快照暂未返回"):
         assert marker in geo_growth_ui, marker
     for marker in ("recoverGeoWorkbench", "connector", "window.__KZ_GEO_GROWTH_OS_BOOT__?.()", "window.searchGrowthActivate?.()"):
         assert marker in geo_html, marker

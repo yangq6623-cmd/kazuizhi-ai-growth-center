@@ -111,6 +111,56 @@ def _geo_evidence_cached():
             reason = reason or "后台证据读取线程未返回；50问基准可查看，其他证据暂不可用"
         return _geo_evidence_seed(reason, bool(state["refreshing"]))
 
+def _geo_evidence_compact():
+    """Small evidence view for the owner workbench; no new disk reads.
+
+    The original /evidence endpoint remains available for full diagnostics.
+    Only project fields actually rendered by the 50-question workbench.
+    Never change the formal truth counters or synthesize receipts.
+    """
+    snapshot = _geo_evidence_cached()
+    questions = snapshot.get("questions") if isinstance(snapshot.get("questions"), list) else []
+    queue = snapshot.get("queue") if isinstance(snapshot.get("queue"), list) else []
+    receipts = snapshot.get("receipts") if isinstance(snapshot.get("receipts"), list) else []
+    dashboard = snapshot.get("dashboard") or {}
+    summary = snapshot.get("queue_summary") or {}
+    question_set = snapshot.get("question_set") or {}
+    return {
+        "snapshot_ready": snapshot.get("snapshot_ready") is True,
+        "snapshot_stale": bool(snapshot.get("snapshot_stale")),
+        "snapshot_mode": snapshot.get("snapshot_mode") or "",
+        "snapshot_age_seconds": snapshot.get("snapshot_age_seconds"),
+        "refreshing": bool(snapshot.get("refreshing")),
+        "last_refresh_error": str(snapshot.get("last_refresh_error") or "")[:240],
+        "retry_after_ms": snapshot.get("retry_after_ms", 5000),
+        "formal_ab_completed": snapshot.get("formal_ab_completed"),
+        "formal_ab_target": snapshot.get("formal_ab_target"),
+        "formal_ab_manual": snapshot.get("formal_ab_manual"),
+        "formal_ab_automatic": snapshot.get("formal_ab_automatic"),
+        "dashboard": {
+            "official": (dashboard.get("official") or {}),
+            "question_set": (dashboard.get("question_set") or {}),
+        },
+        "question_set": {key: question_set.get(key) for key in ("version", "total", "counts")},
+        "questions": [
+            {key: row.get(key) for key in ("question_id", "question_text", "question_type", "state", "evidence")}
+            for row in questions[:50] if isinstance(row, dict)
+        ],
+        "queue": [
+            {key: row.get(key) for key in ("question_id", "task_id", "question_text", "state", "test_method", "evidence_id")}
+            for row in queue if isinstance(row, dict)
+        ][:100],
+        "queue_summary": {key: val for key, val in summary.items() if key != "tasks"},
+        "receipts": [
+            {key: row.get(key) for key in ("question_id", "question_text", "provider", "evidence_level", "evidence_id", "receipt_id", "tested_at", "official_truth")}
+            for row in receipts[:10] if isinstance(row, dict)
+        ],
+        "health": snapshot.get("health") or {},
+        "available_sections": snapshot.get("available_sections", 1),
+        "total_sections": snapshot.get("total_sections", 4),
+    }
+
+
 def _schedule_geo_evidence_prewarm():
     """Warm read-only cache after HTTP routes install; no synchronous disk I/O."""
     global _GEO_EVIDENCE_PREWARM_TIMER
@@ -486,6 +536,9 @@ def install():
                 return
             if path == "/api/r8-24/geo-growth/evidence":
                 handler._json_ok(_geo_evidence_cached())
+                return
+            if path == "/api/r8-24/geo-growth/evidence-compact":
+                handler._json_ok(_geo_evidence_compact())
                 return
             if path == "/api/r8-24/geo-growth/questions-baseline":
                 handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))

@@ -14,6 +14,7 @@ from backend import r8_20_seo_geo_growth_patch as bridge  # noqa: E402
 
 def run() -> None:
     original = bridge._geo_evidence_snapshot
+    original_cached = bridge._geo_evidence_cached
     gate = threading.Event()
     entered = threading.Event()
     completed = {
@@ -107,6 +108,20 @@ def run() -> None:
             assert proof["formal_ab_completed"] == 2, proof
             assert proof["formal_ab_manual"] == 2 and proof["formal_ab_automatic"] == 0, proof
             assert proof["available_sections"] == 4 and len(proof["questions"]) == 50
+            # Compact owner endpoint includes real official results, not the
+            # full ledger or a generated/fabricated formal test count.
+            bridge._geo_evidence_cached = lambda: proof
+            compact = bridge._geo_evidence_compact()
+            assert len(compact["questions"]) == 50
+            assert compact["formal_ab_completed"] == 2
+            assert compact["formal_ab_manual"] == 2
+            assert compact["formal_ab_automatic"] == 0
+            assert compact["available_sections"] == 4
+            assert "tasks" not in compact["queue_summary"]
+            assert "questions" not in compact["question_set"]
+            assert len(compact["receipts"]) == 3
+            assert compact["dashboard"]["official"]["tested"] == 2
+
             # Corrupt one legacy section: the rest remain readable and no
             # fake zero is allowed to replace prior official receipts.
             data[names.QUEUE_PATH] = {"tasks": "legacy_bad_shape"}
@@ -116,6 +131,7 @@ def run() -> None:
             assert partial["formal_ab_completed"] == 2
         finally:
             bridge._geo_snapshot_file = original_file
+            bridge._geo_evidence_cached = original_cached
         print("PASS: GEO manual 2/50 != automatic 0/50; legacy queue corruption isolated")
     finally:
         gate.set()

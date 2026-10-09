@@ -341,6 +341,7 @@
       <div class="geo-adv-head"><div><h3>高级证据 / 网页验证 / 开发验收工具</h3><p>直接读取正式 A/B Evidence、固定 50 问、执行队列和 Receipt；不再通过嵌套 iframe 加载。</p></div><span id="geo-adv-state" class="geo-adv-state">准备中</span></div>
       <div class="geo-adv-toolbar">
         <button id="geo-adv-refresh" type="button">刷新证据</button>
+        <button id="geo-adv-diagnose" type="button">诊断读取</button>
         <button id="geo-adv-bootstrap" type="button">核验固定50问</button>
         <button id="geo-adv-one" class="primary" type="button">准备人工网页验证1题</button>
         <button id="geo-adv-ten" type="button">准备10题</button>
@@ -383,6 +384,21 @@
     if(!root||root.dataset.bound==='1')return;
     root.dataset.bound='1';
     byId('geo-adv-refresh')?.addEventListener('click',()=>{advancedRetryCount=0;loadAdvanced(true)});
+    byId('geo-adv-diagnose')?.addEventListener('click',async event=>{
+      const button=event.currentTarget,old=button.textContent;
+      button.disabled=true;button.textContent='诊断中…';
+      try{
+        const info=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
+        const age=info.cache_age_seconds==null?'未知':String(info.cache_age_seconds)+'秒';
+        const size=Number(info.payload_bytes||0);
+        const sections=String(info.available_sections??'未知');
+        setAdvancedMessage('后端缓存：'+(info.evidence_ready?'就绪':'未就绪')+
+          '；缓存年龄 '+age+'；证据大小 '+size+' 字节；分区 '+sections+
+          '；读取线程 '+Number(info.worker_count||0)+
+          (info.last_error?'；后台错误：'+info.last_error:'；后台无记录错误'),!info.evidence_ready||Boolean(info.last_error));
+      }catch(error){setAdvancedMessage('Evidence健康检查也失败：'+error.message,true)}
+      finally{button.disabled=false;button.textContent=old}
+    });
     byId('geo-adv-bootstrap')?.addEventListener('click',async e=>{
       e.currentTarget.disabled=true;
       try{await post('/api/r8-24/geo-growth/evidence/bootstrap',{});setAdvancedMessage('固定50问基准已核验。');await loadAdvanced(true)}
@@ -438,7 +454,7 @@
     const state=byId('geo-adv-state');
     if(state&&!advancedLastGood&&advancedRetryCount===0){state.textContent='50问已显示 · 正在同步证据';state.className='geo-adv-state'}
     try{
-      const snapshot=await json('/api/r8-24/geo-growth/evidence',{timeoutMs:8000});
+      const snapshot=await json('/api/r8-24/geo-growth/evidence-compact',{timeoutMs:8000});
       if(snapshot.snapshot_ready===false){
         if(!advancedBaselineLoaded)loadAdvancedBaseline();
         // Unlike #731, the first response contains the canonical 50 questions.
@@ -542,7 +558,7 @@
       const qbox=byId('geo-adv-questions');
       showOffline50();
       loadAdvancedBaseline();
-      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；固定50问正常，正式A/B与Receipt维持待核实。请稍后点击「刷新证据」。',true);
+      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；50问正常，正式A/B与Receipt维持待核实。点击「诊断读取」查看缓存状态，再决定是否重试。',true);
     }finally{advancedBusy=false}
   }
 
