@@ -9,6 +9,7 @@ import base64
 import ctypes
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from ctypes import wintypes
@@ -22,6 +23,9 @@ SECRET_PATH = "integrations/business_readonly_key.bin"
 STATUS_PATH = "integrations/business_source.json"
 REMOTE_SUMMARY_PATH = "business/remote_summary.json"
 REFRESH_SECONDS = 300
+# A source update may call a remote 20-second HTTP endpoint and write aggregate
+# ledgers. It must run only on a dedicated worker, never in owner GET threads.
+_REFRESH_EXECUTION_LOCK = threading.Lock()
 FORBIDDEN_PARTS = (
     "phone", "mobile", "address", "openid", "unionid", "id_card", "identity",
     "password", "secret", "token", "adminkey", "admin_key", "bank", "card_no",
@@ -271,6 +275,13 @@ def _request_remote(key, timeout=20):
 
 
 def refresh_business_source(force=True):
+    # Serialize background and explicit-owner manual refreshes. The HTTP GET
+    # route never calls this function; manual POST retains its old semantics.
+    with _REFRESH_EXECUTION_LOCK:
+        return _refresh_business_source_serial(force=force)
+
+
+def _refresh_business_source_serial(force=True):
     key = _read_key()
     if not key:
         return business_source_status()
@@ -301,6 +312,7 @@ def _seconds_since(value):
 
 
 def refresh_if_due():
+    """Background/explicit-worker read-only sync, never called by a GET handler."""
     if not _read_key():
         return business_source_status()
     status = _status_config()
@@ -308,6 +320,34 @@ def refresh_if_due():
     if age is None or age >= REFRESH_SECONDS:
         return refresh_business_source(force=False)
     return business_source_status()
+
+
+def start_background_refresh(*, initial_delay_seconds=12.0, check_interval_seconds=60.0):
+    """Autonomously sync remote aggregates without blocking any dashboard GET.
+
+    The stop event is registered in run.py alongside the other worker stops.
+    One daemon thread sleeps when not due and serializes any explicit owner's
+    POST-triggered refresh with the same lock used for the automatic refresh.
+    No API tokens, URLs or personal data are emitted to application logs.
+    """
+    stop = threading.Event()
+
+    def loop():
+        if stop.wait(max(0.0, float(initial_delay_seconds))):
+            return
+        while not stop.is_set():
+            try:
+                refresh_if_due()
+            except Exception as error:
+                print("Business read-only aggregate sync deferred: "
+                      + type(error).__name__, flush=True)
+            if stop.wait(max(1.0, float(check_interval_seconds))):
+                return
+
+    thread = threading.Thread(target=loop, name="kz-business-readonly-sync",
+                              daemon=True)
+    thread.start()
+    return stop
 
 
 def configure_business_source(payload):
