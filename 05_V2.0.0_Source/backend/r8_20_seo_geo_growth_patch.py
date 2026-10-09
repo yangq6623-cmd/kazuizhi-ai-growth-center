@@ -35,11 +35,38 @@ _HTTP_DIAG_PEAK_INFLIGHT = 0
 _HTTP_DIAG_SLOW_SECONDS = 1.0
 
 
+# Safe, static route names only. Never log raw dynamic paths, query strings,
+# user-entered values, credentials, tokens, IDs, or POST bodies.
+_HTTP_KNOWN_ROUTES = frozenset({
+    "/api/status", "/api/business-source/status", "/api/business-analytics",
+    "/api/operation-summary/today", "/api/system/diagnostics",
+    "/api/integrations", "/api/bridge/status",
+    "/api/r7/jobs", "/api/r7/agents", "/api/r7/engine",
+    "/api/r7/audit", "/api/r7/decision-center", "/api/r7/model-routes",
+    "/api/r8-22/autonomy", "/api/r8-22/autonomy/events",
+    "/api/r8-22/autonomy/receipt",
+    "/api/r8-23/growth-os", "/api/r8-23/growth-os/capabilities",
+    "/api/r8-23/growth-os/utilization", "/api/r8-23/identity",
+    "/api/r8-20/seo-geo", "/api/r8-20/seo-geo/trends",
+    "/api/r8-24/geo-growth/fast", "/api/r8-24/geo-growth/fast-ui",
+    "/api/r8-24/geo-growth/fast-health",
+    "/api/r8-24/geo-growth/evidence-compact",
+    "/api/r8-24/geo-growth/evidence-health",
+    "/api/r8-24/geo-growth/http-health",
+})
+
+
 def _http_request_category(path):
+    if path in _HTTP_KNOWN_ROUTES:
+        return path
     if path.startswith("/api/r8-24/geo-growth/"):
-        return path
-    if path in {"/api/r7/decision-center", "/api/r7/jobs", "/api/r7/agents"}:
-        return path
+        return "api:geo_growth_other"
+    if path.startswith("/api/r8-"):
+        return "api:r8_other"
+    if path.startswith("/api/r7/"):
+        return "api:r7_other"
+    if path.startswith("/api/"):
+        return "api:other"
     if path.endswith(".js"):
         return "static_js"
     if path.endswith(".html"):
