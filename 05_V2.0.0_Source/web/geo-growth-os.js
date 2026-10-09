@@ -203,7 +203,9 @@
       stateLabel(state);
     badge.textContent=snapshotPending?'正在同步真实状态':snapshotStale?'历史状态 · 待更新':stateText;
     badge.className=`geo-os-state ${snapshotPending?'pause':snapshotStale?'bad':state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
-    badge.title=state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
+    badge.title=snapshotPending?'后台快照尚未完成，不能判定实时运行状态':
+      snapshotStale?'仅显示历史账本，不能代表当前真实调度':
+      state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
     byId('geo-os-mission').textContent=data.mission||'等待 Mission';
     byId('geo-os-resources').textContent=`执行资源：${(policy.execution_resources||['doubao_api','local_model','rtx3060','platform_capabilities']).join(' / ')} · 正常推广无需人工审核`;
     byId('geo-os-runtime').textContent=`豆包扫描 ${Number(cloud.completed||0)} / ${Number(cloud.target||0)} · ${cloud.ready?'API已就绪':'API待检查'} · 上次运行 ${data.last_run_at||'—'}`;
@@ -220,17 +222,22 @@
       const fresh=today.scheduler_fresh===true;
       const last=String(today.last_run_at||'尚无执行记录');
       const waiting=Number(summary.waiting_publish||0);
-      daily.textContent=`今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
+      daily.textContent=snapshotPending?
+        '今日真实工作：后台快照尚未完成；不会把尚未核验的数据填写为0。':
+        snapshotStale?
+        '今日真实工作：历史快照 '+(data.snapshot_age_seconds??'未知')+' 秒前；待后台恢复后核实执行、发布与回执。':
+        `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
       daily.style.color=fresh?'#49667e':'#986000';
     }
 
+    const unknownAware=value=>snapshotPending?'—':Number(value||0);
     const kpis=[
-      ['运营 Signal',summary.signals||0,'豆包 C级辅助','signal'],
-      ['机会池',summary.total||0,'自动识别缺口','all'],
-      ['正在优化',summary.optimizing||0,'AI员工执行','optimizing'],
-      ['等待发布',summary.waiting_publish||0,'等待真实公网回执','waiting_publish'],
-      ['等待复测',summary.published_or_waiting_retest||0,'发布后自动复测','retest'],
-      ['闭环完成',summary.completed||0,'Before / After','completed'],
+      ['运营 Signal',unknownAware(summary.signals),'豆包 C级辅助','signal'],
+      ['机会池',unknownAware(summary.total),'自动识别缺口','all'],
+      ['正在优化',unknownAware(summary.optimizing),'AI员工执行','optimizing'],
+      ['等待发布',unknownAware(summary.waiting_publish),'等待真实公网回执','waiting_publish'],
+      ['等待复测',unknownAware(summary.published_or_waiting_retest),'发布后自动复测','retest'],
+      ['闭环完成',unknownAware(summary.completed),'Before / After','completed'],
       ['正式 A/B',data.formal_ab_completed==null?'待同步 / 50':`${Number(data.formal_ab_completed)} / ${Number(data.formal_ab_target||50)}`,'独立正式真值','formal_ab'],
     ];
     byId('geo-os-kpis').innerHTML=kpis.map(x=>`<button type="button" class="geo-os-kpi ${activeFilter===x[3]?'active':''}" data-geo-filter="${esc(x[3])}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></button>`).join('');
@@ -270,7 +277,9 @@
       start.textContent=state==='running'?'自动运营已启动':'启动 GEO 自动运营';
       start.classList.toggle('is-running',state==='running');
     }
-    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||snapshotPending||snapshotStale||state!=='running'; }
+    // Emergency pause remains available against the last known running state
+    // even when the live snapshot is stale; do not lock the owner out.
+    if(pause){ pause.hidden=state==='paused'; pause.disabled=busy||snapshotPending||state!=='running'; }
     if(resume){ resume.hidden=state!=='paused'; resume.disabled=busy||snapshotPending||snapshotStale||state!=='paused'; }
     if(run) run.disabled=busy||snapshotPending||snapshotStale||state!=='running';
     if(retry) retry.disabled=busy||snapshotPending||snapshotStale||(Number(summary.failed||0)+Number(summary.technical_blockers||0)===0);
@@ -407,13 +416,19 @@
         const alive=await json('/api/r8-24/geo-growth/liveness',{timeoutMs:2500});
         if(!alive.server_ready)throw new Error('本地HTTP服务未响应');
         const info=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
+        const fast=await json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2500})
+          .catch(()=>null);
         const age=info.cache_age_seconds==null?'未知':String(info.cache_age_seconds)+'秒';
         const size=Number(info.payload_bytes||0);
         const sections=String(info.available_sections??'未知');
         setAdvancedMessage('后端缓存：'+(info.evidence_ready?'就绪':'未就绪')+
           '；缓存年龄 '+age+'；证据大小 '+size+' 字节；分区 '+sections+
           '；读取线程 '+Number(info.worker_count||0)+
-          (info.last_error?'；后台错误：'+info.last_error:'；后台无记录错误'),!info.evidence_ready||Boolean(info.last_error));
+          (info.last_error?'；后台错误：'+info.last_error:'；后台无记录错误')+
+          (fast?'；主 GEO 快照：'+(fast.status_ready?'就绪':'等待')+
+          (fast.snapshot_age_seconds!=null?'（'+Math.round(fast.snapshot_age_seconds)+'秒前）':'')+
+          (fast.snapshot_stale?'，已过期':''):'；主GEO快照诊断暂不可用'),
+          !info.evidence_ready||Boolean(info.last_error)||Boolean(fast?.snapshot_stale));
       }catch(error){setAdvancedMessage('Evidence健康检查也失败：'+error.message,true)}
       finally{button.disabled=false;button.textContent=old}
     });
@@ -664,7 +679,7 @@
       // Paint the complete GEO shell before waiting for any API. A slow local
       // endpoint must never leave the owner staring at a blank 720px iframe.
       if(!cache)render({
-        state:'stopped',
+        state:'unknown',
         summary:{},
         cloud:{},
         policy:{},
@@ -672,7 +687,8 @@
         technical_blockers:[],
         opportunities:[],
         pipeline:[],
-        formal_ab_completed:0,
+        status_ready:false,
+        formal_ab_completed:null,
         formal_ab_target:50,
         mission:'正在恢复 GEO 运行状态…'
       });

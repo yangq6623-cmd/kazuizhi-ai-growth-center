@@ -267,6 +267,11 @@ def test_seo_cached_dashboard_is_lock_free():
         assert payload["summary"]["indexed_urls"] == 0
         schedule.assert_not_called()
     print("PASS: SEO cached HTTP view never enters global GEO ledger lock")
+    ui = (SRC / "web" / "geo-growth-os.js").read_text(encoding="utf-8")
+    for marker in ("status_ready:false", "formal_ab_completed:null", "unknownAware",
+                   "Emergency pause remains available", "fast-health"):
+        assert marker in ui, marker
+    print("PASS: first-paint GEO unknowns do not masquerade as zeros; pause remains available")
 
 
 if __name__ == "__main__":
