@@ -10,6 +10,7 @@ import json
 import threading
 import time
 from collections import Counter, deque
+from functools import lru_cache
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
@@ -570,6 +571,53 @@ def _days(handler):
     return value if value in {7, 30, 90} else 30
 
 
+@lru_cache(maxsize=1)
+def _geo_priority_html_assets():
+    """Read immutable installed UI assets once; no network/disk in later GETs."""
+    web = server.get_web_path()
+    template = (web / "geo.html").read_text(encoding="utf-8")
+    core = (web / "geo-growth-os.js").read_text(encoding="utf-8")
+    marker = "<!-- KZ_GEO_PRIORITY_BOOT_PAYLOAD -->"
+    if template.count(marker) != 1 or "</script" in core.lower():
+        raise RuntimeError("geo_priority_boot_assets_invalid")
+    return template, core, marker
+
+
+def _geo_priority_document(handler):
+    """A single trustworthy HTML response survives later JS/API starvation.
+
+    This data is exactly the existing read-only fast-ui cache. It is not
+    equivalent to an independently verified remote result, and a pending
+    snapshot must remain pending (no fabricated zero counts). The real live
+    endpoint is still the authority once HTTP contention clears.
+    """
+    template, core, marker = _geo_priority_html_assets()
+    payload = _geo_fast_ui_compact()
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    # JSON is inserted in <script type=application/json>. Escape HTML special
+    # characters so even an untrusted task/mission cannot end the script tag.
+    for old, new in (("<", r"\u003c"), (">", r"\u003e"),
+                     ("&", r"\u0026"), ("\u2028", r"\u2028"),
+                     ("\u2029", r"\u2029")):
+        serialized = serialized.replace(old, new)
+    embedded = (
+        '<script id="kz-geo-fast-bootstrap" type="application/json">'
+        + serialized + '</script>\n'
+        '<script id="kz-geo-core-embedded">\n'
+        + core + '\n</script>'
+    )
+    data = template.replace(marker, embedded).encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("X-KZ-GEO-Boot", "single-response")
+    handler.send_header("X-KZ-GEO-Truth",
+                        "snapshot-ready" if payload.get("status_ready") is True
+                        else "snapshot-pending")
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 def _serve_operational_search(handler):
     web = server.get_web_path()
     names = [
@@ -843,6 +891,11 @@ def install():
     def do_get(handler):
         path = urlsplit(handler.path).path
         try:
+            if path == "/geo.html" and (
+                (parse_qs(urlsplit(handler.path).query).get("advanced") or [""])[0] != "1"
+            ):
+                _geo_priority_document(handler)
+                return
             if path == "/operational-search.js":
                 _serve_operational_search(handler)
                 return
