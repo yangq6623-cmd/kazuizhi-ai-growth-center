@@ -67,7 +67,7 @@ from integrations.bridge import (
 )
 from integrations.business_data import (
     business_source_status, configure_business_source, refresh_business_source,
-    refresh_if_due as refresh_business_if_due, test_business_source,
+    test_business_source,
 )
 from integrations.wechat_mini_program import (
     configure_wechat_mini_program, refresh_wechat_mini_program,
@@ -334,11 +334,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         if path.startswith("/api/"):
-            if not path.startswith("/api/r8/"):
-                try:
-                    refresh_business_if_due()
-                except Exception:
-                    pass
+            # Read-only GET requests MUST never trigger the production business
+            # connector's 20-second remote network refresh. The independent
+            # background scheduler refreshes aggregates every five minutes.
+            # This also prevents many concurrent owner-dashboard GETs from
+            # repeatedly refreshing remote data and contending for JSON I/O.
             try:
                 payload = self._api_get_payload(path)
             except KeyError:
