@@ -193,8 +193,15 @@
     const blockers=data.technical_blockers||[];
 
     const badge=byId('geo-os-state');
-    badge.textContent=stateLabel(state);
-    badge.className=`geo-os-state ${state==='running'?'run':state==='paused'?'pause':'bad'}`;
+    const scheduler=data.today_activity||{};
+    const hasRecentRun=Boolean(scheduler.last_run_at);
+    const isVerifiedRunning=state==='running'&&scheduler.scheduler_fresh===true;
+    const stateText=state==='running'?
+      (isVerifiedRunning?'自动运营中':hasRecentRun?'已启用 · 调度待核查':'已启用 · 等待首轮'):
+      stateLabel(state);
+    badge.textContent=stateText;
+    badge.className=`geo-os-state ${state==='running'?(isVerifiedRunning?'run':'pause'):state==='paused'?'pause':'bad'}`;
+    badge.title=state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
     byId('geo-os-mission').textContent=data.mission||'等待 Mission';
     byId('geo-os-resources').textContent=`执行资源：${(policy.execution_resources||['doubao_api','local_model','rtx3060','platform_capabilities']).join(' / ')} · 正常推广无需人工审核`;
     byId('geo-os-runtime').textContent=`豆包扫描 ${Number(cloud.completed||0)} / ${Number(cloud.target||0)} · ${cloud.ready?'API已就绪':'API待检查'} · 上次运行 ${data.last_run_at||'—'}`;
@@ -388,6 +395,10 @@
       const button=event.currentTarget,old=button.textContent;
       button.disabled=true;button.textContent='诊断中…';
       try{
+        // A lock-free liveness probe distinguishes an overloaded local server
+        // from a blocked Evidence reader without opening the heavy workbench.
+        const alive=await json('/api/r8-24/geo-growth/liveness',{timeoutMs:2500});
+        if(!alive.server_ready)throw new Error('本地HTTP服务未响应');
         const info=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
         const age=info.cache_age_seconds==null?'未知':String(info.cache_age_seconds)+'秒';
         const size=Number(info.payload_bytes||0);
@@ -539,13 +550,15 @@
         byId('geo-adv-task').value=running.task_id||'';
         byId('geo-adv-question').value=running.question_text||'';
       }
+      const stale=Boolean(snapshot.snapshot_stale);
       if(state){
-        state.textContent=snapshot.snapshot_stale?'历史快照 · 正在更新':available>=total?`数据正常 · ${available}/${total}`:`部分可用 · ${available}/${total}`;
-        state.className=`geo-adv-state ${available>=total?'ok':''}`;
+        state.textContent=stale?'历史证据（缓存过期）':available>=total?`数据正常 · ${available}/${total}`:`部分可用 · ${available}/${total}`;
+        state.className=`geo-adv-state ${stale?'bad':available>=total?'ok':''}`;
       }
       document.documentElement.dataset.kzGeoAdvancedInlineReady='1';
       document.documentElement.dataset.kzGeoAdvancedSections=String(available);
-      if(available===0)setAdvancedMessage('高级证据数据暂未返回；主GEO自动运营不受影响，可点击刷新重试。',true);
+      if(stale)setAdvancedMessage('当前显示历史 Evidence 缓存（'+(snapshot.snapshot_age_seconds??'未知')+'秒前）；不代表刚完成正式验证。后台重试中。'+(snapshot.last_refresh_error?' 最近错误：'+snapshot.last_refresh_error:''),true);
+      else if(available===0)setAdvancedMessage('高级证据数据暂未返回；主GEO自动运营不受影响，可点击刷新重试。',true);
       else if(available<total)setAdvancedMessage(`高级证据已有 ${available}/${total} 个数据区可用；其余后台重试中。`);
       else setAdvancedMessage('');
     }catch(error){

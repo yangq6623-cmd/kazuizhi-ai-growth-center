@@ -2,9 +2,12 @@
 Windows Evidence file reader is blocked, and recover without fake A/B data."""
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
+from http.server import ThreadingHTTPServer
+from urllib.request import urlopen
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "05_V2.0.0_Source"
@@ -53,6 +56,28 @@ def run() -> None:
         assert baseline["formal_ab_completed"] is None, "invented A/B on warmup"
         assert baseline["available_sections"] == 1, "unknown receipts claimed as healthy"
         assert entered.wait(2), "worker not started"
+        # Genuine loopback HTTP integration: a blocked Evidence filesystem
+        # reader must not monopolize the user-facing threaded web server.
+        http = ThreadingHTTPServer(("127.0.0.1", 0), bridge.server.DashboardHandler)
+        http.daemon_threads = True
+        served = threading.Thread(target=http.serve_forever, daemon=True)
+        served.start()
+        try:
+            root = f"http://127.0.0.1:{http.server_address[1]}"
+            for endpoint in ("liveness", "evidence-health", "evidence-compact"):
+                t0 = time.monotonic()
+                with urlopen(root + "/api/r8-24/geo-growth/" + endpoint, timeout=2) as resp:
+                    payload = json.load(resp)
+                assert time.monotonic() - t0 < 1.5, endpoint
+                if endpoint == "liveness":
+                    assert payload["server_ready"] is True
+                if endpoint == "evidence-compact":
+                    assert payload["snapshot_ready"] is False
+                    assert len(payload["questions"]) == 50
+        finally:
+            http.shutdown()
+            http.server_close()
+        print("PASS: loopback GEO HTTP endpoints respond while Evidence reader is blocked")
         with bridge._GEO_EVIDENCE_LOCK:
             bridge._GEO_EVIDENCE_CACHE["started"] = (
                 time.monotonic() - bridge._GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS - 1

@@ -191,7 +191,7 @@ def main() -> None:
     assert "Boolean(data.enabled) && !Boolean(data.paused)" not in geo_autonomy
     assert geo_growth_ui.count("async function load(){") == 1
     assert geo_growth_ui.count("const rows=data.opportunities||[];") == 1
-    for marker in ("evidence-compact", "geo-adv-diagnose", "GEO 数据请求超时", "等待服务器响应", "下载并解析 JSON", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer", "/api/r8-24/geo-growth/fast", "timeoutMs:4000", "状态快照暂未返回"):
+    for marker in ("已启用 · 调度待核查", "已启用 · 等待首轮", "历史证据（缓存过期）", "/api/r8-24/geo-growth/liveness", "evidence-compact", "geo-adv-diagnose", "GEO 数据请求超时", "等待服务器响应", "下载并解析 JSON", "__KZ_GEO_GROWTH_OS_BOOT__", "正在恢复 GEO 运行状态", "blank 720px iframe", "GEO Growth OS boot retry", "pollTimer", "/api/r8-24/geo-growth/fast", "timeoutMs:4000", "状态快照暂未返回"):
         assert marker in geo_growth_ui, marker
     for marker in ("recoverGeoWorkbench", "connector", "window.__KZ_GEO_GROWTH_OS_BOOT__?.()", "window.searchGrowthActivate?.()"):
         assert marker in geo_html, marker

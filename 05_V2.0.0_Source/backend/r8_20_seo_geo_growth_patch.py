@@ -543,6 +543,12 @@ def install():
             if path == "/api/r8-24/geo-growth/questions-baseline":
                 handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
                 return
+            if path == "/api/r8-24/geo-growth/liveness":
+                # Keep this endpoint independent of JSON disk I/O, the GEO
+                # snapshot cache lock, remote models and worker state.
+                handler._json_ok({"server_ready": True, "source": "local_http_thread",
+                                  "monotonic_seconds": round(time.monotonic(), 3)})
+                return
             if path == "/api/r8-24/geo-growth/evidence-health":
                 handler._json_ok(_geo_evidence_health())
                 return
