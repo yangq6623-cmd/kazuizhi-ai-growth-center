@@ -213,11 +213,15 @@
       state==='running'?('最近执行：'+(scheduler.last_run_at||'无记录')+'；只有近期真实调度才显示自动运营中'):'运行状态来自服务端';
     byId('geo-os-mission').textContent=data.mission||'等待 Mission';
     byId('geo-os-resources').textContent=`执行资源：${(policy.execution_resources||['doubao_api','local_model','rtx3060','platform_capabilities']).join(' / ')} · 正常推广无需人工审核`;
-    byId('geo-os-runtime').textContent=`豆包扫描 ${Number(cloud.completed||0)} / ${Number(cloud.target||0)} · ${cloud.ready?'API已就绪':'API待检查'} · 上次运行 ${data.last_run_at||'—'}`;
+    byId('geo-os-runtime').textContent=snapshotPending?
+      '豆包扫描：状态待核查 · API：待核查 · 上次运行：待核查':
+      `豆包扫描 ${Number(cloud.completed||0)} / ${Number(cloud.target||0)} · ${cloud.ready?'API已就绪':'API待检查'} · 上次运行 ${data.last_run_at||'—'}`;
     const publishLine=byId('geo-os-publish');
     if(publishLine){
       const ready=Boolean(publish.ready);
-      publishLine.textContent=`发布通道：${ready?'已就绪':(publish.reason||'等待检查')} · 待发布 ${Number(summary.waiting_publish||0)}`;
+      publishLine.textContent=snapshotPending||transportDegraded?
+        '发布通道：状态待核查 · 待发布：数据未知':
+        `发布通道：${ready?'已就绪':(publish.reason||'等待检查')} · 待发布 ${Number(summary.waiting_publish||0)}`;
       publishLine.className=ready?'ok':Number(summary.waiting_publish||0)>0?'bad':'wait';
     }
 
@@ -261,10 +265,10 @@
         <td><span class="geo-os-pill ${item.public_url?'ok':item.asset_stage==='QC_PASSED'?'wait':''}">${esc(item.asset_stage||'等待')}</span><small>${item.public_url?esc(item.public_url):'必须有真实公网回执'}</small>${(item.state==='waiting_publish'||item.state==='deferred')?'<button type="button" class="geo-os-mini-action" data-geo-advance="1">立即推进</button>':''}</td>
         <td><span class="geo-os-pill ${stateClass(item.state)}">${esc(result)}</span><small>${item.operating_before_score==null?'C级运营复测，不改变正式A/B':`Before ${item.operating_before_score} → After ${item.operating_after_score}`}</small></td>
       </tr>`;
-    }).join(''):transportDegraded?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">运行概览已读取，机会明细暂不可用；不代表任务为零。</td></tr>':'<tr><td colspan="6" style="padding:18px;text-align:center;color:#8290a3">当前还没有可执行 GEO 缺口。新的豆包 C级 Signal 到达后会自动判断并创建机会。</td></tr>';
+    }).join(''):snapshotPending?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">真实机会明细尚未读取，不代表机会池为空。</td></tr>':transportDegraded?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">运行概览已读取，机会明细暂不可用；不代表任务为零。</td></tr>':'<tr><td colspan="6" style="padding:18px;text-align:center;color:#8290a3">当前还没有可执行 GEO 缺口。新的豆包 C级 Signal 到达后会自动判断并创建机会。</td></tr>';
 
-    byId('geo-os-blocker-count').textContent=blockers.length?`${blockers.length} 项 · 仅影响子任务`:'当前无阻塞';
-    byId('geo-os-blockers').innerHTML=blockers.length?blockers.map(row=>`<div class="geo-os-blocker"><b>${esc(row.code||'技术阻塞')}</b><span>${esc(row.detail||'')}<br>${esc(row.item_id||'')} · 仅影响该子任务，主工作流继续</span><button type="button" class="geo-os-blocker-retry" data-geo-retry-blocker="1">重试异常</button></div>`).join(''):'<div class="geo-os-ok">当前没有技术阻塞，主工作流可继续。</div>';
+    byId('geo-os-blocker-count').textContent=snapshotPending||transportDegraded?'技术阻塞：状态待核查':blockers.length?`${blockers.length} 项 · 仅影响子任务`:'当前无阻塞';
+    byId('geo-os-blockers').innerHTML=blockers.length?blockers.map(row=>`<div class="geo-os-blocker"><b>${esc(row.code||'技术阻塞')}</b><span>${esc(row.detail||'')}<br>${esc(row.item_id||'')} · 仅影响该子任务，主工作流继续</span><button type="button" class="geo-os-blocker-retry" data-geo-retry-blocker="1">重试异常</button></div>`).join(''):snapshotPending||transportDegraded?'<div class="geo-os-blocker">后台数据尚未核实，不能判定当前无技术阻塞。</div>':'<div class="geo-os-ok">当前没有技术阻塞，主工作流可继续。</div>';
     byId('geo-os-message').textContent=snapshotPending?
       '正在后台读取 GEO 真实状态；主界面保留，未验证的数据不计为零。':
       transportDegraded?'已从快速健康通道恢复真实运营概览；机会明细和控制操作等待主接口恢复。':
@@ -354,6 +358,20 @@
       statusFailures=0;
       if(statusRetryTimer){clearTimeout(statusRetryTimer);statusRetryTimer=null;}
       render(data);
+      if (data?.status_ready === false) {
+        // HTTP 200 with pending_snapshot is still an unverified status.
+        json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2200})
+          .then(health => {
+            if (!health?.status_ready && byId('geo-os-message')) {
+              const workers=Number(health.worker_count||0);
+              const problem=String(health.last_error||'');
+              byId('geo-os-message').textContent=
+                `GEO 真实快照尚未就绪 · 后台读取线程 ${workers} · `+
+                (health.worker_limit_reached?'读取线程已达上限；请检查磁盘/文件锁。':'等待后台首次读取或重试。')+
+                (problem?` 最近错误：${problem}`:'');
+            }
+          }).catch(()=>{});
+      }
       return data;
     }catch(error){
       statusFailures+=1;
