@@ -8,6 +8,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 from urllib.request import urlopen
+from unittest.mock import patch
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "05_V2.0.0_Source"
@@ -16,6 +17,19 @@ from backend import r8_20_seo_geo_growth_patch as bridge  # noqa: E402
 
 
 def run() -> None:
+    # The refresh must keep cycling without a browser request, and it must
+    # delegate file reads to the existing bounded cache worker.
+    with patch.object(bridge, "_geo_evidence_cached", return_value={}) as refresh, \
+            patch.object(bridge.threading, "Timer") as timer_cls:
+        bridge._geo_evidence_periodic_refresh()
+        refresh.assert_called_once_with()
+        timer_cls.assert_called_once_with(
+            bridge._GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS,
+            bridge._geo_evidence_periodic_refresh,
+        )
+        timer_cls.return_value.start.assert_called_once_with()
+        assert timer_cls.return_value.daemon is True
+    print("PASS: GEO Evidence refresh independently rearms every 30 seconds")
     original = bridge._geo_evidence_snapshot
     original_cached = bridge._geo_evidence_cached
     gate = threading.Event()

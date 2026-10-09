@@ -44,6 +44,7 @@ _GEO_EVIDENCE_TTL_SECONDS = 20
 _GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS = 12
 _GEO_EVIDENCE_MAX_WORKERS = 2
 _GEO_EVIDENCE_PREWARM_TIMER = None
+_GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS = 30.0
 
 def _geo_evidence_seed(reason="", loading=True):
     # This deterministic, read-only function never accesses the Windows JSON
@@ -161,12 +162,31 @@ def _geo_evidence_compact():
     }
 
 
+def _geo_evidence_periodic_refresh():
+    """Refresh Evidence independently of whether the owner's GEO tab is open.
+
+    Never read files on the HTTP request thread. The existing cache limits
+    concurrent workers and fences off late results after a blocked read.
+    """
+    global _GEO_EVIDENCE_PREWARM_TIMER
+    try:
+        _geo_evidence_cached()
+    finally:
+        timer = threading.Timer(
+            _GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS, _geo_evidence_periodic_refresh,
+        )
+        timer.daemon = True
+        timer.name = "kz-geo-evidence-auto-refresh"
+        _GEO_EVIDENCE_PREWARM_TIMER = timer
+        timer.start()
+
+
 def _schedule_geo_evidence_prewarm():
-    """Warm read-only cache after HTTP routes install; no synchronous disk I/O."""
+    """Begin a bounded periodic, asynchronous Evidence refresh after startup."""
     global _GEO_EVIDENCE_PREWARM_TIMER
     if _GEO_EVIDENCE_PREWARM_TIMER is not None:
         return
-    timer = threading.Timer(3.0, _geo_evidence_cached)
+    timer = threading.Timer(3.0, _geo_evidence_periodic_refresh)
     timer.daemon = True
     timer.name = "kz-geo-evidence-prewarm"
     _GEO_EVIDENCE_PREWARM_TIMER = timer

@@ -489,9 +489,14 @@
         const problem=String(snapshot.last_refresh_error||'');
         if(state){state.textContent=problem?'证据读取异常 · 50问独立可用':`50问基准可用 · Evidence同步中`;state.className='geo-adv-state'+(problem?' bad':'');}
         setAdvancedMessage(problem?'后台诊断：'+problem:'50问基准已显示，后台正在同步正式证据和任务回执。',Boolean(problem));
-        if(advancedRetryCount<=10){
+        // Keep retrying at a bounded pace while the owner has this panel open.
+        // A transient timeout must never leave Evidence in a permanent failed state.
+        if(byId('geo-growth-advanced')?.open){
           const delay=Math.min(30000,Math.max(5000,Number(snapshot.retry_after_ms||1300))*(1+Math.floor(advancedRetryCount/3)));
-          advancedRetryTimer=setTimeout(()=>loadAdvanced(true),delay);
+          advancedRetryTimer=setTimeout(()=>{
+            advancedRetryTimer=null;
+            if(byId('geo-growth-advanced')?.open)loadAdvanced(true);
+          },delay);
         }
         return;
       }
@@ -571,7 +576,15 @@
       const qbox=byId('geo-adv-questions');
       showOffline50();
       loadAdvancedBaseline();
-      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；50问正常，正式A/B与Receipt维持待核实。点击「诊断读取」查看缓存状态，再决定是否重试。',true);
+      setAdvancedMessage('正式Evidence暂不可用：'+error.message+'；50问正常，正式A/B与Receipt维持待核实。系统将自动重试，可点击「诊断读取」查看缓存状态。',true);
+      advancedRetryCount+=1;
+      if(byId('geo-growth-advanced')?.open){
+        const delay=Math.min(30000,5000*Math.min(advancedRetryCount,6));
+        advancedRetryTimer=setTimeout(()=>{
+          advancedRetryTimer=null;
+          if(byId('geo-growth-advanced')?.open)loadAdvanced(true);
+        },delay);
+      }
     }finally{advancedBusy=false}
   }
 
