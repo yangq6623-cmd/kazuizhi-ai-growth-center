@@ -48,6 +48,9 @@
   }
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   let cache = null;
+  let lastVerifiedSnapshotAt = 0;
+  let lastVerifiedSnapshotAge = 0;
+  let freshnessTimer = null;
   let busy = false;
   let attempts = 0;
   let activeFilter = "all";
@@ -222,6 +225,11 @@
 
   function render(data){
     cache=data||{};
+    if(data?.status_ready===true && data.snapshot_stale!==true &&
+       data.transport_degraded!==true){
+      lastVerifiedSnapshotAt=Date.now();
+      lastVerifiedSnapshotAge=Math.max(0,Number(data.snapshot_age_seconds||0));
+    }
     if(!ensureStructure()) return;
     const state=data.state||'unknown';
     const snapshotPending=data.status_ready===false;
@@ -828,6 +836,17 @@
     byId('geo-os-refresh')?.addEventListener('click',()=>{if(!statusLoading)load();});
   }
 
+  function markSnapshotStaleIfDue(){
+    if(!cache?.status_ready || cache.snapshot_stale || !lastVerifiedSnapshotAt)return;
+    const age=lastVerifiedSnapshotAge+
+      Math.max(0,(Date.now()-lastVerifiedSnapshotAt)/1000);
+    if(age>=90){
+      // The previous first-paint values remain visible, but explicitly become
+      // historical if local HTTP cannot supply a fresher verified snapshot.
+      render({...cache,snapshot_stale:true,snapshot_age_seconds:Math.round(age)});
+    }
+  }
+
   function start(){
     try{
       if(!ensureStructure()){
@@ -864,6 +883,7 @@
       // handler becomes busy AFTER serving this document, the owner can still
       // inspect the real first-paint snapshot and its freshness label.
       load();
+      if(!freshnessTimer)freshnessTimer=setInterval(markSnapshotStaleIfDue,10000);
       if(!pollTimer)pollTimer=setInterval(()=>{
         if(isForegroundGeoVisible()&&!busy&&!statusLoading)load();
       },20000);
