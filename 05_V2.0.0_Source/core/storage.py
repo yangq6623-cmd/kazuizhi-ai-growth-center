@@ -42,9 +42,15 @@ def read_json_snapshot(relative_path, default):
     for attempt in range(2):
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, ValueError):
+        except FileNotFoundError:
+            return default
+        except (OSError, ValueError) as error:
             if attempt == 0:
                 time.sleep(0.005)
+                continue
+            # An existing but unreadable/corrupt authoritative ledger must
+            # never turn into a fabricated zero-count owner snapshot.
+            raise OSError(f"snapshot_unavailable: {relative_path}") from error
     return default
 
 
