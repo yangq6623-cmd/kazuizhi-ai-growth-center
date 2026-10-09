@@ -18,7 +18,7 @@ from core import geo_validation as geo
 from core import r7_engine
 from core import seo_geo_growth
 from core import geo_phase3_seo_bridge
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 from integrations import geo_cloud_executor
 
 STORE = "geo_validation/growth_orchestrator.json"
@@ -54,8 +54,9 @@ DEFAULT = {
 }
 
 
-def _load():
-    value = read_json(STORE, deepcopy(DEFAULT))
+def _load(*, snapshot=False):
+    reader = read_json_snapshot if snapshot else read_json
+    value = reader(STORE, deepcopy(DEFAULT))
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         value = deepcopy(DEFAULT)
     for key, default in DEFAULT.items():
@@ -78,7 +79,8 @@ def _load():
         }
         value["schema"] = SCHEMA
         value["updated_at"] = now_iso()
-        write_json(STORE, value)
+        if not snapshot:
+            write_json(STORE, value)
 
     value["opportunities"] = list(value.get("opportunities") or [])[-MAX_OPPORTUNITIES:]
     value["processed_signal_ids"] = list(value.get("processed_signal_ids") or [])[-2000:]
@@ -520,7 +522,9 @@ def fast_status():
     reconcile Phase-2 truth and traverse several ledgers. That work is correct
     for background execution but is not acceptable on a UI polling request.
     """
-    data = _load()
+    # This path runs in the GEO snapshot worker, never under the global JSON
+    # writer lock. The normal _load() remains authoritative for mutations.
+    data = _load(snapshot=True)
     items = list(reversed(data.get("opportunities") or []))
     counts = _state_counts(items)
     # Owner-facing "today" is explicitly distinct from lifetime counters.
@@ -544,7 +548,10 @@ def fast_status():
         age_minutes = None
 
     try:
-        receipts = geo.receipts(1000)
+        receipt_snapshot = read_json_snapshot(geo.RECEIPTS_PATH, {"receipts": []})
+        rows = receipt_snapshot.get("receipts") if isinstance(receipt_snapshot, dict) else []
+        receipts = list(reversed(rows))[:1000] if isinstance(rows, list) else []
+        receipts = [row for row in receipts if isinstance(row, dict)]
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
         receipts = []
 
@@ -562,7 +569,9 @@ def fast_status():
         and row.get("question_id")
     }
 
-    cloud_data = read_json(geo_autonomy.STORE, {})
+    cloud_data = read_json_snapshot(geo_autonomy.STORE, {})
+    if not isinstance(cloud_data, dict):
+        cloud_data = {}
     target = max(1, min(int(cloud_data.get("target") or 1), 50))
     cycle_started_at = str(cloud_data.get("cycle_started_at") or "")
     cloud_ids = {
@@ -585,7 +594,7 @@ def fast_status():
         cloud_state = "idle"
 
     try:
-        executor = geo_cloud_executor.status()
+        executor = geo_cloud_executor.snapshot_status()
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
         executor = {"ready": False, "label": "豆包API"}
 

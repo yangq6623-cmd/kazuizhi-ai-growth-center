@@ -96,6 +96,7 @@ jobs:
           python 04_Build/v2/test_r8_23_final_growth_os.py
           python 04_Build/v2/test_r8_23_final_workbench_parity.py
           python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+          python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }

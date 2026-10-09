@@ -31,6 +31,23 @@ def read_json(relative_path, default):
             return default
 
 
+def read_json_snapshot(relative_path, default):
+    """Read an atomically-written ledger without the process-wide writer lock.
+
+    Owner read-only snapshots must not be blocked behind long Windows os.replace
+    retries. All authoritative mutations continue to use write_json/read_json.
+    A missing or temporarily unavailable file returns the caller's default.
+    """
+    path = data_root() / relative_path
+    for attempt in range(2):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            if attempt == 0:
+                time.sleep(0.005)
+    return default
+
+
 def write_json(relative_path, value):
     """Persist JSON with serialized Windows file-lock recovery."""
     path = data_root() / relative_path

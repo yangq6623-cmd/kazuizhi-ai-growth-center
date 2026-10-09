@@ -25,7 +25,7 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 from core.seo_geo_growth import dashboard, record_asset_stage
 
 STORE = "r8_15/seo_public_deploy.json"
@@ -109,8 +109,14 @@ def _target_dir(data: dict) -> Path | None:
     return root / "seo"
 
 
-def status() -> dict:
-    data = _load()
+def status(*, snapshot=False) -> dict:
+    # Read-only owner status bypasses the shared JSON writer lock; a
+    # configured deployment is only "ready" after local directory checks.
+    data = read_json_snapshot(STORE, deepcopy(DEFAULT)) if snapshot else _load()
+    if not isinstance(data, dict):
+        data = deepcopy(DEFAULT)
+    for key, value in DEFAULT.items():
+        data.setdefault(key, deepcopy(value))
     target = _target_dir(data)
     root = None
     exists = False

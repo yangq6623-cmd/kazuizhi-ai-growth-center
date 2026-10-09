@@ -13,6 +13,7 @@ an external adapter can prove a real web-search operation and traceable sources.
 from __future__ import annotations
 
 import json
+import os
 import queue as queue_module
 import threading
 import time
@@ -22,7 +23,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from core import geo_validation as geo
-from core.storage import now_iso
+from core.storage import now_iso, read_json_snapshot
 from integrations import ai_gateway
 
 EXECUTOR_ID = "cloud_openai_compatible_geo_auto"
@@ -56,6 +57,33 @@ def _effective_protocol(endpoint, configured):
     if path.endswith("/responses"):
         return "responses"
     return configured if configured in {"chat_completions", "responses"} else "chat_completions"
+
+
+def snapshot_status():
+    """Truthful local gateway readiness without global-ledger locking.
+
+    No network request is made. A route only counts as ready if it has a
+    successful recorded connection test and an accessible credential.
+    """
+    config = read_json_snapshot(ai_gateway.CONFIG_PATH, {})
+    state = read_json_snapshot(ai_gateway.STATE_PATH, {})
+    config = config if isinstance(config, dict) else {}
+    state = state if isinstance(state, dict) else {}
+    profile = (config.get("profiles") or {}).get("cloud") or {}
+    profile = profile if isinstance(profile, dict) else {}
+    record = (state.get("routes") or {}).get("cloud") or {}
+    record = record if isinstance(record, dict) else {}
+    protected = str(profile.get("protected_api_key") or "")
+    saved_key = ai_gateway._unprotect_windows(protected) if protected else ""
+    key_available = bool(saved_key or os.environ.get("OPENAI_API_KEY"))
+    configured = bool(profile.get("endpoint") and profile.get("model") and key_available)
+    ready = bool(configured and record.get("last_test_at") and not record.get("last_error"))
+    return {
+        "label": str(profile.get("label") or "豆包API"),
+        "ready": ready,
+        "configured": configured,
+        "verified": bool(record.get("last_test_at") and not record.get("last_error")),
+    }
 
 
 def status():

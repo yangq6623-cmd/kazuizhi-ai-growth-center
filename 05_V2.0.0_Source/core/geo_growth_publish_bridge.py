@@ -141,8 +141,8 @@ def run_once(force=False):
     finally:
         _LOOP_LOCK.release()
 
-def _decorate_snapshot(snap):
-    connector = seo_public_deployer.status()
+def _decorate_snapshot(snap, *, snapshot=False):
+    connector = seo_public_deployer.status(snapshot=snapshot)
     snap["publish_connector"] = {
         "configured": bool(connector.get("configured")),
         "enabled": bool(connector.get("enabled")),
@@ -177,7 +177,7 @@ def status():
 def fast_status():
     # The main GEO screen polls fast_status(); it must expose the same truthful
     # publish readiness/blocker information as the full status endpoint.
-    return _decorate_snapshot(_ORIGINAL_FAST_STATUS())
+    return _decorate_snapshot(_ORIGINAL_FAST_STATUS(), snapshot=True)
 
 
 def retry_failed():
