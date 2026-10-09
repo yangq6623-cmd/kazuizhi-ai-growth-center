@@ -80,6 +80,15 @@ def run() -> None:
                 assert direct["summary"]["waiting_publish"] == 1, direct
                 assert direct["cloud"]["ready"] is True, direct
                 assert report["published"]["publish_connector"]["ready"] is False
+            # Production applies compatibility wrappers to status() without
+            # accepting new keyword arguments. The stable snapshot API cannot
+            # depend on that legacy function's signature.
+            from unittest.mock import patch
+            with patch.object(seo_public_deployer, "status",
+                              side_effect=TypeError("legacy status() wrapper")):
+                snap = publish_bridge.fast_status()
+                assert snap["publish_connector"]["ready"] is False
+                assert snap["formal_ab_completed"] == 2
             assert geo_validation.dashboard()["official"]["tested"] == 2
             # A corrupt on-disk ledger must preserve the previous cache rather
             # than replacing a true 2/50 status with fabricated zero counters.
