@@ -219,7 +219,13 @@ def exercise(command):
                 check((data_dir / "plans/latest_plan.json").exists(), "Tomorrow plan missing after learning")
 
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=tmp, env=env, capture_output=True, timeout=15)
-                check(duplicate.returncode != 0, "Port conflict accepted")
+                duplicate_output = (duplicate.stdout + duplicate.stderr).decode("utf-8", errors="replace")
+                check(duplicate.returncode == 0 and "Existing Kazuizhi runtime is healthy" in duplicate_output,
+                      "Second launch did not safely reuse the healthy existing runtime")
+                with urllib.request.urlopen(base + "/api/r8-24/geo-growth/liveness", timeout=2) as response:
+                    liveness = json.loads(response.read().decode("utf-8"))
+                liveness = liveness.get("data") if isinstance(liveness, dict) and isinstance(liveness.get("data"), dict) else liveness
+                check(liveness.get("server_ready") is True, "Existing runtime stopped after duplicate launch")
             finally:
                 process.terminate()
                 process.wait(timeout=15)

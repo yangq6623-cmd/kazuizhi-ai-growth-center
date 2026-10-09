@@ -39,6 +39,8 @@ from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import STAGE_INDEX, dashboard, record_asset_stage
 from integrations.credential_vault import get_secret, put_secret
 from integrations import seo_public_deployer
+from integrations import geo_cloud_executor
+from integrations.oauth_token_broker import refresh_google_access_token
 
 STORE = "r8_16/search_submitter.json"
 RECEIPTS = "r8_16/search_submission_receipts.json"
@@ -68,6 +70,7 @@ DEFAULT = {
 
 MAX_SUBMISSION_BATCH = 3
 RETRY_BACKOFF_MINUTES = (15, 60, 360, 1440)
+PUBLISH_SCOPE_HINTS = {"publish", "video_publish", "video.publish", "content_publish", "content.publish", "user_video_publish"}
 
 
 def _load() -> dict:
@@ -169,6 +172,44 @@ def _google_access_token(account: dict | None) -> str:
     if not account:
         return ""
     return _vault_get(f"oauth.{account.get('account_id')}.access_token")
+
+
+def _google_refresh_available(account: dict | None) -> bool:
+    if not account:
+        return False
+    refresh = _vault_get(f"oauth.{account.get('account_id')}.refresh_token")
+    client_id = _vault_get("r8_12.oauth.google_search_console.client_id", "KZ_GOOGLE_SEARCH_CLIENT_ID")
+    client_secret = _vault_get("r8_12.oauth.google_search_console.client_secret", "KZ_GOOGLE_SEARCH_CLIENT_SECRET")
+    return bool(refresh and client_id and client_secret)
+
+
+def _google_token_near_expiry(account: dict | None) -> bool:
+    auth = account.get("auth") if isinstance(account, dict) and isinstance(account.get("auth"), dict) else {}
+    expires = _parse_time(auth.get("expires_at"))
+    return bool(expires and expires <= datetime.now(timezone.utc) + timedelta(minutes=5))
+
+
+def _receipt_summary() -> dict:
+    payload = read_json(RECEIPTS, {})
+    items = payload.get("items") if isinstance(payload, dict) else []
+    result = {key: {"last_success_at": "", "last_failure_at": "", "last_failure_reason": ""}
+              for key in ("baidu", "bing", "google")}
+    engine_key = {"baidu": "baidu", "indexnow": "bing", "google_search_console": "google"}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        key = engine_key.get(str(item.get("engine") or ""))
+        if not key:
+            continue
+        row = result[key]
+        detail = item.get("result") if isinstance(item.get("result"), dict) else {}
+        stamp = str(item.get("created_at") or detail.get("at") or "")
+        if detail.get("ok") and not row["last_success_at"]:
+            row["last_success_at"] = stamp
+        elif not detail.get("ok") and not row["last_failure_at"]:
+            row["last_failure_at"] = stamp
+            row["last_failure_reason"] = str(detail.get("error") or detail.get("response") or "提交端点未接受")[:240]
+    return result
 
 
 def _append_receipt(row: dict) -> None:
@@ -563,10 +604,17 @@ def status() -> dict:
     index_key = _indexnow_key()
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
+    google_refresh = _google_refresh_available(google_account)
     google_auth_error = _google_oauth_reauthorization_required(data.get("last_result") or {}, google_account)
-    google_ready = bool(google_account and google_token and not google_auth_error)
+    google_ready = bool(google_account and (google_token or google_refresh) and (not google_auth_error or google_refresh))
     baidu_token = _baidu_token()
     assets = _public_assets()
+    receipt_summary = _receipt_summary()
+    cloud = geo_cloud_executor.snapshot_status()
+    douyin_account = _connected_account("douyin")
+    douyin_auth = douyin_account.get("auth") if isinstance(douyin_account, dict) and isinstance(douyin_account.get("auth"), dict) else {}
+    douyin_scopes = {str(x or "").strip().lower() for x in (douyin_auth.get("scopes") or [])}
+    douyin_publish = bool(douyin_account and douyin_scopes & PUBLISH_SCOPE_HINTS)
     indexnow_init = deepcopy(data.get("last_indexnow_initialization") or {})
     indexnow_ready = bool(index_key and deploy.get("ready") and indexnow_init.get("ok"))
     return {
@@ -574,6 +622,7 @@ def status() -> dict:
         "public_pages": len(assets),
         "connectors": {
             "baidu": {
+                **receipt_summary["baidu"],
                 "label": "百度搜索资源平台",
                 "channel_group": "search_submission",
                 "setup_state": "API Token/站点授权",
@@ -590,6 +639,7 @@ def status() -> dict:
                 "reason": "" if baidu_token and data.get("allow_baidu_http_submission") else ("需要站点API token" if not baidu_token else "已保存token；需确认允许调用百度官方HTTP提交端点"),
             },
             "bing": {
+                **receipt_summary["bing"],
                 "label": "Bing / IndexNow",
                 "channel_group": "search_submission",
                 "setup_state": "无需登录，自动初始化",
@@ -609,16 +659,18 @@ def status() -> dict:
                 ),
             },
             "google": {
+                **receipt_summary["google"],
                 "label": "Google Search Console",
                 "channel_group": "search_submission",
                 "setup_state": "OAuth/站点授权",
                 "extra_paid_api": False,
-                "configured": bool(google_account and google_token),
+                "configured": bool(google_account and (google_token or google_refresh)),
                 "ready": google_ready,
                 "submit_capable": True,
                 "monitoring_only": False,
-                "reauthorization_required": google_auth_error,
-                "authorization_state": "已授权" if google_ready else "需重新授权" if google_auth_error else "待OAuth",
+                "reauthorization_required": bool(google_auth_error and not google_refresh),
+                "refresh_available": google_refresh,
+                "authorization_state": "已授权·可自动续签" if google_ready and google_refresh else "已授权" if google_ready else "需重新授权" if google_auth_error else "待OAuth",
                 "automation_state": "Sitemap自动提交" if google_ready else "等待授权",
                 "mode": "Search Console Sitemap API",
                 "requires_owner": not google_ready,
@@ -628,8 +680,8 @@ def status() -> dict:
                 "oauth_launch_path": "/api/r8-12/auth/launch/google_search_console",
                 "oauth_callback_path": "/api/r8-12/oauth/callback/google_search_console",
                 "reason": (
-                    "最近一次 Google API 返回 401，OAuth 已失效；请点击“去官方授权”重新授权"
-                    if google_auth_error else (
+                    "最近一次 Google API 返回 401，且本机没有可用 refresh_token；请重新官方授权"
+                    if google_auth_error and not google_refresh else (
                         "" if google_ready else "需要通过统一账号中心完成 Google Search Console OAuth 授权"
                     )
                 ),
@@ -656,34 +708,41 @@ def status() -> dict:
                 "channel_group": "ai_content_ecosystem",
                 "setup_state": "复用现有豆包API，无需重复配置",
                 "extra_paid_api": False,
-                "configured": True,
-                "ready": False,
+                "configured": bool(cloud.get("configured")),
+                "ready": bool(cloud.get("ready")),
                 "submit_capable": False,
                 "monitoring_only": True,
-                "authorization_state": "复用现有豆包能力",
-                "automation_state": "GEO/搜索可见性监测",
+                "authorization_state": "连接验证通过" if cloud.get("ready") else "已配置·待连接验证" if cloud.get("configured") else "待配置现有API",
+                "automation_state": "GEO/搜索可见性自动监测" if cloud.get("ready") else "等待API连接验证",
                 "mode": "豆包搜索可见性观测",
                 "requires_owner": False,
                 "reuse_existing_api": True,
-                "reason": "复用现有豆包API做品牌、URL与答案可见性观测；不新增模型、不新增Token费用，没有官方站长URL提交回执时不计入SUBMITTED。",
+                "last_success_at": str(cloud.get("last_test_at") or "") if cloud.get("ready") else "",
+                "last_failure_at": str(cloud.get("last_test_at") or "") if cloud.get("last_error") else "",
+                "last_failure_reason": str(cloud.get("last_error") or "")[:240],
+                "reason": ("复用已验证的现有豆包API做品牌、URL与答案可见性观测；普通回答只计C级运营Signal，不计正式A/B。" if cloud.get("ready") else (cloud.get("reason") or "现有豆包API尚未通过连接验证")),
             },
             "douyin_search": {
                 "label": "抖音搜索 / 抖音浏览器",
                 "channel_group": "ai_content_ecosystem",
                 "setup_state": "监测无需额外模型；自动发布时再授权官方账号",
                 "extra_paid_api": False,
-                "configured": False,
-                "ready": False,
-                "submit_capable": False,
-                "monitoring_only": True,
-                "authorization_state": "开放平台能力按需授权",
-                "automation_state": "搜索/内容生态监测",
+                "configured": bool(douyin_account),
+                "ready": douyin_publish,
+                "submit_capable": douyin_publish,
+                "monitoring_only": not douyin_publish,
+                "authorization_state": "官方发布权限已授权" if douyin_publish else "账号已连接·缺发布权限" if douyin_account else "开放平台待授权",
+                "automation_state": "官方发布通道可用" if douyin_publish else "监测可用·发布等待授权",
                 "mode": "抖音搜索与内容分发观测",
-                "requires_owner": False,
+                "requires_owner": not douyin_publish,
                 "portal_url": "https://open.douyin.com/",
                 "portal_action_label": "后续授权自动发布",
-                "publish_authorized": False,
-                "reason": "当前只做搜索/内容生态监测，不新增模型费用；需要自动发布抖音内容时再进行官方账号授权，且不把内容发布冒充网页SUBMITTED。",
+                "publish_authorized": douyin_publish,
+                "authorized_scopes": sorted(douyin_scopes),
+                "last_success_at": "",
+                "last_failure_at": "",
+                "last_failure_reason": "",
+                "reason": ("已记录真实官方发布scope；每次发布仍必须取得真实Post ID/URL/Receipt。" if douyin_publish else "当前可做搜索/内容生态监测；尚未取得官方发布scope时明确显示待授权，不冒充已就绪。"),
             },
         },
         "ready_engines": [name for name, row in {
@@ -813,10 +872,32 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
     google_account = _connected_account("google_search_console")
     google_token = _google_access_token(google_account)
     google_pending = pending_by_engine["google_search_console"]
+    refresh_available = _google_refresh_available(google_account)
+    refresh_error = ""
+    token_refreshed = False
+    if google_account and google_pending and refresh_available and (_google_token_near_expiry(google_account) or not google_token):
+        try:
+            refreshed = refresh_google_access_token(google_account)
+            google_token = str(refreshed.get("access_token") or "")
+            token_refreshed = bool(google_token)
+        except (OSError, RuntimeError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as error:
+            refresh_error = f"{type(error).__name__}: {error}"[:240]
     if google_account and google_token and google_pending:
         _record_attempt(data, "google_search_console", google_pending)
         sitemap_url = urllib.parse.urljoin(site_url, "seo/sitemap.xml")
         g_result = _submit_google_sitemap(str(data.get("google_site_url") or site_url), sitemap_url, google_token)
+        if int(g_result.get("status") or 0) == 401 and refresh_available:
+            try:
+                refreshed = refresh_google_access_token(google_account)
+                google_token = str(refreshed.get("access_token") or "")
+                token_refreshed = bool(google_token)
+                if google_token:
+                    g_result = _submit_google_sitemap(str(data.get("google_site_url") or site_url), sitemap_url, google_token)
+            except (OSError, RuntimeError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as error:
+                refresh_error = f"{type(error).__name__}: {error}"[:240]
+        g_result["token_refreshed"] = token_refreshed
+        if refresh_error:
+            g_result["refresh_error"] = refresh_error
         receipt_id = f"GSC-{now_iso().replace(':','').replace('-','')}"
         _append_receipt({"receipt_id": receipt_id, "engine": "google_search_console", "result": g_result, "created_at": now_iso()})
         if g_result.get("ok"):
@@ -827,6 +908,11 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
         else:
             _record_failure(data, "google_search_console", google_pending, "sitemap_submit_failed")
             failed.append({"engine": "google_search_console", "reason": "sitemap_submit_failed", "result": g_result})
+    elif google_account and google_pending and not google_token:
+        _record_attempt(data, "google_search_console", google_pending)
+        reason = refresh_error or "google_access_token_unavailable"
+        _record_failure(data, "google_search_console", google_pending, reason)
+        failed.append({"engine": "google_search_console", "reason": reason})
 
     # Baidu: the official ordinary-indexing API is documented as HTTP. Keep it
     # disabled until the owner explicitly opts in after supplying the verified

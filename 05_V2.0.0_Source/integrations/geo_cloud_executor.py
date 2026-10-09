@@ -83,6 +83,8 @@ def snapshot_status():
         "ready": ready,
         "configured": configured,
         "verified": bool(record.get("last_test_at") and not record.get("last_error")),
+        "last_test_at": str(record.get("last_test_at") or ""),
+        "last_error": str(record.get("last_error") or "")[:240],
     }
 
 

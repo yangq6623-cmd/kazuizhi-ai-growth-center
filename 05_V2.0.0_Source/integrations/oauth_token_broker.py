@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 
 from core.storage import now_iso
 from integrations.account_environment import observe
-from integrations.credential_vault import put_secret
+from integrations.credential_vault import get_secret, put_secret
 from integrations.official_account_assets import upsert_official_account
 from integrations.platform_auth_catalog import PROVIDERS, provider_credentials, request_by_state, update_request
 
@@ -117,6 +117,69 @@ def _expiry(result: dict) -> str | None:
     if seconds <= 0:
         return None
     return (datetime.now().astimezone() + timedelta(seconds=seconds)).isoformat(timespec="seconds")
+
+
+def refresh_google_access_token(account: dict) -> dict:
+    """Refresh one connected GSC account without exposing either token.
+
+    A refresh is only possible when the original consent returned an offline
+    refresh token and the local Google application credentials still exist.
+    The Account Registry receives metadata only; token material stays in the
+    current Windows user's DPAPI vault.
+    """
+    if not isinstance(account, dict) or account.get("platform") != "google_search_console":
+        raise ValueError("Google Search Console 账号不存在")
+    account_id = str(account.get("account_id") or "").strip()
+    auth = account.get("auth") if isinstance(account.get("auth"), dict) else {}
+    refresh_token = str(get_secret(f"oauth.{account_id}.refresh_token") or "").strip()
+    client_id, client_secret = provider_credentials("google_search_console")
+    if not refresh_token:
+        raise ValueError("Google 离线授权缺少 refresh_token，需要重新完成官方授权")
+    if not client_id or not client_secret:
+        raise ValueError("Google OAuth 应用凭据不可用")
+    provider = PROVIDERS["google_search_console"]
+    token_url = str(provider.get("token_url") or "")
+    if not token_url.lower().startswith("https://"):
+        raise ValueError("Google token 刷新端点必须是 HTTPS")
+    body = urlencode({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }).encode("utf-8")
+    request = Request(
+        token_url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+    )
+    with urlopen(request, timeout=20) as response:  # nosec B310 - registered Google HTTPS endpoint
+        result = _decode_response(response.read())
+    access_token = str(result.get("access_token") or "").strip()
+    if not access_token:
+        raise ValueError("Google token 刷新未返回 access_token")
+    put_secret(f"oauth.{account_id}.access_token", access_token)
+    replacement_refresh = str(result.get("refresh_token") or "").strip()
+    if replacement_refresh:
+        put_secret(f"oauth.{account_id}.refresh_token", replacement_refresh)
+    asset = upsert_official_account(
+        platform="google_search_console",
+        slot_id=str(auth.get("platform_slot_id") or account_id),
+        slot_label=str(account.get("display_name") or "Google Search Console账号"),
+        scopes=auth.get("scopes") or [],
+        platform_subject_id=auth.get("platform_subject_id"),
+        expires_at=_expiry(result),
+        account_id=account_id,
+    )
+    return {
+        "ok": True,
+        "platform": "google_search_console",
+        "account_id": account_id,
+        "access_token": access_token,
+        "expires_at": _expiry(result),
+        "authorized_scopes": asset.get("authorized_scopes") or [],
+        "truth": "Google access token 已由本机 refresh_token 自动续签；令牌未写入日志或业务账本。",
+    }
 
 
 def complete_authorization(platform: str, *, state: str, code: str, error: str = "", error_description: str = "") -> dict:

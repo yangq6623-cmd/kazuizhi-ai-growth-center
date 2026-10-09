@@ -330,7 +330,11 @@ def exercise(command):
                 migration = json.loads((data_root / "r8/migration_v2_2.json").read_text(encoding="utf-8"))
                 check(migration["result"] == "complete", "R8 data backup did not complete")
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=temporary, env=env, capture_output=True, timeout=15)
-                check(duplicate.returncode != 0, "Second runtime accepted occupied port")
+                duplicate_output = (duplicate.stdout + duplicate.stderr).decode("utf-8", errors="replace")
+                check(duplicate.returncode == 0 and "Existing Kazuizhi runtime is healthy" in duplicate_output,
+                      "Second launch did not safely reuse the healthy existing runtime")
+                _, liveness = http_json(base, "/api/r8-24/geo-growth/liveness")
+                check(liveness.get("server_ready") is True, "Existing runtime stopped after duplicate launch")
             finally:
                 process.terminate()
                 process.wait(timeout=15)

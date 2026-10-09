@@ -12,6 +12,7 @@ import json
 import re
 import uuid
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 from core.storage import now_iso, read_json, write_json
 
@@ -712,6 +713,42 @@ def manual_requirements():
     }
 
 
+def _evidence_complete(item):
+    required = ("evidence_id", "question_text", "raw_answer", "provider", "model", "tested_at")
+    proof = any(str(item.get(key) or "").strip() for key in ("evidence_ref", "response_id", "session_url", "screenshot_path"))
+    return all(str(item.get(key) or "").strip() for key in required) and proof
+
+
+def _retest_coverage(official):
+    by_question = {}
+    for item in official:
+        try:
+            tested = datetime.fromisoformat(str(item.get("tested_at") or "").replace("Z", "+00:00"))
+            if tested.tzinfo is None:
+                tested = tested.replace(tzinfo=timezone.utc)
+            tested = tested.astimezone(timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        by_question.setdefault(str(item.get("question_id") or ""), []).append(tested)
+    now = datetime.now(timezone.utc)
+    result = {}
+    for label, hours in (("24h", 24), ("72h", 72), ("7d", 168)):
+        due = complete = 0
+        for stamps in by_question.values():
+            stamps.sort()
+            if now >= stamps[0] + timedelta(hours=hours):
+                due += 1
+                if any(stamp >= stamps[0] + timedelta(hours=hours) for stamp in stamps[1:]):
+                    complete += 1
+        result[label] = {
+            "due": due,
+            "complete": complete,
+            "remaining": max(0, due - complete),
+            "coverage_percent": round(complete / due * 100, 1) if due else None,
+        }
+    return result
+
+
 def dashboard():
     qset = question_set()
     queue = queue_summary()
@@ -730,6 +767,7 @@ def dashboard():
     recommended_ids = {
         item.get("question_id") for item in official if item.get("brand_recommended")
     }
+    complete_evidence = [item for item in official if _evidence_complete(item)]
     by_type = {}
     for kind in ("discovery", "commercial", "brand"):
         ids = {
@@ -770,6 +808,22 @@ def dashboard():
             "citation_rate": round(len(cited_ids) / tested * 100, 1) if tested else None,
             "recommendation_rate": round(len(recommended_ids) / tested * 100, 1) if tested else None,
             "evidence_count": len(official),
+            "effect_proven": bool(mentioned_ids or cited_ids or recommended_ids),
+        },
+        "evidence_completeness": {
+            "complete": len(complete_evidence),
+            "incomplete": max(0, len(official) - len(complete_evidence)),
+            "required_fields": ["原始问题", "原始回答", "模型", "测试时间", "回执/截图/会话引用"],
+        },
+        "retest_coverage": _retest_coverage(official),
+        "business_effect_tracking": {
+            "mention": "measured",
+            "recommendation": "measured",
+            "citation": "measured",
+            "visits": "phase2_not_connected",
+            "consultations": "phase2_not_connected",
+            "orders": "phase2_not_connected",
+            "revenue": "phase2_not_connected",
         },
         "simulation": {
             "count": len(

@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 from backend import server
 from backend import r8_19_geo_validation_patch as geo_validation_api
 from core import runtime_resilience
+from core import phase1_acceptance, runtime_supervisor
 from core.storage import data_root
 from core import seo_geo_autonomy as seo_core
 from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
@@ -53,6 +54,8 @@ _HTTP_KNOWN_ROUTES = frozenset({
     "/api/r8-24/geo-growth/evidence-compact",
     "/api/r8-24/geo-growth/evidence-health",
     "/api/r8-24/geo-growth/http-health",
+    "/api/r8-24/geo-growth/liveness",
+    "/api/r8-25/phase1-acceptance",
 })
 
 
@@ -597,6 +600,8 @@ def _combined_status():
     result["connector_routes"] = connector_router.snapshot(check_live=False)
     result["runtime_health"] = runtime_resilience.snapshot()
     result["geo_growth_os"] = geo_growth.fast_status()
+    result["phase1_acceptance"] = phase1_acceptance.status()
+    result["runtime_supervisor"] = runtime_supervisor.status()
     return result
 
 
@@ -739,6 +744,10 @@ def _geo_evidence_snapshot():
         if item.get("official_truth")
         and item.get("evidence_level") in geo_validation_api.geo_core.OFFICIAL_EVIDENCE_LEVELS
     ]
+    complete_evidence = [item for item in official if geo_validation_api.geo_core._evidence_complete(item)]
+    mentioned_ids = {item.get("question_id") for item in official if item.get("brand_mentioned")}
+    cited_ids = {item.get("question_id") for item in official if item.get("brand_cited")}
+    recommended_ids = {item.get("question_id") for item in official if item.get("brand_recommended")}
     formal_ids = {item.get("question_id") for item in official if item.get("question_id")}
     # Formal Evidence can be human-captured or truly automated. Distinguish
     # these without counting Doubao C-level auxiliary answers as external A/B.
@@ -774,6 +783,23 @@ def _geo_evidence_snapshot():
             "evidence_count": len(official),
             "manual_tested": len(manual_ids),
             "automatic_tested": len(automated_ids),
+            "mentioned": len(mentioned_ids),
+            "recommended": len(recommended_ids),
+            "cited": len(cited_ids),
+            "mention_rate": round(len(mentioned_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+            "recommendation_rate": round(len(recommended_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+            "citation_rate": round(len(cited_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+        },
+        "evidence_completeness": {
+            "complete": len(complete_evidence),
+            "incomplete": max(0, len(official) - len(complete_evidence)),
+            "required_fields": ["原始问题", "原始回答", "模型", "测试时间", "回执/截图/会话引用"],
+        },
+        "retest_coverage": geo_validation_api.geo_core._retest_coverage(official),
+        "business_effect_tracking": {
+            "mention": "measured", "recommendation": "measured", "citation": "measured",
+            "visits": "phase2_not_connected", "consultations": "phase2_not_connected",
+            "orders": "phase2_not_connected", "revenue": "phase2_not_connected",
         },
         "question_set": {
             "version": (qset or {}).get("version") or geo_validation_api.geo_core.QUESTION_SET_VERSION,
@@ -879,6 +905,12 @@ def install():
             if path == "/api/r8-20/runtime-health":
                 handler._json_ok(runtime_resilience.snapshot())
                 return
+            if path == "/api/r8-25/phase1-acceptance":
+                handler._json_ok({
+                    "acceptance": phase1_acceptance.status(),
+                    "supervisor": runtime_supervisor.status(),
+                })
+                return
             if path in {"/api/r8-20/seo-geo/connectors", "/api/r8-21/seo-geo/connectors"}:
                 handler._json_ok(connector_router.snapshot(check_live=False))
                 return
@@ -913,6 +945,19 @@ def install():
 
     def do_post(handler):
         path = urlsplit(handler.path).path
+        if path == "/api/r8-25/phase1-acceptance/start":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                handler._json_ok({
+                    "acceptance": phase1_acceptance.start(reset=bool(payload.get("reset", False))),
+                    "supervisor": runtime_supervisor.status(),
+                })
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
         if path in {
             "/api/r8-24/geo-growth/start",
             "/api/r8-24/geo-growth/pause",

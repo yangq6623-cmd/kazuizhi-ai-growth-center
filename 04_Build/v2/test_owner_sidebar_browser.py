@@ -278,7 +278,7 @@ def assert_geo_advanced(driver):
     WebDriverWait(driver, 6).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "#geo-adv-questions tr")) == 50)
     if driver.execute_script("return document.documentElement.dataset.kzGeoFixedBaselineReady") != "50":
         raise AssertionError("Chrome did not render fixed 50 question baseline without evidence APIs")
-    for marker in ("高级证据 / 网页验证 / 开发验收工具", "准备人工网页验证1题", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
+    for marker in ("GEO 实际效果与正式证据", "准备人工网页验证1题", "准备剩余正式50问", "固定 50 问与执行状态", "最近 Evidence / Receipt"):
         if marker not in body_text:
             raise AssertionError(f"高级 GEO 原生工具缺少：{marker}")
     if driver.find_elements(By.ID, "r813-geo-frame"):

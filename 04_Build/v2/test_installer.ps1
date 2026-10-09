@@ -86,12 +86,12 @@ function Assert-GeoOwnerRuntime([int]$Port) {
     }
 
     $geoHtml = (Invoke-WebRequest -Uri "$base/geo.html?embed=1" -UseBasicParsing -TimeoutSec 4).Content
-    foreach ($marker in @('geo-growth-os.js','recoverGeoWorkbench','GEO 工作台正在加载')) {
+    foreach ($marker in @('geo-growth-os.js','recoverGeoWorkbench','geo-direct-standalone-health')) {
         if ($geoHtml -notmatch [regex]::Escape($marker)) { throw "Installed GEO HTML missing recovery marker: $marker" }
     }
 
     $bundle = (Invoke-WebRequest -Uri "$base/operational-search.js" -UseBasicParsing -TimeoutSec 4).Content
-    foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','GEO 数据请求超时')) {
+    foreach ($marker in @('/api/r8-24/geo-growth/fast','__KZ_GEO_GROWTH_OS_BOOT__','KZ_GEO_TIMEOUT')) {
         if ($bundle -notmatch [regex]::Escape($marker)) { throw "Installed GEO bundle missing fast-owner marker: $marker" }
     }
     # Real browser DOM coverage is executed below through Selenium:
@@ -110,7 +110,10 @@ function Assert-PersistentFiles([hashtable]$Expected, [bool]$Exact) {
     foreach ($relative in $Expected.Keys) {
         $path = Join-Path $dataRoot $relative
         if (-not (Test-Path -LiteralPath $path)) { throw "Persistent user file missing: $relative" }
-        $raw = Get-Content -LiteralPath $path -Raw
+        # The packaged runtime writes UTF-8 JSON without a BOM. Windows
+        # PowerShell 5 otherwise decodes it as the active ANSI code page and
+        # can consume JSON quote bytes after Chinese multibyte characters.
+        $raw = Get-Content -LiteralPath $path -Raw -Encoding UTF8
         try { $null = $raw | ConvertFrom-Json } catch { throw "Persistent user JSON became invalid: $relative" }
         if ($Exact -and $raw.Trim() -ne $Expected[$relative]) { throw "Clean reinstall changed persistent user file: $relative" }
     }
@@ -119,8 +122,9 @@ $runtime = $null
 $testSucceeded = $false
 try {
     $installerText = Get-Content -LiteralPath $installerScript -Raw
-    if ($installerText -notmatch '\{userstartup\}\\卡嘴子 AI 后台自动运行 R8-23') { throw 'Installer is missing the per-user background autostart shortcut' }
-    if ($installerText -notmatch 'Parameters: "--no-browser"') { throw 'Background autostart must not open a browser on sign-in' }
+    if ($installerText -notmatch 'Install-KazuizhiPhase1Supervisor\.ps1') { throw 'Installer is missing the Phase-1 scheduled-task supervisor setup' }
+    if ($installerText -notmatch 'Uninstall-KazuizhiPhase1Supervisor\.ps1') { throw 'Installer is missing supervisor cleanup' }
+    if ($installerText -notmatch '\[InstallDelete\][\s\S]*\{userstartup\}[\s\S]*R8-23') { throw 'Installer does not retire the legacy startup shortcut' }
     New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
     Install-R8
     $exe = Join-Path $testRoot $name
@@ -128,6 +132,9 @@ try {
     if ($version.FileVersion -ne '2.2.2.23' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench') { throw 'Windows EXE version mismatch' }
     foreach ($serverTool in @('R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1', 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd')) {
         if (-not (Test-Path -LiteralPath (Join-Path $testRoot $serverTool) -PathType Leaf)) { throw "Installed server root-discovery tool missing: $serverTool" }
+    }
+    foreach ($supervisorTool in @('Install-KazuizhiPhase1Supervisor.ps1', 'Uninstall-KazuizhiPhase1Supervisor.ps1')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $testRoot $supervisorTool) -PathType Leaf)) { throw "Installed Phase-1 supervisor tool missing: $supervisorTool" }
     }
     Verify-Runtime $exe
 

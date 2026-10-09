@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 import webbrowser
 from pathlib import Path
 from core.version import BUILD_ID, PRODUCT_NAME
@@ -51,11 +53,15 @@ from core.decision_bridge import export_decision_handoff
 from core.decision_center import refresh_decision_center
 from core.r7_engine import migrate_r6, recover_interrupted, run_due_jobs
 from core.r8_migration import migrate_to_v2_2
+from core import runtime_resilience
 from core.runtime_resilience import heartbeat as runtime_heartbeat
 from core.runtime_resilience import record_restart_attempt as runtime_record_restart_attempt
 from core.runtime_resilience import set_worker_enabled as runtime_set_worker_enabled
 from core.runtime_resilience import start_process as runtime_start_process
 from core.runtime_resilience import stop_process as runtime_stop_process
+from core import phase1_acceptance
+from core import runtime_supervisor
+from core.geo_validation import dashboard as geo_evidence_dashboard
 from core.seo_geo_autonomy import run_once as run_seo_geo_autonomy
 from core.seo_geo_autonomy import status as seo_geo_autonomy_status
 from core.seo_geo_growth import dashboard as seo_geo_dashboard
@@ -68,6 +74,7 @@ from integrations.chatgpt_relay_agent import poll_seconds as relay_poll_seconds
 from integrations.chatgpt_relay_agent import relay_config_status, safe_poll_once as relay_poll_once
 from integrations.remote_agent import auto_import_pairing
 from integrations.r8_17_remote_deployer_patch import activate_remote_mode_if_ready
+from integrations.search_engine_submitter import status as search_submitter_status
 from promotion.chatgpt_handoff_watchdog import sync_chatgpt_handoffs
 from promotion.chatgpt_orchestrator import sync_content_plans
 from promotion.local_mission_qc_patch import recover_authorized_qc
@@ -85,6 +92,7 @@ VIDEO_STARTUP_GRACE_SECONDS = 35
 HEAVY_CONTROL_INTERVAL_SECONDS = 300
 HEAVY_CONTROL_STARTUP_GRACE_SECONDS = 45
 MAX_PROCESS_RESTARTS_10_MIN = 5
+PHASE1_MONITOR_INTERVAL_SECONDS = 60
 
 
 def _set_keep_awake(enabled):
@@ -268,6 +276,49 @@ def start_video_production_worker():
     return stop
 
 
+def start_phase1_acceptance_worker():
+    """Persist the seven-day acceptance trail outside the install directory."""
+    stop = threading.Event()
+    runtime_set_worker_enabled("phase1_acceptance", True, "60s durable acceptance sampling")
+
+    def loop():
+        if stop.wait(5):
+            return
+        phase1_acceptance.start(reset=False)
+        cycle = 0
+        while not stop.is_set():
+            try:
+                phase1_acceptance.observe(
+                    runtime=runtime_resilience.snapshot(),
+                    search=search_submitter_status(),
+                    geo=geo_evidence_dashboard(),
+                    supervisor=runtime_supervisor.status(),
+                )
+                _runtime_mark("phase1_acceptance", ok=True, detail=f"cycle={cycle}")
+            except Exception as error:
+                _runtime_mark("phase1_acceptance", ok=False, error=error,
+                              detail=f"cycle={cycle}", force_persist=True)
+                print(f"Phase-1 acceptance sampler deferred: {error}", flush=True)
+            cycle = (cycle + 1) % 1_000_000
+            stop.wait(PHASE1_MONITOR_INTERVAL_SECONDS)
+
+    thread = threading.Thread(target=loop, name="r8-phase1-acceptance", daemon=True)
+    thread.start()
+    return stop
+
+
+def _existing_runtime_alive(port):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{int(port)}/api/r8-24/geo-growth/liveness",
+        headers={"User-Agent": "Kazuizhi-Desktop-Launch/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return 200 <= int(getattr(response, "status", 200) or 200) < 300
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError):
+        return False
+
+
 def _run_r8_15_server_bootstrap(args):
     from core.r8_15_server_bootstrap import execute
 
@@ -300,12 +351,16 @@ def main():
     parser = argparse.ArgumentParser(description=PRODUCT_NAME)
     parser.add_argument("--port", type=int, default=8876)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--supervisor", action="store_true")
+    parser.add_argument("--supervised-child", action="store_true")
     parser.add_argument("--r8-15-server-bootstrap", action="store_true")
     parser.add_argument("--r8-17-root-discovery-bootstrap", action="store_true")
     parser.add_argument("--site-root", default=r"C:\inetpub\kazuizhi")
     parser.add_argument("--public-base-url", default="https://kazuizhi.com/")
     parser.add_argument("--result-file", default="")
     args = parser.parse_args()
+    if args.supervisor:
+        return runtime_supervisor.run(port=args.port)
     if args.r8_15_server_bootstrap:
         _run_r8_15_server_bootstrap(args)
     if args.r8_17_root_discovery_bootstrap:
@@ -314,6 +369,12 @@ def main():
     try:
         server = create_server(args.port)
     except OSError:
+        if _existing_runtime_alive(args.port):
+            url = f"http://127.0.0.1:{args.port}/?build={BUILD_ID}"
+            print(f"Existing Kazuizhi runtime is healthy: {url}", flush=True)
+            if not args.no_browser and not args.supervised_child:
+                webbrowser.open(url)
+            return
         console_message = (
             f"Port {args.port} is occupied by another Kazuizhi runtime. "
             "Close the old Enterprise runtime and start V2.2.2 Autonomous Mission Core again."
@@ -349,6 +410,7 @@ def main():
                 start_content_execution_worker(),
                 start_chatgpt_relay_worker(),
                 start_video_production_worker(),
+                start_phase1_acceptance_worker(),
             ]
             AIEngine().start()
             url = f"http://127.0.0.1:{server.server_port}/?build={BUILD_ID}"

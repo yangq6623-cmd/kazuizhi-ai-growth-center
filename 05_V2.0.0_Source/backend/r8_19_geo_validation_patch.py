@@ -251,11 +251,14 @@ def _prepare_browser_task(payload):
     _migrate_pending_api_tasks_to_browser()
     platform = str((payload or {}).get("platform") or "custom_web")
     queue = queue_summary().get("tasks") or []
-    if not any(item.get("state") == "queued" for item in queue):
-        current = _effective_decision()
+    formal_50_batch = bool((payload or {}).get("formal_50_batch"))
+    current = _effective_decision()
+    if formal_50_batch and int(current.get("daily_test_limit") or 10) < 50:
+        current = _set_controller_decision({**current, "daily_test_limit": 50})
+    if formal_50_batch or not any(item.get("state") == "queued" for item in queue):
         eligible = _eligible_question_ids((payload or {}).get("question_ids") or None)
         create_and_enqueue_plan(
-            limit=max(1, min(int((payload or {}).get("limit") or 1), int(current.get("daily_test_limit") or 10))),
+            limit=max(1, min(int((payload or {}).get("limit") or 1), 50, int(current.get("daily_test_limit") or 10))),
             provider="browser_external_ai",
             test_method="browser",
             mission_id=current.get("mission_id", ""),
