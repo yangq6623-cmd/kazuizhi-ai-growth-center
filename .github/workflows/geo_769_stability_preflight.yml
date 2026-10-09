@@ -8,6 +8,7 @@ on:
       - '05_V2.0.0_Source/web/geo-growth-os.js'
       - '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py'
       - '04_Build/v2/test_r8_24_geo_evidence_failsafe.py'
+      - '04_Build/v2/test_r8_23_final_workbench_parity.py'
       - '.github/workflows/geo_769_stability_preflight.yml'
   workflow_dispatch:
 permissions:
