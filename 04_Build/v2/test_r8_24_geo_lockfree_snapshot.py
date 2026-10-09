@@ -81,8 +81,18 @@ def run() -> None:
                 assert direct["cloud"]["ready"] is True, direct
                 assert report["published"]["publish_connector"]["ready"] is False
             assert geo_validation.dashboard()["official"]["tested"] == 2
+            # A corrupt on-disk ledger must preserve the previous cache rather
+            # than replacing a true 2/50 status with fabricated zero counters.
+            (storage.data_root() / geo.STORE).write_text("{broken", encoding="utf-8")
+            try:
+                geo.fast_status()
+            except OSError as error:
+                assert "snapshot_unavailable" in str(error)
+            else:
+                raise AssertionError("Corrupt GEO ledger silently became empty state")
             print("PASS: GEO fast/read-only status bypasses global JSON lock")
             print("PASS: 2 formal A/B receipts, 1 C signal, publish readiness truthful")
+            print("PASS: malformed ledger is rejected rather than shown as zero")
     finally:
         if previous is None:
             os.environ.pop("LOCALAPPDATA", None)
