@@ -1,0 +1,34 @@
+name: SEO GEO web-only preview gate
+
+on:
+  push:
+    branches:
+      - seo-geo-browser-preview
+    paths:
+      - preview/**
+      - 05_V2.0.0_Source/web/r8_13_seo_geo.html
+      - 05_V2.0.0_Source/web/geo-growth-os.js
+      - .github/workflows/seo_geo_browser_preview.yml
+  workflow_dispatch:
+
+jobs:
+  interactive-browser:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install browser automation dependency
+        run: python -m pip install selenium==4.26.1
+      - name: Verify live production frontend rendering against safe mocked APIs
+        run: python preview/test_preview.py
+      - name: Keep browser screenshot for comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEO-GEO-Browser-Preview-Screenshot
+          path: preview/browser-preview.png
+          if-no-files-found: ignore
+          retention-days: 7
