@@ -8,6 +8,7 @@ on:
       - '05_V2.0.0_Source/web/r8_12_startup_coordinator.js'
       - '04_Build/v2/test_r8_24_geo_evidence_failsafe.py'
       - '04_Build/v2/test_geo_browser_field.py'
+      - '04_Build/v2/test_geo_evidence_source_browser.py'
       - '.github/workflows/geo_evidence_preflight.yml'
   workflow_dispatch:
 permissions:
@@ -43,3 +44,7 @@ jobs:
           python 04_Build/v2/test_r8_23_final_workbench_parity.py
           python 04_Build/v2/test_r8_12_unified_account_center.py
           python 04_Build/v2/test_r8_13_seo_geo_growth.py
+      - name: Real Chrome source-level GEO Evidence failure and recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_evidence_source_browser.py
