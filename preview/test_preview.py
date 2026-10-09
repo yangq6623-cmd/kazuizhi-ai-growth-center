@@ -1,6 +1,7 @@
 """Browser smoke for the *actual* SEO HTML and GEO JS in static preview mode."""
 from __future__ import annotations
 import functools
+import json
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -86,7 +87,7 @@ def run():
         print("SCREENSHOT:", path.name)
     except Exception:
         if driver:
-            print("PREVIEW DEBUG:", driver.execute_script("""
+            print("PREVIEW DEBUG:", json.dumps(driver.execute_script("""
               const f=document.querySelector('#seo-frame');
               const d=f?.contentDocument;
               return {
@@ -99,7 +100,7 @@ def run():
                 kpi_count: d?.querySelectorAll('#kpis .kpi').length,
                 service_message: d?.querySelector('#service-message')?.textContent
               }
-            """), flush=True)
+            """), ensure_ascii=True), flush=True)
             driver.save_screenshot(str(ROOT / "preview" / "browser-preview.png"))
         raise
     finally:
