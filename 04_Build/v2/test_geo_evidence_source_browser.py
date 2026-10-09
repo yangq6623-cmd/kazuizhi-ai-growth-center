@@ -110,7 +110,7 @@ def main():
         advanced = driver.find_element(By.ID, "geo-growth-advanced")
         if not advanced.get_attribute("open"):
             advanced.find_element(By.TAG_NAME, "summary").click()
-        driver.find_element(By.ID, "geo-adv-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.find_element(By.ID,"geo-adv-refresh") if d.find_elements(By.ID,"geo-adv-refresh") else None).click()
         wait.until(lambda d: d.execute_script("""
           return document.documentElement.dataset.kzGeoEvidenceFallback==='1'
             && document.querySelectorAll('#geo-adv-questions tr').length===50;
@@ -120,7 +120,7 @@ def main():
         assert "2 / 50" in driver.find_element(By.ID, "geo-adv-kpis").text
         print("PASS: real Chrome GEO page shows truthful 2/50 fallback under failed full Evidence GET")
         driver.execute_script("window.fetch = window.__oldFetch")
-        driver.find_element(By.ID, "geo-adv-refresh").click()
+        WebDriverWait(driver, 15).until(lambda d: d.find_element(By.ID,"geo-adv-refresh") if d.find_elements(By.ID,"geo-adv-refresh") else None).click()
         wait.until(lambda d: d.execute_script("""
           return document.documentElement.dataset.kzGeoEvidenceFallback==='0'
             && document.documentElement.dataset.kzGeoAdvancedSections==='4';
