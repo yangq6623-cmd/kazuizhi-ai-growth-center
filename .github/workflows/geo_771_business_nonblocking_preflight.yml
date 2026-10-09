@@ -1,0 +1,45 @@
+name: GEO 771 Business Network Nonblocking Preflight
+on:
+  push:
+    branches: ['review/geo-771-business-refresh-thread-isolation-20261009']
+    paths:
+      - '05_V2.0.0_Source/backend/server.py'
+      - '05_V2.0.0_Source/integrations/business_data.py'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/backend/r8_20_seo_geo_growth_patch.py'
+      - '04_Build/v2/test_business_refresh_nonblocking.py'
+      - '.github/workflows/geo_771_business_nonblocking_preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-installer-test:
+    runs-on: windows-latest
+    timeout-minutes: 22
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: Syntax and no-blocking contract
+        run: |
+          python -m py_compile 05_V2.0.0_Source/backend/server.py 05_V2.0.0_Source/integrations/business_data.py 05_V2.0.0_Source/run.py 04_Build/v2/test_business_refresh_nonblocking.py
+          python 04_Build/v2/test_business_refresh_nonblocking.py
+      - name: GEO cache Evidence and HTTP compatibility
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
+          python 04_Build/v2/test_geo_770_http_starvation.py
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+      - name: Owner controller and SEO/GEO parity
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
