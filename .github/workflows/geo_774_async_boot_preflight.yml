@@ -1,0 +1,45 @@
+name: GEO 774 Standalone Parser and Chrome Preflight (No Installer)
+on:
+  push:
+    branches: ['review/geo-774-direct-boot-nonblocking-20261009']
+    paths:
+      - '05_V2.0.0_Source/web/geo.html'
+      - '04_Build/v2/test_geo_774_async_boot_browser.py'
+      - '04_Build/v2/test_r8_23_final_workbench_parity.py'
+      - '.github/workflows/geo_774_async_boot_preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-chrome-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 26
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
+      - name: Python syntax
+        run: |
+          python -m py_compile 04_Build/v2/test_geo_774_async_boot_browser.py
+          python -m py_compile 04_Build/v2/test_geo_evidence_source_browser.py
+      - name: R8 workbench source parity and no destructive regression
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+      - name: Real Chrome - blocked core JS, isolated GEO and recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_774_async_boot_browser.py
+      - name: Real Chrome - Evidence fault and 4 of 4 recovery
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_evidence_source_browser.py
