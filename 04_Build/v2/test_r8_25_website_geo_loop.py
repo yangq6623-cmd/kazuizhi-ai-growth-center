@@ -105,6 +105,11 @@ def main():
             discovery = remote._root_discovery_files("https://kazuizhi.com/")
             root_map = discovery["sitemap.xml"].decode("utf-8")
             assert "<sitemapindex" in root_map and "<urlset" not in root_map, root_map
+            hub = remote._seo_hub_html("https://kazuizhi.com/").decode("utf-8")
+            assert '<link rel="canonical" href="https://kazuizhi.com/seo/">' in hub, hub[:1000]
+            assert 'property="og:title"' in hub and "application/ld+json" in hub
+            assert "公开服务页面" in hub and "真实性说明" in hub
+            assert len(search_growth._visible_text(hub)) >= 500
             legacy_map = b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://kazuizhi.com/</loc></url><url><loc>https://kazuizhi.com/seo/sitemap.xml</loc></url></urlset>'
             assert remote._legacy_root_sitemap(legacy_map, "https://kazuizhi.com/") is True
             assert remote._legacy_root_sitemap(discovery["sitemap.xml"], "https://kazuizhi.com/") is False
@@ -142,6 +147,7 @@ def main():
                 "https://kazuizhi.com/robots.txt": (200, "User-agent: *\nAllow: /"),
                 "https://kazuizhi.com/sitemap.xml": (200, root_sitemap),
                 "https://kazuizhi.com/seo/sitemap.xml": (200, child_sitemap),
+                "https://kazuizhi.com/seo/": (200, hub),
                 "https://kazuizhi.com/seo/sample/": (200, thin),
             }
             original_fetch = search_growth._fetch
@@ -157,6 +163,8 @@ def main():
             ):
                 assert marker in joined, (marker, joined)
             assert audit["result"] == "needs_work"
+            assert audit["managed_seo_hub"]["status"] == 200
+            assert audit["managed_seo_hub"]["schema"]["valid_blocks"] == 1
         finally:
             if previous is None:
                 os.environ.pop("LOCALAPPDATA", None)

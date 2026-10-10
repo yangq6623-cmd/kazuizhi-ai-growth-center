@@ -484,7 +484,8 @@
       const payload=await json('/api/r8-25/phase1-acceptance',{timeoutMs:3500});
       const a=payload.acceptance||{},s=payload.supervisor||{},formal=a.geo_snapshot?.formal_ab_completed??0,target=a.geo_snapshot?.formal_ab_target??50;
       const state=a.status==='passed'?'已通过':a.status==='needs_review'?'已满7天·待复核':'进行中';
-      node.textContent=`第一阶段7天无人值守验收：${state} · 时间进度 ${a.progress_percent??0}% · 运行可用率 ${a.uptime_percent??'—'}% · 工作线程成功率 ${a.worker_success_percent??'—'}% · 正式GEO ${formal}/${target} · 守护 ${s.installed?'已安装':'待安装'}`;
+      const candidate=a.candidate_id?` · 候选版 ${a.candidate_id}`:' · 尚未锁定最终候选版';
+      node.textContent=`第一阶段7天无人值守验收：${state}${candidate} · 时间进度 ${a.progress_percent??0}% · 运行可用率 ${a.uptime_percent??'—'}% · 工作线程成功率 ${a.worker_success_percent??'—'}% · 正式GEO ${formal}/${target} · 守护 ${s.installed?'已安装':'待安装'}`;
       node.style.color=a.status==='passed'?'#14804a':a.status==='needs_review'?'#ad2c2c':'#65758b';
     }catch(error){node.textContent='第一阶段验收账本暂未读取：'+error.message;node.style.color='#986000'}
   }

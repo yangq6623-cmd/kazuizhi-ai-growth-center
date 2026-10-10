@@ -58,6 +58,16 @@ def main():
     write_json(phase1_acceptance.STORE, completed)
     passed = phase1_acceptance.status()
     assert passed["status"] == "passed" and all(passed["checks"].values()), passed
+    fresh = phase1_acceptance.start(
+        reset=True,
+        candidate_id="R8-27-final-candidate",
+        start_reason="final_candidate_installed",
+    )
+    assert fresh["candidate_id"] == "R8-27-final-candidate", fresh
+    assert fresh["samples"] == 0 and fresh["previous_runs_archived"] >= 1, fresh
+    archived = phase1_acceptance.history()
+    assert archived["count"] >= 1, archived
+    assert archived["runs"][0]["final_status"] == "passed", archived
 
     write_json(runtime_supervisor.INSTALL_STORE, {
         "schema": "kz.phase1-supervisor-install.v1", "installed": True,

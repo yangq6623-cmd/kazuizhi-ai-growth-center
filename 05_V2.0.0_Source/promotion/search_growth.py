@@ -107,6 +107,9 @@ def audit(payload=None):
     managed_url = next((url for url in root_map.get("urls") or [] if url.rstrip("/").endswith("sitemap.xml") and "/seo/" in url), urljoin(site, "/seo/sitemap.xml"))
     managed = _fetch(managed_url)
     managed_map = _sitemap_summary(managed["body"]) if managed["status"] == 200 else {"kind": "missing", "urls": [], "lastmod_count": 0}
+    hub_url = urljoin(site, "/seo/")
+    hub = _fetch(hub_url)
+    hub_schema = _schema_health(hub.get("body"))
     sample_url = next((url for url in managed_map.get("urls") or [] if not url.rstrip("/").endswith("sitemap.xml")), "")
     sample = _fetch(sample_url) if sample_url else {"status": 0, "body": ""}
     sample_schema = _schema_health(sample.get("body"))
@@ -123,6 +126,14 @@ def audit(payload=None):
         "is_js_shell": len(visible) < 300,
         "root_sitemap": {"kind": root_map.get("kind"), "url_count": len(root_map.get("urls") or []), "lastmod_count": root_map.get("lastmod_count") or 0},
         "managed_sitemap": {"url": managed_url, "status": managed.get("status"), "kind": managed_map.get("kind"), "url_count": len(managed_map.get("urls") or []), "lastmod_count": managed_map.get("lastmod_count") or 0},
+        "managed_seo_hub": {
+            "url": hub_url,
+            "status": hub.get("status"),
+            "visible_text_chars": len(_visible_text(hub.get("body"))),
+            "has_canonical": bool(re.search(r"<link[^>]+rel=[\"']canonical[\"']", hub.get("body") or "", re.I)),
+            "has_open_graph": bool(re.search(r"<meta[^>]+property=[\"']og:title[\"']", hub.get("body") or "", re.I)),
+            "schema": hub_schema,
+        },
         "sample_public_page": {"url": sample_url, "status": sample.get("status"), "visible_text_chars": len(_visible_text(sample.get("body"))), "schema": sample_schema},
     }
     blockers = []
@@ -150,6 +161,10 @@ def audit(payload=None):
         blockers.append("SEO子站点地图结构无效")
     elif (managed_map.get("urls") or []) and int(managed_map.get("lastmod_count") or 0) < len(managed_map.get("urls") or []):
         blockers.append("SEO子站点地图缺少逐页 lastmod 更新时间")
+    if hub.get("status") != 200:
+        blockers.append("SEO可抓取入口页不可正常访问")
+    elif len(_visible_text(hub.get("body"))) < 500 or hub_schema.get("valid_blocks", 0) < 1:
+        blockers.append("SEO可抓取入口页正文或结构化数据不足")
     if sample_url and sample.get("status") != 200:
         blockers.append("SEO样本页面不可正常抓取")
     if sample_schema.get("template_urls"):

@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 import html
 import hashlib
+import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -119,17 +120,46 @@ def _job_id(asset_id: str, prefix: str = "SEO") -> str:
     return f"{prefix}-{safe or 'ASSET'}-{stamp}"[:96]
 
 
+def _seo_hub_html(base: str) -> bytes:
+    """Build a crawlable, managed entrypoint without overwriting the SPA home."""
+    base = deployer._safe_public_base(base)
+    hub_url = urllib.parse.urljoin(base, "seo/")
+    rows = sorted(
+        [asset for asset in deployer.dashboard().get("assets", []) if str(asset.get("public_url") or "").startswith("https://")],
+        key=lambda asset: (str(asset.get("region") or ""), str(asset.get("service") or ""), str(asset.get("title") or "")),
+    )
+    links = "\n".join(
+        f'<li><a href="{html.escape(str(asset.get("public_url") or ""), quote=True)}">{html.escape(str(asset.get("title") or asset.get("keyword") or "本地服务"))}</a><p>{html.escape(str(asset.get("description") or "查看公开服务说明与真实业务入口。"))}</p></li>'
+        for asset in rows
+    )
+    schema = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {"@type": "Organization", "@id": base + "#organization", "name": "卡嘴子", "url": base},
+            {"@type": "CollectionPage", "@id": hub_url + "#page", "url": hub_url,
+             "name": "卡嘴子本地服务与维修指南", "isPartOf": {"@id": base + "#organization"},
+             "mainEntity": [{"@type": "WebPage", "url": str(asset.get("public_url") or ""), "name": str(asset.get("title") or "")} for asset in rows]},
+        ],
+    }
+    body = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><title>卡嘴子本地服务与维修指南｜涟水、淮安</title><meta name="description" content="卡嘴子公开整理涟水、淮安水电维修、家电维修、管道疏通、安装服务与个人任务指南，提供可抓取的服务说明和正式需求入口。"><link rel="canonical" href="{html.escape(hub_url, quote=True)}"><meta property="og:type" content="website"><meta property="og:site_name" content="卡嘴子"><meta property="og:title" content="卡嘴子本地服务与维修指南"><meta property="og:description" content="查看公开服务范围、需求准备事项、售后流程和正式需求入口。"><meta property="og:url" content="{html.escape(hub_url, quote=True)}"><script type="application/ld+json">{json.dumps(schema, ensure_ascii=False, separators=(',', ':'))}</script><style>body{{margin:0;background:#f5f8fc;color:#172033;font:16px/1.7 system-ui,-apple-system,"Microsoft YaHei",sans-serif}}main{{max-width:980px;margin:auto;padding:28px}}header,section{{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:26px;margin-bottom:18px}}h1{{font-size:32px;line-height:1.3}}ul{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0;list-style:none}}li{{border:1px solid #e5eaf1;border-radius:12px;padding:16px}}li p{{color:#52657d}}a{{color:#175cd3}}.cta{{display:inline-block;background:#2878ff;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}@media(max-width:720px){{main{{padding:12px}}ul{{grid-template-columns:1fr}}}}</style></head><body><main><header><p>卡嘴子公开服务资料库</p><h1>涟水、淮安本地服务与维修指南</h1><p>这里集中展示卡嘴子已经公开验证的服务说明页面。用户可了解服务范围、需求准备事项、检测报价原则、完工确认与售后留痕方式。页面只呈现可核验的公开规则，不虚构固定价格、案例、排名、搜索收录或AI推荐。</p><a class="cta" href="{html.escape(urllib.parse.urljoin(base, '#/home'), quote=True)}">进入卡嘴子官网提交真实需求</a></header><section><h2>服务办理说明</h2><p>发布需求时请说明所在区域、服务类别、故障或任务现象和期望时间。维修项目应先检测、再提供明细报价，用户确认后施工；最终服务范围、到场时间和费用以真实订单为准。</p><p>水电安装维修、家电维修和管道疏通等现场项目，需要根据房屋、设备和故障实际情况判断。平台公开页用于帮助用户整理需求，不代替师傅现场检测，也不会预先承诺未经确认的价格、配件、工期或维修结果。</p><p>安装服务和个人任务同样需要写清地点、时间、物品规格、现场条件与验收要求。涉及高空、带电、燃气或其他安全风险时，应由具备相应条件的人员处理；用户不要在公开描述中填写门牌、电话、身份证等隐私信息。</p></section><section><h2>从需求到完工</h2><p>用户先通过正式入口提交需求，平台根据服务区域和类别连接合适的本地服务人员。双方确认沟通方式后，服务人员了解现场情况并给出方案；需要上门检测的项目，应把检测结果、报价明细、增项说明、用户确认和完工结果保留在真实订单或可核验记录中。</p><p>页面中的地区、服务类型和办理建议用于公开信息检索。真实响应速度、师傅是否接单、实际到场时间、材料选择及最终费用可能因供需和现场情况变化，均以双方确认及平台订单记录为准。</p></section><section><h2>公开服务页面</h2><ul>{links}</ul></section><section><h2>真实性说明</h2><p>公开页面已通过公网可访问、Canonical、结构化数据和可抓取正文检查。发布成功不等于搜索引擎已经抓取、收录或排名；相关结果仍以百度、Bing、Google等平台的真实证据为准。</p></section></main></body></html>'''
+    return body.encode("utf-8")
+
+
 def _sitemap_xml() -> bytes:
     snap = deployer.dashboard()
+    config = snap.get("config") if isinstance(snap.get("config"), dict) else {}
     rows = sorted(
         [asset for asset in snap.get("assets", []) if str(asset.get("public_url") or "").startswith("https://")],
         key=lambda asset: str(asset.get("public_url") or ""),
     )
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-    xml += "\n".join(
+    hub_url = urllib.parse.urljoin(deployer._safe_public_base(config.get("site_base_url") or "https://kazuizhi.com/"), "seo/")
+    entries = [f"  <url><loc>{html.escape(hub_url, quote=True)}</loc><lastmod>{now_iso()[:10]}</lastmod></url>"]
+    entries.extend(
         f"  <url><loc>{html.escape(str(asset.get('public_url') or ''), quote=True)}</loc><lastmod>{str(asset.get('updated_at') or asset.get('published_at') or now_iso())[:10]}</lastmod></url>"
         for asset in rows
     )
+    xml += "\n".join(entries)
     xml += "\n</urlset>\n"
     return xml.encode("utf-8")
 
@@ -322,6 +352,30 @@ def deploy_pending(limit: int = 10) -> dict:
         except (OSError, ValueError, RuntimeError) as error:
             failed.append({"asset_id": asset_id, "reason": str(error)})
 
+    hub_result = {}
+    try:
+        hub_content = _seo_hub_html(base)
+        hub_receipt = remote_agent.upload_bytes("seo/index.html", hub_content, job_id=_job_id("SEO-HUB", "SEO-HUB"))
+        hub_url = urllib.parse.urljoin(base, "seo/")
+        hub_public = _public_text(hub_url, timeout)
+        hub_body = bytes(hub_public.get("body") or b"")
+        hub_verified = bool(
+            hub_public.get("status") == 200
+            and b'<link rel="canonical"' in hub_body
+            and b"application/ld+json" in hub_body
+            and len(hub_body) >= 1500
+        )
+        hub_result = {
+            "ok": hub_verified,
+            "public_url": hub_url,
+            "remote_job_id": hub_receipt.get("job_id"),
+            "sha256": hub_receipt.get("sha256"),
+            "status": hub_public.get("status"),
+            "bytes": len(hub_body),
+        }
+    except (OSError, ValueError, RuntimeError) as error:
+        hub_result = {"ok": False, "error": str(error)}
+
     sitemap_result = {}
     try:
         sitemap_result = remote_agent.upload_bytes("seo/sitemap.xml", _sitemap_xml(), job_id=_job_id("SITEMAP", "SITEMAP"))
@@ -335,6 +389,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "published": published,
         "failed": failed,
         "managed_sitemap": "https://kazuizhi.com/seo/sitemap.xml",
+        "managed_seo_hub": hub_result,
         "sitemap_remote_receipt": sitemap_result,
         "root_discovery": root_discovery,
         "truth": "Remote Agent 写入不等于发布成功；只有公网HTTP、内容、canonical、Schema、robots/indexability全部验证通过才进入 PUBLISHED。",

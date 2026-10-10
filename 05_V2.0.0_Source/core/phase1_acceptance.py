@@ -13,7 +13,9 @@ from core.storage import now_iso, read_json, write_json
 
 
 STORE = "r8_25/phase1_acceptance.json"
+HISTORY_STORE = "r8_25/phase1_acceptance_history.json"
 SCHEMA = "kz.phase1-acceptance.v1"
+HISTORY_SCHEMA = "kz.phase1-acceptance-history.v1"
 TARGET_DAYS = 7
 SAMPLE_INTERVAL_SECONDS = 60
 SILENT_GAP_SECONDS = 15 * 60
@@ -29,7 +31,7 @@ def _parse(value):
         return None
 
 
-def _default():
+def _default(*, candidate_id="", start_reason=""):
     stamp = now_iso()
     return {
         "schema": SCHEMA,
@@ -53,6 +55,9 @@ def _default():
         "events": [],
         "status": "in_progress",
         "updated_at": stamp,
+        "candidate_id": str(candidate_id or "").strip(),
+        "start_reason": str(start_reason or "").strip(),
+        "run_id": "PHASE1-" + datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%z"),
     }
 
 
@@ -72,8 +77,44 @@ def _save(value):
     return value
 
 
-def start(*, reset=False):
-    value = _default() if reset else _load()
+def _archive(value):
+    if not isinstance(value, dict) or not int(value.get("samples") or 0):
+        return 0
+    history = read_json(HISTORY_STORE, {})
+    if not isinstance(history, dict) or history.get("schema") != HISTORY_SCHEMA:
+        history = {"schema": HISTORY_SCHEMA, "runs": []}
+    archived = status(value)
+    archived["archived_at"] = now_iso()
+    archived["final_status"] = archived.get("status")
+    runs = [archived, *list(history.get("runs") or [])][:50]
+    write_json(HISTORY_STORE, {"schema": HISTORY_SCHEMA, "runs": runs, "updated_at": now_iso()})
+    return len(runs)
+
+
+def history():
+    value = read_json(HISTORY_STORE, {})
+    if not isinstance(value, dict) or value.get("schema") != HISTORY_SCHEMA:
+        value = {"schema": HISTORY_SCHEMA, "runs": []}
+    rows = []
+    for run in value.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        rows.append({key: run.get(key) for key in (
+            "run_id", "candidate_id", "start_reason", "started_at", "target_end_at",
+            "last_sample_at", "samples", "max_gap_seconds", "process_restarts_observed",
+            "uptime_percent", "worker_success_percent", "progress_percent", "final_status",
+        )})
+    return {"schema": HISTORY_SCHEMA, "count": len(rows), "runs": rows}
+
+
+def start(*, reset=False, candidate_id="", start_reason=""):
+    archived_count = 0
+    if reset:
+        archived_count = _archive(_load())
+        value = _default(candidate_id=candidate_id, start_reason=start_reason)
+        value["previous_runs_archived"] = archived_count
+    else:
+        value = _load()
     return status(_save(value))
 
 

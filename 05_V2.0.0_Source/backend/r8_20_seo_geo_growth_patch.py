@@ -925,6 +925,9 @@ def install():
                     "supervisor": runtime_supervisor.status(),
                 })
                 return
+            if path == "/api/r8-25/phase1-acceptance/history":
+                handler._json_ok(phase1_acceptance.history())
+                return
             if path in {"/api/r8-20/seo-geo/connectors", "/api/r8-21/seo-geo/connectors"}:
                 handler._json_ok(connector_router.snapshot(check_live=False))
                 return
@@ -965,8 +968,18 @@ def install():
                 return
             try:
                 payload = _read_json(handler)
+                reset = bool(payload.get("reset", False))
+                candidate_id = str(payload.get("candidate_id") or "").strip()
+                if reset and not bool(payload.get("confirm_final_candidate")):
+                    raise ValueError("开启新的七天验收必须确认这是最终候选版本")
+                if reset and not candidate_id:
+                    raise ValueError("开启新的七天验收必须提供 candidate_id")
                 handler._json_ok({
-                    "acceptance": phase1_acceptance.start(reset=bool(payload.get("reset", False))),
+                    "acceptance": phase1_acceptance.start(
+                        reset=reset,
+                        candidate_id=candidate_id,
+                        start_reason=str(payload.get("reason") or "final_candidate_installed"),
+                    ),
                     "supervisor": runtime_supervisor.status(),
                 })
             except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
