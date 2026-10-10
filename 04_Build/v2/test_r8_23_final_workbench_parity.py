@@ -291,6 +291,17 @@ def main() -> None:
     assert "geo_growth.fast_status()" not in r8_20_patch[r8_20_patch.index("def _geo_evidence_snapshot()"):r8_20_patch.index("def _schedule_geo_growth_auto_start()")]
     for marker in ("def _geo_evidence_cached()", "def _geo_evidence_update_cache(token)", '"snapshot_ready": False', '"retry_after_ms": 1300', "_GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS", "_geo_evidence_seed("):
         assert marker in r8_20_patch, marker
+    # The compact route feeds the visible owner Evidence cards.  It must carry
+    # complete-count and provenance metadata, otherwise the UI renders a
+    # false 0/N or “model not recorded” despite a complete server ledger.
+    for marker in (
+        '"evidence_completeness": (dashboard.get("evidence_completeness") or {})',
+        '"retest_coverage": (dashboard.get("retest_coverage") or {})',
+        '"business_effect_tracking": (dashboard.get("business_effect_tracking") or {})',
+        '"model", "model_version"',
+        '"evidence_ref", "response_id", "session_url", "screenshot_path"',
+    ):
+        assert marker in r8_20_patch, marker
     for marker in ("/api/r8-24/geo-growth/evidence", "kzGeoAdvancedSections", "数据正常"):
         assert marker in geo_growth_ui, marker
     # Check executable call patterns, not explanatory docstring text.

@@ -424,6 +424,12 @@ def _geo_evidence_compact():
         "formal_ab_automatic": snapshot.get("formal_ab_automatic"),
         "dashboard": {
             "official": (dashboard.get("official") or {}),
+            # The owner page renders these cards from evidence-compact.  Do
+            # not trim them here: an omitted object is coerced to 0 by the
+            # browser and turns fully documented Evidence into a false 0/N.
+            "evidence_completeness": (dashboard.get("evidence_completeness") or {}),
+            "retest_coverage": (dashboard.get("retest_coverage") or {}),
+            "business_effect_tracking": (dashboard.get("business_effect_tracking") or {}),
             "question_set": (dashboard.get("question_set") or {}),
         },
         "question_set": {key: question_set.get(key) for key in ("version", "total", "counts")},
@@ -437,7 +443,15 @@ def _geo_evidence_compact():
         ][:100],
         "queue_summary": {key: val for key, val in summary.items() if key != "tasks"},
         "receipts": [
-            {key: row.get(key) for key in ("question_id", "question_text", "provider", "evidence_level", "evidence_id", "receipt_id", "tested_at", "official_truth")}
+            # Keep the precise provenance fields used by the workbench.  The
+            # compact route deliberately omits raw answers, but must not make
+            # a real model or session URL appear absent in the owner UI.
+            {key: row.get(key) for key in (
+                "question_id", "question_text", "provider", "model", "model_version",
+                "evidence_level", "evidence_id", "receipt_id", "tested_at", "official_truth",
+                "brand_mentioned", "brand_recommended", "brand_cited",
+                "evidence_ref", "response_id", "session_url", "screenshot_path",
+            )}
             for row in receipts[:10] if isinstance(row, dict)
         ],
         "health": snapshot.get("health") or {},
