@@ -10,6 +10,9 @@ from __future__ import annotations
 import urllib.error
 import urllib.parse
 import urllib.request
+import html
+import hashlib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from core.storage import now_iso
@@ -117,13 +120,15 @@ def _job_id(asset_id: str, prefix: str = "SEO") -> str:
 
 def _sitemap_xml() -> bytes:
     snap = deployer.dashboard()
-    urls = sorted({
-        str(asset.get("public_url") or "").strip()
-        for asset in snap.get("assets", [])
-        if str(asset.get("public_url") or "").startswith("https://")
-    })
+    rows = sorted(
+        [asset for asset in snap.get("assets", []) if str(asset.get("public_url") or "").startswith("https://")],
+        key=lambda asset: str(asset.get("public_url") or ""),
+    )
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-    xml += "\n".join(f"  <url><loc>{url}</loc></url>" for url in urls)
+    xml += "\n".join(
+        f"  <url><loc>{html.escape(str(asset.get('public_url') or ''), quote=True)}</loc><lastmod>{str(asset.get('updated_at') or asset.get('published_at') or now_iso())[:10]}</lastmod></url>"
+        for asset in rows
+    )
     xml += "\n</urlset>\n"
     return xml.encode("utf-8")
 
@@ -158,6 +163,42 @@ def _public_status(url: str, timeout: int) -> dict:
         return {"ok": False, "status": None, "url": url, "error": str(error)[:300]}
 
 
+def _public_text(url: str, timeout: int) -> dict:
+    request = urllib.request.Request(url, headers={"User-Agent": "Kazuizhi-R8-25-DiscoveryRepair/1.0"}, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - validated production base
+            body = response.read(512 * 1024)
+            return {
+                "ok": True,
+                "status": int(getattr(response, "status", 200) or 200),
+                "url": url,
+                "body": body,
+                "sha256": hashlib.sha256(body).hexdigest(),
+            }
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        return {"ok": False, "status": int(getattr(error, "code", 0) or 0) or None, "url": url, "error": str(error)[:300]}
+
+
+def _legacy_root_sitemap(body: bytes, base: str) -> bool:
+    """Recognize only the exact malformed root sitemap emitted by old builds."""
+    try:
+        root = ET.fromstring(bytes(body or b"").decode("utf-8", errors="replace"))
+    except (ET.ParseError, ValueError, TypeError):
+        return False
+    if root.tag.rsplit("}", 1)[-1] != "urlset":
+        return False
+    urls = {
+        str(node.text or "").strip().rstrip("/") + "/"
+        for node in root.iter()
+        if node.tag.rsplit("}", 1)[-1] == "loc" and str(node.text or "").strip()
+    }
+    expected = {
+        urllib.parse.urljoin(base, "").rstrip("/") + "/",
+        urllib.parse.urljoin(base, "seo/sitemap.xml").rstrip("/") + "/",
+    }
+    return urls == expected
+
+
 def _ensure_root_discovery(base: str, timeout: int) -> dict:
     """Create missing root discovery files without touching existing files."""
     files = _root_discovery_files(base)
@@ -176,6 +217,29 @@ def _ensure_root_discovery(base: str, timeout: int) -> dict:
                 result["error"] = str(error)
         elif before.get("status") is None:
             result["reason"] = "root_http_check_unavailable_existing_file_preserved"
+        elif relative == "sitemap.xml" and before.get("status") == 200:
+            current = _public_text(public_url, timeout)
+            if current.get("ok") and _legacy_root_sitemap(current.get("body") or b"", base):
+                try:
+                    previous = bytes(current.get("body") or b"")
+                    receipt = remote_agent.upload_bytes(relative, content, job_id=_job_id("ROOT-SITEMAP-REPAIR", "DISCOVERY"))
+                    result["repaired"] = True
+                    result["receipt"] = receipt
+                    result["previous_sha256"] = current.get("sha256")
+                    result["previous_body"] = previous.decode("utf-8", errors="replace")
+                    result["after"] = _public_text(public_url, timeout)
+                    after_body = bytes((result["after"] or {}).get("body") or b"")
+                    result["repair_verified"] = bool(
+                        (result["after"] or {}).get("status") == 200
+                        and b"<sitemapindex" in after_body
+                        and urllib.parse.urljoin(base, "seo/sitemap.xml").encode("utf-8") in after_body
+                    )
+                    if isinstance(result.get("after"), dict):
+                        result["after"].pop("body", None)
+                except (OSError, ValueError, RuntimeError) as error:
+                    result["error"] = str(error)
+            else:
+                result["reason"] = "root_file_already_exists_preserved"
         else:
             result["reason"] = "root_file_already_exists_preserved"
         results[relative] = result
@@ -184,7 +248,7 @@ def _ensure_root_discovery(base: str, timeout: int) -> dict:
         "root_sitemap_url": urllib.parse.urljoin(base, "sitemap.xml"),
         "managed_seo_sitemap_url": urllib.parse.urljoin(base, "seo/sitemap.xml"),
         "files": results,
-        "truth": "根目录文件仅在真实 HTTP 404 时创建；已有文件保持不变。创建后仍需真实公网 HTTP 回查。",
+        "truth": "根目录文件仅在真实 HTTP 404 时创建；只有精确匹配旧版错误模板的 sitemap.xml 才会保留原文与SHA256后修复，其他已有文件保持不变。创建或修复后仍需真实公网 HTTP 回查。",
     }
 
 

@@ -8,6 +8,7 @@ when the caller supplies observable evidence.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -371,13 +372,24 @@ def plan_today(limit=None):
     return {"created": created, "count": len(created)}
 
 
-def _render_page(asset, facts):
+def _source_tracking_id(asset):
+    """Stable public attribution id that contains no customer information."""
+    raw = str(asset.get("id") or asset.get("slug") or asset.get("keyword") or "kazuizhi")
+    return f"KZSEO-{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:12].upper()}"
+
+
+def _render_page(asset, facts, canonical="", related=None):
     brand = facts.get("brand") or "卡嘴子"
     region = asset.get("region") or DEFAULT_REGION
     service = asset.get("service") or "本地服务"
     keyword = asset.get("keyword") or f"{region}{service}"
     title = f"{keyword}｜{brand}本地服务"
-    description = f"了解{region}{service}需求如何发布、如何说明问题以及如何连接本地服务人员。{brand}提供本地需求发布与服务连接入口。"
+    description = f"在{region}需要{service}时，了解问题描述、价格确认、服务流程和售后留痕。{brand}提供真实的本地需求发布与服务连接入口。"
+    canonical = str(canonical or "{{CANONICAL}}")
+    site_url = str(facts.get("official_site") or DEFAULT_SITE).rstrip("/") + "/"
+    source_id = _source_tracking_id(asset)
+    mini_program = str(facts.get("mini_program") or "卡嘴子本地服务")
+    updated = datetime.now().date().isoformat()
     faq = [
         (f"{region}{service}需求怎么发布？", f"可先说明所在区域、具体问题、期望服务时间和可联系信息，再通过{brand}的真实服务入口发布需求。"),
         ("如何提高需求匹配效率？", "尽量描述故障现象、位置、是否紧急以及现场限制；涉及价格与到场时间，以实际沟通和用户确认为准。"),
@@ -386,15 +398,32 @@ def _render_page(asset, facts):
     schema = {
         "@context": "https://schema.org",
         "@graph": [
-            {"@type": "Organization", "name": brand, "url": "{{CANONICAL}}"},
-            {"@type": "Service", "name": service, "areaServed": region, "provider": {"@type": "Organization", "name": brand}},
+            {"@type": "Organization", "@id": site_url + "#organization", "name": brand, "url": site_url},
+            {"@type": "WebPage", "@id": canonical + "#webpage", "url": canonical, "name": title,
+             "description": description, "dateModified": updated, "inLanguage": "zh-CN"},
+            {"@type": "Service", "@id": canonical + "#service", "url": canonical, "name": service,
+             "areaServed": {"@type": "AdministrativeArea", "name": region},
+             "provider": {"@id": site_url + "#organization"}},
+            {"@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": brand, "item": site_url},
+                {"@type": "ListItem", "position": 2, "name": region, "item": canonical},
+                {"@type": "ListItem", "position": 3, "name": keyword, "item": canonical},
+            ]},
             {"@type": "FAQPage", "mainEntity": [
                 {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq
             ]},
         ],
     }
-    faq_html = "".join(f"<section><h2>{q}</h2><p>{a}</p></section>" for q, a in faq)
-    body = f"""<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><meta name=\"description\" content=\"{description}\"><link rel=\"canonical\" href=\"{{{{CANONICAL}}}}\"><script type=\"application/ld+json\">{json.dumps(schema, ensure_ascii=False).replace('{{CANONICAL}}','{{{{CANONICAL}}}}')}</script></head><body><main><nav aria-label=\"breadcrumb\"><a href=\"/\">{brand}</a> / {region} / {service}</nav><h1>{keyword}</h1><p>{description}</p><section><h2>简短答案</h2><p>在{region}需要{service}时，可先把问题、区域和期望服务时间说明清楚，再通过{brand}发布本地服务需求并等待真实服务人员响应。</p></section><section><h2>服务信息</h2><ul><li>服务区域：{region}</li><li>服务类别：{service}</li><li>信息原则：不虚构价格、案例、排名或到场承诺</li></ul></section>{faq_html}<p>更新时间：{datetime.now().date().isoformat()}</p></main></body></html>"""
+    esc = lambda value: html.escape(str(value or ""), quote=True)
+    faq_html = "".join(f"<section><h2>{esc(q)}</h2><p>{esc(a)}</p></section>" for q, a in faq)
+    related_html = "".join(
+        f'<li><a href="{esc(row.get("url"))}">{esc(row.get("label"))}</a></li>'
+        for row in list(related or [])[:4] if row.get("url") and row.get("label")
+    )
+    if not related_html:
+        related_html = f'<li><a href="{esc(site_url)}">返回{esc(brand)}官网</a></li>'
+    action_url = f"{site_url}?kz_source={source_id}#/repair"
+    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{json.dumps(schema, ensure_ascii=False).replace('</', '<\\/')}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>简短答案</h2><p class="answer">在{esc(region)}需要{esc(service)}时，先说明故障或需求、所在区域和期望时间，再通过{esc(brand)}发布需求。维修项目应先检测、再提交明细报价，用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" rel="nofollow">前往官网提交需求</a><p class="proof">正式下单入口：微信小程序“{esc(mini_program)}”。来源编号：{esc(source_id)}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
     return title, description, body
 
 
@@ -411,8 +440,13 @@ def generate_staging(limit=6):
         if str(asset.get("stage")) != "PLANNED":
             continue
         canonical = urljoin(site, f"seo/{asset['slug']}/")
-        title, description, html = _render_page(asset, facts)
-        html = html.replace("{{CANONICAL}}", canonical)
+        related = [
+            {"label": row.get("keyword") or row.get("service"), "url": urljoin(site, f"seo/{row.get('slug')}/")}
+            for row in data["assets"]
+            if row.get("id") != asset.get("id") and row.get("slug")
+            and (row.get("region") == asset.get("region") or row.get("service") == asset.get("service"))
+        ]
+        title, description, html = _render_page(asset, facts, canonical=canonical, related=related)
         folder = staging / "seo" / asset["slug"]
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "index.html"
@@ -437,15 +471,18 @@ def generate_staging(limit=6):
 def _write_staging_infrastructure(data, staging, site):
     robots = "User-agent: *\nAllow: /\nSitemap: " + urljoin(site, "sitemap.xml") + "\n"
     (staging / "robots.txt").write_text(robots, encoding="utf-8")
-    urls = [x.get("canonical") for x in data["assets"] if x.get("canonical")]
+    rows = [x for x in data["assets"] if x.get("canonical")]
     sitemap = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-    sitemap += "\n".join(f"  <url><loc>{url}</loc></url>" for url in sorted(set(urls)))
+    sitemap += "\n".join(
+        f"  <url><loc>{html.escape(str(row.get('canonical')), quote=True)}</loc><lastmod>{str(row.get('updated_at') or now_iso())[:10]}</lastmod></url>"
+        for row in sorted(rows, key=lambda item: str(item.get("canonical")))
+    )
     sitemap += "\n</urlset>\n"
     (staging / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     manifest = {
         "generated_at": now_iso(),
         "site": site,
-        "urls": urls,
+        "urls": [x.get("canonical") for x in rows],
         "truth": "这是待部署站点包；只有真实公网URL可访问后才可标记 PUBLISHED。",
     }
     (staging / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

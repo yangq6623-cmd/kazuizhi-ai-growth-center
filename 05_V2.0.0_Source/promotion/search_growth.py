@@ -6,6 +6,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -46,6 +47,49 @@ def _fetch(url):
         return {"url": url, "status": error.code, "content_type": error.headers.get("Content-Type", ""), "body": ""}
 
 
+def _visible_text(body):
+    text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", str(body or ""), flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _sitemap_summary(body):
+    summary = {"kind": "invalid", "urls": [], "lastmod_count": 0, "error": ""}
+    try:
+        root = ET.fromstring(str(body or ""))
+    except (ET.ParseError, ValueError) as error:
+        summary["error"] = str(error)[:200]
+        return summary
+    summary["kind"] = root.tag.rsplit("}", 1)[-1]
+    for node in root.iter():
+        name = node.tag.rsplit("}", 1)[-1]
+        if name == "loc" and str(node.text or "").strip():
+            summary["urls"].append(str(node.text).strip())
+        elif name == "lastmod" and str(node.text or "").strip():
+            summary["lastmod_count"] += 1
+    return summary
+
+
+def _schema_health(body):
+    blocks = re.findall(
+        r"<script\b[^>]*type\s*=\s*([\"'])application/ld\+json\1[^>]*>(.*?)</script>",
+        str(body or ""),
+        flags=re.I | re.S,
+    )
+    valid = 0
+    template_urls = False
+    for _quote, raw in blocks:
+        if re.search(r"\{\{\s*https?://", raw, flags=re.I):
+            template_urls = True
+        try:
+            value = json.loads(raw.strip())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(value, (dict, list)):
+            valid += 1
+    return {"blocks": len(blocks), "valid_blocks": valid, "template_urls": template_urls}
+
+
 def audit(payload=None):
     payload = payload or {}
     site = str(payload.get("site") or DEFAULT_SITE).strip()
@@ -58,13 +102,28 @@ def audit(payload=None):
     robots = _fetch(urljoin(site, "/robots.txt"))
     sitemap = _fetch(urljoin(site, "/sitemap.xml"))
     text = home["body"]
+    visible = _visible_text(text)
+    root_map = _sitemap_summary(sitemap["body"]) if sitemap["status"] == 200 else {"kind": "missing", "urls": [], "lastmod_count": 0}
+    managed_url = next((url for url in root_map.get("urls") or [] if url.rstrip("/").endswith("sitemap.xml") and "/seo/" in url), urljoin(site, "/seo/sitemap.xml"))
+    managed = _fetch(managed_url)
+    managed_map = _sitemap_summary(managed["body"]) if managed["status"] == 200 else {"kind": "missing", "urls": [], "lastmod_count": 0}
+    sample_url = next((url for url in managed_map.get("urls") or [] if not url.rstrip("/").endswith("sitemap.xml")), "")
+    sample = _fetch(sample_url) if sample_url else {"status": 0, "body": ""}
+    sample_schema = _schema_health(sample.get("body"))
     item = {
         "audited_at": now_iso(), "site": site, "homepage_status": home["status"],
         "robots_status": robots["status"], "sitemap_status": sitemap["status"],
         "has_title": bool(re.search(r"<title>\s*[^<]+", text, re.I)),
         "has_description": bool(re.search(r"<meta[^>]+name=[\"']description[\"'][^>]+content=[\"'][^\"']+", text, re.I)),
         "has_structured_data": "application/ld+json" in text.lower(),
-        "is_js_shell": len(re.sub(r"<[^>]+>", " ", text).strip()) < 300,
+        "has_canonical": bool(re.search(r"<link[^>]+rel=[\"']canonical[\"']", text, re.I)),
+        "has_open_graph": bool(re.search(r"<meta[^>]+property=[\"']og:title[\"']", text, re.I)),
+        "internal_link_count": len(re.findall(r"<a\b[^>]+href=", text, re.I)),
+        "visible_text_chars": len(visible),
+        "is_js_shell": len(visible) < 300,
+        "root_sitemap": {"kind": root_map.get("kind"), "url_count": len(root_map.get("urls") or []), "lastmod_count": root_map.get("lastmod_count") or 0},
+        "managed_sitemap": {"url": managed_url, "status": managed.get("status"), "kind": managed_map.get("kind"), "url_count": len(managed_map.get("urls") or []), "lastmod_count": managed_map.get("lastmod_count") or 0},
+        "sample_public_page": {"url": sample_url, "status": sample.get("status"), "visible_text_chars": len(_visible_text(sample.get("body"))), "schema": sample_schema},
     }
     blockers = []
     if home["status"] != 200:
@@ -75,8 +134,28 @@ def audit(payload=None):
         blockers.append("sitemap.xml 尚未部署")
     if not item["has_structured_data"]:
         blockers.append("缺少结构化数据")
+    if not item["has_canonical"]:
+        blockers.append("首页缺少 canonical 标准网址")
+    if not item["has_open_graph"]:
+        blockers.append("首页缺少 Open Graph 分享摘要")
     if item["is_js_shell"]:
         blockers.append("首页可抓取正文偏少，可能只有前端JS壳")
+    if item["internal_link_count"] == 0:
+        blockers.append("首页源码没有可抓取的普通内部链接")
+    if root_map.get("kind") == "urlset" and any(url.rstrip("/").endswith("sitemap.xml") for url in root_map.get("urls") or []):
+        blockers.append("主站点地图把子站点地图当作普通网页，应改为 sitemapindex")
+    if managed.get("status") != 200:
+        blockers.append("SEO子站点地图不可正常抓取")
+    elif managed_map.get("kind") != "urlset":
+        blockers.append("SEO子站点地图结构无效")
+    elif (managed_map.get("urls") or []) and int(managed_map.get("lastmod_count") or 0) < len(managed_map.get("urls") or []):
+        blockers.append("SEO子站点地图缺少逐页 lastmod 更新时间")
+    if sample_url and sample.get("status") != 200:
+        blockers.append("SEO样本页面不可正常抓取")
+    if sample_schema.get("template_urls"):
+        blockers.append("SEO页面结构化数据仍包含未替换的网址模板")
+    if sample_url and len(_visible_text(sample.get("body"))) < 500:
+        blockers.append("SEO样本页面正文偏薄，缺少可引用事实")
     item["blockers"] = blockers
     item["result"] = "ready" if not blockers else "needs_work"
     data = _load()

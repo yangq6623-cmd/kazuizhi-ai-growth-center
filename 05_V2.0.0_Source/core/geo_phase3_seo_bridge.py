@@ -150,8 +150,18 @@ def prepare_phase3_assets(plan):
         if str(asset.get("id") or "") not in target_set or str(asset.get("stage") or "") != "PLANNED":
             continue
         canonical = urljoin(site, f"seo/{asset['slug']}/")
-        title, description, html = seo_geo_growth._render_page(asset, data.get("brand_facts") or seo_geo_growth.DEFAULT_BRAND_FACTS)
-        html = html.replace("{{CANONICAL}}", canonical)
+        related = [
+            {"label": row.get("keyword") or row.get("service"), "url": urljoin(site, f"seo/{row.get('slug')}/")}
+            for row in data.get("assets") or []
+            if row.get("id") != asset.get("id") and row.get("slug")
+            and (row.get("region") == asset.get("region") or row.get("service") == asset.get("service"))
+        ]
+        title, description, html = seo_geo_growth._render_page(
+            asset,
+            data.get("brand_facts") or seo_geo_growth.DEFAULT_BRAND_FACTS,
+            canonical=canonical,
+            related=related,
+        )
         folder = staging / "seo" / asset["slug"]
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "index.html"

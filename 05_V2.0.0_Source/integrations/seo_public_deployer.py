@@ -14,6 +14,7 @@ GitHub token or platform secret is stored here.
 from __future__ import annotations
 
 import json
+import html
 import os
 import re
 import shutil
@@ -227,6 +228,7 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
     )
 
     schema_valid = False
+    schema_urls_valid = False
     schema_types = []
     for match in re.finditer(
         r"<script\b[^>]*type\s*=\s*([\"'])application/ld\+json\1[^>]*>(.*?)</script>",
@@ -239,6 +241,8 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
             continue
         if isinstance(payload, (dict, list)):
             schema_valid = True
+            serialized = json.dumps(payload, ensure_ascii=False)
+            schema_urls_valid = not bool(re.search(r"\{\{\s*https?://|https?://[^\"']*[{}]", serialized, flags=re.I))
             if isinstance(payload, dict):
                 graph = payload.get("@graph") if isinstance(payload.get("@graph"), list) else [payload]
                 schema_types.extend(str(item.get("@type")) for item in graph if isinstance(item, dict) and item.get("@type"))
@@ -258,8 +262,11 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
         "canonical": canonical,
         "canonical_match": canonical_match,
         "schema_valid": schema_valid,
+        "schema_urls_valid": schema_urls_valid,
         "schema_types": schema_types,
         "page_indexable": not noindex,
+        "source_tracking_present": bool(re.search(r"<meta\b[^>]*name=[\"']kazuizhi-source-id[\"'][^>]*content=[\"']KZSEO-[A-F0-9]{12}[\"']", body, flags=re.I)),
+        "visible_text_chars": len(re.sub(r"\s+", "", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", body, flags=re.I | re.S)))),
     }
 
 
@@ -307,7 +314,10 @@ def _verify_public_url(url: str, expected: str, expected_canonical: str, timeout
                 and page["content_match"]
                 and page["canonical_match"]
                 and page["schema_valid"]
+                and page["schema_urls_valid"]
                 and page["page_indexable"]
+                and page["source_tracking_present"]
+                and page["visible_text_chars"] >= 500
                 and robots.get("allowed")
             )
             return {
@@ -353,13 +363,15 @@ def verified_publication_receipts() -> list[dict]:
 
 def _write_managed_sitemap(target: Path) -> str:
     snap = dashboard()
-    urls = sorted({
-        str(asset.get("public_url") or "").strip()
-        for asset in snap.get("assets", [])
-        if str(asset.get("public_url") or "").startswith(("http://", "https://"))
-    })
+    rows = sorted(
+        [asset for asset in snap.get("assets", []) if str(asset.get("public_url") or "").startswith(("http://", "https://"))],
+        key=lambda asset: str(asset.get("public_url") or ""),
+    )
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-    xml += "\n".join(f"  <url><loc>{url}</loc></url>" for url in urls)
+    xml += "\n".join(
+        f"  <url><loc>{html.escape(str(asset.get('public_url') or ''), quote=True)}</loc><lastmod>{str(asset.get('updated_at') or asset.get('published_at') or now_iso())[:10]}</lastmod></url>"
+        for asset in rows
+    )
     xml += "\n</urlset>\n"
     path = target / "sitemap.xml"
     path.parent.mkdir(parents=True, exist_ok=True)

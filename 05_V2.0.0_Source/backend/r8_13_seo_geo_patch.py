@@ -537,7 +537,8 @@ def install():
             if path == "/api/r8-13/seo-geo/audit-site":
                 site = str(payload.get("site") or dashboard().get("config", {}).get("site_base_url") or "").strip()
                 result = audit_search_site({"site": site})
-                handler._json_ok({"audit": result, "dashboard": _dashboard_payload()})
+                technical = seo_observability.run(_dashboard_payload())
+                handler._json_ok({"audit": result, "technical_audit": technical, "dashboard": _dashboard_payload()})
                 return
             if path == "/api/r8-13/seo-geo/technical-audit":
                 result = seo_observability.run(_dashboard_payload())
