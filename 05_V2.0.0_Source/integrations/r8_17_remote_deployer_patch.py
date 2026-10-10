@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from core.storage import now_iso
+from core import seo_geo_growth
 from integrations import remote_agent
 from integrations import seo_public_deployer as deployer
 
@@ -266,7 +267,10 @@ def deploy_pending(limit: int = 10) -> dict:
 
     base = deployer._safe_public_base(data.get("public_base_url"))
     snap = deployer.dashboard()
-    pending = [x for x in snap.get("assets", []) if x.get("stage") == "QC_PASSED"][: max(0, int(limit))]
+    pending = [
+        x for x in snap.get("assets", [])
+        if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
+    ][: max(0, int(limit))]
     published = []
     failed = []
     timeout = int(data.get("verify_timeout_seconds") or 8)
@@ -303,13 +307,17 @@ def deploy_pending(limit: int = 10) -> dict:
             if not verification.get("ok"):
                 failed.append({"asset_id": asset_id, "reason": "public_http_verification_failed", "public_url": public_url, "verification": verification})
                 continue
-            deployer.record_asset_stage(asset_id, "PUBLISHED", {
+            evidence = {
                 "public_url": public_url,
                 "connector": REMOTE_MODE,
                 "deploy_receipt": receipt["receipt_id"],
                 "remote_job_id": remote_receipt.get("job_id"),
                 "http_verification": verification,
-            })
+            }
+            if asset.get("republish_pending"):
+                seo_geo_growth.record_asset_republished(asset_id, evidence)
+            else:
+                deployer.record_asset_stage(asset_id, "PUBLISHED", evidence)
             published.append({"asset_id": asset_id, "public_url": public_url, "receipt": receipt["receipt_id"]})
         except (OSError, ValueError, RuntimeError) as error:
             failed.append({"asset_id": asset_id, "reason": str(error)})

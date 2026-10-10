@@ -11,6 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 
+from core import seo_geo_growth
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import (
     dashboard,
@@ -256,6 +257,7 @@ def run_once(force=False):
     mode = data.get("mode") or "autonomous"
     ensure_baseline()
     local = {"skipped": True, "reason": "observe_mode"}
+    template_refresh = {"skipped": True, "reason": "observe_mode"}
     qc = {"passed": [], "failed": []}
     public_deploy = {"skipped": True, "reason": "mode_or_policy_gate"}
     search_submit = {"skipped": True, "reason": "mode_or_policy_gate"}
@@ -265,6 +267,10 @@ def run_once(force=False):
     technical_audit = {"scheduled": bool(data["policy"].get("auto_technical_audit", True))}
 
     if mode in {"assisted", "autonomous"}:
+        try:
+            template_refresh = seo_geo_growth.refresh_legacy_staging(limit=10)
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            template_refresh = {"skipped": True, "reason": "template_refresh_error", "error": str(error)[:500]}
         try:
             local = run_daily_cycle(force=bool(force))
             # The daily-cycle gate limits new planning, but it must not strand
@@ -424,6 +430,7 @@ def run_once(force=False):
         "skipped": False,
         "mode": mode,
         "local_cycle": local,
+        "template_refresh": template_refresh,
         "local_qc": qc,
         "public_deploy": public_deploy,
         "search_submit": search_submit,

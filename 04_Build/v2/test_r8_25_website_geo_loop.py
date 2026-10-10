@@ -1,4 +1,4 @@
-"""Release gate for #780 website crawlability and truthful GEO publishing."""
+"""Release gate for #782 crawlability, migration and truthful GEO publishing."""
 from __future__ import annotations
 
 import json
@@ -22,6 +22,7 @@ def main():
             from core import seo_geo_growth as growth
             from integrations import seo_public_deployer as deployer
             from integrations import r8_17_remote_deployer_patch as remote
+            from integrations import search_engine_submitter as submitter
             from promotion import search_growth
 
             seo_ui = (SOURCE / "web" / "r8_13_seo_geo.html").read_text(encoding="utf-8")
@@ -46,6 +47,7 @@ def main():
                 assert "{{" not in page, page[:500]
                 assert 'name="robots" content="index,follow' in page
                 assert 'property="og:title"' in page and 'property="og:url"' in page
+                assert f'name="kazuizhi-template-version" content="{growth.PUBLIC_TEMPLATE_VERSION}"' in page
                 assert "KZSEO-" in page and "kz_source=KZSEO-" in page
                 assert "价格原则" in page and "服务与售后流程" in page and "来源编号" in page
                 inspected = deployer._inspect_public_html(page, asset["title"], asset["canonical"])
@@ -61,6 +63,39 @@ def main():
                 service = next(row for row in schema["@graph"] if row.get("@type") == "Service")
                 assert organization["url"] == "https://kazuizhi.com/", organization
                 assert service["url"] == asset["canonical"], service
+
+            # An upgrade must rebuild legacy public HTML without downgrading
+            # SUBMITTED/CRAWLED/etc. evidence states.  Republish is tracked by
+            # a separate flag and cleared only after live verification.
+            legacy_id = assets[0]["id"]
+            state = growth._load()
+            legacy = next(row for row in state["assets"] if row.get("id") == legacy_id)
+            legacy["stage"] = "SUBMITTED"
+            legacy["public_template_version"] = "legacy"
+            legacy["public_url"] = legacy["canonical"]
+            growth._save(state)
+            refreshed = growth.refresh_legacy_staging(limit=1)
+            assert refreshed["refreshed"] == [legacy_id], refreshed
+            migrated = next(row for row in growth.dashboard()["assets"] if row.get("id") == legacy_id)
+            assert migrated["stage"] == "SUBMITTED", migrated
+            assert migrated["republish_pending"] is True, migrated
+            migrated_page = Path(migrated["staging_path"]).read_text(encoding="utf-8")
+            assert growth.PUBLIC_TEMPLATE_VERSION in migrated_page
+            growth.record_asset_republished(legacy_id, {"public_url": migrated["canonical"], "verification": {"ok": True}})
+            republished = next(row for row in growth.dashboard()["assets"] if row.get("id") == legacy_id)
+            assert republished["stage"] == "SUBMITTED", republished
+            assert republished["republish_pending"] is False, republished
+            assert republished["last_republished_at"], republished
+            old_receipt = {
+                **republished,
+                "submission_receipts": [{"engine": "indexnow", "at": "2026-01-01T00:00:00+08:00", "receipt": "old"}],
+            }
+            assert submitter._existing_engine_receipt(old_receipt, "indexnow") is False
+            current_receipt = {
+                **old_receipt,
+                "submission_receipts": [{"engine": "indexnow", "at": "2099-01-01T00:00:00+08:00", "receipt": "new"}],
+            }
+            assert submitter._existing_engine_receipt(current_receipt, "indexnow") is True
 
             sitemap = (Path(result["staging_root"]) / "sitemap.xml").read_text(encoding="utf-8")
             assert sitemap.count("<lastmod>") == 2, sitemap
@@ -127,7 +162,7 @@ def main():
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 
-    print("PASS: #780 crawlable website pages, valid schema, attribution IDs, sitemap freshness and live audit blockers verified")
+    print("PASS: #782 crawlable pages, legacy migration, resubmission revisions and live audit blockers verified")
 
 
 if __name__ == "__main__":

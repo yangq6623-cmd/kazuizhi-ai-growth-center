@@ -223,9 +223,16 @@ def _append_receipt(row: dict) -> None:
 
 
 def _existing_engine_receipt(asset: dict, engine: str) -> bool:
+    matches = [
+        row for row in (asset.get("submission_receipts") or [])
+        if isinstance(row, dict) and str(row.get("engine") or "") == engine
+    ]
+    revision = _parse_time(_submission_revision(asset))
+    if not revision:
+        return bool(matches)
     return any(
-        isinstance(row, dict) and str(row.get("engine") or "") == engine
-        for row in (asset.get("submission_receipts") or [])
+        (stamp := _parse_time(row.get("at"))) is not None and stamp >= revision
+        for row in matches
     )
 
 
@@ -254,10 +261,11 @@ def _submission_revision(asset: dict) -> str:
     """Return the public version marker used to decide whether an asset is new.
 
     ``updated_at`` cannot be used here because recording a search receipt also
-    updates it.  ``published_at`` is only written after a real public URL has
-    been verified, so it is a stable marker for a newly published page.
+    updates it. ``last_republished_at`` and ``published_at`` are written only
+    after the corresponding public version passes the live verifier, so they
+    are stable markers for new or materially refreshed page versions.
     """
-    return str(asset.get("published_at") or "").strip()
+    return str(asset.get("last_republished_at") or asset.get("published_at") or "").strip()
 
 
 def _batch_limit(limit: int | None) -> int:

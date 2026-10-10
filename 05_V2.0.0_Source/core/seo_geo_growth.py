@@ -23,6 +23,7 @@ STORE = "r8_13/seo_geo_growth.json"
 SCHEMA = "kz.seo-geo-growth.v1"
 DEFAULT_SITE = "https://kazuizhi.com/"
 DEFAULT_REGION = "涟水县"
+PUBLIC_TEMPLATE_VERSION = "R8-26-rich-v1"
 
 STAGES = [
     "DISCOVERED", "PLANNED", "GENERATED", "QC_PASSED", "PUBLISHED",
@@ -424,7 +425,7 @@ def _render_page(asset, facts, canonical="", related=None):
         related_html = f'<li><a href="{esc(site_url)}">返回{esc(brand)}官网</a></li>'
     action_url = f"{site_url}?kz_source={source_id}#/repair"
     schema_json = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
-    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>简短答案</h2><p class="answer">在{esc(region)}需要{esc(service)}时，先说明故障或需求、所在区域和期望时间，再通过{esc(brand)}发布需求。维修项目应先检测、再提交明细报价，用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" rel="nofollow">前往官网提交需求</a><p class="proof">正式下单入口：微信小程序“{esc(mini_program)}”。来源编号：{esc(source_id)}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
+    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>简短答案</h2><p class="answer">在{esc(region)}需要{esc(service)}时，先说明故障或需求、所在区域和期望时间，再通过{esc(brand)}发布需求。维修项目应先检测、再提交明细报价，用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" rel="nofollow">前往官网提交需求</a><p class="proof">正式下单入口：微信小程序“{esc(mini_program)}”。来源编号：{esc(source_id)}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
     return title, description, body
 
 
@@ -460,6 +461,7 @@ def generate_staging(limit=6):
             "staging_path": str(path),
             "generated_at": now_iso(),
             "updated_at": now_iso(),
+            "public_template_version": PUBLIC_TEMPLATE_VERSION,
         })
         generated.append(asset["id"])
     _write_staging_infrastructure(data, staging, site)
@@ -467,6 +469,92 @@ def generate_staging(limit=6):
         _audit_event(data, "staging_pages_generated", {"asset_ids": generated, "truth": "GENERATED 不等于 PUBLISHED"})
     _save(data)
     return {"generated": generated, "count": len(generated), "staging_root": str(staging)}
+
+
+def refresh_legacy_staging(limit=10):
+    """Rebuild old public assets without falsifying a backwards stage move.
+
+    A page that was already submitted remains SUBMITTED while its HTML is
+    refreshed.  ``republish_pending`` is an independent content-revision flag;
+    the public deployer clears it only after the new page passes live HTTP,
+    canonical, schema, source-tracking and body-length verification.
+    """
+    data = _load()
+    facts = data.get("brand_facts") or DEFAULT_BRAND_FACTS
+    site = str(data["config"].get("site_base_url") or DEFAULT_SITE).rstrip("/") + "/"
+    staging = data_root() / "r8_13" / "site_staging"
+    staging.mkdir(parents=True, exist_ok=True)
+    refreshed = []
+    for asset in data["assets"]:
+        if len(refreshed) >= max(1, min(int(limit or 10), 20)):
+            break
+        if not asset.get("slug") or not _stage_at_least(asset, "GENERATED"):
+            continue
+        if asset.get("public_template_version") == PUBLIC_TEMPLATE_VERSION:
+            continue
+        canonical = str(asset.get("canonical") or urljoin(site, f"seo/{asset['slug']}/"))
+        related = [
+            {"label": row.get("keyword") or row.get("service"), "url": urljoin(site, f"seo/{row.get('slug')}/")}
+            for row in data["assets"]
+            if row.get("id") != asset.get("id") and row.get("slug")
+            and (row.get("region") == asset.get("region") or row.get("service") == asset.get("service"))
+        ]
+        title, description, page = _render_page(asset, facts, canonical=canonical, related=related)
+        folder = staging / "seo" / str(asset["slug"])
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "index.html"
+        path.write_text(page, encoding="utf-8")
+        asset.update({
+            "title": title,
+            "description": description,
+            "canonical": canonical,
+            "staging_path": str(path),
+            "generated_at": now_iso(),
+            "updated_at": now_iso(),
+            "public_template_version": PUBLIC_TEMPLATE_VERSION,
+            "republish_pending": _stage_at_least(asset, "PUBLISHED"),
+        })
+        if asset.get("stage") in {"GENERATED", "QC_PASSED"}:
+            asset["stage"] = "GENERATED"
+        refreshed.append(str(asset.get("id") or ""))
+    _write_staging_infrastructure(data, staging, site)
+    if refreshed:
+        _audit_event(data, "legacy_public_pages_rebuilt", {
+            "asset_ids": refreshed,
+            "template_version": PUBLIC_TEMPLATE_VERSION,
+            "truth": "已重建本地页面；原外部状态不回退，公网复核通过前不宣称新版本已发布。",
+        })
+    _save(data)
+    return {"refreshed": refreshed, "count": len(refreshed), "template_version": PUBLIC_TEMPLATE_VERSION}
+
+
+def record_asset_republished(asset_id, payload=None):
+    payload = dict(payload or {})
+    public_url = str(payload.get("public_url") or "").strip()
+    parts = urlsplit(public_url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("重新发布必须提供真实可验证的公网URL")
+    data = _load()
+    asset = next((row for row in data["assets"] if str(row.get("id")) == str(asset_id)), None)
+    if not asset:
+        raise ValueError("SEO/GEO 资产不存在")
+    if not _stage_at_least(asset, "PUBLISHED"):
+        raise ValueError("尚未正式发布的资产不能登记重新发布")
+    event = {"at": now_iso(), "template_version": PUBLIC_TEMPLATE_VERSION, **deepcopy(payload)}
+    asset.setdefault("content_refresh_events", []).append(event)
+    asset["content_refresh_events"] = asset["content_refresh_events"][-20:]
+    asset["public_url"] = public_url
+    asset["republish_pending"] = False
+    asset["public_template_version"] = PUBLIC_TEMPLATE_VERSION
+    asset["last_republished_at"] = event["at"]
+    asset["updated_at"] = event["at"]
+    _audit_event(data, "asset_content_republished", {
+        "asset_id": asset_id,
+        "stage_preserved": asset.get("stage"),
+        "template_version": PUBLIC_TEMPLATE_VERSION,
+    })
+    _save(data)
+    return deepcopy(asset)
 
 
 def _write_staging_infrastructure(data, staging, site):
