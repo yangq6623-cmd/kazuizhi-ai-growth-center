@@ -1,4 +1,4 @@
-"""Release gate for #782 crawlability, migration and truthful GEO publishing."""
+"""Release gate for #783 crawlability, migration and truthful GEO publishing."""
 from __future__ import annotations
 
 import json
@@ -20,6 +20,7 @@ def main():
         os.environ["LOCALAPPDATA"] = temp
         try:
             from core import seo_geo_growth as growth
+            from core import seo_geo_source_tracking_patch as tracking_patch
             from integrations import seo_public_deployer as deployer
             from integrations import r8_17_remote_deployer_patch as remote
             from integrations import search_engine_submitter as submitter
@@ -48,6 +49,7 @@ def main():
                 assert 'name="robots" content="index,follow' in page
                 assert 'property="og:title"' in page and 'property="og:url"' in page
                 assert f'name="kazuizhi-template-version" content="{growth.PUBLIC_TEMPLATE_VERSION}"' in page
+                assert page.count('name="kazuizhi-source-id"') == 1, page[:500]
                 assert "KZSEO-" in page and "kz_source=KZSEO-" in page
                 assert "价格原则" in page and "服务与售后流程" in page and "来源编号" in page
                 inspected = deployer._inspect_public_html(page, asset["title"], asset["canonical"])
@@ -86,6 +88,7 @@ def main():
             assert republished["stage"] == "SUBMITTED", republished
             assert republished["republish_pending"] is False, republished
             assert republished["last_republished_at"], republished
+            assert tracking_patch._INSTALLED is True
             old_receipt = {
                 **republished,
                 "submission_receipts": [{"engine": "indexnow", "at": "2026-01-01T00:00:00+08:00", "receipt": "old"}],
@@ -162,7 +165,7 @@ def main():
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 
-    print("PASS: #782 crawlable pages, legacy migration, resubmission revisions and live audit blockers verified")
+    print("PASS: #783 crawlable pages, runtime-patched migration, resubmission revisions and live audit blockers verified")
 
 
 if __name__ == "__main__":

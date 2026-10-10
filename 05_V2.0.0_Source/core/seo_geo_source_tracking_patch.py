@@ -19,11 +19,16 @@ def source_tracking_id(asset):
     return "KZSRC-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:14].upper()
 
 
-def _render(asset, facts):
-    title, description, html = _ORIGINAL_RENDER(asset, facts)
+def _render(asset, facts, canonical="", related=None):
+    title, description, html = _ORIGINAL_RENDER(
+        asset,
+        facts,
+        canonical=canonical,
+        related=related,
+    )
     source_id = source_tracking_id(asset)
     marker = f'<meta name="kazuizhi-source-id" content="{source_id}">'
-    if marker not in html and "<head>" in html:
+    if 'name="kazuizhi-source-id"' not in html and "<head>" in html:
         html = html.replace("<head>", "<head>" + marker, 1)
     return title, description, html
 
