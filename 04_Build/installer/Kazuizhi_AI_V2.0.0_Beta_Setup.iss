@@ -38,6 +38,7 @@ Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2 Beta R7 Fin
 Type: files; Name: "{userdesktop}\卡嘴子 AI 增长运营中心 V2.1 R8 Final.lnk"
 Type: files; Name: "{userdesktop}\卡嘴子 AI 真实运营工作台 V2.2 R8.lnk"
 Type: files; Name: "{userstartup}\卡嘴子 AI 后台自动运行 R8-23.lnk"
+Type: files; Name: "{userstartup}\卡嘴子 AI 第一阶段后台守护.lnk"
 
 [Icons]
 Name: "{userdesktop}\卡嘴子 AI 完整运营工作台 R8-23"; Filename: "{app}\Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe"

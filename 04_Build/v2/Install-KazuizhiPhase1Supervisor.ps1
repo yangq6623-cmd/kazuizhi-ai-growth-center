@@ -4,11 +4,17 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $taskName = 'Kazuizhi AI Phase1 Supervisor'
-$startupName = '卡嘴子 AI 第一阶段后台守护.lnk'
+$startupName = 'Kazuizhi AI Phase1 Supervisor.lnk'
 $startupPath = Join-Path ([Environment]::GetFolderPath('Startup')) $startupName
 $dataDir = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta\data\r8_25'
 $statusPath = Join-Path $dataDir 'service_install.json'
+$runtimePath = Join-Path $dataDir 'runtime_supervisor.json'
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+
+function Write-JsonNoBom([string]$Path, [object]$Value) {
+    $json = $Value | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($Path, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
 
 $result = [ordered]@{
     schema = 'kz.phase1-supervisor-install.v1'
@@ -19,6 +25,24 @@ $result = [ordered]@{
     detail = ''
 }
 
+function Save-InstallState {
+    Write-JsonNoBom -Path $statusPath -Value $result
+    $runtime = [pscustomobject]@{}
+    if (Test-Path -LiteralPath $runtimePath) {
+        try { $runtime = Get-Content -LiteralPath $runtimePath -Raw -Encoding UTF8 | ConvertFrom-Json } catch {}
+    }
+    if ($null -eq $runtime) { $runtime = [pscustomobject]@{} }
+    $runtime | Add-Member -NotePropertyName schema -NotePropertyValue 'kz.runtime-supervisor.v1' -Force
+    $runtime | Add-Member -NotePropertyName mode -NotePropertyValue $result.mode -Force
+    $runtime | Add-Member -NotePropertyName installed -NotePropertyValue $true -Force
+    $runtime | Add-Member -NotePropertyName install_mode -NotePropertyValue $result.mode -Force
+    $runtime | Add-Member -NotePropertyName install_detail -NotePropertyValue $result.detail -Force
+    $runtime | Add-Member -NotePropertyName installed_at -NotePropertyValue $result.installed_at -Force
+    $runtime | Add-Member -NotePropertyName restart_count -NotePropertyValue ([int]($runtime.restart_count)) -Force
+    $runtime | Add-Member -NotePropertyName updated_at -NotePropertyValue (Get-Date).ToString('o') -Force
+    Write-JsonNoBom -Path $runtimePath -Value $runtime
+}
+
 try {
     $action = New-ScheduledTaskAction -Execute $ExePath -Argument '--supervisor --no-browser' -WorkingDirectory $AppDir
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -26,12 +50,13 @@ try {
         -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 999 `
         -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings `
-        -Description '卡嘴子 AI 用户级7x24守护：登录后启动，异常退出自动恢复。' -Force | Out-Null
+        -Description 'Kazuizhi user-scoped 7x24 supervisor with automatic runtime recovery.' -Force | Out-Null
     if (Test-Path -LiteralPath $startupPath) { Remove-Item -LiteralPath $startupPath -Force }
-    Start-ScheduledTask -TaskName $taskName
     $result.installed = $true
     $result.mode = 'user_scheduled_task'
-    $result.detail = '登录后自动启动；任务计划程序负责异常恢复，应用内部Supervisor负责子进程重启。'
+    $result.detail = 'Starts after user logon; Task Scheduler and the in-app supervisor provide recovery.'
+    Save-InstallState
+    Start-ScheduledTask -TaskName $taskName
 } catch {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($startupPath)
@@ -41,8 +66,7 @@ try {
     $shortcut.Save()
     $result.installed = $true
     $result.mode = 'startup_shortcut_fallback'
-    $result.detail = '计划任务创建失败，已启用登录启动快捷方式：' + $_.Exception.Message
+    $result.detail = 'Scheduled Task unavailable; installed Startup shortcut fallback: ' + $_.Exception.Message
+    Save-InstallState
     Start-Process -FilePath $ExePath -ArgumentList '--supervisor','--no-browser' -WorkingDirectory $AppDir -WindowStyle Hidden
 }
-
-$result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $statusPath -Encoding UTF8

@@ -128,6 +128,16 @@ try {
     New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
     Install-R8
     $exe = Join-Path $testRoot $name
+    $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
+    $supervisorInstall = Join-Path $dataRoot 'r8_25/service_install.json'
+    if (-not (Test-Path -LiteralPath $supervisorInstall -PathType Leaf)) { throw 'Phase-1 supervisor install record missing' }
+    $supervisorBytes = [System.IO.File]::ReadAllBytes($supervisorInstall)
+    if ($supervisorBytes.Length -ge 3 -and $supervisorBytes[0] -eq 0xEF -and $supervisorBytes[1] -eq 0xBB -and $supervisorBytes[2] -eq 0xBF) { throw 'Phase-1 supervisor install record must be UTF-8 without BOM for Python JSON compatibility' }
+    $supervisorRecord = Get-Content -LiteralPath $supervisorInstall -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $supervisorRecord.installed) { throw "Phase-1 supervisor was not installed: $($supervisorRecord.detail)" }
+    if ($supervisorRecord.mode -notin @('user_scheduled_task','startup_shortcut_fallback')) { throw "Unexpected supervisor mode: $($supervisorRecord.mode)" }
+    $supervisorRuntime = Get-Content -LiteralPath (Join-Path $dataRoot 'r8_25/runtime_supervisor.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $supervisorRuntime.installed -or $supervisorRuntime.install_mode -ne $supervisorRecord.mode) { throw 'Runtime supervisor ledger did not preserve the installed startup mode' }
     $version = (Get-Item -LiteralPath $exe).VersionInfo
     if ($version.FileVersion -ne '2.2.2.23' -or $version.ProductName -ne 'Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench') { throw 'Windows EXE version mismatch' }
     foreach ($serverTool in @('R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1', 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd')) {
@@ -138,7 +148,6 @@ try {
     }
     Verify-Runtime $exe
 
-    $dataRoot = Join-Path $env:LOCALAPPDATA 'Kazuizhi_AI_Enterprise_V2.0.0_Beta/data'
     New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
     $sentinel = Join-Path $dataRoot 'user-data-preservation-test.txt'
     Set-Content -LiteralPath $sentinel -Value 'preserve-v2-user-data'
