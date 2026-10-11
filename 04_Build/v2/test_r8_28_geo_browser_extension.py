@@ -15,7 +15,7 @@ def main():
     assert manifest["background"]["service_worker"] == "service-worker.js"
     assert {"alarms", "storage", "tabs", "scripting"}.issubset(manifest["permissions"])
     hosts = "\n".join(manifest["host_permissions"])
-    for host in ("127.0.0.1:8876", "doubao.com", "douyin.com", "deepseek.com", "aliyun.com", "n.cn"):
+    for host in ("127.0.0.1:8876", "doubao.com", "douyin.com", "deepseek.com", "aliyun.com", "www.tongyi.com", "n.cn"):
         assert host in hosts, host
 
     worker = (EXT / "service-worker.js").read_text(encoding="utf-8")
@@ -36,6 +36,9 @@ def main():
     bridge = (SOURCE / "backend" / "r8_19_geo_validation_patch.py").read_text(encoding="utf-8")
     runtime = (SOURCE / "integrations" / "geo_browser_agent.py").read_text(encoding="utf-8")
     assert 'origin.startswith("chrome-extension://")' in bridge
+    assert "def do_options(handler):" in bridge
+    assert '"Access-Control-Allow-Origin"' in bridge
+    assert '"Content-Type, X-Kazuizhi-Agent"' in bridge
     assert "HEARTBEAT_TTL_SECONDS = 180" in runtime
 
     build = (ROOT / "04_Build" / "build_v2_windows.ps1").read_text(encoding="utf-8")

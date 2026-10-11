@@ -4,7 +4,7 @@ const PLATFORMS = {
   doubao_web: {url: "https://www.doubao.com/chat/", hosts: ["www.doubao.com"]},
   douyin_search_web: {url: "https://www.douyin.com/search/", hosts: ["www.douyin.com"], search: true},
   deepseek_web: {url: "https://chat.deepseek.com/", hosts: ["chat.deepseek.com"]},
-  qwen_web: {url: "https://tongyi.aliyun.com/qianwen/", hosts: ["chat.qwen.ai", "tongyi.aliyun.com"]},
+  qwen_web: {url: "https://www.tongyi.com/qianwen/", hosts: ["chat.qwen.ai", "tongyi.aliyun.com", "www.tongyi.com"]},
   so360_ai_search: {url: "https://www.n.cn/", hosts: ["www.n.cn", "so.com"]}
 };
 let running = false;

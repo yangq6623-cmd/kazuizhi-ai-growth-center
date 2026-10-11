@@ -12,6 +12,7 @@
     "https://chat.deepseek.com/*",
     "https://chat.qwen.ai/*",
     "https://tongyi.aliyun.com/*",
+    "https://www.tongyi.com/*",
     "https://www.n.cn/*",
     "https://*.so.com/*"
   ],
@@ -21,7 +22,8 @@
     "matches": [
       "https://www.doubao.com/*", "https://www.douyin.com/*",
       "https://chat.deepseek.com/*", "https://chat.qwen.ai/*",
-      "https://tongyi.aliyun.com/*", "https://www.n.cn/*", "https://*.so.com/*"
+      "https://tongyi.aliyun.com/*", "https://www.tongyi.com/*",
+      "https://www.n.cn/*", "https://*.so.com/*"
     ],
     "js": ["content-agent.js"],
     "run_at": "document_idle"

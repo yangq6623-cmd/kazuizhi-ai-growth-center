@@ -291,6 +291,29 @@ def install():
         return
     original_get = server.DashboardHandler.do_GET
     original_post = server.DashboardHandler.do_POST
+    original_options = getattr(server.DashboardHandler, "do_OPTIONS", None)
+    original_end_headers = server.DashboardHandler.end_headers
+
+    def end_headers(handler):
+        path = urlsplit(handler.path).path
+        origin = str(handler.headers.get("Origin") or "").strip()
+        if path.startswith("/api/r8-27/geo-browser-agent/") and origin.startswith("chrome-extension://"):
+            handler.send_header("Access-Control-Allow-Origin", origin)
+            handler.send_header("Vary", "Origin")
+        return original_end_headers(handler)
+
+    def do_options(handler):
+        path = urlsplit(handler.path).path
+        if path.startswith("/api/r8-27/geo-browser-agent/") and _browser_agent_origin_allowed(handler):
+            handler.send_response(204)
+            handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-Kazuizhi-Agent")
+            handler.send_header("Access-Control-Max-Age", "600")
+            handler.end_headers()
+            return
+        if original_options:
+            return original_options(handler)
+        handler.send_error(405, "Method Not Allowed")
 
     def do_get(handler):
         parsed = urlsplit(handler.path)
@@ -445,6 +468,8 @@ def install():
 
     server.DashboardHandler.do_GET = do_get
     server.DashboardHandler.do_POST = do_post
+    server.DashboardHandler.do_OPTIONS = do_options
+    server.DashboardHandler.end_headers = end_headers
     server.DashboardHandler._kz_r8_19_geo_validation = True
     _INSTALLED = True
 
