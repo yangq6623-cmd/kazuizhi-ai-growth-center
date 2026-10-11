@@ -628,6 +628,8 @@
       const qsum=snapshot.queue_summary||dashboard.queue||{};
       const health=snapshot.health||{};
       const domestic=snapshot.domestic_matrix||dashboard.domestic_matrix||{};
+      let browserAgent=null;
+      try{browserAgent=await json('/api/r8-27/geo-browser-agent/status',{timeoutMs:2500})}catch(_){}
       const available=Number(snapshot.available_sections||0);
       const total=Number(snapshot.total_sections||4);
       const officialReceipts=receipts.filter(x=>x.official_truth);
@@ -654,10 +656,15 @@
       const domesticBox=byId('geo-adv-domestic');
       if(domesticBox){
         const platforms=domestic.platforms||[];
+        const agentOnline=browserAgent?.connected===true;
+        const readyPlatforms=Number(browserAgent?.ready_platforms||0);
+        const agentLine=agentOnline
+          ? `<br><small>浏览器代理：在线 · 国内平台就绪 ${readyPlatforms}/5 · 心跳 ${Number(browserAgent?.heartbeat_age_seconds||0)} 秒前。可自动领取已就绪平台任务；验证码/风控只暂停对应平台。</small>`
+          : `<br><small>浏览器代理：未连接或心跳过期。当前登录网页不会自行领取任务，不能计为自动化；需启动 #786 常驻执行器。浏览器进程可在后台，但电脑必须开机、联网且不可休眠。</small>`;
         domesticBox.innerHTML=platforms.length
           ? `<b>国内 GEO 正式矩阵 ${Number(domestic.completed||0)} / ${Number(domestic.target||50)}</b> · `+
             platforms.map(row=>`${esc(row.label)} ${Number(row.completed||0)}/${Number(row.target||10)}${row.authorization_required?'（待授权）':''}`).join('　')+
-            `<br><small>登录并连接浏览器执行器后自动执行；验证码、风控或权限变化时只暂停对应平台。API为可选加速，不是验收前提。</small>`
+            agentLine+`<br><small>API为可选加速，不是验收前提；SUBMITTED、排队和本地模拟不计正式 Evidence。</small>`
           : '国内五平台矩阵尚未载入；不会用国外平台或本地模拟替代。';
       }
 

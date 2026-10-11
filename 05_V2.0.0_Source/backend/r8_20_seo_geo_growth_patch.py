@@ -773,11 +773,16 @@ def _geo_evidence_snapshot():
     # these without counting Doubao C-level auxiliary answers as external A/B.
     manual_ids = {
         item.get("question_id") for item in official
-        if item.get("question_id") and str(item.get("test_method") or "").lower() in {"manual", "browser"}
+        if item.get("question_id")
+        and str(item.get("test_method") or "").lower() in {"manual", "browser"}
+        and str(item.get("execution_origin") or "") != "authenticated_browser_agent"
     }
     automated_ids = {
         item.get("question_id") for item in official
-        if item.get("question_id") and str(item.get("test_method") or "").lower() == "api"
+        if item.get("question_id") and (
+            str(item.get("test_method") or "").lower() == "api"
+            or str(item.get("execution_origin") or "") == "authenticated_browser_agent"
+        )
     }
     total = len(questions) or 50
 

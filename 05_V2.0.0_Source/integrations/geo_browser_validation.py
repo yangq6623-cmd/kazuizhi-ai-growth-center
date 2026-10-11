@@ -30,6 +30,8 @@ PLATFORMS = {
 
 
 def status():
+    from integrations import geo_browser_agent
+    agent = geo_browser_agent.status()
     return {
         "id": EXECUTOR_ID,
         "provider": PROVIDER,
@@ -39,10 +41,13 @@ def status():
         "ready": True,
         "manual_supported": True,
         "work_handoff_supported": True,
-        "automatic_after_login": False,
+        "automatic_after_login": bool(agent.get("automatic_after_login")),
         "automation_requires": "connected_authenticated_browser_agent",
+        "browser_agent": agent,
         "platforms": [{"id": key, "label": value} for key, value in PLATFORMS.items()],
-        "reason": "无需API。当前支持人工或浏览器代理交接；连接已登录的浏览器执行器后才能自动逐题执行，验证码/风控仍进入待我处理。",
+        "reason": ("已登录浏览器代理在线，可自动领取其已就绪平台任务；验证码/风控仍进入待我处理。"
+                   if agent.get("automatic_after_login") else
+                   "无需API。当前支持人工或浏览器代理交接；连接已登录的浏览器执行器并保持心跳后才能自动逐题执行，验证码/风控仍进入待我处理。"),
         "truth_rule": "只有真实外部AI网页会话的原始回答和外部页面证据才能写入A级GEO Evidence；本地模型结果不计正式成绩。",
     }
 
@@ -114,6 +119,8 @@ def record_browser_result(payload):
             "model": str(values.get("model") or PLATFORMS[platform]),
             "model_version": str(values.get("model_version") or "web-product"),
             "test_method": "browser",
+            "execution_origin": str(values.get("execution_origin") or "human_browser"),
+            "executor_id": str(values.get("executor_id") or EXECUTOR_ID),
             "raw_answer": raw_answer,
             "citation_urls": citation_urls,
             "session_url": session_url,

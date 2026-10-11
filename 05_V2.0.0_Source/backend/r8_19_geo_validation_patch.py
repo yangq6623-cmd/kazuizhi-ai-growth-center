@@ -33,7 +33,7 @@ from core.geo_validation import (
 )
 from core.mission_ledger import snapshot as mission_ledger_snapshot
 from core.storage import now_iso, write_json
-from integrations import geo_browser_validation, geo_local_precheck, geo_openai_search_executor, geo_chatgpt_analyzer
+from integrations import geo_browser_agent, geo_browser_validation, geo_local_precheck, geo_openai_search_executor, geo_chatgpt_analyzer
 
 _INSTALLED = False
 PHASE1_PROVIDERS = {"browser_external_ai", "openai_web_search"}
@@ -324,6 +324,9 @@ def install():
         if path == "/api/r8-19/geo/executor":
             handler._json_ok(geo_browser_validation.status())
             return
+        if path == "/api/r8-27/geo-browser-agent/status":
+            handler._json_ok(geo_browser_agent.status())
+            return
         if path == "/api/r8-19/geo/api-executor":
             handler._json_ok(geo_openai_search_executor.status())
             return
@@ -349,6 +352,12 @@ def install():
             "/api/r8-19/geo/local-precheck/run",
             "/api/r8-19/geo/analysis/refresh",
             "/api/r8-19/geo/analysis/chatgpt/run",
+            "/api/r8-27/geo-browser-agent/register",
+            "/api/r8-27/geo-browser-agent/heartbeat",
+            "/api/r8-27/geo-browser-agent/claim",
+            "/api/r8-27/geo-browser-agent/receipt",
+            "/api/r8-27/geo-browser-agent/block",
+            "/api/r8-27/geo-browser-agent/disconnect",
         }
         if path not in supported:
             return original_post(handler)
@@ -357,7 +366,20 @@ def install():
             return
         try:
             payload = _read_json(handler)
-            if path == "/api/r8-19/geo/bootstrap":
+            if path == "/api/r8-27/geo-browser-agent/register":
+                result = geo_browser_agent.register(payload)
+            elif path == "/api/r8-27/geo-browser-agent/heartbeat":
+                result = geo_browser_agent.heartbeat(payload)
+            elif path == "/api/r8-27/geo-browser-agent/claim":
+                result = geo_browser_agent.claim(payload)
+            elif path == "/api/r8-27/geo-browser-agent/receipt":
+                result = geo_browser_agent.receipt(payload)
+                _refresh_analysis()
+            elif path == "/api/r8-27/geo-browser-agent/block":
+                result = geo_browser_agent.block(payload)
+            elif path == "/api/r8-27/geo-browser-agent/disconnect":
+                result = geo_browser_agent.disconnect(payload)
+            elif path == "/api/r8-19/geo/bootstrap":
                 result = bootstrap_question_set(force=bool(payload.get("force")))
             elif path == "/api/r8-19/geo/plan":
                 current = _effective_decision()

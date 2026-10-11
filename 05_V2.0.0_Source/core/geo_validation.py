@@ -634,6 +634,8 @@ def record_result(payload):
         "tested_at": str(merged.get("tested_at") or now_iso()),
         "finished_at": now_iso(),
         "test_method": str(merged.get("test_method") or ""),
+        "execution_origin": str(merged.get("execution_origin") or "human_browser"),
+        "executor_id": str(task.get("executor_id") or merged.get("executor_id") or ""),
         "raw_answer": raw_answer,
         "answer_hash": hashlib.sha256(raw_answer.encode("utf-8")).hexdigest(),
         "brand_occurrences": brand_occurrences,

@@ -144,10 +144,21 @@ def snapshot(receipts, questions, tasks=None):
     mentioned = {slot for slot, rows in receipts_by_slot.items() if any(row.get("brand_mentioned") for row in rows)}
     recommended = {slot for slot, rows in receipts_by_slot.items() if any(row.get("brand_recommended") for row in rows)}
     cited = {slot for slot, rows in receipts_by_slot.items() if any(row.get("brand_cited") for row in rows)}
-    manual = {slot for slot, rows in receipts_by_slot.items()
-              if any(str(row.get("test_method") or "").lower() in {"manual", "browser"} for row in rows)}
-    automatic = {slot for slot, rows in receipts_by_slot.items()
-                 if any(str(row.get("test_method") or "").lower() == "api" for row in rows)}
+    automatic = {
+        slot for slot, rows in receipts_by_slot.items()
+        if any(
+            str(row.get("test_method") or "").lower() == "api"
+            or str(row.get("execution_origin") or "") == "authenticated_browser_agent"
+            for row in rows
+        )
+    }
+    manual = {
+        slot for slot, rows in receipts_by_slot.items()
+        if slot not in automatic and any(
+            str(row.get("test_method") or "").lower() in {"manual", "browser"}
+            for row in rows
+        )
+    }
     retest = {}
     now = datetime.now(timezone.utc)
     for label, hours in (("24h", 24), ("72h", 72), ("7d", 168)):
