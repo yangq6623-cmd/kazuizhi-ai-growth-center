@@ -1,0 +1,4 @@
+const names={doubao_web:"豆包",douyin_search_web:"抖音",deepseek_web:"DeepSeek",qwen_web:"通义千问",so360_ai_search:"360 AI搜索"};
+async function refresh(){const s=await chrome.runtime.sendMessage({type:"kz-status"});document.querySelector("#summary").textContent=`最后运行：${s.lastCycle||"尚未"}${s.lastError?` · ${s.lastError}`:""}`;document.querySelector("#sessions").innerHTML=(s.sessions||[]).map(x=>`<div class="row"><span>${names[x.platform]||x.platform}</span><b class="${x.state==="ready"?"ready":"bad"}">${x.state}</b></div>`).join("")||'<p class="muted">首次验证后显示登录状态</p>'}
+document.querySelector("#verify").onclick=async()=>{document.querySelector("#summary").textContent="正在逐个平台验证…";await chrome.runtime.sendMessage({type:"kz-cycle",verify:true,activate:true});await refresh()};
+document.querySelector("#run").onclick=async()=>{document.querySelector("#summary").textContent="正在运行…";await chrome.runtime.sendMessage({type:"kz-cycle"});await refresh()};refresh();

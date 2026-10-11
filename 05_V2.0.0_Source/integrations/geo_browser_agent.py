@@ -17,7 +17,11 @@ from core.storage import now_iso, read_json, write_json
 
 STATE_PATH = "r8_27/geo_browser_agent.json"
 SCHEMA = "kz.geo-browser-agent.v1"
-HEARTBEAT_TTL_SECONDS = 45
+# Manifest V3 workers are intentionally suspended by Chromium between events.
+# The extension wakes every 30 seconds, while this three-minute tolerance avoids
+# false disconnects during browser scheduling jitter without masking a stopped
+# executor for long.
+HEARTBEAT_TTL_SECONDS = 180
 DOMESTIC_PLATFORMS = (
     "doubao_web",
     "douyin_search_web",

@@ -49,6 +49,11 @@ def _origin_allowed(handler):
     }
 
 
+def _browser_agent_origin_allowed(handler):
+    origin = str(handler.headers.get("Origin") or "").strip()
+    return _origin_allowed(handler) or origin.startswith("chrome-extension://")
+
+
 def _read_json(handler):
     length = int(handler.headers.get("Content-Length", "0") or 0)
     if length < 0 or length > 512 * 1024:
@@ -361,7 +366,8 @@ def install():
         }
         if path not in supported:
             return original_post(handler)
-        if not _origin_allowed(handler):
+        origin_ok = _browser_agent_origin_allowed(handler) if path.startswith("/api/r8-27/geo-browser-agent/") else _origin_allowed(handler)
+        if not origin_ok:
             handler._json_error(403, "Cross-origin changes are not allowed")
             return
         try:

@@ -26,18 +26,21 @@ try {
     $rootDiscoveryCmd = '04_Build/v2/R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd'
     $phase1SupervisorInstall = '04_Build/v2/Install-KazuizhiPhase1Supervisor.ps1'
     $phase1SupervisorUninstall = '04_Build/v2/Uninstall-KazuizhiPhase1Supervisor.ps1'
+    $geoExtension = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
     Copy-Item -LiteralPath $bootstrapPs1 -Destination $portable -Force
     Copy-Item -LiteralPath $bootstrapCmd -Destination $portable -Force
     Copy-Item -LiteralPath $rootDiscoveryPs1 -Destination $portable -Force
     Copy-Item -LiteralPath $rootDiscoveryCmd -Destination $portable -Force
     Copy-Item -LiteralPath $phase1SupervisorInstall -Destination $portable -Force
     Copy-Item -LiteralPath $phase1SupervisorUninstall -Destination $portable -Force
+    Copy-Item -LiteralPath $geoExtension -Destination (Join-Path $portable 'KazuizhiGeoBrowserExtension') -Recurse -Force
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-15_SERVER_BOOTSTRAP.ps1') -PathType Leaf)) { throw 'R8-15 PowerShell bootstrap missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-15_SERVER_BOOTSTRAP.cmd') -PathType Leaf)) { throw 'R8-15 CMD bootstrap missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.ps1') -PathType Leaf)) { throw 'R8-17 root discovery PowerShell bootstrap missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'R8-17_SERVER_ROOT_DISCOVERY_BOOTSTRAP.cmd') -PathType Leaf)) { throw 'R8-17 root discovery CMD bootstrap missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'Install-KazuizhiPhase1Supervisor.ps1') -PathType Leaf)) { throw 'Phase-1 supervisor installer missing from portable package' }
     if (-not (Test-Path -LiteralPath (Join-Path $portable 'Uninstall-KazuizhiPhase1Supervisor.ps1') -PathType Leaf)) { throw 'Phase-1 supervisor uninstaller missing from portable package' }
+    if (-not (Test-Path -LiteralPath (Join-Path $portable 'KazuizhiGeoBrowserExtension/manifest.json') -PathType Leaf)) { throw 'R8-28 GEO browser extension missing from portable package' }
 
     $exe = 'dist_v2/Kazuizhi_AI_Enterprise_V2.0.0_Beta/Kazuizhi_AI_Enterprise_V2.0.0_Beta.exe'
     & $Python '04_Build/v2/verify_v2_autonomous.py' --exe $exe
