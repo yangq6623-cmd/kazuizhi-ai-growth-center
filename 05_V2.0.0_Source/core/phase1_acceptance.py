@@ -190,15 +190,19 @@ def observe(*, runtime=None, search=None, geo=None, supervisor=None):
     geo = geo if isinstance(geo, dict) else {}
     official = geo.get("official") if isinstance(geo.get("official"), dict) else {}
     completeness = geo.get("evidence_completeness") if isinstance(geo.get("evidence_completeness"), dict) else {}
+    domestic = geo.get("domestic_matrix") if isinstance(geo.get("domestic_matrix"), dict) else {}
+    domestic_enabled = bool(domestic.get("version") and domestic.get("activated"))
     value["geo_snapshot"] = {
         "observed_at": now_iso(),
-        "formal_ab_completed": int(official.get("tested") or 0),
-        "formal_ab_target": int((geo.get("question_set") or {}).get("total") or 50),
-        "mentioned": int(official.get("mentioned") or 0),
-        "recommended": int(official.get("recommended") or 0),
-        "cited": int(official.get("cited") or 0),
-        "complete_evidence": int(completeness.get("complete") or 0),
-        "incomplete_evidence": int(completeness.get("incomplete") or 0),
+        "formal_ab_completed": int(domestic.get("completed") if domestic_enabled else official.get("tested") or 0),
+        "formal_ab_target": int(domestic.get("target") if domestic_enabled else (geo.get("question_set") or {}).get("total") or 50),
+        "formal_scope": "china_domestic_primary" if domestic_enabled else "legacy_external_ai",
+        "domestic_matrix_version": domestic.get("version") or "",
+        "mentioned": int(domestic.get("mentioned") if domestic_enabled else official.get("mentioned") or 0),
+        "recommended": int(domestic.get("recommended") if domestic_enabled else official.get("recommended") or 0),
+        "cited": int(domestic.get("cited") if domestic_enabled else official.get("cited") or 0),
+        "complete_evidence": int(domestic.get("evidence_complete") if domestic_enabled else completeness.get("complete") or 0),
+        "incomplete_evidence": int(domestic.get("evidence_incomplete") if domestic_enabled else completeness.get("incomplete") or 0),
     }
     if isinstance(supervisor, dict):
         value["supervisor_snapshot"] = {

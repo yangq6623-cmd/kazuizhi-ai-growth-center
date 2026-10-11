@@ -15,6 +15,7 @@ from datetime import datetime
 from core import geo_analysis
 from core import geo_autonomy
 from core import geo_validation as geo
+from core import geo_domestic_matrix
 from core import r7_engine
 from core import seo_geo_growth
 from core import geo_phase3_seo_bridge
@@ -561,13 +562,12 @@ def fast_status():
         and not bool(row.get("official_truth"))
         and row.get("provider") == geo_cloud_executor.PROVIDER
     ]
-    formal_ids = {
-        row.get("question_id")
-        for row in receipts
-        if row.get("official_truth")
-        and row.get("evidence_level") in geo.OFFICIAL_EVIDENCE_LEVELS
+    domestic = geo_domestic_matrix.snapshot(receipts, geo._fixed_questions())
+    legacy_formal = len({
+        row.get("question_id") for row in receipts
+        if row.get("official_truth") and row.get("evidence_level") in geo.OFFICIAL_EVIDENCE_LEVELS
         and row.get("question_id")
-    }
+    })
 
     cloud_data = read_json_snapshot(geo_autonomy.STORE, {})
     if not isinstance(cloud_data, dict):
@@ -617,8 +617,9 @@ def fast_status():
             "scheduler_fresh": bool(data.get("enabled")) and not bool(data.get("paused"))
                              and age_minutes is not None and age_minutes <= 15,
         },
-        "formal_ab_completed": len(formal_ids),
-        "formal_ab_target": 50,
+        "formal_ab_completed": domestic["completed"] if domestic["activated"] else legacy_formal,
+        "formal_ab_target": domestic["target"] if domestic["activated"] else 50,
+        "formal_scope": "china_domestic_primary" if domestic["activated"] else "legacy_external_ai",
         "cloud": {
             "state": cloud_state,
             "completed": completed,

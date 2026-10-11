@@ -250,6 +250,8 @@ def _eligible_question_ids(requested=None):
 def _prepare_browser_task(payload):
     _migrate_pending_api_tasks_to_browser()
     platform = str((payload or {}).get("platform") or "custom_web")
+    from core.geo_domestic_matrix import normalize_platform
+    platform = normalize_platform(platform) or platform
     queue = queue_summary().get("tasks") or []
     formal_50_batch = bool((payload or {}).get("formal_50_batch"))
     current = _effective_decision()

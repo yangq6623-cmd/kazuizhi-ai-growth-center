@@ -17,12 +17,14 @@ EXECUTOR_ID = "external_ai_browser"
 PROVIDER = "browser_external_ai"
 
 PLATFORMS = {
-    "chatgpt_web": "ChatGPT 网页版",
-    "gemini_web": "Gemini 网页版",
-    "copilot_web": "Copilot 网页版",
-    "qwen_web": "通义千问网页版",
-    "deepseek_web": "DeepSeek 网页版",
     "doubao_web": "豆包网页版",
+    "douyin_search_web": "抖音搜索 / 抖音 AI",
+    "deepseek_web": "DeepSeek 网页版",
+    "qwen_web": "通义千问网页版",
+    "so360_ai_search": "360 AI 搜索",
+    "chatgpt_web": "ChatGPT 网页版（辅助，不计国内正式50条）",
+    "gemini_web": "Gemini 网页版（辅助，不计国内正式50条）",
+    "copilot_web": "Copilot 网页版（辅助，不计国内正式50条）",
     "custom_web": "其他真实外部 AI 网页",
 }
 
@@ -37,8 +39,10 @@ def status():
         "ready": True,
         "manual_supported": True,
         "work_handoff_supported": True,
+        "automatic_after_login": False,
+        "automation_requires": "connected_authenticated_browser_agent",
         "platforms": [{"id": key, "label": value} for key, value in PLATFORMS.items()],
-        "reason": "无需API。可由人工或后续ChatGPT Work在真实外部AI网页执行；遇到登录/验证码时进入待我处理。",
+        "reason": "无需API。当前支持人工或浏览器代理交接；连接已登录的浏览器执行器后才能自动逐题执行，验证码/风控仍进入待我处理。",
         "truth_rule": "只有真实外部AI网页会话的原始回答和外部页面证据才能写入A级GEO Evidence；本地模型结果不计正式成绩。",
     }
 
@@ -58,7 +62,7 @@ def _external_https_url(value: str) -> str:
 
 def contract(task, platform="custom_web"):
     task = dict(task or {})
-    platform = str(platform or "custom_web").strip()
+    platform = str(task.get("expected_platform") or platform or "custom_web").strip()
     if platform not in PLATFORMS:
         platform = "custom_web"
     return {
@@ -79,6 +83,7 @@ def contract(task, platform="custom_web"):
         "required_receipt_fields": ["task_id", "platform", "session_url", "raw_answer"],
         "optional_receipt_fields": ["citation_urls", "model", "model_version", "screenshot_path", "evidence_ref", "tested_at"],
         "api_required": False,
+        "domestic_formal_slot": bool(task.get("expected_platform")),
         "future_work_handoff": True,
     }
 

@@ -288,7 +288,8 @@ def decision():
     return current or set_decision()
 
 
-def create_plan(limit=10, provider="external_ai", test_method="browser", mission_id="", question_ids=None):
+def create_plan(limit=10, provider="external_ai", test_method="browser", mission_id="", question_ids=None,
+                expected_platform=""):
     if test_method not in TEST_METHODS:
         raise ValueError("unsupported_test_method")
     if _is_local_provider(provider) and test_method != "local_simulation":
@@ -330,6 +331,7 @@ def create_plan(limit=10, provider="external_ai", test_method="browser", mission
         "command_id": current_decision["command_id"],
         "mission_id": mission_id or current_decision.get("mission_id"),
         "provider": str(provider or "external_ai"),
+        "expected_platform": str(expected_platform or ""),
         "test_method": test_method,
         "question_set_version": QUESTION_SET_VERSION,
         "created_at": now_iso(),
@@ -358,6 +360,7 @@ def enqueue_plan(plan):
             "service": question.get("service", ""),
             "intent": question.get("intent", ""),
             "provider": plan.get("provider"),
+            "expected_platform": plan.get("expected_platform") or "",
             "test_method": plan.get("test_method"),
             "state": "queued",
             "retry_count": 0,
@@ -476,7 +479,16 @@ def claim_next_task(executor=None):
     """
     executor = dict(executor or {})
     queue = _load_queue()
-    task = next((item for item in queue["tasks"] if item.get("state") == "queued"), None)
+    requested_platform = str(executor.get("provider") or "").strip()
+    matching = [
+        item for item in queue["tasks"]
+        if item.get("state") == "queued"
+        and item.get("expected_platform") == requested_platform
+    ] if requested_platform else []
+    task = (matching[0] if matching else next((
+        item for item in queue["tasks"]
+        if item.get("state") == "queued" and not item.get("expected_platform")
+    ), None))
     if task is None:
         return {"ok": True, "skipped": True, "reason": "queue_empty"}
 
@@ -581,6 +593,12 @@ def record_result(payload):
 
     merged = dict(task)
     merged.update(payload)
+    expected_platform = str(task.get("expected_platform") or "").strip()
+    if expected_platform:
+        from core.geo_domestic_matrix import normalize_platform
+        received_platform = normalize_platform(merged.get("provider"))
+        if received_platform != expected_platform:
+            raise ValueError("geo_receipt_platform_does_not_match_assigned_domestic_slot")
     evidence_level, official_truth = _classify_evidence(merged)
     raw_answer = str(merged.get("raw_answer") or "")
     provided_citations = merged.get("citation_urls") or []
@@ -785,6 +803,8 @@ def dashboard():
 
     total = len(qset["questions"])
     tested = len(tested_ids)
+    from core.geo_domestic_matrix import snapshot as domestic_snapshot
+    domestic = domestic_snapshot(all_receipts, qset["questions"], queue_summary().get("tasks") or [])
     return {
         "phase": "R8-19 GEO Phase 1",
         "controller": CONTROLLER,
@@ -810,6 +830,7 @@ def dashboard():
             "evidence_count": len(official),
             "effect_proven": bool(mentioned_ids or cited_ids or recommended_ids),
         },
+        "domestic_matrix": domestic,
         "evidence_completeness": {
             "complete": len(complete_evidence),
             "incomplete": max(0, len(official) - len(complete_evidence)),

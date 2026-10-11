@@ -22,6 +22,7 @@ from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch
 from core import seo_geo_growth_intelligence as growth
 from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
 from core import geo_growth_orchestrator as geo_growth
+from core import geo_domestic_matrix
 from core import geo_growth_publish_bridge as _geo_growth_publish_bridge  # noqa: F401
 from integrations import seo_geo_connector_router_v2 as connector_router
 
@@ -56,6 +57,7 @@ _HTTP_KNOWN_ROUTES = frozenset({
     "/api/r8-24/geo-growth/http-health",
     "/api/r8-24/geo-growth/liveness",
     "/api/r8-25/phase1-acceptance",
+    "/api/r8-26/geo/domestic-matrix",
 })
 
 
@@ -422,6 +424,9 @@ def _geo_evidence_compact():
         "formal_ab_target": snapshot.get("formal_ab_target"),
         "formal_ab_manual": snapshot.get("formal_ab_manual"),
         "formal_ab_automatic": snapshot.get("formal_ab_automatic"),
+        "formal_scope": snapshot.get("formal_scope"),
+        "legacy_external_ab_completed": snapshot.get("legacy_external_ab_completed"),
+        "domestic_matrix": snapshot.get("domestic_matrix") or {},
         "dashboard": {
             "official": (dashboard.get("official") or {}),
             # The owner page renders these cards from evidence-compact.  Do
@@ -431,6 +436,7 @@ def _geo_evidence_compact():
             "retest_coverage": (dashboard.get("retest_coverage") or {}),
             "business_effect_tracking": (dashboard.get("business_effect_tracking") or {}),
             "question_set": (dashboard.get("question_set") or {}),
+            "domestic_matrix": (dashboard.get("domestic_matrix") or {}),
         },
         "question_set": {key: question_set.get(key) for key in ("version", "total", "counts")},
         "questions": [
@@ -823,14 +829,42 @@ def _geo_evidence_snapshot():
         "queue": {key: value for key, value in queue_summary.items() if key != "tasks"},
     }
 
+    domestic = geo_domestic_matrix.snapshot(all_receipts, questions, tasks)
+    dashboard["domestic_matrix"] = domestic
+    dashboard["legacy_external"] = dashboard["official"]
+    if domestic["activated"]:
+        dashboard["official"] = {
+        "tested": domestic["completed"],
+        "remaining": domestic["remaining"],
+        "evidence_count": domestic["evidence_complete"],
+        "manual_tested": domestic["manual_completed"],
+        "automatic_tested": domestic["automatic_completed"],
+        "mentioned": domestic["mentioned"],
+        "recommended": domestic["recommended"],
+        "cited": domestic["cited"],
+        "mention_rate": domestic["mention_rate"],
+        "recommendation_rate": domestic["recommendation_rate"],
+        "citation_rate": domestic["citation_rate"],
+        "scope": "china_domestic_primary",
+        }
+        dashboard["evidence_completeness"] = {
+            "complete": domestic["evidence_complete"],
+            "incomplete": domestic["evidence_incomplete"],
+            "required_fields": ["原始问题", "原始回答", "平台/模型", "测试时间", "真实外部URL/回执"],
+        }
+        dashboard["retest_coverage"] = domestic["retest_coverage"]
+
     available = sum(1 for value in health.values() if value.get("ok"))
     return {
         "snapshot_mode": "lock_free_atomic_files",
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
-        "formal_ab_completed": len(formal_ids),
-        "formal_ab_target": total,
-        "formal_ab_manual": len(manual_ids),
-        "formal_ab_automatic": len(automated_ids),
+        "formal_ab_completed": domestic["completed"] if domestic["activated"] else len(formal_ids),
+        "formal_ab_target": domestic["target"] if domestic["activated"] else total,
+        "formal_scope": "china_domestic_primary" if domestic["activated"] else "legacy_external_ai",
+        "legacy_external_ab_completed": len(formal_ids),
+        "domestic_matrix": domestic,
+        "formal_ab_manual": domestic["manual_completed"] if domestic["activated"] else len(manual_ids),
+        "formal_ab_automatic": domestic["automatic_completed"] if domestic["activated"] else len(automated_ids),
         "dashboard": dashboard,
         "questions": questions,
         "question_set": qset or {},
@@ -928,6 +962,9 @@ def install():
             if path == "/api/r8-25/phase1-acceptance/history":
                 handler._json_ok(phase1_acceptance.history())
                 return
+            if path == "/api/r8-26/geo/domestic-matrix":
+                handler._json_ok(_geo_evidence_snapshot().get("domestic_matrix") or {})
+                return
             if path in {"/api/r8-20/seo-geo/connectors", "/api/r8-21/seo-geo/connectors"}:
                 handler._json_ok(connector_router.snapshot(check_live=False))
                 return
@@ -1016,13 +1053,21 @@ def install():
             "/api/r8-24/geo-growth/evidence/bootstrap",
             "/api/r8-24/geo-growth/evidence/prepare",
             "/api/r8-24/geo-growth/evidence/receipt",
+            "/api/r8-26/geo/domestic-matrix/prepare",
         }:
             if not _origin_allowed(handler):
                 handler._json_error(403, "Cross-origin changes are not allowed")
                 return
             try:
                 payload = _read_json(handler)
-                if path.endswith("/bootstrap"):
+                if path == "/api/r8-26/geo/domestic-matrix/prepare":
+                    current = geo_validation_api._effective_decision()
+                    result = geo_domestic_matrix.prepare_missing(
+                        limit=payload.get("limit") or 50,
+                        platform=payload.get("platform") or "",
+                        mission_id=current.get("mission_id") or "",
+                    )
+                elif path.endswith("/bootstrap"):
                     result = geo_validation_api.bootstrap_question_set(force=bool(payload.get("force")))
                 elif path.endswith("/prepare"):
                     result = geo_validation_api._prepare_browser_task(payload)

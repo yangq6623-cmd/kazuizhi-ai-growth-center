@@ -441,21 +441,22 @@
         <button id="geo-adv-bootstrap" type="button">核验固定50问</button>
         <button id="geo-adv-one" class="primary" type="button">准备人工网页验证1题</button>
         <button id="geo-adv-ten" type="button">准备10题</button>
-        <button id="geo-adv-fifty" type="button">准备剩余正式50问</button>
+        <button id="geo-adv-fifty" type="button">准备剩余正式50问（国内五平台）</button>
       </div>
       <div id="geo-phase1-acceptance" class="geo-adv-message">正在读取第一阶段连续7天无人值守验收…</div>
+      <div id="geo-adv-domestic" class="geo-adv-message">正在读取国内五平台正式矩阵…</div>
       <div id="geo-adv-kpis" class="geo-adv-kpis"></div>
       <div class="geo-adv-grid">
         <article class="geo-adv-card">
           <h4>真实外部 AI 网页 → Evidence / Receipt</h4>
           <div class="geo-adv-form">
-            <label>外部AI平台<select id="geo-adv-platform"><option value="chatgpt_web">ChatGPT 网页版</option><option value="gemini_web">Gemini 网页版</option><option value="copilot_web">Copilot 网页版</option><option value="qwen_web">通义千问网页版</option><option value="deepseek_web">DeepSeek 网页版</option><option value="doubao_web">豆包网页版</option><option value="custom_web">其他真实外部AI网页</option></select></label>
+            <label>国内AI平台<select id="geo-adv-platform"><option value="doubao_web">豆包</option><option value="douyin_search_web">抖音搜索 / 抖音 AI</option><option value="deepseek_web">DeepSeek</option><option value="qwen_web">通义千问</option><option value="so360_ai_search">360 AI 搜索</option></select></label>
             <label>Task ID<input id="geo-adv-task" readonly placeholder="先准备网页验证任务"></label>
             <label class="wide">固定问题<textarea id="geo-adv-question" readonly placeholder="系统自动填入固定50问中的题目"></textarea></label>
             <label class="wide">真实外部页面 URL<input id="geo-adv-url" type="url" placeholder="https://真实外部AI会话地址"></label>
             <label class="wide">引用 URL（每行一个）<textarea id="geo-adv-citations" placeholder="https://example.com/source"></textarea></label>
             <label class="wide">外部 AI 完整原始回答<textarea id="geo-adv-answer" placeholder="粘贴真实外部AI完整回答"></textarea></label>
-            <div class="actions"><button id="geo-adv-submit" class="primary" type="button">保存真实 Evidence / Receipt</button><span>只保存真实外部结果；不会把豆包普通 API 或本地模型冒充正式 A/B。</span></div>
+            <div class="actions"><button id="geo-adv-submit" class="primary" type="button">保存真实 Evidence / Receipt</button><span>五个平台各10条；API可选。ChatGPT、Google、Bing、本地模型和C级回答不计国内正式50条。</span></div>
           </div>
           <div id="geo-adv-message" class="geo-adv-message"></div>
         </article>
@@ -528,7 +529,7 @@
     });
     byId('geo-adv-one')?.addEventListener('click',e=>prepareAdvancedBrowser(1,e.currentTarget));
     byId('geo-adv-ten')?.addEventListener('click',e=>prepareAdvancedBrowser(10,e.currentTarget));
-    byId('geo-adv-fifty')?.addEventListener('click',e=>prepareAdvancedBrowser(50,e.currentTarget,true));
+    byId('geo-adv-fifty')?.addEventListener('click',e=>prepareDomesticMatrix(e.currentTarget));
     byId('geo-adv-submit')?.addEventListener('click',e=>submitAdvancedReceipt(e.currentTarget));
   }
 
@@ -626,6 +627,7 @@
       const qset=snapshot.question_set||dashboard.question_set||{};
       const qsum=snapshot.queue_summary||dashboard.queue||{};
       const health=snapshot.health||{};
+      const domestic=snapshot.domestic_matrix||dashboard.domestic_matrix||{};
       const available=Number(snapshot.available_sections||0);
       const total=Number(snapshot.total_sections||4);
       const officialReceipts=receipts.filter(x=>x.official_truth);
@@ -649,6 +651,15 @@
       ];
       const kpiBox=byId('geo-adv-kpis');
       if(kpiBox)kpiBox.innerHTML=kpis.map(x=>`<article><span>${esc(x[0])}</span><b>${esc(x[1])}</b><small>${esc(x[2])}</small></article>`).join('');
+      const domesticBox=byId('geo-adv-domestic');
+      if(domesticBox){
+        const platforms=domestic.platforms||[];
+        domesticBox.innerHTML=platforms.length
+          ? `<b>国内 GEO 正式矩阵 ${Number(domestic.completed||0)} / ${Number(domestic.target||50)}</b> · `+
+            platforms.map(row=>`${esc(row.label)} ${Number(row.completed||0)}/${Number(row.target||10)}${row.authorization_required?'（待授权）':''}`).join('　')+
+            `<br><small>登录并连接浏览器执行器后自动执行；验证码、风控或权限变化时只暂停对应平台。API为可选加速，不是验收前提。</small>`
+          : '国内五平台矩阵尚未载入；不会用国外平台或本地模拟替代。';
+      }
 
       const taskByQ={};
       queue.forEach(task=>{taskByQ[task.question_id]=task});
@@ -783,6 +794,19 @@
       byId('geo-adv-task').value=task.task_id||'';
       byId('geo-adv-question').value=task.question_text||'';
       setAdvancedMessage(task.task_id?`已准备${formal50?'剩余正式50问队列':limit+'题'}；当前 Task ${task.task_id}。真实外部结果逐题回收后才计入正式A/B。`:'未取得可执行题目。',!task.task_id);
+      await loadAdvanced(true);
+    }catch(error){setAdvancedMessage(error.message,true)}
+    finally{button.disabled=false;button.textContent=old}
+  }
+
+  async function prepareDomesticMatrix(button){
+    button.disabled=true;
+    const old=button.textContent;
+    try{
+      button.textContent='准备中…';
+      const reply=await post('/api/r8-26/geo/domestic-matrix/prepare',{limit:50});
+      const result=reply.result||{};
+      setAdvancedMessage(`已准备 ${Number(result.created||0)} 个国内平台任务。连接已登录浏览器执行器后可逐题执行；取得真实外部回执前不计入50条，登录或验证码异常会进入待授权。`);
       await loadAdvanced(true);
     }catch(error){setAdvancedMessage(error.message,true)}
     finally{button.disabled=false;button.textContent=old}
