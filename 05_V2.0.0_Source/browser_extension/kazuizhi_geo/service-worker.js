@@ -77,7 +77,12 @@ async function ask(tabId, message, timeoutMs = 150000) {
 async function probe(platform, activate = false) {
   const opened = await platformTab(platform, "", activate);
   try {
-    const result = await ask(opened.tab.id, {type: "kz-probe", platform}, 20000);
+    let result = null;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      result = await ask(opened.tab.id, {type: "kz-probe", platform}, 20000);
+      if (result.state === "ready" || result.state === "captcha") break;
+      if (attempt < 9) await new Promise(resolve => setTimeout(resolve, 1500));
+    }
     if (opened.created && result.state === "ready") await chrome.tabs.remove(opened.tab.id).catch(() => {});
     const normalized = result.state === "captcha" ? "captcha_required" : result.state === "auth_required" || result.state === "error" ? "authorization_required" : result.state;
     return {platform, state: normalized || "authorization_required", session_url: result.url || opened.tab.url, verified_at: new Date().toISOString()};
