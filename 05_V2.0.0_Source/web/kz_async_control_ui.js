@@ -5,7 +5,8 @@
     try {
       const response = await fetch(path, {cache:'no-store', credentials:'same-origin'});
       if (!response.ok) return null;
-      return await response.json();
+      const payload = await response.json();
+      return payload?.data ?? payload;
     } catch (_) {
       return null;
     }
@@ -169,6 +170,8 @@
   const start = () => {
     refresh();
     setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('kz:app-ready', refresh);
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 0));
   else setTimeout(start, 0);

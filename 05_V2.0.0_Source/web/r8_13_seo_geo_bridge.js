@@ -388,6 +388,10 @@
     }
     document.querySelectorAll('.r810-nav-button').forEach(btn=>btn.classList.toggle('active',btn.dataset.target===PAGE_ID));
     renderWorkspace(desiredWorkspace);
+    if(desiredWorkspace==='seo'){
+      const frame=document.getElementById('r813-seo-frame');
+      try{frame?.contentWindow?.postMessage({type:'kz-r813-refresh'},location.origin)}catch(error){console.warn('SEO refresh signal deferred',error)}
+    }
   }
 
   function refresh(){

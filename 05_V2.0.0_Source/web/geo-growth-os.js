@@ -482,7 +482,7 @@
     const node=byId('geo-phase1-acceptance');
     if(!node)return;
     try{
-      const payload=await json('/api/r8-25/phase1-acceptance',{timeoutMs:3500});
+      const payload=await json('/api/r8-25/phase1-acceptance',{timeoutMs:15000});
       const a=payload.acceptance||{},s=payload.supervisor||{},formal=a.geo_snapshot?.formal_ab_completed??0,target=a.geo_snapshot?.formal_ab_target??50;
       const state=a.status==='passed'?'已通过':a.status==='needs_review'?'已满7天·待复核':'进行中';
       const candidate=a.candidate_id?` · 候选版 ${a.candidate_id}`:' · 尚未锁定最终候选版';
@@ -504,7 +504,7 @@
         // from a blocked Evidence reader without opening the heavy workbench.
         const alive=await json('/api/r8-24/geo-growth/liveness',{timeoutMs:2500});
         if(!alive.server_ready)throw new Error('本地HTTP服务未响应');
-        const info=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
+        const info=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:8000});
         const fast=await json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2500})
           .catch(()=>null);
         const age=info.cache_age_seconds==null?'未知':String(info.cache_age_seconds)+'秒';
@@ -578,7 +578,7 @@
     const state=byId('geo-adv-state');
     if(state&&!advancedLastGood&&advancedRetryCount===0){state.textContent='50问已显示 · 正在同步证据';state.className='geo-adv-state'}
     try{
-      const snapshot=await json('/api/r8-24/geo-growth/evidence-compact',{timeoutMs:8000});
+      const snapshot=await json('/api/r8-24/geo-growth/evidence-compact',{timeoutMs:20000});
       if(snapshot.snapshot_ready===false){
         if(!advancedBaselineLoaded)loadAdvancedBaseline();
         // Unlike #731, the first response contains the canonical 50 questions.
@@ -727,7 +727,7 @@
       let recovered=false;
       if(!advancedLastGood){
         try{
-          const health=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:3500});
+          const health=await json('/api/r8-24/geo-growth/evidence-health',{timeoutMs:8000});
           const summary=health.owner_summary||{};
           if(health.evidence_ready===true && summary.formal_ab_completed!=null){
             recovered=true;

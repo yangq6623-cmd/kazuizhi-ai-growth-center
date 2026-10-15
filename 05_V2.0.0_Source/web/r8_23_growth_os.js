@@ -6,7 +6,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const byId = id => document.getElementById(id);
   let timer = null;
-  let observer = null;
+  let maintenanceTimer = null;
   let latestSeo = {};
   let seoRequest = null;
 
@@ -442,6 +442,17 @@
     }
   }
 
+  function maintain(){
+    if(maintenanceTimer) clearTimeout(maintenanceTimer);
+    maintenanceTimer = setTimeout(()=>{
+      maintenanceTimer = null;
+      scopeOwnerPanels();
+      foldLegacy();
+      foldLegacyHomepage();
+      polishSeo();
+    },40);
+  }
+
   function boot(){
     style();
     scopeOwnerPanels();
@@ -450,9 +461,9 @@
     foldLegacyHomepage();
     if(timer) clearInterval(timer);
     timer = setInterval(refresh,15000);
-    if(observer) observer.disconnect();
-    observer = new MutationObserver(()=>{ scopeOwnerPanels(); foldLegacy(); foldLegacyHomepage(); polishSeo(); });
-    observer.observe(document.body,{childList:true,subtree:true});
+    document.addEventListener('click',maintain,true);
+    window.addEventListener('focus',maintain);
+    window.addEventListener('kz:app-ready',maintain);
   }
 
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
