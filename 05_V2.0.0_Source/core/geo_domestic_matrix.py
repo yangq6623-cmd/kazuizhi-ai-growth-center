@@ -111,6 +111,7 @@ def snapshot(receipts, questions, tasks=None):
                 authorization_slots.add((platform, question_id))
 
     platform_rows = []
+    slot_rows = []
     for platform, config in PLATFORMS.items():
         question_ids = allocation.get(platform, [])
         completed = sum((platform, qid) in completed_slots for qid in question_ids)
@@ -135,6 +136,34 @@ def snapshot(receipts, questions, tasks=None):
                      else "in_progress" if active or completed
                      else "not_started",
         })
+        for question_id in question_ids:
+            slot = (platform, question_id)
+            slot_receipts = receipts_by_slot.get(slot) or []
+            latest = slot_receipts[-1] if slot_receipts else {}
+            if slot in completed_slots:
+                state = "succeeded"
+            elif slot in authorization_slots:
+                state = "authorization_required"
+            elif slot in active_slots:
+                state = "running"
+            elif slot in incomplete_slots:
+                state = "evidence_incomplete"
+            else:
+                state = "unstarted"
+            slot_rows.append({
+                "platform": platform,
+                "platform_label": config["label"],
+                "question_id": question_id,
+                "state": state,
+                "evidence_id": str(evidence_by_slot.get(slot) or ""),
+                "provider": str(latest.get("provider") or ""),
+                "model": str(latest.get("model") or latest.get("model_version") or ""),
+                "tested_at": str(latest.get("tested_at") or ""),
+                "evidence_ref": str(
+                    latest.get("evidence_ref") or latest.get("response_id")
+                    or latest.get("session_url") or latest.get("screenshot_path") or ""
+                ),
+            })
 
     completed = len(completed_slots)
     activated = bool(
@@ -201,6 +230,10 @@ def snapshot(receipts, questions, tasks=None):
         "foreign_or_other_auxiliary_evidence": auxiliary,
         "platform_mismatch_evidence": mismatched,
         "platforms": platform_rows,
+        # Compact per-slot truth lets the owner workbench render the same
+        # 50/50 result as the headline instead of showing every completed row
+        # as "unstarted" merely because the old task queue was compacted.
+        "slots": slot_rows,
         "truth_rule": "仅五个国内平台各自指定问题的真实完整A/B级外部证据计入50条；API不是必需项。",
         "excluded_from_score": ["ChatGPT", "Google", "Bing", "本地模型", "C级回答", "queued/running/SUBMITTED"],
     }

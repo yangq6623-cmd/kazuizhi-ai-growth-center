@@ -399,6 +399,11 @@ def _source_tracking_id(asset):
     return f"KZSEO-{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:12].upper()}"
 
 
+def source_tracking_id(asset):
+    """Public, deterministic source id used by attribution reconciliation."""
+    return _source_tracking_id(asset if isinstance(asset, dict) else {})
+
+
 def _human_keyword(asset):
     """Keep machine slugs and recovered receipt ids out of public headings."""
     region = str(asset.get("region") or DEFAULT_REGION).strip()

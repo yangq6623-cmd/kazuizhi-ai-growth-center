@@ -155,6 +155,14 @@ def _decorate_snapshot(snap, *, snapshot=False):
 
     waiting = int((snap.get("summary") or {}).get("waiting_publish") or 0)
     blockers = list(snap.get("technical_blockers") or [])
+    # A historical local-IIS blocker must disappear as soon as the real remote
+    # connector snapshot is ready.  Keeping it would make the UI claim both
+    # "Remote Agent connected" and "site_root missing" at the same time.
+    if connector.get("ready"):
+        blockers = [
+            row for row in blockers
+            if str(row.get("code") or "") != "publish_connector_not_ready"
+        ]
     if waiting and not connector.get("ready"):
         exists = any(row.get("code") == "publish_connector_not_ready" for row in blockers)
         if not exists:

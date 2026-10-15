@@ -26,6 +26,7 @@ def main():
             from core import seo_geo_autonomy as autonomy
             from integrations import remote_agent
             from integrations import r8_17_iis_static_compat as iis_compat
+            from integrations import r8_17_remote_deployer_patch as remote_patch
             from integrations import seo_public_deployer as deployer
             from integrations import search_engine_submitter as searcher
 
@@ -41,6 +42,29 @@ def main():
                 remote_agent.upload_file is iis_compat.upload_file,
                 "R8-17 IIS compatibility upload shim is not installed",
             )
+            require(
+                deployer.status_snapshot is remote_patch.status_snapshot,
+                "read-only deployer snapshot still bypasses the Remote Agent patch",
+            )
+
+            original_load = deployer._load
+            original_agent_status = remote_agent.status
+            try:
+                deployer._load = lambda: {
+                    **deployer.DEFAULT, "mode": "remote_agent_v1", "enabled": True,
+                }
+                remote_agent.status = lambda check_live=True: {
+                    "configured": True, "connected": True, "website_ready": True,
+                    "version": "R8-17-test", "endpoint": "https://example.invalid",
+                    "last_health_at": "2026-10-15T12:00:00+08:00", "last_error": "",
+                }
+                snap = deployer.status_snapshot()
+                require(snap["ready"] is True, "Remote Agent snapshot was reported not ready")
+                require(snap["mode"] == "remote_agent_v1", "snapshot fell back to local-IIS mode")
+                require(snap["reason"] == "", "snapshot retained a false site_root blocker")
+            finally:
+                deployer._load = original_load
+                remote_agent.status = original_agent_status
 
             # Verify that a managed SEO index page is mirrored to default.htm,
             # while unrelated uploads remain single-write. This is a pure unit

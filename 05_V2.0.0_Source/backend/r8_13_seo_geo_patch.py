@@ -25,6 +25,7 @@ from core.seo_geo_growth import (
     record_asset_stage,
     record_geo_observation,
     run_daily_cycle,
+    source_tracking_id,
     technical_snapshot,
 )
 from integrations.search_engine_submitter import status as search_submit_status
@@ -372,7 +373,40 @@ def _staging_evidence(payload):
     }
 
 
-def _revenue_feedback():
+def _normalized_asset_signals(entry_signals, assets):
+    """Map only known SEO asset/source identifiers; preserve unknowns visibly.
+
+    Historical test or malformed asset ids may exist in the server aggregate.
+    They are real client signals, but presenting them as a valid SEO asset is a
+    false attribution. Aggregate them under one explicit unmatched bucket.
+    """
+    rows = entry_signals.get("by_asset") if isinstance(entry_signals, dict) else {}
+    rows = rows if isinstance(rows, dict) else {}
+    known_assets = {
+        str(asset.get("id") or ""): asset
+        for asset in (assets or []) if isinstance(asset, dict) and asset.get("id")
+    }
+    aliases = {
+        source_tracking_id(asset): asset_id
+        for asset_id, asset in known_assets.items()
+    }
+    normalized = {}
+    unmatched_ids = []
+    for raw_key, value in rows.items():
+        key = str(raw_key or "").strip()
+        target = key if key in known_assets else aliases.get(key, "")
+        if not target:
+            target = "未归因"
+            if key and key not in unmatched_ids:
+                unmatched_ids.append(key)
+        counter = normalized.setdefault(target, {"landing": 0, "open_click": 0})
+        value = value if isinstance(value, dict) else {}
+        counter["landing"] += int(value.get("landing") or 0)
+        counter["open_click"] += int(value.get("open_click") or 0)
+    return normalized, aliases, unmatched_ids
+
+
+def _revenue_feedback(assets=None):
     source = _optional_status(
         "RevenueOS经营数据", business_data.business_source_status,
         {"status": "unavailable", "status_label": "暂不可用", "summary": {}, "last_error": "经营数据状态正在重新读取。"},
@@ -383,6 +417,9 @@ def _revenue_feedback():
     mini = summary.get("mini_program") or {}
     attribution = summary.get("attribution") or {}
     entry_signals = summary.get("entry_signals") or {}
+    normalized_assets, asset_aliases, unmatched_asset_ids = _normalized_asset_signals(
+        entry_signals, assets or [],
+    )
     connected = source.get("status") == "connected"
     visits = funnel.get("mini_program_visits")
     if visits is None:
@@ -427,7 +464,10 @@ def _revenue_feedback():
         "landing_signals": entry_signals.get("landing_signals"),
         "open_click_signals": entry_signals.get("open_click_signals"),
         "entry_signals_by_source": entry_signals.get("by_source") or {},
-        "entry_signals_by_asset": entry_signals.get("by_asset") or {},
+        "entry_signals_by_asset": normalized_assets,
+        "entry_signal_asset_aliases": asset_aliases,
+        "entry_signal_unmatched_asset_ids": unmatched_asset_ids,
+        "entry_signal_unmatched_count": len(unmatched_asset_ids),
         "entry_signals_by_day": entry_signals.get("by_day") or {},
         "entry_signal_as_of": entry_signals.get("as_of") or None,
         "entry_signal_truth": "client_signal_only_not_order_or_consultation",
@@ -465,7 +505,7 @@ def _dashboard_payload():
     )
     payload["search_submit"] = search
     payload["evidence_summary"] = _staging_evidence(payload)
-    payload["revenue_os"] = _revenue_feedback()
+    payload["revenue_os"] = _revenue_feedback(payload.get("assets") or [])
     payload["unattended_validation"] = seo_autonomy.validation_status()
     payload = _overlay_formal_geo_truth(payload)
     geo = payload.setdefault("geo", {})

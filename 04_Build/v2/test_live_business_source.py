@@ -6,6 +6,8 @@ SOURCE = ROOT / "05_V2.0.0_Source"
 sys.path.insert(0, str(SOURCE))
 
 from integrations.business_data import ENDPOINT, snapshot_from_remote, validate_entry_signals, validate_remote_summary
+from backend.r8_13_seo_geo_patch import _normalized_asset_signals
+from core.seo_geo_growth import source_tracking_id
 
 
 def fixture():
@@ -85,6 +87,19 @@ def main():
     assert signals["by_asset"]["SEO-123456789ABC"]["open_click"] == 4
     assert signals["by_day"]["2026-10-15"]["landing"] == 7
     assert signals["truth"] == "client_signal_only_not_order_or_consultation"
+
+    asset = {"id": "SEO-REAL-ASSET", "region": "涟水县", "service": "水电维修", "keyword": "涟水水电维修"}
+    source_id = source_tracking_id(asset)
+    normalized, aliases, unmatched = _normalized_asset_signals({
+        "by_asset": {
+            source_id: {"landing": 2, "open_click": 1},
+            "SEO-123456789ABC": {"landing": 9, "open_click": 4},
+        }
+    }, [asset])
+    assert aliases[source_id] == "SEO-REAL-ASSET"
+    assert normalized["SEO-REAL-ASSET"]["open_click"] == 1
+    assert normalized["未归因"]["landing"] == 9
+    assert unmatched == ["SEO-123456789ABC"]
 
     unsafe = fixture()
     unsafe["phone"] = "13800000000"

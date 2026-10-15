@@ -667,6 +667,10 @@ def status() -> dict:
     google_ready = bool(google_account and (google_token or google_refresh) and (not google_auth_error or google_refresh))
     baidu_token = _baidu_token()
     assets = _public_assets()
+    pending_assets = [
+        asset for asset in assets
+        if not (asset.get("submission_receipts") or [])
+    ]
     receipt_summary = _receipt_summary()
     cloud = geo_cloud_executor.snapshot_status()
     douyin_account = _connected_account("douyin")
@@ -822,10 +826,24 @@ def status() -> dict:
         "automation_summary": {
             "auto_submit_enabled": True,
             "public_pages": len(assets),
-            "pending_unique_urls": sum(1 for asset in assets if not (asset.get("submission_receipts") or [])),
+            "pending_unique_urls": len(pending_assets),
             "submitted_unique_urls": sum(1 for asset in assets if STAGE_INDEX.get(str(asset.get("stage") or ""), 0) >= STAGE_INDEX["SUBMITTED"]),
             "failed_last_run": len((data.get("last_result") or {}).get("failed") or []),
             "retry_queue": _retry_queue_count(data),
+            "pending_pages": [
+                {
+                    "asset_id": str(asset.get("id") or ""),
+                    "public_url": str(asset.get("public_url") or ""),
+                    "published_at": str(asset.get("published_at") or ""),
+                    "stage": str(asset.get("stage") or ""),
+                }
+                for asset in pending_assets[:20]
+            ],
+            "gap_explanation": (
+                f"{len(pending_assets)} 个已公开页面正在等待搜索平台真实接收回执；"
+                "自动提交会继续重试，取得回执前不会计为 SUBMITTED。"
+                if pending_assets else "所有已公开页面均已取得至少一个搜索提交回执。"
+            ),
         },
         "truth": "配置/授权只代表连接器可用；只有官方提交端点返回可审计接收响应后，页面才进入 SUBMITTED。360/豆包/抖音监测通道不会伪造提交回执；SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
         "last_run_at": data.get("last_run_at") or "",

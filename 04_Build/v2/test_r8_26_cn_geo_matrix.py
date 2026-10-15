@@ -60,6 +60,10 @@ def main():
     assert matrix["completed"] == 1, matrix
     deepseek = next(row for row in matrix["platforms"] if row["platform"] == "deepseek_web")
     assert deepseek["completed"] == 1 and deepseek["target"] == 10
+    slot = next(row for row in matrix["slots"] if row["platform"] == "deepseek_web" and row["question_id"] == task["question_id"])
+    assert slot["state"] == "succeeded", slot
+    assert slot["evidence_id"] == receipt["evidence_id"], slot
+    assert slot["evidence_ref"], slot
 
     dashboard = geo_validation.dashboard()
     assert dashboard["domestic_matrix"]["completed"] == 1
@@ -78,7 +82,7 @@ def main():
     assert browser["automation_requires"] == "connected_authenticated_browser_agent"
 
     ui = (SOURCE / "web" / "geo-growth-os.js").read_text(encoding="utf-8")
-    for marker in ("豆包", "抖音搜索", "DeepSeek", "通义千问", "360 AI 搜索", "准备剩余正式50问（国内五平台）"):
+    for marker in ("豆包", "抖音搜索", "DeepSeek", "通义千问", "360 AI 搜索", "准备剩余正式50问（国内五平台）", "formalReceipts", "item.evidence?'succeeded'"):
         assert marker in ui, marker
     print("PASS: domestic GEO 5x10 matrix, platform truth gate and no-API browser route")
 

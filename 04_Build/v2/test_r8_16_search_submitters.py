@@ -182,6 +182,9 @@ def main():
     assert connector["channel_groups"]["search_submission"] == ["baidu", "bing", "google", "so360"], connector
     assert connector["cost_policy"]["new_paid_model_dependencies"] == 0, connector
     assert connector["automation_summary"]["auto_submit_enabled"] is True, connector
+    assert connector["automation_summary"]["pending_unique_urls"] == 1, connector
+    assert connector["automation_summary"]["pending_pages"][0]["asset_id"] == second["id"], connector
+    assert "真实接收回执" in connector["automation_summary"]["gap_explanation"], connector
     assert connector["truth"].find("SUBMITTED") >= 0
     # Failed submissions are de-duplicated while their exponential backoff is
     # active, then become eligible again; successful receipts remain permanent.

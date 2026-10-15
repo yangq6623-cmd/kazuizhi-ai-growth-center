@@ -440,7 +440,10 @@ def _geo_evidence_compact():
         },
         "question_set": {key: question_set.get(key) for key in ("version", "total", "counts")},
         "questions": [
-            {key: row.get(key) for key in ("question_id", "question_text", "question_type", "state", "evidence")}
+            {key: row.get(key) for key in (
+                "question_id", "question_text", "question_type", "state", "evidence",
+                "expected_platform", "expected_platform_label",
+            )}
             for row in questions[:50] if isinstance(row, dict)
         ],
         "queue": [
@@ -835,6 +838,30 @@ def _geo_evidence_snapshot():
     }
 
     domestic = geo_domestic_matrix.snapshot(all_receipts, questions, tasks)
+    if domestic["activated"]:
+        # Put formal domestic receipts first. A later stream of C-level
+        # operating signals must not push every real A/B receipt out of the
+        # compact panel and make it falsely say "暂无正式 Receipt".
+        recent_receipts = list(reversed([
+            row for row in all_receipts
+            if row.get("official_truth")
+            and geo_domestic_matrix.normalize_platform(row.get("provider"))
+        ]))[:50]
+        slot_by_question = {
+            str(row.get("question_id") or ""): row
+            for row in (domestic.get("slots") or [])
+            if isinstance(row, dict) and row.get("question_id")
+        }
+        questions = [
+            {
+                **row,
+                "state": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("state", "unstarted"),
+                "evidence": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("evidence_id", ""),
+                "expected_platform": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("platform", ""),
+                "expected_platform_label": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("platform_label", ""),
+            }
+            for row in questions
+        ]
     dashboard["domestic_matrix"] = domestic
     dashboard["legacy_external"] = dashboard["official"]
     if domestic["activated"]:

@@ -25,6 +25,7 @@ from integrations import seo_public_deployer as deployer
 REMOTE_MODE = "remote_agent_v1"
 _ORIGINAL_CONFIGURE = deployer.configure
 _ORIGINAL_STATUS = deployer.status
+_ORIGINAL_STATUS_SNAPSHOT = deployer.status_snapshot
 _ORIGINAL_DEPLOY_PENDING = deployer.deploy_pending
 _INSTALLED = False
 
@@ -72,13 +73,17 @@ def configure(payload: dict) -> dict:
     return status()
 
 
-def status() -> dict:
+def _status(*, check_live: bool) -> dict:
     if not _remote_mode():
-        local = _ORIGINAL_STATUS()
+        local = _ORIGINAL_STATUS() if check_live else _ORIGINAL_STATUS_SNAPSHOT()
         local.setdefault("mode", "local_iis_filesystem")
         return local
     data = deployer._load()
-    agent = remote_agent.status(check_live=True)
+    # Owner polling snapshots must use the last authenticated Remote Agent
+    # health rather than falling back to the local-IIS site_root test.  The
+    # background scheduler refreshes live health; read-only UI requests do not
+    # create another network call.
+    agent = remote_agent.status(check_live=check_live)
     configured = bool(agent.get("configured"))
     connected = bool(agent.get("connected"))
     enabled = bool(data.get("enabled"))
@@ -113,6 +118,14 @@ def status() -> dict:
         "last_result": data.get("last_result") or {},
         "safety": "桌面AI仅可通过 Remote Agent 写 seo/downloads/apk/public 等白名单静态目录；PUBLISHED 仍必须通过真实公网验证。",
     }
+
+
+def status() -> dict:
+    return _status(check_live=True)
+
+
+def status_snapshot() -> dict:
+    return _status(check_live=False)
 
 
 def _job_id(asset_id: str, prefix: str = "SEO") -> str:
@@ -487,6 +500,7 @@ def install() -> None:
         return
     deployer.configure = configure
     deployer.status = status
+    deployer.status_snapshot = status_snapshot
     deployer.deploy_pending = deploy_pending
     _patch_indexnow_key_hosting()
     _INSTALLED = True

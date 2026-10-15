@@ -674,13 +674,18 @@
       const qbox=byId('geo-adv-questions');
       if(qbox){qbox.dataset.live=rows.length?'1':'0';qbox.innerHTML=rows.length?rows.map(item=>{
         const task=taskByQ[item.question_id]||{};
-        const status=task.state||item.state||'unstarted';
-        const evidence=task.evidence_id||item.evidence||'—';
-        return `<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(item.question_type||'')}</td><td><span class="geo-adv-pill ${status==='succeeded'?'ok':''}">${esc(status)}</span></td><td>${esc(evidence)}</td></tr>`;
+        // A completed formal slot is authoritative even when an old queue row
+        // remains in the durable task history. Do not let that historical row
+        // repaint a real 50/50 result as "同步中" or "unstarted".
+        const evidence=item.evidence||task.evidence_id||'—';
+        const status=item.evidence?'succeeded':(item.state||task.state||'unstarted');
+        const scope=item.expected_platform_label||item.question_type||'';
+        return `<tr><td>${esc(item.question_id||'')}</td><td>${esc(item.question_text||'')}</td><td>${esc(scope)}</td><td><span class="geo-adv-pill ${status==='succeeded'?'ok':''}">${esc(status)}</span></td><td>${esc(evidence)}</td></tr>`;
       }).join(''):offlineQuestionRows();}
 
       const receiptBox=byId('geo-adv-receipts');
-      if(receiptBox)receiptBox.innerHTML=receipts.slice(0,10).length?receipts.slice(0,10).map(item=>`<div class="geo-adv-receipt"><b>${esc(item.question_text||item.question_id||'GEO Evidence')}</b><small>${esc(item.provider||'--')} · ${esc(item.model||'模型未记录')} · ${esc(item.evidence_level||'C')}级 · ${esc(item.evidence_id||item.receipt_id||'--')}</small><small>提及 ${item.brand_mentioned?'是':'否'} · 推荐 ${item.brand_recommended?'是':'否'} · 引用 ${item.brand_cited?'是':'否'} · ${esc(item.tested_at||'时间未记录')}</small><small>${esc(item.evidence_ref||item.response_id||item.session_url||item.screenshot_path||'证据引用未记录')}</small></div>`).join(''):'<div class="geo-adv-receipt"><b>暂无正式 Receipt</b><small>真实外部验证完成后会自动出现在这里。</small></div>';
+      const formalReceipts=receipts.filter(item=>item.official_truth);
+      if(receiptBox)receiptBox.innerHTML=formalReceipts.length?formalReceipts.slice(0,10).map(item=>`<div class="geo-adv-receipt"><b>${esc(item.question_text||item.question_id||'GEO Evidence')}</b><small>${esc(item.provider||'--')} · ${esc(item.model||'模型未记录')} · ${esc(item.evidence_level||'C')}级 · ${esc(item.evidence_id||item.receipt_id||'--')}</small><small>提及 ${item.brand_mentioned?'是':'否'} · 推荐 ${item.brand_recommended?'是':'否'} · 引用 ${item.brand_cited?'是':'否'} · ${esc(item.tested_at||'时间未记录')}</small><small>${esc(item.evidence_ref||item.response_id||item.session_url||item.screenshot_path||'证据引用未记录')}</small></div>`).join(''):'<div class="geo-adv-receipt"><b>暂无正式 Receipt</b><small>真实外部验证完成后会自动出现在这里。</small></div>';
 
       const healthBox=byId('geo-adv-health');
       const labels={dashboard:'总览',questions:'50问',queue:'队列',receipts:'Receipt'};
