@@ -588,7 +588,12 @@ def record_result(payload):
     if not task_id:
         raise ValueError("task_id_required")
     queue, task = _find_task(task_id)
-    if task.get("state") not in {"running", "queued", "authorization_required"}:
+    manual_current_page_recovery = (
+        task.get("state") == "failed"
+        and str(payload.get("evidence_source") or "") == "r8_28_chrome_extension_current_page_recovery"
+        and bool(str(payload.get("raw_answer") or "").strip())
+    )
+    if task.get("state") not in {"running", "queued", "authorization_required"} and not manual_current_page_recovery:
         raise ValueError("geo_task_not_accepting_receipt")
 
     merged = dict(task)

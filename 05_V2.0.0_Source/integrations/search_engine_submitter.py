@@ -326,6 +326,56 @@ def _record_failure(data: dict, engine: str, assets: list[dict], reason: str) ->
         attempts[key] = entry
 
 
+def _failure_text(result: dict) -> str:
+    if not isinstance(result, dict):
+        return str(result or "")
+    response = result.get("response")
+    if isinstance(response, dict):
+        response = " ".join(str(value) for value in response.values())
+    return " ".join(str(value or "") for value in (
+        result.get("status"), response, result.get("error"), result.get("message")
+    )).strip().lower()
+
+
+def _classify_failure(engine: str, result: dict, fallback_reason: str) -> dict:
+    """Return a truthful operational class without turning failure into success.
+
+    The connector previously exposed every rejection as one generic reason.
+    Operators therefore could not tell whether to wait, re-authorize, repair a
+    request, or stop retrying a daily quota.  Classification is evidence only;
+    it never advances an asset stage or fabricates an external receipt.
+    """
+    result = result if isinstance(result, dict) else {}
+    try:
+        status = int(result.get("status") or 0)
+    except (TypeError, ValueError):
+        status = 0
+    text = _failure_text(result)
+    if engine == "baidu" and _baidu_quota_exhausted(result):
+        category, retryable, owner_action = "quota_exhausted", True, False
+    elif status in {401, 403} or any(mark in text for mark in (
+        "unauthenticated", "invalid credential", "invalid token", "forbidden"
+    )):
+        category, retryable, owner_action = "authorization_required", False, True
+    elif status == 400:
+        category, retryable, owner_action = "request_rejected", False, True
+    elif status in {408, 425, 429} or status >= 500:
+        category, retryable, owner_action = "remote_transient", True, False
+    elif any(mark in text for mark in (
+        "timeout", "timed out", "handshake", "unexpected_eof", "ssl", "network", "temporarily"
+    )):
+        category, retryable, owner_action = "network_transient", True, False
+    else:
+        category, retryable, owner_action = "endpoint_rejected", True, False
+    return {
+        "category": category,
+        "reason": str(fallback_reason or category),
+        "http_status": status or None,
+        "retryable": retryable,
+        "owner_action_required": owner_action,
+    }
+
+
 def _record_success(data: dict, engine: str, assets: list[dict]) -> None:
     attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
     stamp = now_iso()
@@ -868,8 +918,9 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
                     _record_submission(asset, "indexnow", receipt_id)
                     submitted.append({"asset_id": asset["id"], "engine": "indexnow", "receipt": receipt_id})
             else:
-                _record_failure(data, "indexnow", pending, "endpoint_rejected")
-                failed.append({"engine": "indexnow", "reason": "endpoint_rejected", "result": receipt})
+                classification = _classify_failure("indexnow", receipt, "endpoint_rejected")
+                _record_failure(data, "indexnow", pending, classification["reason"])
+                failed.append({"engine": "indexnow", "reason": classification["reason"], "classification": classification, "result": receipt})
         elif pending:
             failed.append({"engine": "indexnow", "reason": "key_file_public_verification_failed", "verification": verification})
     elif deploy.get("ready"):
@@ -914,8 +965,9 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
                 _record_submission(asset, "google_search_console", receipt_id)
                 submitted.append({"asset_id": asset["id"], "engine": "google_search_console", "receipt": receipt_id})
         else:
-            _record_failure(data, "google_search_console", google_pending, "sitemap_submit_failed")
-            failed.append({"engine": "google_search_console", "reason": "sitemap_submit_failed", "result": g_result})
+            classification = _classify_failure("google_search_console", g_result, "sitemap_submit_failed")
+            _record_failure(data, "google_search_console", google_pending, classification["reason"])
+            failed.append({"engine": "google_search_console", "reason": classification["reason"], "classification": classification, "result": g_result})
     elif google_account and google_pending and not google_token:
         _record_attempt(data, "google_search_console", google_pending)
         reason = refresh_error or "google_access_token_unavailable"
@@ -939,10 +991,12 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
                 submitted.append({"asset_id": asset["id"], "engine": "baidu", "receipt": receipt_id})
         else:
             failure_reason = "baidu_quota_exhausted" if _baidu_quota_exhausted(b_result) else "api_submit_failed"
+            classification = _classify_failure("baidu", b_result, failure_reason)
             _record_failure(data, "baidu", baidu_pending, failure_reason)
             failed.append({
                 "engine": "baidu",
                 "reason": failure_reason,
+                "classification": classification,
                 "result": b_result,
             })
 

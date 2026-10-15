@@ -51,6 +51,12 @@ def main():
                 assert f'name="kazuizhi-template-version" content="{growth.PUBLIC_TEMPLATE_VERSION}"' in page
                 assert page.count('name="kazuizhi-source-id"') == 1, page[:500]
                 assert "KZSEO-" in page and "kz_source=KZSEO-" in page
+                assert "&asset_id=SEO-" in page
+                assert "直接答案" in page and "适合什么情况" in page and "处理前先做什么" in page
+                assert "打开卡嘴子小程序" in page and "官网在线报修" in page and 'rel="nofollow"' not in page
+                assert "进入微信小程序" in page and "kazuizhi-mini-program-code.jpg" in page
+                assert "R8-31-mini-program-primary-v5" in page
+                assert '"potentialAction": {"@type": "UseAction"' in page
                 assert "价格原则" in page and "服务与售后流程" in page and "来源编号" in page
                 inspected = deployer._inspect_public_html(page, asset["title"], asset["canonical"])
                 assert inspected["canonical_match"] is True, inspected
@@ -110,6 +116,8 @@ def main():
             assert 'property="og:title"' in hub and "application/ld+json" in hub
             assert "公开服务页面" in hub and "真实性说明" in hub
             assert len(search_growth._visible_text(hub)) >= 500
+            assert remote._is_discoverable_asset({"public_url": "https://kazuizhi.com/seo/ok/", "title": "涟水水电维修指南"}) is True
+            assert remote._is_discoverable_asset({"public_url": "https://kazuizhi.com/seo/bad/", "title": "79a2fbad601aaa64｜卡嘴子本地服务", "slug": "79a2fbad601aaa64"}) is False
             legacy_map = b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://kazuizhi.com/</loc></url><url><loc>https://kazuizhi.com/seo/sitemap.xml</loc></url></urlset>'
             assert remote._legacy_root_sitemap(legacy_map, "https://kazuizhi.com/") is True
             assert remote._legacy_root_sitemap(discovery["sitemap.xml"], "https://kazuizhi.com/") is False

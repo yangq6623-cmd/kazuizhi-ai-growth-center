@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from backend import server
 from core import seo_geo_autonomy as seo_autonomy
+from core import seo_campaign_intake
 from core import seo_observability
 from core import geo_validation
 from core.storage import data_root, now_iso, write_json
@@ -306,7 +307,9 @@ def _origin_allowed(handler):
 
 def _read_json_body(handler):
     length = int(handler.headers.get("Content-Length", "0") or 0)
-    if length < 0 or length > 512 * 1024:
+    # Campaign intake may carry one owner-approved JPG/PNG/WebP.  The core
+    # importer still enforces a 5MB decoded-image limit and strict file magic.
+    if length < 0 or length > 8 * 1024 * 1024:
         raise ValueError("请求内容过大")
     if not length:
         return {}
@@ -379,6 +382,7 @@ def _revenue_feedback():
     orders = summary.get("orders") or {}
     mini = summary.get("mini_program") or {}
     attribution = summary.get("attribution") or {}
+    entry_signals = summary.get("entry_signals") or {}
     connected = source.get("status") == "connected"
     visits = funnel.get("mini_program_visits")
     if visits is None:
@@ -386,6 +390,17 @@ def _revenue_feedback():
     consultations = funnel.get("leads")
     if consultations is None:
         consultations = funnel.get("repair_requests")
+    mini_status = str(mini.get("status") or "").strip().lower()
+    if visits is not None:
+        visit_data_status = "available"
+    elif mini_status in {"wechat_error", "error", "failed"}:
+        visit_data_status = "upstream_wechat_error"
+    elif mini_status in {"unavailable", "not_configured"}:
+        visit_data_status = "source_unavailable"
+    else:
+        visit_data_status = "awaiting_sync"
+    attribution_status = str(attribution.get("status") or "").strip()
+    attribution_data_status = "available" if attribution_status else "not_emitted_by_server"
     return {
         "status": source.get("status") or "not_configured",
         "status_label": source.get("status_label") or ("已连接" if connected else "待接入"),
@@ -393,16 +408,29 @@ def _revenue_feedback():
         "source": source.get("source"),
         "as_of": source.get("remote_as_of") or source.get("last_refresh"),
         "visits": visits,
+        "visit_data_status": visit_data_status,
+        "visit_ref_date": mini.get("ref_date"),
+        "visit_error_code": mini.get("error_code") or None,
+        "visit_error_message": mini.get("message") or None,
         "consultations": consultations,
         "orders_today": orders.get("today"),
         "orders_completed": orders.get("completed"),
         "revenue": None,
         "revenue_status": "verified_revenue_not_connected",
-        "attribution_status": attribution.get("status") or "waiting_source_attribution",
+        "attribution_status": attribution_status or "waiting_source_attribution",
+        "attribution_data_status": attribution_data_status,
         "mapped_consultations": attribution.get("mapped_consultations"),
         "mapped_orders": attribution.get("mapped_orders"),
         "asset_id_coverage": attribution.get("asset_id_coverage"),
         "attribution_channels": attribution.get("channels") or {},
+        "entry_signal_status": entry_signals.get("status") or "not_connected",
+        "landing_signals": entry_signals.get("landing_signals"),
+        "open_click_signals": entry_signals.get("open_click_signals"),
+        "entry_signals_by_source": entry_signals.get("by_source") or {},
+        "entry_signals_by_asset": entry_signals.get("by_asset") or {},
+        "entry_signals_by_day": entry_signals.get("by_day") or {},
+        "entry_signal_as_of": entry_signals.get("as_of") or None,
+        "entry_signal_truth": "client_signal_only_not_order_or_consultation",
         "source_parameter_contract": ["seo", "geo", "search_engine", "ai_citation", "asset_id"],
         "message": source.get("message") or source.get("last_error") or "",
         "truth": "RevenueOS只显示已验证聚合经营数据；来源归因只有服务器明确携带 SEO/GEO/搜索引擎/AI引用/asset_id 证据时才计入。当前没有安全收入聚合字段时显示待接入，不用订单数推算收入。",
@@ -509,6 +537,7 @@ def install():
             "/api/r8-13/seo-geo/technical-audit",
             "/api/r8-13/seo-geo/asset-stage",
             "/api/r8-13/seo-geo/geo-observation",
+            "/api/r8-13/seo-geo/campaign/import",
         }
         if path not in allowed:
             return original_post(handler)
@@ -533,6 +562,23 @@ def install():
                 # the autonomy controller applies the same truth gates while
                 # advancing every ready external stage.
                 handler._json_ok({"result": seo_autonomy.run_once(force=bool(payload.get("force"))), "dashboard": _dashboard_payload()})
+                return
+            if path == "/api/r8-13/seo-geo/campaign/import":
+                imported = seo_campaign_intake.import_campaign(payload)
+                run_result = None
+                if payload.get("run_now"):
+                    if not payload.get("owner_approved"):
+                        raise ValueError("立即执行官网发布与搜索提交前，必须由负责人明确确认")
+                    # The imported asset is already GENERATED.  The ordinary
+                    # autonomous worker now applies QC, public verification and
+                    # search receipt gates; no stage is bypassed here.
+                    run_result = seo_autonomy.run_once(force=False)
+                handler._json_ok({
+                    "import": imported,
+                    "run_result": run_result,
+                    "dashboard": _dashboard_payload(),
+                    "truth": "导入只产生本地 GENERATED 资产；只有真实公网验证和搜索平台回执才能进入 PUBLISHED / SUBMITTED。",
+                })
                 return
             if path == "/api/r8-13/seo-geo/audit-site":
                 site = str(payload.get("site") or dashboard().get("config", {}).get("site_base_url") or "").strip()

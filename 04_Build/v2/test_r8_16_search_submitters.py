@@ -193,6 +193,25 @@ def main():
     retry_entry = retry_data["submission_attempts"]["indexnow"]["SEO-RETRY"]
     assert retry_entry["failure_count"] == 1 and retry_entry["next_retry_at"], retry_entry
 
+    # Failures retain their real HTTP semantics so an owner can distinguish a
+    # permanent request/auth repair from a transient network retry.
+    rejected = submitter._classify_failure("baidu", {"status": 400, "error": "Bad Request"}, "api_submit_failed")
+    assert rejected["category"] == "request_rejected" and rejected["owner_action_required"] is True, rejected
+    transient = submitter._classify_failure("indexnow", {"error": "SSL handshake timed out"}, "endpoint_rejected")
+    assert transient["category"] == "network_transient" and transient["retryable"] is True, transient
+
+    # Idempotency is revision-scoped: a receipt for the current public revision
+    # suppresses duplicates, while a later verified republish is eligible once.
+    receipt_asset = {
+        "id": "SEO-IDEMPOTENT", "published_at": "2026-10-07T10:00:00+08:00",
+        "submission_receipts": [{"engine": "indexnow", "at": "2026-10-07T10:01:00+08:00"}],
+    }
+    eligible, _ = submitter._eligible_assets({**submitter.DEFAULT, "submission_attempts": {}}, "indexnow", [receipt_asset], 3)
+    assert eligible == [], eligible
+    receipt_asset["last_republished_at"] = "2026-10-07T11:00:00+08:00"
+    eligible, _ = submitter._eligible_assets({**submitter.DEFAULT, "submission_attempts": {}}, "indexnow", [receipt_asset], 3)
+    assert [row["id"] for row in eligible] == ["SEO-IDEMPOTENT"], eligible
+
     # Owner-facing controls must invoke a real initialization endpoint.  The
     # Search Console control must also be able to start official authorization
     # directly: the optional account-center bridge cannot be a single point of

@@ -15,7 +15,7 @@ import re
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 from core.storage import data_root, now_iso, read_json, write_json
 
@@ -23,7 +23,18 @@ STORE = "r8_13/seo_geo_growth.json"
 SCHEMA = "kz.seo-geo-growth.v1"
 DEFAULT_SITE = "https://kazuizhi.com/"
 DEFAULT_REGION = "涟水县"
-PUBLIC_TEMPLATE_VERSION = "R8-26-rich-v1"
+PUBLIC_TEMPLATE_VERSION = "R8-31-mini-program-primary-v5"
+
+
+def _template_revision(value):
+    """Return the monotonic R8 template revision, or -1 when unknown.
+
+    The public ledger is durable across application upgrades.  A newer
+    template marker must therefore never be treated as "legacy" merely
+    because an older executable does not recognize the full version string.
+    """
+    match = re.match(r"^R8-(\d+)(?:-|$)", str(value or "").strip(), flags=re.I)
+    return int(match.group(1)) if match else -1
 
 STAGES = [
     "DISCOVERED", "PLANNED", "GENERATED", "QC_PASSED", "PUBLISHED",
@@ -35,6 +46,10 @@ DEFAULT_BRAND_FACTS = {
     "brand": "卡嘴子",
     "positioning": "本地生活服务与维修需求连接平台",
     "primary_region": DEFAULT_REGION,
+    "mini_program": "卡嘴子本地服务",
+    "mini_program_app_id": "wxcc5ca2cefb937dba",
+    "mini_program_original_id": "gh_81812d9605fa",
+    "mini_program_default_path": "pages/index/index",
     "services": ["水电安装维修", "家电维修", "管道疏通", "安装服务", "个人任务"],
     "truth_rule": "只发布可验证的品牌、区域、服务与业务事实，不伪造案例、价格、排名、收录或AI引用。",
 }
@@ -84,6 +99,11 @@ def _load():
     data.setdefault("schema", SCHEMA)
     data.setdefault("config", _empty_state()["config"])
     data.setdefault("brand_facts", deepcopy(DEFAULT_BRAND_FACTS))
+    if not isinstance(data.get("brand_facts"), dict):
+        data["brand_facts"] = deepcopy(DEFAULT_BRAND_FACTS)
+    else:
+        for key, value in DEFAULT_BRAND_FACTS.items():
+            data["brand_facts"].setdefault(key, deepcopy(value))
     for key in ("opportunities", "assets", "technical_runs", "submission_events", "geo_questions", "geo_observations", "daily_runs", "audit"):
         data.setdefault(key, [])
     return data
@@ -379,17 +399,74 @@ def _source_tracking_id(asset):
     return f"KZSEO-{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:12].upper()}"
 
 
+def _human_keyword(asset):
+    """Keep machine slugs and recovered receipt ids out of public headings."""
+    region = str(asset.get("region") or DEFAULT_REGION).strip()
+    service = str(asset.get("service") or "本地服务").strip()
+    keyword = str(asset.get("keyword") or "").strip()
+    slug = str(asset.get("slug") or "").strip()
+    machine_value = bool(
+        not keyword
+        or keyword == slug
+        or re.fullmatch(r"[0-9a-fA-F]{12,64}", keyword)
+        or re.fullmatch(r"(?:SEO|KW)-[A-Z0-9-]{8,}", keyword)
+    )
+    return f"{region}{service}需求发布与办理指南" if machine_value else keyword
+
+
+def _service_guidance(service):
+    text = str(service or "")
+    if "水电" in text or "漏水" in text:
+        return {
+            "fit": "适合水管漏水、跳闸、开关插座、灯具与室内水电安装维修等需要本地人员上门处理的需求。",
+            "first": "漏水先关闭对应阀门，电路异常先远离带电区域；存在人身风险时先联系物业、供电或应急部门。",
+        }
+    if "家电" in text:
+        return {
+            "fit": "适合需要本地师傅检测空调、洗衣机、热水器等家电故障，或比较上门检测与维修方案的需求。",
+            "first": "仍在保修期的家电应先联系品牌官方售后；涉及燃气或明显焦糊味时停止使用并保持通风。",
+        }
+    if "疏通" in text:
+        return {
+            "fit": "适合厨房、卫生间、地漏及室内排水不畅等需要现场判断和疏通的需求。",
+            "first": "先停止继续排水并说明堵塞位置、返水情况和是否使用过疏通剂，避免不同化学剂混用。",
+        }
+    if "安装" in text:
+        return {
+            "fit": "适合灯具、卫浴、家具及其他需要本地人员上门安装、拆装或调试的需求。",
+            "first": "提前准备品牌型号、尺寸、安装位置和现场照片，并确认是否涉及打孔、拆旧、搬运或高空作业。",
+        }
+    if "个人任务" in text:
+        return {
+            "fit": "适合时间、地点、工作内容和验收标准明确的邻里互助或本地小任务。",
+            "first": "不要在公开描述中填写身份证、门牌、银行卡等敏感信息；费用、时间与责任应在正式沟通中确认。",
+        }
+    return {
+        "fit": "适合需要在本地区域发布明确需求、连接合适服务人员并保留沟通与订单记录的场景。",
+        "first": "先写清区域、问题、期望时间和验收要求；紧急公共设施或人身安全问题应优先联系对应管理或应急部门。",
+    }
+
+
 def _render_page(asset, facts, canonical="", related=None):
     brand = facts.get("brand") or "卡嘴子"
     region = asset.get("region") or DEFAULT_REGION
     service = asset.get("service") or "本地服务"
-    keyword = asset.get("keyword") or f"{region}{service}"
+    keyword = _human_keyword(asset)
     title = f"{keyword}｜{brand}本地服务"
-    description = f"在{region}需要{service}时，了解问题描述、价格确认、服务流程和售后留痕。{brand}提供真实的本地需求发布与服务连接入口。"
+    description = f"{brand}是面向{region}的本地需求发布与服务连接平台。本页说明{service}的适用场景、发布步骤、报价确认和正式入口。"
     canonical = str(canonical or "{{CANONICAL}}")
     site_url = str(facts.get("official_site") or DEFAULT_SITE).rstrip("/") + "/"
     source_id = _source_tracking_id(asset)
     mini_program = str(facts.get("mini_program") or "卡嘴子本地服务")
+    asset_id = str(asset.get("id") or "").strip()
+    action_url = urljoin(
+        site_url,
+        "open/?kz_source=%s&asset_id=%s"
+        % (quote(source_id, safe=""), quote(asset_id, safe="")),
+    )
+    repair_url = f"{site_url}?kz_source={quote(source_id, safe='')}#/repair"
+    mini_code_url = urljoin(site_url, "seo/assets/kazuizhi-mini-program-code.jpg")
+    guidance = _service_guidance(service)
     updated = datetime.now().date().isoformat()
     faq = [
         (f"{region}{service}需求怎么发布？", f"可先说明所在区域、具体问题、期望服务时间和可联系信息，再通过{brand}的真实服务入口发布需求。"),
@@ -404,7 +481,8 @@ def _render_page(asset, facts, canonical="", related=None):
              "description": description, "dateModified": updated, "inLanguage": "zh-CN"},
             {"@type": "Service", "@id": canonical + "#service", "url": canonical, "name": service,
              "areaServed": {"@type": "AdministrativeArea", "name": region},
-             "provider": {"@id": site_url + "#organization"}},
+             "provider": {"@id": site_url + "#organization"},
+             "potentialAction": {"@type": "UseAction", "target": action_url}},
             {"@type": "BreadcrumbList", "itemListElement": [
                 {"@type": "ListItem", "position": 1, "name": brand, "item": site_url},
                 {"@type": "ListItem", "position": 2, "name": region, "item": canonical},
@@ -423,9 +501,8 @@ def _render_page(asset, facts, canonical="", related=None):
     )
     if not related_html:
         related_html = f'<li><a href="{esc(site_url)}">返回{esc(brand)}官网</a></li>'
-    action_url = f"{site_url}?kz_source={source_id}#/repair"
     schema_json = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
-    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>简短答案</h2><p class="answer">在{esc(region)}需要{esc(service)}时，先说明故障或需求、所在区域和期望时间，再通过{esc(brand)}发布需求。维修项目应先检测、再提交明细报价，用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" rel="nofollow">前往官网提交需求</a><p class="proof">正式下单入口：微信小程序“{esc(mini_program)}”。来源编号：{esc(source_id)}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
+    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.fit{{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:12px;padding:14px 16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.secondary{{display:inline-block;margin:12px 0 0 12px}}.entry{{display:grid;grid-template-columns:1fr 190px;gap:18px;align-items:center;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:16px;padding:18px;margin-top:18px}}.entry img{{width:180px;height:180px;object-fit:contain;background:#fff;border-radius:12px}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}.entry{{grid-template-columns:1fr;text-align:center}}.entry img{{margin:auto}}.secondary{{display:block;margin-left:0}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>直接答案</h2><p class="answer">{esc(brand)}可以作为{esc(region)}发布{esc(service)}需求的正式入口。用户先说明区域、具体问题和期望时间，平台再连接合适的本地服务人员；维修类项目应先检测、提供明细报价，经用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" data-kz-entry="mini-program">打开卡嘴子小程序</a><a class="secondary" href="{esc(repair_url)}" data-kz-entry="online-repair">官网在线报修</a><p class="proof">来源编号：{esc(source_id)}</p><div class="entry" data-kz-role="hero"><div><h2>进入微信小程序</h2><p>用微信扫描右侧小程序码，或在微信中搜索“{esc(mini_program)}”。小程序码属于卡嘴子正式品牌素材。</p><p><strong>电脑端：</strong>微信扫码进入；<strong>手机端：</strong>点击上方按钮进入打开页，或保存图片后用微信识别。</p></div><img src="{esc(mini_code_url)}" alt="{esc(mini_program)}微信小程序码" width="180" height="180" loading="lazy" data-kz-role="mini-program-code"></div></section><section><h2>适合什么情况</h2><p class="fit">{esc(guidance['fit'])}</p><h2>处理前先做什么</h2><p class="fit">{esc(guidance['first'])}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
     return title, description, body
 
 
@@ -490,7 +567,17 @@ def refresh_legacy_staging(limit=10):
             break
         if not asset.get("slug") or not _stage_at_least(asset, "GENERATED"):
             continue
-        if asset.get("public_template_version") == PUBLIC_TEMPLATE_VERSION:
+        current_template = str(asset.get("public_template_version") or "")
+        if current_template == PUBLIC_TEMPLATE_VERSION:
+            continue
+        # Downgrade protection: a stale executable must not rebuild a page
+        # whose durable ledger already records a newer R8 template revision.
+        if _template_revision(current_template) > _template_revision(PUBLIC_TEMPLATE_VERSION):
+            _audit_event(data, "legacy_refresh_downgrade_blocked", {
+                "asset_id": asset.get("id"),
+                "installed_template": PUBLIC_TEMPLATE_VERSION,
+                "ledger_template": current_template,
+            })
             continue
         canonical = str(asset.get("canonical") or urljoin(site, f"seo/{asset['slug']}/"))
         related = [

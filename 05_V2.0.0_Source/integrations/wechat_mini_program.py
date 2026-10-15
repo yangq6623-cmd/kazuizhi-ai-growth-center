@@ -20,9 +20,17 @@ from integrations.business_data import _protect, _unprotect
 
 TOKEN_ENDPOINT = "https://api.weixin.qq.com/cgi-bin/token"
 DAILY_TREND_ENDPOINT = "https://api.weixin.qq.com/datacube/getweanalysisappiddailyvisittrend"
+URL_LINK_ENDPOINT = "https://api.weixin.qq.com/wxa/generate_urllink"
 SECRET_PATH = "integrations/wechat_mini_program.bin"
 STATUS_PATH = "integrations/wechat_mini_program_status.json"
 SUMMARY_PATH = "business/wechat_mini_program_summary.json"
+URL_LINK_PATH = "integrations/wechat_mini_program_url_link.json"
+PUBLIC_IDENTITY = {
+    "name": "卡嘴子本地服务",
+    "app_id": "wxcc5ca2cefb937dba",
+    "original_id": "gh_81812d9605fa",
+    "default_path": "pages/index/index",
+}
 
 
 def _secret_file():
@@ -118,13 +126,18 @@ def _latest_completed_date():
     return (datetime.now(cn).date() - timedelta(days=1)).strftime("%Y%m%d")
 
 
-def _fetch_summary(config):
+def _fetch_access_token(config):
     query = urllib.parse.urlencode({
         "grant_type": "client_credential", "appid": config["app_id"], "secret": config["app_secret"],
     })
     token = _request_json(TOKEN_ENDPOINT + "?" + query).get("access_token")
     if not isinstance(token, str) or not token:
         raise ValueError("微信未返回可用 access_token")
+    return token
+
+
+def _fetch_summary(config):
+    token = _fetch_access_token(config)
     ref_date = _latest_completed_date()
     result = _request_json(DAILY_TREND_ENDPOINT + "?access_token=" + urllib.parse.quote(token, safe=""), {
         "begin_date": ref_date, "end_date": ref_date,
@@ -143,6 +156,86 @@ def _fetch_summary(config):
         "visit_uv": number("visit_uv"), "visit_pv": number("visit_pv"),
         "session_cnt": number("session_cnt"), "visit_uv_new": number("visit_uv_new"),
         "source": "WeChat Mini Program Analytics / daily visit trend / aggregate-only",
+    }
+
+
+def _normalise_page_path(value):
+    path = str(value or PUBLIC_IDENTITY["default_path"]).strip().lstrip("/")
+    if not path or len(path) > 512 or not all(ch.isalnum() or ch in "_-/" for ch in path):
+        raise ValueError("小程序页面路径无效")
+    return path
+
+
+def _fetch_url_link(config, page_path=None, expire_days=30):
+    """Generate a release URL Link without persisting credentials or tokens."""
+    days = max(1, min(30, int(expire_days or 30)))
+    path = _normalise_page_path(page_path)
+    token = _fetch_access_token(config)
+    result = _request_json(
+        URL_LINK_ENDPOINT + "?access_token=" + urllib.parse.quote(token, safe=""),
+        {
+            "path": path,
+            "query": "",
+            "is_expire": True,
+            "expire_type": 1,
+            "expire_interval": days,
+            "env_version": "release",
+        },
+    )
+    url = str(result.get("url_link") or "").strip()
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("微信未返回可用的小程序 URL Link")
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    return {
+        "status": "active",
+        "url": url,
+        "page_path": path,
+        "generated_at": now_iso(),
+        "expires_at": expires_at,
+        "environment": "release",
+        "source": "WeChat Mini Program URL Link API",
+    }
+
+
+def generate_wechat_mini_program_url_link(payload=None):
+    config = _read_config()
+    if not config.get("app_id") or not config.get("app_secret"):
+        raise ValueError("尚未保存小程序 AppSecret，不能调用微信接口生成 URL Link")
+    if config.get("app_id") != PUBLIC_IDENTITY["app_id"]:
+        raise ValueError("已保存的 AppID 与卡嘴子正式小程序记录不一致")
+    payload = payload or {}
+    record = _fetch_url_link(
+        config,
+        page_path=payload.get("page_path") or PUBLIC_IDENTITY["default_path"],
+        expire_days=payload.get("expire_days") or 30,
+    )
+    write_json(URL_LINK_PATH, record)
+    return wechat_mini_program_entry_status()
+
+
+def wechat_mini_program_entry_status():
+    record = read_json(URL_LINK_PATH, {}) or {}
+    active = False
+    if record.get("status") == "active" and record.get("url") and record.get("expires_at"):
+        try:
+            expiry = datetime.fromisoformat(str(record["expires_at"]).replace("Z", "+00:00"))
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            active = expiry > datetime.now(timezone.utc)
+        except (TypeError, ValueError):
+            active = False
+    public_record = {key: record.get(key) for key in (
+        "url", "page_path", "generated_at", "expires_at", "environment", "source"
+    ) if record.get(key) is not None}
+    return {
+        "status": "active" if active else "not_generated" if not record else "expired",
+        "active": active,
+        "identity": dict(PUBLIC_IDENTITY),
+        "url_link": public_record,
+        "can_generate": bool(_read_config()),
+        "requires": [] if _read_config() else ["mini_program_app_secret"],
+        "secret_exposed": False,
     }
 
 
@@ -214,4 +307,6 @@ def wechat_mini_program_status():
         "last_error_code": status.get("last_error_code"),
         "summary": summary if connected or recovered_snapshot else {},
         "message": message,
+        "public_identity": dict(PUBLIC_IDENTITY),
+        "entry": wechat_mini_program_entry_status(),
     }

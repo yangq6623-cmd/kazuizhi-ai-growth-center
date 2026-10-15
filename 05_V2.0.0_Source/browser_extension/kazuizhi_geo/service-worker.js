@@ -5,7 +5,7 @@ const PLATFORMS = {
   douyin_search_web: {url: "https://www.douyin.com/search/", hosts: ["www.douyin.com"], search: true},
   deepseek_web: {url: "https://chat.deepseek.com/", hosts: ["chat.deepseek.com"]},
   qwen_web: {url: "https://www.qianwen.com/", hosts: ["chat.qwen.ai", "tongyi.aliyun.com", "www.tongyi.com", "www.qianwen.com"]},
-  so360_ai_search: {url: "https://www.n.cn/", hosts: ["www.n.cn", "so.com"]}
+  so360_ai_search: {url: "https://n.cn/", hosts: ["n.cn", "so.com"]}
 };
 let running = false;
 
@@ -17,8 +17,16 @@ async function call(path, payload) {
   const response = await fetch(`${API}/${path}`, {
     method: "POST",
     headers: {"Content-Type": "application/json", "X-Kazuizhi-Agent": "r8-28-extension"},
-    body: JSON.stringify(payload || {})
+    body: JSON.stringify(payload || {}),
+    signal: AbortSignal.timeout(15000)
   });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+  return data.result || data;
+}
+
+async function readJson(url) {
+  const response = await fetch(url, {headers: {"X-Kazuizhi-Agent": "r8-28-extension"}, signal: AbortSignal.timeout(15000)});
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
   return data.result || data;
@@ -51,12 +59,34 @@ async function platformTab(platform, question, activate = false) {
   const spec = PLATFORMS[platform];
   if (!spec) throw new Error(`unsupported_platform:${platform}`);
   const tabs = await chrome.tabs.query({});
-  let tab = tabs.find(item => tabMatches(item, spec.hosts));
+  let matching = tabs.filter(item => tabMatches(item, spec.hosts));
+  if (platform === "so360_ai_search") {
+    // Prefer Nano's usable home/chat composer over stale blank conversation tabs.
+    matching = matching.sort((a, b) => {
+      const stale = item => {
+        try { return /^\/(?:agentchat|aichat)\//.test(new URL(item.url || "").pathname) ? 1 : 0; }
+        catch (_) { return 1; }
+      };
+      return stale(a) - stale(b) || Number(b.active) - Number(a.active) || Number(b.lastAccessed || 0) - Number(a.lastAccessed || 0);
+    });
+  } else {
+    matching = matching.sort((a, b) => Number(b.active) - Number(a.active) || Number(b.lastAccessed || 0) - Number(a.lastAccessed || 0));
+  }
+  let tab = matching[0];
   let created = false;
   let url = spec.url;
   if (spec.search && question) url = `${spec.url}${encodeURIComponent(question)}?type=general`;
-  if (!tab) { tab = await chrome.tabs.create({url, active: activate}); created = true; }
+  if (platform === "deepseek_web" && question) { tab = await chrome.tabs.create({url: spec.url, active: activate}); created = true; }
+  else if (!tab) { tab = await chrome.tabs.create({url, active: activate}); created = true; }
+  else if (platform === "so360_ai_search" && (() => { try { return /^\/(?:agentchat|aichat)\//.test(new URL(tab.url || "").pathname); } catch (_) { return true; } })()) {
+    tab = await chrome.tabs.update(tab.id, {url: spec.url, active: activate});
+  }
+  else if (activate) tab = await chrome.tabs.update(tab.id, {active: true});
   else if (spec.search && question) tab = await chrome.tabs.update(tab.id, {url, active: activate});
+  else if (question && (platform === "qwen_web" || platform === "deepseek_web" || platform === "so360_ai_search")) {
+    await chrome.tabs.reload(tab.id);
+    await new Promise(resolve => setTimeout(resolve, 750));
+  }
   await waitLoaded(tab.id);
   return {tab: await chrome.tabs.get(tab.id), created};
 }
@@ -74,6 +104,25 @@ async function ask(tabId, message, timeoutMs = 150000) {
   return reply;
 }
 
+async function executeDeepSeek(tabId, platform, question) {
+  const started = await ask(tabId, {type: "kz-start", platform, question}, 30000);
+  if (!started?.ok) return started;
+  // DeepSeek web search / reasoning can legitimately take longer than the
+  // generic 150-second message timeout. Poll the page for up to five minutes
+  // while still requiring a complete, stable external answer.
+  const deadline = Date.now() + 300000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const result = await ask(tabId, {type: "kz-capture", platform, question}, 10000);
+      if (result?.ok || result?.state === "captcha" || result?.state === "auth_required") return result;
+    } catch (_) {
+      // The page may be navigating between the start and capture phases.
+    }
+  }
+  throw new Error("agent_response_timeout");
+}
+
 async function probe(platform, activate = false) {
   const opened = await platformTab(platform, "", activate);
   try {
@@ -85,7 +134,7 @@ async function probe(platform, activate = false) {
     }
     if (opened.created && result.state === "ready") await chrome.tabs.remove(opened.tab.id).catch(() => {});
     const normalized = result.state === "captcha" ? "captcha_required" : result.state === "auth_required" || result.state === "error" ? "authorization_required" : result.state;
-    return {platform, state: normalized || "authorization_required", session_url: result.url || opened.tab.url, verified_at: new Date().toISOString()};
+    return {platform, state: normalized || "authorization_required", session_url: result.url || opened.tab.url, reason: normalized === "authorization_required" ? `page=${result.url || opened.tab.url}; marker=${Boolean(result.nano_marker)}; input=${Boolean(result.input_found)}` : "", verified_at: new Date().toISOString()};
   } catch (error) {
     if (opened.created) await chrome.tabs.remove(opened.tab.id).catch(() => {});
     return {platform, state: "authorization_required", reason: String(error.message || error), verified_at: new Date().toISOString()};
@@ -124,7 +173,9 @@ async function executeTask(task, auth) {
   if (!PLATFORMS[platform] || !question) throw new Error("task_contract_invalid");
   const opened = await platformTab(platform, question, false);
   try {
-    const result = await ask(opened.tab.id, {type: "kz-execute", platform, question}, 150000);
+    const result = ["deepseek_web", "so360_ai_search"].includes(platform)
+      ? await executeDeepSeek(opened.tab.id, platform, question)
+      : await ask(opened.tab.id, {type: "kz-execute", platform, question}, 150000);
     if (result.state === "auth_required" || result.state === "captcha") {
       await chrome.tabs.update(opened.tab.id, {active: true}).catch(() => {});
       await call("block", {...auth, task_id: task.task_id, platform, kind: result.state === "captcha" ? "captcha" : "authorization", reason: result.state, session_url: result.url || opened.tab.url});
@@ -152,6 +203,45 @@ async function executeTask(task, auth) {
   }
 }
 
+async function recoverCurrentPlatform() {
+  const state = await stored();
+  if (!state.agentId || !state.token) throw new Error("agent_not_registered");
+  const queue = await readJson("http://127.0.0.1:8876/api/r8-19/geo/queue");
+  const supported = ["deepseek_web", "qwen_web"];
+  const tabs = (await chrome.tabs.query({currentWindow: true}))
+    .filter(tab => supported.some(platform => tabMatches(tab, PLATFORMS[platform].hosts)))
+    .sort((a, b) => Number(b.active) - Number(a.active) || Number(b.lastAccessed || 0) - Number(a.lastAccessed || 0));
+  const tab = tabs[0];
+  if (!tab) throw new Error("open_supported_conversation_required");
+  const platform = supported.find(name => tabMatches(tab, PLATFORMS[name].hosts));
+  if (!platform) throw new Error("unsupported_current_platform");
+  const candidates = (queue.tasks || []).filter(item => item.expected_platform === platform && item.question_text);
+  const identified = await ask(tab.id, {type: "kz-identify-current-question", items: candidates.map(item => ({task_id: item.task_id, question_id: item.question_id, question_text: item.question_text}))}, 10000);
+  if (!identified?.ok) throw new Error(identified?.error || "current_question_not_matched");
+  const taskId = String(identified.task_id || "").trim();
+  const task = candidates.find(item => item.task_id === taskId);
+  if (!task) throw new Error("matched_geo_task_not_found");
+  if (task.state === "succeeded" && task.evidence_id) {
+    await chrome.storage.local.set({lastCycle: new Date().toISOString(), lastError: "", lastOutcome: {recovered: true, already_recovered: true, task_id: taskId}});
+    return {ok: true, already_recovered: true, task_id: taskId, question_id: task.question_id, evidence_id: task.evidence_id};
+  }
+  const result = await ask(tab.id, {type: "kz-extract-current", platform, question: String(task.question_text || "")}, 30000);
+  if (!result?.ok || !result.raw_answer) throw new Error(result?.error || result?.state || "current_answer_not_captured");
+  const receipt = await call("receipt", {
+    agent_id: state.agentId,
+    agent_token: state.token,
+    task_id: taskId,
+    platform,
+    session_url: String(result.url || tab.url || ""),
+    raw_answer: String(result.raw_answer).trim(),
+    citation_urls: Array.isArray(result.citation_urls) ? result.citation_urls : [],
+    tested_at: new Date().toISOString(),
+    evidence_source: "r8_28_chrome_extension_current_page_recovery"
+  });
+  await chrome.storage.local.set({lastCycle: new Date().toISOString(), lastError: "", lastOutcome: {recovered: true, task_id: taskId}});
+  return {ok: true, task_id: taskId, question_id: task.question_id, receipt};
+}
+
 async function cycle(options = {}) {
   if (running) return {skipped: "cycle_already_running"};
   running = true;
@@ -160,6 +250,14 @@ async function cycle(options = {}) {
     let sessions = Array.isArray(state.sessions) ? state.sessions : [];
     const lastVerified = Date.parse(state.lastVerified || 0) || 0;
     if (options.verify || sessions.length !== 5 || Date.now() - lastVerified > 6 * 60 * 60 * 1000) sessions = await verifyAll(Boolean(options.activate));
+    else if (sessions.some(item => item.state !== "ready")) {
+      // A login page can recover at any time. Do not keep an old authorization
+      // failure cached for six hours or queued work for that platform will starve.
+      sessions = await Promise.all(sessions.map(async item =>
+        item.state === "ready" ? item : await probe(item.platform, false)
+      ));
+      await chrome.storage.local.set({sessions, lastVerified: new Date().toISOString()});
+    }
     state = await identity(sessions);
     const auth = {agent_id: state.agentId, agent_token: state.token};
     await call("heartbeat", {...auth, sessions, version: chrome.runtime.getManifest().version});
@@ -187,6 +285,7 @@ chrome.runtime.onStartup.addListener(() => { ensureAlarm().then(() => cycle({ver
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) cycle().catch(() => {}); });
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message && message.type === "kz-cycle") { cycle({verify: Boolean(message.verify), activate: Boolean(message.activate)}).then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
+  if (message && message.type === "kz-recover-current") { recoverCurrentPlatform().then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
   if (message && message.type === "kz-status") { stored().then(sendResponse); return true; }
   return false;
 });

@@ -77,11 +77,13 @@ def main() -> None:
             assert receipts[0]["receipt_id"] == "RECEIPT-ROUNDTRIP"
             assert receipts[0]["command_id"] == commands[0]["command_id"]
 
-            # Owner objective creates a real Command and moves the single state
-            # source to WAITING_RESPONSE until an execution Receipt comes back.
+            # A same-origin verified owner objective is accepted immediately,
+            # then WAITING_RESPONSE lasts only until the execution Receipt.
             command = control.create_owner_command({"objective": "推广涟水县水电维修"})
             assert command["command_id"].startswith("CMD-")
-            assert command["status"] == "queued_for_verified_connector"
+            assert command["status"] == "accepted"
+            assert command["accepted_at"]
+            assert command["acceptance_source"] == "verified_local_owner_workbench"
             waiting = control.control_status()
             assert waiting["verified"] is True
             assert waiting["connection_state"] == control.WAITING_RESPONSE

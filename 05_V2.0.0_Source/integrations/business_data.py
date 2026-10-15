@@ -19,6 +19,7 @@ from core.storage import data_root, now_iso, read_json, write_json
 
 
 ENDPOINT = "https://kazuizhi.com/ai-business-summary.ashx"
+ENTRY_SIGNAL_ENDPOINT = "https://kazuizhi.com/open/track.ashx?mode=summary"
 SECRET_PATH = "integrations/business_readonly_key.bin"
 STATUS_PATH = "integrations/business_source.json"
 REMOTE_SUMMARY_PATH = "business/remote_summary.json"
@@ -218,6 +219,12 @@ def validate_remote_summary(payload):
             "visit_pv": _safe_number(mini_program.get("visit_pv"), "mini_program.visit_pv"),
             "session_cnt": _safe_number(mini_program.get("session_cnt"), "mini_program.session_cnt"),
             "visit_uv_new": _safe_number(mini_program.get("visit_uv_new"), "mini_program.visit_uv_new"),
+            # Keep bounded, non-secret diagnostics from the aggregate endpoint.
+            # Without these fields an upstream WeChat API failure was flattened
+            # into ``visits=null`` and could not be distinguished from a source
+            # that had simply not synchronized yet.
+            "error_code": str(mini_program.get("error_code") or mini_program.get("errcode") or "")[:40],
+            "message": str(mini_program.get("message") or mini_program.get("error") or "")[:240],
         },
         "data_quality": {
             "verified": bool(quality.get("verified")),
@@ -230,6 +237,53 @@ def validate_remote_summary(payload):
         },
     }
     return clean
+
+
+def validate_entry_signals(payload):
+    """Validate browser-side landing/click signals without treating them as conversions."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError("官网入口信号接口返回无效")
+    _reject_sensitive(payload)
+    if str(payload.get("truth") or "") != "client_signal_only_not_order_or_consultation":
+        raise ValueError("官网入口信号缺少真实性口径")
+    by_source = _safe_object(payload.get("by_source"), "entry_signals.by_source")
+    by_asset = _safe_object(payload.get("by_asset"), "entry_signals.by_asset")
+    by_day = _safe_object(payload.get("by_day"), "entry_signals.by_day")
+
+    def clean_counter_map(rows, field_name, key_limit=80, row_limit=500):
+        clean_rows = {}
+        for row_id, counts in list(rows.items())[:row_limit]:
+            row_id = str(row_id or "").strip()
+            if not row_id or len(row_id) > key_limit:
+                continue
+            counts = _safe_object(counts, field_name + ".counts")
+            clean_rows[row_id] = {
+                "landing": _safe_number(counts.get("landing"), field_name + ".landing") or 0,
+                "open_click": _safe_number(counts.get("open_click"), field_name + ".open_click") or 0,
+            }
+        return clean_rows
+
+    clean_sources = {}
+    for source_id, counts in list(by_source.items())[:500]:
+        source_id = str(source_id or "").strip()
+        if not source_id or len(source_id) > 80:
+            continue
+        counts = _safe_object(counts, "entry_signals.by_source.counts")
+        clean_sources[source_id] = {
+            "landing": _safe_number(counts.get("landing"), "entry_signals.by_source.landing") or 0,
+            "open_click": _safe_number(counts.get("open_click"), "entry_signals.by_source.open_click") or 0,
+        }
+    return {
+        "status": "available",
+        "window_days": _safe_number(payload.get("window_days"), "entry_signals.window_days"),
+        "landing_signals": _safe_number(payload.get("landing_signals"), "entry_signals.landing_signals"),
+        "open_click_signals": _safe_number(payload.get("open_click_signals"), "entry_signals.open_click_signals"),
+        "by_source": clean_sources,
+        "by_asset": clean_counter_map(by_asset, "entry_signals.by_asset"),
+        "by_day": clean_counter_map(by_day, "entry_signals.by_day", key_limit=10, row_limit=31),
+        "as_of": str(payload.get("as_of") or "")[:100],
+        "truth": "client_signal_only_not_order_or_consultation",
+    }
 
 
 def snapshot_from_remote(summary):
@@ -274,6 +328,29 @@ def _request_remote(key, timeout=20):
         raise ValueError("无法连接卡嘴子真实经营数据接口") from None
 
 
+def _request_entry_signals(key, timeout=8):
+    request = urllib.request.Request(
+        ENTRY_SIGNAL_ENDPOINT,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "Kazuizhi-AI-Growth-Center/2.0",
+            "X-AI-Readonly-Key": key,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise ValueError("官网入口信号接口返回 HTTP %s" % response.status)
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            raise ValueError("官网入口信号只读密钥验证失败") from None
+        raise ValueError("官网入口信号接口返回 HTTP %s" % error.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        raise ValueError("无法连接官网入口信号接口") from None
+
+
 def refresh_business_source(force=True):
     # Serialize background and explicit-owner manual refreshes. The HTTP GET
     # route never calls this function; manual POST retains its old semantics.
@@ -287,6 +364,19 @@ def _refresh_business_source_serial(force=True):
         return business_source_status()
     try:
         clean = validate_remote_summary(_request_remote(key))
+        try:
+            clean["entry_signals"] = validate_entry_signals(_request_entry_signals(key))
+        except ValueError as signal_error:
+            # Entry signals are a secondary, non-conversion source. Their outage
+            # must not hide otherwise healthy orders/users aggregates.
+            clean["entry_signals"] = {
+                "status": "unavailable",
+                "landing_signals": None,
+                "open_click_signals": None,
+                "by_source": {},
+                "truth": "client_signal_only_not_order_or_consultation",
+                "error": str(signal_error)[:240],
+            }
         write_json(REMOTE_SUMMARY_PATH, clean)
         from analytics.business_metrics import import_snapshot
         analytics = import_snapshot(snapshot_from_remote(clean))
@@ -404,6 +494,8 @@ def _effective_wechat_status(remote, production_connected, direct):
             "last_error_code": None,
             "summary": server_mini,
             "message": "已复用现有服务器小程序聚合数据，无需重复填写 AppID / AppSecret。",
+            "public_identity": direct.get("public_identity") or {},
+            "entry": direct.get("entry") or {},
         }
 
     historical = dict(direct.get("summary") or {})
@@ -430,6 +522,8 @@ def _effective_wechat_status(remote, production_connected, direct):
             "last_error_code": direct.get("last_error_code"),
             "summary": server_mini if server_has_data else historical,
             "message": "现有小程序业务连接仍然有效；这里只缺微信访问趋势聚合数据，不需要重新接入小程序。系统会继续从现有服务器经营接口同步，直连 AppID / AppSecret 仅作为可选恢复通道。",
+            "public_identity": direct.get("public_identity") or {},
+            "entry": direct.get("entry") or {},
         }
 
     return direct
@@ -456,6 +550,10 @@ def business_source_status(analytics=None):
         "promotion": remote.get("promotion") or {}, "funnel": dict(remote.get("funnel") or {}),
         "mini_program": dict(remote.get("mini_program") or {}),
         "attribution": dict(remote.get("attribution") or {}),
+        # Browser landing/open-click signals are aggregate, read-only evidence.
+        # Keep them separate from verified Mini Program visits, consultations
+        # and orders, but do not drop them while building the dashboard payload.
+        "entry_signals": dict(remote.get("entry_signals") or {}),
     }
     mini = dict(wechat.get("summary") or {})
     if wechat.get("status") in {"connected", "recovered_snapshot", "business_connected"} and _mini_program_has_aggregate(mini):

@@ -13,6 +13,7 @@ import urllib.request
 import html
 import hashlib
 import json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -120,12 +121,28 @@ def _job_id(asset_id: str, prefix: str = "SEO") -> str:
     return f"{prefix}-{safe or 'ASSET'}-{stamp}"[:96]
 
 
+def _is_discoverable_asset(asset: dict) -> bool:
+    """Exclude recovered machine receipts from human and crawler discovery."""
+    public_url = str(asset.get("public_url") or "").strip()
+    title = str(asset.get("title") or "").strip()
+    keyword = str(asset.get("keyword") or "").strip()
+    slug = str(asset.get("slug") or "").strip()
+    label = title or keyword
+    machine_label = bool(
+        not label
+        or label == slug
+        or re.match(r"^[0-9a-fA-F]{12,64}(?:\b|｜|\s)", label)
+        or re.match(r"^(?:SEO|KW)-[A-Z0-9-]{8,}(?:\b|｜|\s)", label)
+    )
+    return public_url.startswith("https://") and not machine_label
+
+
 def _seo_hub_html(base: str) -> bytes:
     """Build a crawlable, managed entrypoint without overwriting the SPA home."""
     base = deployer._safe_public_base(base)
     hub_url = urllib.parse.urljoin(base, "seo/")
     rows = sorted(
-        [asset for asset in deployer.dashboard().get("assets", []) if str(asset.get("public_url") or "").startswith("https://")],
+        [asset for asset in deployer.dashboard().get("assets", []) if _is_discoverable_asset(asset)],
         key=lambda asset: (str(asset.get("region") or ""), str(asset.get("service") or ""), str(asset.get("title") or "")),
     )
     links = "\n".join(
@@ -149,7 +166,7 @@ def _sitemap_xml() -> bytes:
     snap = deployer.dashboard()
     config = snap.get("config") if isinstance(snap.get("config"), dict) else {}
     rows = sorted(
-        [asset for asset in snap.get("assets", []) if str(asset.get("public_url") or "").startswith("https://")],
+        [asset for asset in snap.get("assets", []) if _is_discoverable_asset(asset)],
         key=lambda asset: str(asset.get("public_url") or ""),
     )
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
@@ -315,6 +332,24 @@ def deploy_pending(limit: int = 10) -> dict:
         relative = f"seo/{slug}/index.html"
         public_url = urllib.parse.urljoin(base, f"seo/{slug}/")
         try:
+            attachment_receipts = []
+            for index, attachment in enumerate(deployer._asset_attachments(asset, source), start=1):
+                relative_media = f"seo/{slug}/{attachment['relative_path']}"
+                media_receipt = remote_agent.upload_file(
+                    relative_media,
+                    Path(attachment["path"]),
+                    job_id=_job_id(asset_id, f"MEDIA-{index}"),
+                )
+                media_url = urllib.parse.urljoin(base, relative_media)
+                media_public = _public_status(media_url, timeout)
+                attachment_receipts.append({
+                    "relative_path": attachment["relative_path"],
+                    "public_url": media_url,
+                    "sha256": attachment.get("sha256"),
+                    "remote_job_id": media_receipt.get("job_id"),
+                    "remote_sha256": media_receipt.get("sha256"),
+                    "verification": media_public,
+                })
             remote_receipt = remote_agent.upload_file(relative, source, job_id=_job_id(asset_id))
             expected_canonical = str(asset.get("canonical") or public_url)
             verification = (
@@ -322,6 +357,22 @@ def deploy_pending(limit: int = 10) -> dict:
                 if data.get("verify_http")
                 else {"ok": False, "reason": "http_verification_disabled", "checked_at": now_iso()}
             )
+            expected_template = str(asset.get("public_template_version") or "")
+            if expected_template:
+                conversion_ok = bool(
+                    verification.get("template_version") == expected_template
+                    and verification.get("mini_program_entry_present")
+                    and verification.get("mini_program_image_present")
+                )
+                verification["expected_template_version"] = expected_template
+                verification["conversion_contract_ok"] = conversion_ok
+                verification["ok"] = bool(verification.get("ok") and conversion_ok)
+            if attachment_receipts:
+                verification["campaign_media_ok"] = all(
+                    int((row.get("verification") or {}).get("status") or 0) == 200
+                    for row in attachment_receipts
+                )
+                verification["ok"] = bool(verification.get("ok") and verification["campaign_media_ok"])
             receipt = {
                 "receipt_id": f"REMOTE-DEPLOY-{asset_id}-{now_iso().replace(':','').replace('-','')}",
                 "asset_id": asset_id,
@@ -331,6 +382,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "destination": relative,
                 "public_url": public_url,
                 "verification": verification,
+                "attachments": attachment_receipts,
                 "created_at": now_iso(),
             }
             deployer._append_receipt(receipt)

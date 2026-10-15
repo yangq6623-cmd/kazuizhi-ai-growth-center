@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 import urllib.robotparser
 from copy import deepcopy
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin, urlsplit
 
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
@@ -191,6 +191,43 @@ def _atomic_copy(source: Path, destination: Path) -> None:
             tmp.unlink(missing_ok=True)
 
 
+def _asset_attachments(asset: dict, page_source: Path) -> list[dict]:
+    """Return only files explicitly staged below this page's directory."""
+    page_root = page_source.parent.resolve()
+    valid = []
+    for raw in asset.get("staging_attachments") or []:
+        if not isinstance(raw, dict):
+            continue
+        relative = PurePosixPath(str(raw.get("relative_path") or ""))
+        source = Path(str(raw.get("path") or ""))
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts or not source.is_file():
+            continue
+        try:
+            resolved = source.resolve()
+            resolved.relative_to(page_root)
+        except (OSError, ValueError):
+            continue
+        valid.append({**raw, "path": str(resolved), "relative_path": relative.as_posix()})
+    return valid
+
+
+def _verify_public_attachment(url: str, timeout: int) -> dict:
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Kazuizhi-R8-Campaign-Media/1.0"}, method="GET")
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - URL derives from validated production base
+            status = int(getattr(response, "status", 200) or 200)
+            content_type = str(response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            body = response.read(64)
+        return {
+            "ok": 200 <= status < 300 and content_type.startswith("image/") and bool(body),
+            "status": status,
+            "content_type": content_type,
+            "checked_at": now_iso(),
+        }
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "checked_at": now_iso()}
+
+
 def _normalize_compare_url(value: str) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -257,6 +294,11 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
                 noindex = True
                 break
 
+    template_match = re.search(
+        r'<meta\b[^>]*name=["\']kazuizhi-template-version["\'][^>]*content=["\']([^"\']+)["\']',
+        body,
+        flags=re.I,
+    )
     return {
         "content_match": content_match,
         "canonical": canonical,
@@ -266,6 +308,9 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
         "schema_types": schema_types,
         "page_indexable": not noindex,
         "source_tracking_present": bool(re.search(r"<meta\b[^>]*name=[\"']kazuizhi-source-id[\"'][^>]*content=[\"']KZSEO-[A-F0-9]{12}[\"']", body, flags=re.I)),
+        "template_version": template_match.group(1).strip() if template_match else "",
+        "mini_program_entry_present": bool(re.search(r'<a\b[^>]*href=["\'][^"\']*/open/\?kz_source=KZSEO-[A-F0-9]{12}[^"\']*["\']', body, flags=re.I)),
+        "mini_program_image_present": bool(re.search(r'<img\b[^>]*(?:data-kz-role=["\']mini-program-code["\']|kazuizhi-mini-program-code\.(?:jpg|png|webp))', body, flags=re.I)),
         "visible_text_chars": len(re.sub(r"\s+", "", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", body, flags=re.I | re.S)))),
     }
 
@@ -407,6 +452,19 @@ def deploy_pending(limit: int = 10) -> dict:
             continue
         destination = target / slug / "index.html"
         try:
+            attachment_receipts = []
+            for attachment in _asset_attachments(asset, source):
+                attachment_source = Path(attachment["path"])
+                attachment_destination = destination.parent.joinpath(*PurePosixPath(attachment["relative_path"]).parts)
+                _atomic_copy(attachment_source, attachment_destination)
+                attachment_url = urljoin(base, f"seo/{slug}/{attachment['relative_path']}")
+                media_verification = _verify_public_attachment(attachment_url, timeout) if data.get("verify_http") else {"ok": False, "reason": "http_verification_disabled"}
+                attachment_receipts.append({
+                    "relative_path": attachment["relative_path"],
+                    "public_url": attachment_url,
+                    "sha256": attachment.get("sha256"),
+                    "verification": media_verification,
+                })
             _atomic_copy(source, destination)
             public_url = urljoin(base, f"seo/{slug}/")
             expected_canonical = str(asset.get("canonical") or public_url)
@@ -421,8 +479,12 @@ def deploy_pending(limit: int = 10) -> dict:
                 "destination": str(destination),
                 "public_url": public_url,
                 "verification": verification,
+                "attachments": attachment_receipts,
                 "created_at": now_iso(),
             }
+            if attachment_receipts:
+                verification["campaign_media_ok"] = all(row["verification"].get("ok") for row in attachment_receipts)
+                verification["ok"] = bool(verification.get("ok") and verification["campaign_media_ok"])
             _append_receipt(receipt)
             if not verification.get("ok"):
                 failed.append({"asset_id": asset_id, "reason": "public_http_verification_failed", "public_url": public_url, "verification": verification})

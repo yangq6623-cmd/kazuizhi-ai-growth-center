@@ -71,7 +71,8 @@ from integrations.business_data import (
 )
 from integrations.wechat_mini_program import (
     configure_wechat_mini_program, refresh_wechat_mini_program,
-    test_wechat_mini_program, wechat_mini_program_status,
+    generate_wechat_mini_program_url_link, test_wechat_mini_program,
+    wechat_mini_program_entry_status, wechat_mini_program_status,
 )
 from integrations.ai_gateway import (
     clear_gateway, configure_gateway, gateway_status, test_gateway,
@@ -207,6 +208,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return business_source_status(build_analytics())
         if path == "/api/wechat-mini-program/status":
             return wechat_mini_program_status()
+        if path == "/api/wechat-mini-program/entry":
+            return wechat_mini_program_entry_status()
         if path == "/api/ai-gateway/status":
             return gateway_status()
         if path == "/api/promotion/keywords":
@@ -406,6 +409,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
             "/api/business-source/configure", "/api/business-source/test", "/api/business-source/refresh",
             "/api/wechat-mini-program/configure", "/api/wechat-mini-program/test", "/api/wechat-mini-program/refresh",
+            "/api/wechat-mini-program/url-link",
             "/api/ai-gateway/config", "/api/ai-gateway/test", "/api/ai-gateway/clear",
             "/api/promotion/seo-content", "/api/promotion/geo-plan",
             "/api/promotion/ad-copy", "/api/promotion/video-script",
@@ -454,6 +458,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = test_wechat_mini_program()
             elif path == "/api/wechat-mini-program/refresh":
                 result = refresh_wechat_mini_program(force=True)
+            elif path == "/api/wechat-mini-program/url-link":
+                result = generate_wechat_mini_program_url_link(payload)
             elif path == "/api/ai-gateway/config":
                 result = configure_gateway(payload)
             elif path == "/api/ai-gateway/test":

@@ -330,28 +330,36 @@ def create_owner_command(payload: dict) -> dict:
     now = datetime.now().astimezone()
     command_id = f"CMD-{now:%Y%m%d}-{secrets.token_hex(3).upper()}"
     commands = _load_list(COMMANDS_FILE)
+    # This API is exposed only by the localhost/same-origin owner workbench
+    # adapter and is already gated by a verified ChatGPT control challenge.
+    # Leaving such a command in ``queued_for_verified_connector`` required a
+    # second, unavailable relay acknowledgement and caused real owner goals to
+    # wait forever.  A verified local owner submission is the authorization;
+    # execution still remains constrained by the Mission policy and external
+    # publication still requires a real Receipt.
     item = {
         "command_id": command_id,
         "kind": "owner_objective",
         "objective": objective,
         "source": "owner_workbench",
-        "status": "queued_for_verified_connector",
+        "status": "accepted",
         "created_at": now_iso(),
-        "accepted_at": None,
+        "accepted_at": now_iso(),
         "completed_at": None,
         "mission_id": None,
         "receipt_id": None,
         "connector_id": status.get("connector_id"),
         "challenge_id": status.get("challenge_id"),
+        "acceptance_source": "verified_local_owner_workbench",
     }
     commands.append(item)
     _save_list(COMMANDS_FILE, commands)
     _write_state(
         connection_state=WAITING_RESPONSE,
         last_command_id=command_id,
-        last_command_at=item["created_at"],
+        last_command_at=item["accepted_at"],
         last_heartbeat=now_iso(),
-        runtime_issue="经营目标已进入真实总控队列，等待 ChatGPT 接收并返回执行回执。",
+        runtime_issue="经营目标已被本机验证总控接收，等待 Mission 执行结果回执。",
     )
     return item
 

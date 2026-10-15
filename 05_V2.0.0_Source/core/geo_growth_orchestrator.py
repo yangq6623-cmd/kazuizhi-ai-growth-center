@@ -24,8 +24,8 @@ from integrations import geo_cloud_executor
 
 STORE = "geo_validation/growth_orchestrator.json"
 SCHEMA = "kz.geo-growth-os.v1"
-MAX_HISTORY = 120
-MAX_OPPORTUNITIES = 200
+MAX_HISTORY = 2000
+MAX_OPPORTUNITIES = 1000
 DEFAULT_RETEST_SECONDS = 72 * 60 * 60
 _RUN_LOCK = threading.Lock()
 
@@ -48,6 +48,7 @@ DEFAULT = {
     "processed_signal_ids": [],
     "opportunities": [],
     "history": [],
+    "daily_history": [],
     "technical_blockers": [],
     "last_run_at": "",
     "last_error": "",
@@ -86,6 +87,7 @@ def _load(*, snapshot=False):
     value["opportunities"] = list(value.get("opportunities") or [])[-MAX_OPPORTUNITIES:]
     value["processed_signal_ids"] = list(value.get("processed_signal_ids") or [])[-2000:]
     value["history"] = list(value.get("history") or [])[-MAX_HISTORY:]
+    value["daily_history"] = list(value.get("daily_history") or [])[-365:]
     value["technical_blockers"] = list(value.get("technical_blockers") or [])[-80:]
     return value
 
@@ -97,9 +99,60 @@ def _save(value):
     data["opportunities"] = list(data.get("opportunities") or [])[-MAX_OPPORTUNITIES:]
     data["processed_signal_ids"] = list(data.get("processed_signal_ids") or [])[-2000:]
     data["history"] = list(data.get("history") or [])[-MAX_HISTORY:]
+    data["daily_history"] = _daily_history(data.get("opportunities") or [])[-365:]
     data["technical_blockers"] = list(data.get("technical_blockers") or [])[-80:]
     write_json(STORE, data)
     return data
+
+
+def _at_or_after(value, baseline):
+    """Compare ISO timestamps without turning malformed historical data true."""
+    left = str(value or "").strip()
+    right = str(baseline or "").strip()
+    if not left or not right:
+        return False
+    try:
+        return datetime.fromisoformat(left.replace("Z", "+00:00")) >= datetime.fromisoformat(right.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return left >= right
+
+
+def _has_verified_publication(item):
+    """A URL predating an opportunity is coverage, not a new publish action."""
+    return (
+        str(item.get("public_url") or "").startswith(("https://", "http://"))
+        and _at_or_after(item.get("published_at"), item.get("created_at"))
+    )
+
+
+def _daily_history(items):
+    """Build a durable owner-facing daily comparison from truthful timestamps."""
+    days = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        created_day = str(item.get("created_at") or "")[:10]
+        if created_day:
+            row = days.setdefault(created_day, {
+                "date": created_day, "new_opportunities": 0, "completed": 0,
+                "waiting_content_update": 0, "verified_publications": 0,
+                "published_urls": [],
+            })
+            row["new_opportunities"] += 1
+            row["completed"] += int(item.get("state") == "completed")
+            row["waiting_content_update"] += int(item.get("state") == "waiting_content_update")
+        if _has_verified_publication(item):
+            publish_day = str(item.get("published_at") or "")[:10]
+            row = days.setdefault(publish_day, {
+                "date": publish_day, "new_opportunities": 0, "completed": 0,
+                "waiting_content_update": 0, "verified_publications": 0,
+                "published_urls": [],
+            })
+            url = str(item.get("public_url") or "")
+            if url and url not in row["published_urls"]:
+                row["published_urls"].append(url)
+                row["verified_publications"] += 1
+    return [days[key] for key in sorted(days)]
 
 
 def _signal_id(receipt):
@@ -414,9 +467,28 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         item["state"] = "waiting_publish"
 
     if item.get("asset_stage") in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}:
+        published_asset = assets.get(str(item.get("asset_id") or ""), {})
         if not item.get("published_at"):
-            published_asset = assets.get(str(item.get("asset_id") or ""), {})
-            item["published_at"] = published_asset.get("published_at") or now_iso()
+            item["published_at"] = published_asset.get("published_at") or ""
+
+        # A newly discovered opportunity may legitimately map to an existing
+        # service page.  That is useful coverage, but it is not a new exposure
+        # action and must not immediately complete from an old retest.  Keep it
+        # waiting until the page is materially updated/re-published or a new
+        # public asset receives a publication timestamp after the opportunity.
+        if not _has_verified_publication(item):
+            item["state"] = "waiting_content_update"
+            item["outcome"] = "pending"
+            item["retest_task_id"] = ""
+            item["after_signal_id"] = ""
+            item["after_signal"] = {}
+            item["updated_at"] = now_iso()
+            _clear_blocker(data, "opportunity_sync_deferred", item_id)
+            return item
+
+        if not item.get("published_at"):
+            item["published_at"] = now_iso()
+        if not item.get("retest_due_at_epoch"):
             delay = max(300, int((_load().get("policy") or {}).get("retest_delay_seconds") or DEFAULT_RETEST_SECONDS))
             item["retest_due_at_epoch"] = time.time() + delay
         item["state"] = "waiting_retest"
@@ -479,7 +551,7 @@ def _state_counts(items):
         state = str(item.get("state") or "")
         if state in {"opportunity_created", "ai_employee_queued", "ai_employee_running", "content_ready"}:
             counts["optimizing"] += 1
-        if state == "waiting_publish":
+        if state in {"waiting_publish", "waiting_content_update"}:
             counts["waiting_publish"] += 1
         if state in {"waiting_retest", "retest_queued"}:
             counts["published_or_waiting_retest"] += 1
@@ -496,7 +568,7 @@ def _pipeline(items):
         {"id": "opportunity", "label": "机会识别", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "decision", "label": "总控策略判断", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "execute", "label": "AI员工执行", "count": sum(1 for x in items if x.get("job_id")), "state": "active" if any(x.get("job_id") for x in items) else "waiting"},
-        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if x.get("public_url")), "state": "active" if any(x.get("public_url") for x in items) else "waiting"},
+        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if _has_verified_publication(x)), "state": "active" if any(_has_verified_publication(x) for x in items) else "waiting"},
         {"id": "retest", "label": "自动复测", "count": sum(1 for x in items if x.get("after_signal_id")), "state": "active" if any(x.get("after_signal_id") for x in items) else "waiting"},
         {"id": "learn", "label": "Before / After", "count": sum(1 for x in items if x.get("state") == "completed"), "state": "active" if any(x.get("state") == "completed" for x in items) else "waiting"},
     ]
@@ -509,7 +581,7 @@ def _pipeline_fast(items, signal_count):
         {"id": "opportunity", "label": "机会识别", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "decision", "label": "总控策略判断", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "execute", "label": "AI员工执行", "count": sum(1 for x in items if x.get("job_id")), "state": "active" if any(x.get("job_id") for x in items) else "waiting"},
-        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if x.get("public_url")), "state": "active" if any(x.get("public_url") for x in items) else "waiting"},
+        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if _has_verified_publication(x)), "state": "active" if any(_has_verified_publication(x) for x in items) else "waiting"},
         {"id": "retest", "label": "自动复测", "count": sum(1 for x in items if x.get("after_signal_id")), "state": "active" if any(x.get("after_signal_id") for x in items) else "waiting"},
         {"id": "learn", "label": "Before / After", "count": sum(1 for x in items if x.get("state") == "completed"), "state": "active" if any(x.get("state") == "completed" for x in items) else "waiting"},
     ]
@@ -617,6 +689,7 @@ def fast_status():
             "scheduler_fresh": bool(data.get("enabled")) and not bool(data.get("paused"))
                              and age_minutes is not None and age_minutes <= 15,
         },
+        "daily_comparison": list(data.get("daily_history") or [])[-7:][::-1],
         "formal_ab_completed": domestic["completed"] if domestic["activated"] else legacy_formal,
         "formal_ab_target": domestic["target"] if domestic["activated"] else 50,
         "formal_scope": "china_domestic_primary" if domestic["activated"] else "legacy_external_ai",

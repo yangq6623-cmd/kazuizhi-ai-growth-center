@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "卡嘴子 AI 国内 GEO 常驻执行器",
   "description": "在已登录的国内 AI/搜索平台中执行真实 GEO 验证，并把可审计 Evidence 回传本机工作台。",
-  "version": "2.2.2.788",
+  "version": "2.2.2.803",
   "minimum_chrome_version": "120",
   "permissions": ["alarms", "storage", "tabs", "scripting"],
   "host_permissions": [
@@ -15,6 +15,7 @@
     "https://www.tongyi.com/*",
     "https://www.qianwen.com/*",
     "https://www.n.cn/*",
+    "https://n.cn/*",
     "https://*.so.com/*"
   ],
   "background": {"service_worker": "service-worker.js"},
@@ -25,7 +26,7 @@
       "https://chat.deepseek.com/*", "https://chat.qwen.ai/*",
       "https://tongyi.aliyun.com/*", "https://www.tongyi.com/*",
       "https://www.qianwen.com/*",
-      "https://www.n.cn/*", "https://*.so.com/*"
+      "https://www.n.cn/*", "https://n.cn/*", "https://*.so.com/*"
     ],
     "js": ["content-agent.js"],
     "run_at": "document_idle"
