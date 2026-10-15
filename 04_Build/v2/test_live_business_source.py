@@ -90,7 +90,7 @@ def main():
 
     asset = {"id": "SEO-REAL-ASSET", "region": "涟水县", "service": "水电维修", "keyword": "涟水水电维修"}
     source_id = source_tracking_id(asset)
-    normalized, aliases, unmatched = _normalized_asset_signals({
+    normalized, aliases, unmatched, anomalies = _normalized_asset_signals({
         "by_asset": {
             source_id: {"landing": 2, "open_click": 1},
             "SEO-123456789ABC": {"landing": 9, "open_click": 4},
@@ -100,6 +100,7 @@ def main():
     assert normalized["SEO-REAL-ASSET"]["open_click"] == 1
     assert normalized["未归因"]["landing"] == 9
     assert unmatched == ["SEO-123456789ABC"]
+    assert anomalies == ["SEO-123456789ABC"]
 
     unsafe = fixture()
     unsafe["phone"] = "13800000000"

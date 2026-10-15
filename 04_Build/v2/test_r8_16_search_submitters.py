@@ -22,7 +22,7 @@ def publish_one(site_root: Path):
     generated = generate_staging(limit=1)
     assert generated["count"] == 1, generated
     asset = next(x for x in dashboard()["assets"] if x["stage"] == "GENERATED")
-    record_asset_stage(asset["id"], "QC_PASSED", {"local_qc": "R8-16 test"})
+    record_asset_stage(asset["id"], "QC_PASSED", {"local_qc": "R8-16 test", "publish_approved": True})
     deployer.configure({
         "enabled": True,
         "site_root": str(site_root),

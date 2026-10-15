@@ -452,6 +452,24 @@ def _service_guidance(service):
     }
 
 
+def _public_hero_image(asset, site_url):
+    """Return a same-site professional image URL; never treat the QR as hero."""
+    raw = str((asset or {}).get("hero_image_url") or "").strip()
+    if not raw:
+        return ""
+    resolved = urljoin(site_url, raw)
+    parts = urlsplit(resolved)
+    site_parts = urlsplit(site_url)
+    path = parts.path.lower()
+    if parts.scheme.lower() != "https" or parts.netloc.lower() != site_parts.netloc.lower():
+        return ""
+    if not re.search(r"\.(?:jpe?g|png|webp)$", path):
+        return ""
+    if "kazuizhi-mini-program-code" in path:
+        return ""
+    return resolved
+
+
 def _render_page(asset, facts, canonical="", related=None):
     brand = facts.get("brand") or "卡嘴子"
     region = asset.get("region") or DEFAULT_REGION
@@ -471,6 +489,7 @@ def _render_page(asset, facts, canonical="", related=None):
     )
     repair_url = f"{site_url}?kz_source={quote(source_id, safe='')}#/repair"
     mini_code_url = urljoin(site_url, "seo/assets/kazuizhi-mini-program-code.jpg")
+    hero_image_url = _public_hero_image(asset, site_url)
     guidance = _service_guidance(service)
     updated = datetime.now().date().isoformat()
     faq = [
@@ -499,6 +518,18 @@ def _render_page(asset, facts, canonical="", related=None):
         ],
     }
     esc = lambda value: html.escape(str(value or ""), quote=True)
+    hero_meta = f'<meta property="og:image" content="{esc(hero_image_url)}">' if hero_image_url else ""
+    hero_html = (
+        f'<figure class="service-hero" data-kz-role="professional-hero">'
+        f'<img src="{esc(hero_image_url)}" alt="{esc(keyword)}服务场景" '
+        f'loading="eager" data-kz-role="professional-hero-image">'
+        f'<figcaption>{esc(region)}{esc(service)}专业服务场景图</figcaption></figure>'
+        if hero_image_url else ""
+    )
+    if hero_image_url:
+        schema["@graph"][1]["primaryImageOfPage"] = {
+            "@type": "ImageObject", "url": hero_image_url,
+        }
     faq_html = "".join(f"<section><h2>{esc(q)}</h2><p>{esc(a)}</p></section>" for q, a in faq)
     related_html = "".join(
         f'<li><a href="{esc(row.get("url"))}">{esc(row.get("label"))}</a></li>'
@@ -508,6 +539,23 @@ def _render_page(asset, facts, canonical="", related=None):
         related_html = f'<li><a href="{esc(site_url)}">返回{esc(brand)}官网</a></li>'
     schema_json = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
     body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.fit{{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:12px;padding:14px 16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.secondary{{display:inline-block;margin:12px 0 0 12px}}.entry{{display:grid;grid-template-columns:1fr 190px;gap:18px;align-items:center;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:16px;padding:18px;margin-top:18px}}.entry img{{width:180px;height:180px;object-fit:contain;background:#fff;border-radius:12px}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}.entry{{grid-template-columns:1fr;text-align:center}}.entry img{{margin:auto}}.secondary{{display:block;margin-left:0}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>直接答案</h2><p class="answer">{esc(brand)}可以作为{esc(region)}发布{esc(service)}需求的正式入口。用户先说明区域、具体问题和期望时间，平台再连接合适的本地服务人员；维修类项目应先检测、提供明细报价，经用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" data-kz-entry="mini-program">打开卡嘴子小程序</a><a class="secondary" href="{esc(repair_url)}" data-kz-entry="online-repair">官网在线报修</a><p class="proof">来源编号：{esc(source_id)}</p><div class="entry" data-kz-role="hero"><div><h2>进入微信小程序</h2><p>用微信扫描右侧小程序码，或在微信中搜索“{esc(mini_program)}”。小程序码属于卡嘴子正式品牌素材。</p><p><strong>电脑端：</strong>微信扫码进入；<strong>手机端：</strong>点击上方按钮进入打开页，或保存图片后用微信识别。</p></div><img src="{esc(mini_code_url)}" alt="{esc(mini_program)}微信小程序码" width="180" height="180" loading="lazy" data-kz-role="mini-program-code"></div></section><section><h2>适合什么情况</h2><p class="fit">{esc(guidance['fit'])}</p><h2>处理前先做什么</h2><p class="fit">{esc(guidance['first'])}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
+    body = body.replace('data-kz-role="hero"', 'data-kz-role="mini-program-entry"', 1)
+    if hero_image_url:
+        body = body.replace(
+            f'<meta property="og:url" content="{esc(canonical)}">',
+            f'<meta property="og:url" content="{esc(canonical)}">{hero_meta}',
+            1,
+        )
+        body = body.replace(
+            "a{color:#175cd3}",
+            "a{color:#175cd3}.service-hero{margin:20px 0}.service-hero img{display:block;width:100%;height:auto;max-height:480px;object-fit:cover;border-radius:14px}.service-hero figcaption{color:#52657d;font-size:14px;margin-top:8px}",
+            1,
+        )
+        body = body.replace(
+            f'<p>{esc(description)}</p><section><h2>直接答案</h2>',
+            f'<p>{esc(description)}</p>{hero_html}<section><h2>直接答案</h2>',
+            1,
+        )
     return title, description, body
 
 

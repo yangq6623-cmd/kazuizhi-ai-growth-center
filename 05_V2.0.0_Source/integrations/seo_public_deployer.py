@@ -250,6 +250,13 @@ def _tag_attributes(tag: str) -> dict:
 
 def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> dict:
     content_match = bool(not expected or expected in body)
+    professional_hero_urls = []
+    for tag in re.findall(r"<img\b[^>]*>", body, flags=re.I | re.S):
+        attrs = _tag_attributes(tag)
+        if attrs.get("data-kz-role", "").lower() == "professional-hero-image":
+            src = attrs.get("src", "").strip()
+            if src:
+                professional_hero_urls.append(src)
 
     canonical = ""
     for tag in re.findall(r"<link\b[^>]*>", body, flags=re.I | re.S):
@@ -311,8 +318,48 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
         "template_version": template_match.group(1).strip() if template_match else "",
         "mini_program_entry_present": bool(re.search(r'<a\b[^>]*href=["\'][^"\']*/open/\?kz_source=KZSEO-[A-F0-9]{12}[^"\']*["\']', body, flags=re.I)),
         "mini_program_image_present": bool(re.search(r'<img\b[^>]*(?:data-kz-role=["\']mini-program-code["\']|kazuizhi-mini-program-code\.(?:jpg|png|webp))', body, flags=re.I)),
+        "professional_hero_image_present": bool(professional_hero_urls),
+        "professional_hero_image_urls": professional_hero_urls,
         "visible_text_chars": len(re.sub(r"\s+", "", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", body, flags=re.I | re.S)))),
     }
+
+
+def publication_scope_allowed(asset: dict) -> bool:
+    """Allow only explicitly approved/repaired or professionally illustrated pages."""
+    if not isinstance(asset, dict):
+        return False
+    event_approved = any(
+        isinstance(event, dict)
+        and str(event.get("stage") or "") == "QC_PASSED"
+        and bool((event.get("payload") or {}).get("publish_approved"))
+        for event in reversed(asset.get("events") or [])
+    )
+    hero = str(asset.get("hero_image_url") or "").strip()
+    hero_parts = urlsplit(hero)
+    professional_hero_approved = bool(
+        hero_parts.scheme.lower() == "https"
+        and hero_parts.netloc.lower() == "kazuizhi.com"
+        and re.search(r"\.(?:jpe?g|png|webp)$", hero_parts.path.lower())
+        and "kazuizhi-mini-program-code" not in hero_parts.path.lower()
+    )
+    return bool(
+        asset.get("republish_pending")
+        or asset.get("publish_approved")
+        or event_approved
+        or professional_hero_approved
+    )
+
+
+def _apply_professional_hero_contract(asset: dict, verification: dict) -> dict:
+    expected = str((asset or {}).get("hero_image_url") or "").strip()
+    if not expected:
+        return verification
+    urls = [str(value or "").strip() for value in verification.get("professional_hero_image_urls") or []]
+    hero_ok = bool(verification.get("professional_hero_image_present") and expected in urls)
+    verification["expected_hero_image_url"] = expected
+    verification["professional_hero_contract_ok"] = hero_ok
+    verification["ok"] = bool(verification.get("ok") and hero_ok)
+    return verification
 
 
 def _verify_robots(url: str, timeout: int) -> dict:
@@ -438,7 +485,12 @@ def deploy_pending(limit: int = 10) -> dict:
     assert target is not None
     base = _safe_public_base(data.get("public_base_url"))
     snap = dashboard()
-    pending = [x for x in snap.get("assets", []) if x.get("stage") == "QC_PASSED"][: max(0, int(limit))]
+    candidates = [x for x in snap.get("assets", []) if x.get("stage") == "QC_PASSED"]
+    deferred_scope = [
+        {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
+        for x in candidates if not publication_scope_allowed(x)
+    ]
+    pending = [x for x in candidates if publication_scope_allowed(x)][: max(0, int(limit))]
     published = []
     failed = []
     timeout = int(data.get("verify_timeout_seconds") or 8)
@@ -473,6 +525,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 if data.get("verify_http")
                 else {"ok": False, "reason": "http_verification_disabled", "checked_at": now_iso()}
             )
+            _apply_professional_hero_contract(asset, verification)
             receipt = {
                 "receipt_id": f"DEPLOY-{asset_id}-{now_iso().replace(':','').replace('-','')}",
                 "asset_id": asset_id,
@@ -505,6 +558,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "attempted": len(pending),
         "published": published,
         "failed": failed,
+        "deferred_scope": deferred_scope,
         "managed_sitemap": sitemap_path,
         "truth": "只有已通过公网HTTP、内容、canonical、Schema、robots/indexability验证的页面才进入 PUBLISHED；仅写入服务器文件不计成功。",
     }

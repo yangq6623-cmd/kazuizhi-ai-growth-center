@@ -39,7 +39,7 @@ def main():
     noindex = deployer._inspect_public_html(noindex_html, asset["title"], asset["canonical"])
     assert noindex["page_indexable"] is False, noindex
 
-    record_asset_stage(asset["id"], "QC_PASSED", {"local_qc": "test"})
+    record_asset_stage(asset["id"], "QC_PASSED", {"local_qc": "test", "publish_approved": True})
 
     site_root = Path(tempfile.mkdtemp(prefix="kz-r815-site-")) / "kazuizhi-site"
     site_root.mkdir(parents=True)
@@ -96,7 +96,7 @@ def main():
     plan_today(limit=1)
     generate_staging(limit=1)
     second = next(x for x in dashboard()["assets"] if x["stage"] == "GENERATED")
-    record_asset_stage(second["id"], "QC_PASSED", {"local_qc": "test"})
+    record_asset_stage(second["id"], "QC_PASSED", {"local_qc": "test", "publish_approved": True})
     deployer._verify_public_url = lambda url, expected, expected_canonical, timeout: {
         "ok": False,
         "status": 200,

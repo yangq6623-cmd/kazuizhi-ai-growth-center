@@ -327,9 +327,16 @@ def deploy_pending(limit: int = 10) -> dict:
 
     base = deployer._safe_public_base(data.get("public_base_url"))
     snap = deployer.dashboard()
-    pending = [
+    candidates = [
         x for x in snap.get("assets", [])
         if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
+    ]
+    deferred_scope = [
+        {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
+        for x in candidates if not deployer.publication_scope_allowed(x)
+    ]
+    pending = [
+        x for x in candidates if deployer.publication_scope_allowed(x)
     ][: max(0, int(limit))]
     published = []
     failed = []
@@ -380,6 +387,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 verification["expected_template_version"] = expected_template
                 verification["conversion_contract_ok"] = conversion_ok
                 verification["ok"] = bool(verification.get("ok") and conversion_ok)
+            deployer._apply_professional_hero_contract(asset, verification)
             if attachment_receipts:
                 verification["campaign_media_ok"] = all(
                     int((row.get("verification") or {}).get("status") or 0) == 200
@@ -453,6 +461,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "attempted": len(pending),
         "published": published,
         "failed": failed,
+        "deferred_scope": deferred_scope,
         "managed_sitemap": "https://kazuizhi.com/seo/sitemap.xml",
         "managed_seo_hub": hub_result,
         "sitemap_remote_receipt": sitemap_result,

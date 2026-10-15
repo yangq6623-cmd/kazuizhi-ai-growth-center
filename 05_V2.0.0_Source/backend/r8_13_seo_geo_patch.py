@@ -380,8 +380,11 @@ def _normalized_asset_signals(entry_signals, assets):
     They are real client signals, but presenting them as a valid SEO asset is a
     false attribution. Aggregate them under one explicit unmatched bucket.
     """
-    rows = entry_signals.get("by_asset") if isinstance(entry_signals, dict) else {}
-    rows = rows if isinstance(rows, dict) else {}
+    entry_signals = entry_signals if isinstance(entry_signals, dict) else {}
+    source_rows = entry_signals.get("by_source")
+    source_rows = source_rows if isinstance(source_rows, dict) else {}
+    raw_asset_rows = entry_signals.get("by_asset")
+    raw_asset_rows = raw_asset_rows if isinstance(raw_asset_rows, dict) else {}
     known_assets = {
         str(asset.get("id") or ""): asset
         for asset in (assets or []) if isinstance(asset, dict) and asset.get("id")
@@ -390,6 +393,10 @@ def _normalized_asset_signals(entry_signals, assets):
         source_tracking_id(asset): asset_id
         for asset_id, asset in known_assets.items()
     }
+    # by_source is the authoritative client-event dimension because kz_source
+    # is minted from the durable SEO asset.  by_asset can contain historical
+    # manual/test identifiers for the same events; summing both double counts.
+    rows = source_rows if source_rows else raw_asset_rows
     normalized = {}
     unmatched_ids = []
     for raw_key, value in rows.items():
@@ -403,7 +410,14 @@ def _normalized_asset_signals(entry_signals, assets):
         value = value if isinstance(value, dict) else {}
         counter["landing"] += int(value.get("landing") or 0)
         counter["open_click"] += int(value.get("open_click") or 0)
-    return normalized, aliases, unmatched_ids
+    raw_asset_anomalies = [
+        str(key or "").strip()
+        for key in raw_asset_rows
+        if str(key or "").strip()
+        and str(key or "").strip() not in known_assets
+        and str(key or "").strip() not in aliases
+    ]
+    return normalized, aliases, unmatched_ids, raw_asset_anomalies
 
 
 def _revenue_feedback(assets=None):
@@ -417,7 +431,7 @@ def _revenue_feedback(assets=None):
     mini = summary.get("mini_program") or {}
     attribution = summary.get("attribution") or {}
     entry_signals = summary.get("entry_signals") or {}
-    normalized_assets, asset_aliases, unmatched_asset_ids = _normalized_asset_signals(
+    normalized_assets, asset_aliases, unmatched_asset_ids, raw_asset_anomalies = _normalized_asset_signals(
         entry_signals, assets or [],
     )
     connected = source.get("status") == "connected"
@@ -468,6 +482,7 @@ def _revenue_feedback(assets=None):
         "entry_signal_asset_aliases": asset_aliases,
         "entry_signal_unmatched_asset_ids": unmatched_asset_ids,
         "entry_signal_unmatched_count": len(unmatched_asset_ids),
+        "entry_signal_raw_asset_anomalies": raw_asset_anomalies,
         "entry_signals_by_day": entry_signals.get("by_day") or {},
         "entry_signal_as_of": entry_signals.get("as_of") or None,
         "entry_signal_truth": "client_signal_only_not_order_or_consultation",

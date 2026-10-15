@@ -221,6 +221,7 @@ def import_campaign(payload):
         "campaign_summary": summary,
         "campaign_body": body,
         "campaign_rights": "owner_confirmed",
+        "publish_approved": True,
         "region": region,
         "service": service,
         "keyword": keyword,
