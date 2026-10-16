@@ -264,7 +264,10 @@ def main() -> None:
     assert "geo_growth.fast_status = fast_status" in publish_bridge
     r8_13_patch = text(R8_13_PATCH)
     assert "def _overlay_formal_geo_truth(payload):" in r8_13_patch
-    assert '"truth_source": "r8-19-official-evidence"' in r8_13_patch
+    assert '"r8-26-cn-geo50-domestic-matrix"' in r8_13_patch
+    assert '"r8-19-official-evidence"' in r8_13_patch
+    assert "domestic_enabled" in r8_13_patch
+    assert '"mismatched_evidence_counts_in_metrics": False' in r8_13_patch
     assert "geo_validation.dashboard()" in r8_13_patch
     # #743 parity: offline question wording must be the exact canonical GEO50
     # from Python, and the browser must never need a duplicate baseline GET.
