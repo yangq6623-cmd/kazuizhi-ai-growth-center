@@ -8,9 +8,12 @@ const PLATFORMS = {
   so360_ai_search: {url: "https://n.cn/", hosts: ["n.cn", "so.com"]}
 };
 let running = false;
+let runningSince = 0;
+let currentStage = "空闲";
+function stage(name) { currentStage = name; }
 
 async function stored() {
-  return chrome.storage.local.get(["agentId", "token", "sessions", "lastCycle", "lastError"]);
+  return chrome.storage.local.get(["agentId", "token", "sessions", "lastVerified", "lastRetryAt", "lastCycle", "lastError", "lastOutcome"]);
 }
 
 async function call(path, payload) {
@@ -33,7 +36,7 @@ async function readJson(url) {
 }
 
 async function ensureAlarm() {
-  await chrome.alarms.create(ALARM, {periodInMinutes: 0.5});
+  await chrome.alarms.create(ALARM, {periodInMinutes: 3});
 }
 
 function tabMatches(tab, hosts) {
@@ -63,7 +66,7 @@ async function waitLoaded(tabId, timeoutMs = 45000) {
   throw new Error("page_load_timeout");
 }
 
-async function platformTab(platform, question, activate = false) {
+async function platformTab(platform, question, activate = false, loadTimeoutMs = 45000) {
   const spec = PLATFORMS[platform];
   if (!spec) throw new Error(`unsupported_platform:${platform}`);
   const tabs = await chrome.tabs.query({});
@@ -95,7 +98,7 @@ async function platformTab(platform, question, activate = false) {
     await chrome.tabs.reload(tab.id);
     await new Promise(resolve => setTimeout(resolve, 750));
   }
-  await waitLoaded(tab.id);
+  await waitLoaded(tab.id, loadTimeoutMs);
   return {tab: await chrome.tabs.get(tab.id), created};
 }
 
@@ -147,13 +150,13 @@ async function executeDeepSeek(tabId, platform, question) {
 }
 
 async function probe(platform, activate = false) {
-  const opened = await platformTab(platform, "", activate);
+  const opened = await platformTab(platform, "", activate, 12000);
   try {
     let result = null;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      result = await ask(opened.tab.id, {type: "kz-probe", platform}, 20000);
-      if (result.state === "ready" || result.state === "captcha") break;
-      if (attempt < 9) await new Promise(resolve => setTimeout(resolve, 1500));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      result = await ask(opened.tab.id, {type: "kz-probe", platform}, 8000);
+      if (result?.state === "ready" || result?.state === "captcha" || result?.state === "auth_required") break;
+      if (attempt < 1) await new Promise(resolve => setTimeout(resolve, 1000));
     }
     if (opened.created && result.state === "ready") await chrome.tabs.remove(opened.tab.id).catch(() => {});
     const normalized = result.state === "captcha" ? "captcha_required" : result.state === "auth_required" || result.state === "error" ? "authorization_required" : result.state;
@@ -166,8 +169,12 @@ async function probe(platform, activate = false) {
 
 async function verifyAll(activate = false) {
   const sessions = [];
-  for (const platform of Object.keys(PLATFORMS)) sessions.push(await probe(platform, activate));
-  await chrome.storage.local.set({sessions, lastVerified: new Date().toISOString()});
+  for (const platform of Object.keys(PLATFORMS)) {
+    stage("检查登录：" + platform);
+    sessions.push(await probe(platform, activate));
+  }
+  const stamped = new Date().toISOString();
+  await chrome.storage.local.set({sessions, lastVerified: stamped, lastRetryAt: stamped});
   return sessions;
 }
 
@@ -266,31 +273,35 @@ async function recoverCurrentPlatform() {
 }
 
 async function cycle(options = {}) {
-  if (running) return {skipped: "cycle_already_running"};
+  if (running) return {skipped: "cycle_already_running", stage: currentStage, elapsed_seconds: Math.round((Date.now() - runningSince) / 1000)};
   running = true;
+  runningSince = Date.now();
+  stage("准备本轮任务");
   try {
     let state = await stored();
     let sessions = Array.isArray(state.sessions) ? state.sessions : [];
     const lastVerified = Date.parse(state.lastVerified || 0) || 0;
-    if (options.verify || sessions.length !== 5 || Date.now() - lastVerified > 6 * 60 * 60 * 1000) sessions = await verifyAll(Boolean(options.activate));
-    else if (sessions.some(item => item.state !== "ready")) {
-      // A login page can recover at any time. Do not keep an old authorization
-      // failure cached for six hours or queued work for that platform will starve.
-      sessions = await Promise.all(sessions.map(async item =>
-        item.state === "ready" ? item : await probe(item.platform, false)
-      ));
-      await chrome.storage.local.set({sessions, lastVerified: new Date().toISOString()});
+    const lastRetryAt = Date.parse(state.lastRetryAt || 0) || 0;
+    if (options.verify || sessions.length !== 5 || Date.now() - lastVerified > 6 * 60 * 60 * 1000) {
+      sessions = await verifyAll(Boolean(options.activate));
+    } else if (sessions.some(item => item.state !== "ready") && Date.now() - lastRetryAt > 10 * 60 * 1000) {
+      stage("重检需要授权的平台");
+      sessions = await Promise.all(sessions.map(async item => item.state === "ready" ? item : await probe(item.platform, false)));
+      await chrome.storage.local.set({sessions, lastRetryAt: new Date().toISOString()});
     }
+    stage("注册及同步浏览器心跳");
     state = await identity(sessions);
     const auth = {agent_id: state.agentId, agent_token: state.token};
     await call("heartbeat", {...auth, sessions, version: chrome.runtime.getManifest().version});
     let outcome = {idle: true};
     const ready = sessions.filter(item => item.state === "ready").map(item => item.platform);
     for (const platform of ready) {
+      stage("检查队列：" + platform);
       const claimed = await call("claim", {...auth, platform});
       const claimedTask = claimed.claim?.task || claimed.task || claimed.claimed_task || (claimed.task_id ? claimed : null);
       if (claimedTask?.task_id) {
         const task = {...claimedTask, platform: claimed.contract?.platform || claimedTask.expected_platform, question_text: claimed.contract?.question_text || claimedTask.question_text};
+        stage("采集正式回答：" + platform);
         outcome = await executeTask(task, auth); break;
       }
     }
@@ -300,7 +311,7 @@ async function cycle(options = {}) {
     const message = String(error.message || error);
     await chrome.storage.local.set({lastCycle: new Date().toISOString(), lastError: message});
     throw error;
-  } finally { running = false; }
+  } finally { running = false; runningSince = 0; stage("空闲"); }
 }
 
 chrome.runtime.onInstalled.addListener(() => { ensureAlarm().then(() => cycle({verify: true})).catch(() => {}); });
@@ -309,7 +320,10 @@ chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) cycle().c
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message && message.type === "kz-cycle") { cycle({verify: Boolean(message.verify), activate: Boolean(message.activate)}).then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
   if (message && message.type === "kz-recover-current") { recoverCurrentPlatform().then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
-  if (message && message.type === "kz-status") { stored().then(sendResponse); return true; }
+  if (message && message.type === "kz-status") {
+    stored().then(state => sendResponse({...state, busy: running, stage: currentStage, elapsed_seconds: running ? Math.round((Date.now() - runningSince) / 1000) : 0})).catch(error => sendResponse({error: String(error.message || error)}));
+    return true;
+  }
   return false;
 });
 ensureAlarm().catch(() => {});
