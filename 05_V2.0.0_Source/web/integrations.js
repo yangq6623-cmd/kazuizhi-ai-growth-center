@@ -85,7 +85,7 @@ function ensureEvidenceLedgerPanel(){
   const grid=$('integration-grid');if(!grid)return null;
   panel=document.createElement('article');
   panel.id='evidence-ledger-panel';panel.className='wide ai-command-card';
-  panel.innerHTML=`<div class="article-head"><div><label>R8-18 平台升级底座</label><h3>版本身份与增长证据总账</h3></div><span id="evidence-ledger-badge" class="status-pill waiting">候选源码</span></div>
+  panel.innerHTML=`<div class="article-head"><div><label>版本身份与证据底座</label><h3>安装包身份与增长证据总账</h3></div><span id="evidence-ledger-badge" class="status-pill waiting">正在核验</span></div>
     <div id="release-provenance-grid" class="ai-role-grid"></div>
     <div id="evidence-ledger-summary" class="notice">正在读取已有本地证据…</div>
     <div class="button-row"><button id="refresh-evidence-ledger" class="outline-button">汇总已有证据</button></div>
@@ -102,16 +102,14 @@ function evidenceKindLabel(kind){
 
 function renderEvidenceLedger(manifest, ledger){
   const panel=ensureEvidenceLedgerPanel();if(!panel)return;
-  const baseline=manifest?.baseline||{};const candidate=manifest?.candidate||{};const summary=ledger?.summary||{};
-  // Reaching this API proves that the R8-18 runtime is present.  The manifest is
-  // deliberately source-controlled, so its package_status must not make an
-  // installed candidate package look like an unbuilt source tree.
-  const candidateRuntime=Boolean(candidate.release);
-  $('evidence-ledger-badge').textContent=candidateRuntime?'R8-18 测试运行中':'候选源码';
-  $('evidence-ledger-badge').className=`status-pill ${candidateRuntime?'ready':'waiting'}`;
+  const baseline=manifest?.baseline||{};const installed=manifest?.installed||{};const candidate=manifest?.candidate||{};const summary=ledger?.summary||{};
+  const packaged=installed.package_status==='packaged_by_github_actions';
+  $('evidence-ledger-badge').textContent=packaged?'安装包身份已验证':'源码工作区';
+  $('evidence-ledger-badge').className=`status-pill ${packaged?'ready':'waiting'}`;
   $('release-provenance-grid').innerHTML=`
-    <div class="ai-role"><span>76</span><div><strong>当前已安装底座</strong><small>${esc(baseline.installed_release||'待核验')} · ${esc(baseline.commit||'')}</small></div><i class="ready">已安装</i></div>
-    <div class="ai-role"><span>18</span><div><strong>当前候选升级</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="${candidateRuntime?'ready':'waiting'}">${candidateRuntime?'测试运行':'候选源码'}</i></div>
+    <div class="ai-role"><span>装</span><div><strong>当前安装包</strong><small>${esc(installed.release||'待核验')} · ${esc(installed.github_run||'')} · ${esc(installed.commit||'')}</small></div><i class="${packaged?'ready':'waiting'}">${packaged?'CI 已打包':'源码状态'}</i></div>
+    <div class="ai-role"><span>基</span><div><strong>历史基线</strong><small>${esc(baseline.installed_release||'未记录')} · ${esc(baseline.commit||'')}</small></div><i class="ready">保留追溯</i></div>
+    <div class="ai-role"><span>候</span><div><strong>当前能力范围</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="${packaged?'ready':'waiting'}">${packaged?'随包安装':'待 CI 打包'}</i></div>
     <div class="ai-role"><span>证</span><div><strong>已汇总外部证据</strong><small>提交、抓取、收录、引用与经营快照分别统计</small></div><i class="${summary.external?'ready':'waiting'}">${esc(String(summary.external||0))} 条</i></div>
     <div class="ai-role"><span>模</span><div><strong>本地模型</strong><small>本阶段不下载、不部署、不配置密钥</small></div><i class="waiting">稍后部署</i></div>`;
   const kinds=Object.entries(summary.by_kind||{}).map(([name,count])=>`${evidenceKindLabel(name)} ${count} 条`).join(' · ')||'暂无可追溯外部证据';
@@ -125,9 +123,7 @@ async function loadEvidenceLedger(){
     const [manifest,ledger]=await Promise.all([api('/api/r8-18/release-manifest'),api('/api/r8-18/evidence-ledger')]);
     renderEvidenceLedger(manifest,ledger);
   }catch(error){
-    // The R8-18 candidate API is absent on the installed #76 package. Keep the
-    // normal connection screen available and avoid presenting the candidate as installed.
-    const panel=ensureEvidenceLedgerPanel();if(panel){$('evidence-ledger-summary').textContent='当前安装包尚未包含 R8-18 证据总账；#76 继续正常运行，候选功能尚未打包。';}
+    const panel=ensureEvidenceLedgerPanel();if(panel){$('evidence-ledger-summary').textContent='当前安装包尚未提供证据总账接口；版本身份与外部证据均按未核验处理。';}
   }
 }
 

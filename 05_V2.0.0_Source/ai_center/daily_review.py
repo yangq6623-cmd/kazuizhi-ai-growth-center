@@ -7,13 +7,52 @@ from planning.tomorrow_plan import build_plan
 from records.history_store import append_review
 
 
+def verified_operational_issues():
+    """Collect persisted operational exceptions without launching remote work."""
+    issues = []
+    try:
+        from core.phase1_acceptance import status as acceptance_status
+        acceptance = acceptance_status()
+        checks = acceptance.get("checks") or {}
+        if not checks.get("uptime_pass", True):
+            issues.append(
+                f"第一阶段在线率 {acceptance.get('uptime_percent')}%，低于 {acceptance.get('thresholds', {}).get('uptime_percent')}% 要求。"
+            )
+        if not checks.get("silent_gap_pass", True):
+            issues.append(
+                f"第一阶段最大静默 {int(acceptance.get('max_gap_seconds') or 0)} 秒，超过 {int(acceptance.get('thresholds', {}).get('max_silent_gap_seconds') or 900)} 秒。"
+            )
+        if acceptance.get("status") != "passed" and not checks.get("duration_complete", False):
+            issues.append(f"第一阶段连续运行验收仍在进行，当前进度 {acceptance.get('progress_percent')}%。")
+    except (OSError, ValueError, TypeError, KeyError):
+        issues.append("第一阶段验收状态暂时无法读取，不能按无异常处理。")
+
+    try:
+        from promotion.ai_production_center import dashboard as content_dashboard
+        tasks = content_dashboard().get("tasks") or []
+        pending = [row for row in tasks if str(row.get("status") or "") in {"待本地执行器", "执行失败", "待总控确认"}]
+        if pending:
+            issues.append(f"AI内容中心仍有 {len(pending)} 项待执行、待确认或失败任务，需要继续恢复闭环。")
+    except (OSError, ValueError, TypeError, KeyError):
+        issues.append("AI内容中心积压状态暂时无法读取。")
+
+    try:
+        from promotion.search_growth import status as search_growth_status
+        blockers = ((search_growth_status().get("latest_audit") or {}).get("blockers") or [])
+        if blockers:
+            issues.append(f"官网技术SEO仍有 {len(blockers)} 项已验证问题：{'；'.join(str(x) for x in blockers[:3])}。")
+    except (OSError, ValueError, TypeError, KeyError):
+        issues.append("官网技术SEO审计状态暂时无法读取。")
+    return issues
+
+
 def _analyse(summary):
     if summary["status"] == "not_connected":
         return (
             ["真实经营数据尚未接入，无法判断订单、用户和收入变化。"],
             ["先完成只读数据接入，再用真实转化结果选择增长重点。"],
         )
-    problems = []
+    problems = verified_operational_issues()
     opportunities = ["继续跟踪已验证指标，并为每项增长动作保留结果回执。"]
     return problems, opportunities
 

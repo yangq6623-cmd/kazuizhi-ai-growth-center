@@ -45,6 +45,14 @@ jobs:
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          $manifestPath = '05_V2.0.0_Source/core/release_manifest.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $manifest.installed.release = 'R8-24 GEO Growth OS'
+          $manifest.installed.github_run = '#${{ github.run_number }}'
+          $manifest.installed.commit = $shortSha
+          $manifest.installed.package_status = 'packaged_by_github_actions'
+          $manifest.candidate.package_status = 'packaged_by_github_actions'
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -NoNewline -Encoding UTF8
       - name: Install pinned build and video dependencies
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -95,6 +103,7 @@ jobs:
           python 04_Build/v2/test_r8_33_growth_p0_regression.py
           python 04_Build/v2/test_r8_34_geo_seo_closed_loop.py
           python 04_Build/v2/test_r8_35_republish_reconciliation.py
+          python 04_Build/v2/test_r8_36_truth_recovery.py
       - name: Verify R8-20 through R8-23 complete workbench release gates
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

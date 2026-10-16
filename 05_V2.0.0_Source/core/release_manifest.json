@@ -8,10 +8,16 @@
     "commit": "6e8270e",
     "package_status": "installed_baseline"
   },
+  "installed": {
+    "release": "R8-24 GEO Growth OS",
+    "github_run": "source_checkout",
+    "commit": "source_checkout",
+    "package_status": "source_checkout"
+  },
   "candidate": {
-    "release": "R8-18 Phase 1 candidate",
-    "scope": "统一版本身份、增长证据总账与模型接入中心",
-    "package_status": "not_packaged",
+    "release": "R8-24 GEO Growth OS",
+    "scope": "真实发布、国内 GEO50、自动复测与下一轮闭环",
+    "package_status": "source_checkout",
     "external_model_configured": false,
     "local_model_deployed": false
   },

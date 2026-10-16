@@ -13,6 +13,7 @@ from core import seo_geo_autonomy as seo_autonomy
 from core import seo_campaign_intake
 from core import seo_observability
 from core import geo_validation
+from core import geo_domestic_matrix
 from core.storage import data_root, now_iso, write_json
 from core.seo_geo_growth import (
     configure,
@@ -123,22 +124,33 @@ def _overlay_formal_geo_truth(payload):
         truth = geo_validation.dashboard()
         official = truth.get("official") or {}
         question_set = truth.get("question_set") or {}
-        tested = int(official.get("tested") or 0)
+        domestic = geo_domestic_matrix.snapshot(
+            geo_validation.receipts(1000),
+            question_set.get("questions") or geo_validation.question_set().get("questions") or [],
+            geo_validation.queue_summary().get("tasks") or [],
+        )
+        domestic_enabled = bool(domestic.get("activated") and domestic.get("version"))
+        formal = domestic if domestic_enabled else official
+        tested = int(formal.get("completed") if domestic_enabled else formal.get("tested") or 0)
         geo = result.setdefault("geo", {})
         geo["questions"] = int(question_set.get("total") or geo.get("questions") or 50)
         if tested > 0:
             geo.update({
                 "tested_questions": tested,
                 "observations": tested,
-                "mentioned": int(official.get("mentioned") or 0),
-                "cited": int(official.get("cited") or 0),
-                "recommended": int(official.get("recommended") or 0),
-                "mention_rate": official.get("mention_rate"),
-                "citation_rate": official.get("citation_rate"),
-                "recommendation_rate": official.get("recommendation_rate"),
-                "measurement_state": official.get("measurement_state") or "measured",
-                "truth_source": "r8-19-official-evidence",
-                "evidence_count": int(official.get("evidence_count") or 0),
+                "mentioned": int(formal.get("mentioned") or 0),
+                "cited": int(formal.get("cited") or 0),
+                "recommended": int(formal.get("recommended") or 0),
+                "mention_rate": formal.get("mention_rate"),
+                "citation_rate": formal.get("citation_rate"),
+                "recommendation_rate": formal.get("recommendation_rate"),
+                "measurement_state": "measured",
+                "truth_source": "r8-26-cn-geo50-domestic-matrix" if domestic_enabled else "r8-19-official-evidence",
+                "evidence_count": int(formal.get("evidence_complete") if domestic_enabled else formal.get("evidence_count") or 0),
+                "formal_matrix_version": domestic.get("version") if domestic_enabled else "",
+                "platform_mismatch_evidence": int(domestic.get("platform_mismatch_evidence") or 0) if domestic_enabled else 0,
+                "mismatched_evidence_counts_in_metrics": False,
+                "retest_coverage": domestic.get("retest_coverage") if domestic_enabled else truth.get("retest_coverage") or {},
             })
         else:
             # No formal Evidence yet: do not erase a truthful R8-13 observation.

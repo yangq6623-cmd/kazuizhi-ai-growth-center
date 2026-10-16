@@ -554,6 +554,32 @@ def _has_pending_candidate_tasks():
     return False
 
 
+def ensure_pending_candidate_worker():
+    """Periodically resume persisted candidate work when ComfyUI recovers.
+
+    Startup may legitimately find ComfyUI offline and leave the original
+    worker in ``waiting``.  The old implementation never tried again unless a
+    new task was created, so upgraded installations could retain a large
+    ``待本地执行器`` backlog even after port 8188 became healthy.  This method
+    is deliberately cheap and idempotent: the 60-second content lane calls it,
+    it starts at most one daemon worker, and completed/cancelled tasks are
+    ignored.
+    """
+    pending = _has_pending_candidate_tasks()
+    if not pending:
+        return {"pending": False, "started": False, "reason": "no_pending_candidate_tasks"}
+    with _EXECUTOR_LOCK:
+        running = bool(_EXECUTOR_THREAD is not None and _EXECUTOR_THREAD.is_alive())
+    if running:
+        return {"pending": True, "started": False, "reason": "worker_already_running"}
+    ready = _quality_ai_runtime_patch._comfyui_ready()
+    if not ready.get("ok"):
+        _set_executor_state(status="waiting", message=ready.get("message") or "等待 ComfyUI 就绪")
+        return {"pending": True, "started": False, "reason": "comfyui_not_ready"}
+    started = _start_comfy_worker()
+    return {"pending": True, "started": bool(started), "reason": "resumed_after_health_check"}
+
+
 def _attach_assets_and_start(payload):
     patched = dict(payload or {})
     requested = [str(x) for x in (patched.get("asset_ids") or []) if str(x)]

@@ -21,7 +21,17 @@
     const signal=init?.signal||input?.signal||null;
     let priority=2;
     if(method!=='GET'&&method!=='HEAD')priority=0;
-    else if(url.pathname==='/api/status'||url.pathname.endsWith('/liveness')||url.pathname.endsWith('/fast-ui'))priority=1;
+    else if(
+      url.pathname==='/api/status'
+      ||url.pathname.endsWith('/liveness')
+      ||url.pathname.endsWith('/fast-ui')
+      ||url.pathname==='/api/r7/jobs'
+      ||url.pathname==='/api/r7/engine'
+      ||url.pathname==='/api/r7/agents'
+      ||url.pathname==='/api/r7/audit'
+      ||url.pathname==='/api/r7/model-routes'
+      ||url.pathname==='/api/r7/decision-center'
+    )priority=1;
     return {method,signal,priority,path:url.pathname};
   }
   function updatePending(){stats.pending=queue.length}

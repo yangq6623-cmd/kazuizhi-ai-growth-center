@@ -317,6 +317,43 @@ def system_diagnostics():
         {"id": "business", "name": "经营数据", "status": "pass" if build_analytics().get("status") == "verified" else "attention", "message": "已验证" if build_analytics().get("status") == "verified" else "待接入真实数据"},
         {"id": "safety", "name": "发布与资金安全", "status": "pass", "message": "发布需审核，资金操作已禁止"},
     ])
+    try:
+        from core.phase1_acceptance import status as acceptance_status
+        acceptance = acceptance_status()
+        acceptance_checks = acceptance.get("checks") or {}
+        accepted = acceptance.get("status") == "passed"
+        failed_names = [name for name, ok in acceptance_checks.items() if not ok]
+        checks.append({
+            "id": "phase1_acceptance", "name": "第一阶段连续运行验收",
+            "status": "pass" if accepted else "attention",
+            "message": "已通过" if accepted else f"未通过/进行中：{', '.join(failed_names) or acceptance.get('status')}",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "phase1_acceptance", "name": "第一阶段连续运行验收", "status": "attention", "message": "状态暂时无法读取"})
+    try:
+        from promotion.ai_production_center import dashboard as content_dashboard
+        content_tasks = content_dashboard().get("tasks") or []
+        pending_content = sum(
+            str(row.get("status") or "") in {"待本地执行器", "执行失败", "待总控确认"}
+            for row in content_tasks
+        )
+        checks.append({
+            "id": "content_backlog", "name": "AI内容任务积压",
+            "status": "attention" if pending_content else "pass",
+            "message": f"{pending_content} 项待恢复/确认" if pending_content else "没有待恢复积压",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "content_backlog", "name": "AI内容任务积压", "status": "attention", "message": "状态暂时无法读取"})
+    try:
+        from promotion.search_growth import status as search_growth_status
+        blockers = ((search_growth_status().get("latest_audit") or {}).get("blockers") or [])
+        checks.append({
+            "id": "technical_seo", "name": "官网技术SEO",
+            "status": "attention" if blockers else "pass",
+            "message": f"{len(blockers)} 项已验证问题" if blockers else "最近审计未发现技术阻塞",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "technical_seo", "name": "官网技术SEO", "status": "attention", "message": "状态暂时无法读取"})
     return {"status": "healthy" if not any(x["status"] == "fail" for x in checks) else "degraded",
             "checked_at": now_iso(), "checks": checks,
             "summary": {"passed": sum(x["status"] == "pass" for x in checks), "attention": sum(x["status"] == "attention" for x in checks), "failed": sum(x["status"] == "fail" for x in checks)}}

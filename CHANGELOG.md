@@ -1,3 +1,12 @@
+# V2.2.2 R8-36 Truth Convergence and Recovery — 2026-10-17
+
+- Make the official CN-GEO50 domestic matrix the owner-facing GEO measurement source; mismatched auxiliary evidence remains visible but cannot inflate mention, recommendation or citation rates.
+- Bound decision-center and workflow reads so a slow endpoint reports an explicit unknown/timeout state instead of leaving the page loading or displaying false zeroes.
+- Recheck persisted local content work every minute and resume the single ComfyUI worker when port 8188 becomes healthy, without duplicating completed candidates.
+- Include phase-one acceptance gaps, content backlog and verified technical-SEO blockers in daily review and system diagnostics instead of treating a connected data source as proof of health.
+- Stamp the installed release manifest with the actual GitHub run and commit during CI packaging, while keeping the historical baseline separately traceable.
+- Add a release gate covering GEO truth precedence, recovery behavior, operational exception reporting and the installed-build identity contract.
+
 # V2.2.2 R8-35 Verified Republish Reconciliation — 2026-10-16
 
 - Keep the durable public-template contract synchronized when a GEO action rebuilds an existing submitted page.

@@ -81,6 +81,7 @@ from promotion.local_mission_qc_patch import recover_authorized_qc
 from promotion.material_library import scan_material_inbox
 from promotion.publish_orchestrator import run_publish_planning
 from promotion.video_worker import run_pending as run_pending_videos
+from backend.kz_local_control_patch import ensure_pending_candidate_worker
 
 SCHEDULER_INTERVAL_SECONDS = 15
 CONTENT_WORKER_INTERVAL_SECONDS = 60
@@ -198,6 +199,7 @@ def start_content_execution_worker():
         while not stop.is_set():
             try:
                 scan_material_inbox()
+                ensure_pending_candidate_worker()
                 sync_autonomous_ops(autostart=True)
                 sync_content_plans()
                 recover_authorized_qc(limit=10)

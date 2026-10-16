@@ -295,15 +295,24 @@ function ensureAuditCollapse(){
 function bindR7OverviewActions(){ensureAuditCollapse()}
 
 let r7LoadPromise=null;
+async function r7Api(path,timeoutMs=10000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{return await api(path,{signal:controller.signal})}
+  catch(error){
+    if(error?.name==='AbortError')throw new Error(`读取${path}超时，本页已停止等待；后台任务不受影响`);
+    throw error;
+  }finally{clearTimeout(timer)}
+}
 async function loadR7(){
   if(r7LoadPromise)return r7LoadPromise;
   r7LoadPromise=(async()=>{try{
     applyAutonomyCopy();
     // Keep no more than two local requests active at once. Five parallel
     // requests plus iframe polling previously starved lazy module downloads.
-    const [jobs,engine]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/engine')]);
-    const [agents,audit]=await Promise.all([api('/api/r7/agents'),api('/api/r7/audit')]);
-    const routes=await api('/api/r7/model-routes');
+    const [jobs,engine]=await Promise.all([r7Api('/api/r7/jobs'),r7Api('/api/r7/engine')]);
+    const [agents,audit]=await Promise.all([r7Api('/api/r7/agents'),r7Api('/api/r7/audit')]);
+    const routes=await r7Api('/api/r7/model-routes');
     r7Jobs=jobs.items||[];
     renderTodayCommand(engine);
     renderR7Jobs(r7Jobs);
@@ -318,7 +327,13 @@ async function loadR7(){
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
     bindR7OverviewActions();
     return true;
-  }catch(error){toast(error.message,'error');return false}finally{r7LoadPromise=null}})();
+  }catch(error){
+    $('r7-model-route').textContent=error.message;
+    $('r7-engine-status').textContent='状态读取未完成，可点击刷新重试';
+    $('r7-exceptions').textContent='未取得完整状态，不显示为零或正常';
+    $('r7-audit-integrity').textContent='状态读取超时 · 未判定';
+    toast(error.message,'error');return false
+  }finally{r7LoadPromise=null}})();
   return r7LoadPromise;
 }
 window.loadR7=loadR7;
