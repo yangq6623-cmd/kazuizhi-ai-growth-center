@@ -63,6 +63,7 @@ def main():
             assert revised["stage"] == "PUBLISHED", revised
             assert revised["republish_pending"] is True, revised
             assert revised["content_revision_id"] == "ROUND-2", revised
+            assert revised["public_template_version"] == growth.PUBLIC_TEMPLATE_VERSION, revised
             page = Path(revised["staging_path"]).read_text(encoding="utf-8")
             assert 'data-kz-role="growth-revision"' in page
             assert "涟水水电维修服务能力是否充足" in page

@@ -377,7 +377,15 @@ def deploy_pending(limit: int = 10) -> dict:
                 if data.get("verify_http")
                 else {"ok": False, "reason": "http_verification_disabled", "checked_at": now_iso()}
             )
-            expected_template = str(asset.get("public_template_version") or "")
+            # A pending republish was rendered by the running build.  Some
+            # durable SUBMITTED assets still carry their older template label;
+            # use the installed renderer contract for this revision and let
+            # record_asset_republished persist it after verification succeeds.
+            expected_template = str(
+                seo_geo_growth.PUBLIC_TEMPLATE_VERSION
+                if asset.get("republish_pending")
+                else asset.get("public_template_version") or ""
+            )
             if expected_template:
                 conversion_ok = bool(
                     verification.get("template_version") == expected_template

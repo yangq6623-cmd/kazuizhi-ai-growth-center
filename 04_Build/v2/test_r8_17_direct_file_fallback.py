@@ -47,11 +47,16 @@ def main():
                 "staging_path": str(source),
                 "canonical": old_url,
                 "title": "测试标题",
-                "stage": "QC_PASSED",
+                "stage": "SUBMITTED",
+                "republish_pending": True,
+                "public_template_version": "R8-26-rich-v1",
+                "growth_action_id": "GEO-GROWTH-TEST",
+                "content_revision_id": "GEO-GROWTH-TEST",
             }
             uploads = []
             verifies = []
             recorded = []
+            republished = []
             receipts = []
             saved = []
 
@@ -60,6 +65,7 @@ def main():
             original_dashboard = deployer.dashboard
             original_verify = deployer._verify_public_url
             original_record = deployer.record_asset_stage
+            original_republish = deployer.record_asset_republished
             original_append = deployer._append_receipt
             original_load = deployer._load
             original_save = deployer._save
@@ -102,11 +108,15 @@ def main():
                         "canonical_match": True,
                         "schema_valid": True,
                         "page_indexable": True,
+                        "template_version": "R8-31-mini-program-primary-v5",
+                        "mini_program_entry_present": True,
+                        "mini_program_image_present": True,
                         "robots": {"allowed": True},
                     }
 
                 deployer._verify_public_url = fake_verify
                 deployer.record_asset_stage = lambda asset_id, stage, payload: recorded.append((asset_id, stage, payload)) or asset
+                deployer.record_asset_republished = lambda asset_id, payload: republished.append((asset_id, payload)) or asset
                 deployer._append_receipt = lambda receipt: receipts.append(receipt)
 
                 result = fallback.deploy_pending(limit=10)
@@ -116,8 +126,12 @@ def main():
                 require(flat_url in uploads[0][1], "flat fallback payload has wrong canonical")
                 require(verifies and verifies[0][0] == flat_url, "flat fallback verified wrong public URL")
                 require(verifies[0][2] == flat_url, "flat fallback expected canonical is wrong")
-                require(recorded and recorded[0][1] == "PUBLISHED", "truth ledger did not advance after verified flat URL")
-                require(recorded[0][2]["public_url"] == flat_url, "truth ledger stored wrong public URL")
+                require(not recorded, "republish attempted an illegal SUBMITTED -> PUBLISHED downgrade")
+                require(republished and republished[0][1]["public_url"] == flat_url, "verified republish receipt was not recorded")
+                require(result["published"][0]["republished"] is True, "republish result was not identified")
+                require(result["published"][0]["growth_action_id"] == "GEO-GROWTH-TEST", "growth action correlation missing")
+                require(receipts[0]["content_revision_id"] == "GEO-GROWTH-TEST", "revision receipt correlation missing")
+                require((receipts[0]["verification"] or {}).get("conversion_contract_ok") is True, "current template conversion contract failed")
                 require(receipts and receipts[0]["strategy"] == "direct_html_file", "fallback receipt strategy missing")
                 require(saved and saved[-1]["last_result"]["published"], "fallback result was not persisted")
             finally:
@@ -126,6 +140,7 @@ def main():
                 deployer.dashboard = original_dashboard
                 deployer._verify_public_url = original_verify
                 deployer.record_asset_stage = original_record
+                deployer.record_asset_republished = original_republish
                 deployer._append_receipt = original_append
                 deployer._load = original_load
                 deployer._save = original_save

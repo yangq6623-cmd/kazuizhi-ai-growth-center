@@ -16,6 +16,7 @@ import urllib.parse
 from pathlib import Path
 
 from core.storage import now_iso
+from core import seo_geo_growth
 from integrations import remote_agent
 from integrations import seo_public_deployer as deployer
 from integrations import r8_17_remote_deployer_patch as remote_patch
@@ -98,6 +99,21 @@ def deploy_pending(limit: int = 10) -> dict:
                 flat_url,
                 timeout,
             )
+            expected_template = str(
+                seo_geo_growth.PUBLIC_TEMPLATE_VERSION
+                if asset.get("republish_pending")
+                else asset.get("public_template_version") or ""
+            )
+            if expected_template:
+                conversion_ok = bool(
+                    verification.get("template_version") == expected_template
+                    and verification.get("mini_program_entry_present")
+                    and verification.get("mini_program_image_present")
+                )
+                verification["expected_template_version"] = expected_template
+                verification["conversion_contract_ok"] = conversion_ok
+                verification["ok"] = bool(verification.get("ok") and conversion_ok)
+            deployer._apply_professional_hero_contract(asset, verification)
             receipt = {
                 "receipt_id": f"REMOTE-FLAT-{asset_id}-{now_iso().replace(':','').replace('-','')}",
                 "asset_id": asset_id,
@@ -108,6 +124,8 @@ def deploy_pending(limit: int = 10) -> dict:
                 "destination": flat_relative,
                 "public_url": flat_url,
                 "verification": verification,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
                 "created_at": now_iso(),
             }
             deployer._append_receipt(receipt)
@@ -119,19 +137,27 @@ def deploy_pending(limit: int = 10) -> dict:
                 fallback_attempts.append(attempt)
                 continue
 
-            deployer.record_asset_stage(asset_id, "PUBLISHED", {
+            evidence = {
                 "public_url": flat_url,
                 "connector": remote_patch.REMOTE_MODE,
                 "deploy_receipt": receipt["receipt_id"],
                 "remote_job_id": remote_receipt.get("job_id"),
                 "http_verification": verification,
                 "public_url_strategy": "direct_html_file",
-            })
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
+            }
+            if asset.get("republish_pending"):
+                deployer.record_asset_republished(asset_id, evidence)
+            else:
+                deployer.record_asset_stage(asset_id, "PUBLISHED", evidence)
             published.append({
                 "asset_id": asset_id,
                 "public_url": flat_url,
                 "receipt": receipt["receipt_id"],
                 "strategy": "direct_html_file",
+                "republished": bool(asset.get("republish_pending")),
+                "growth_action_id": asset.get("growth_action_id") or "",
             })
             attempt["ok"] = True
             fallback_attempts.append(attempt)

@@ -90,9 +90,11 @@ jobs:
           python 04_Build/v2/test_r8_15_seo_public_deploy.py
           python 04_Build/v2/test_r8_15_server_bootstrap.py
           python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_direct_file_fallback.py
           python 04_Build/v2/test_r8_31_template_rollback.py
           python 04_Build/v2/test_r8_33_growth_p0_regression.py
           python 04_Build/v2/test_r8_34_geo_seo_closed_loop.py
+          python 04_Build/v2/test_r8_35_republish_reconciliation.py
       - name: Verify R8-20 through R8-23 complete workbench release gates
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

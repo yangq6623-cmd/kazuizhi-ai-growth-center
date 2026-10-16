@@ -199,6 +199,10 @@ def prepare_phase3_assets(plan):
             "staging_path": str(path),
             "generated_at": now_iso(),
             "updated_at": now_iso(),
+            # The HTML was rendered by the installed template, so the durable
+            # verification contract must advance with it.  Keeping the legacy
+            # value makes a valid republish fail after public HTTP verification.
+            "public_template_version": seo_geo_growth.PUBLIC_TEMPLATE_VERSION,
             "phase3_targeted": True,
             "prepared_growth_action_id": action_id,
         })

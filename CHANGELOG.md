@@ -1,3 +1,10 @@
+# V2.2.2 R8-35 Verified Republish Reconciliation — 2026-10-16
+
+- Keep the durable public-template contract synchronized when a GEO action rebuilds an existing submitted page.
+- Verify pending republishes against the installed renderer version instead of a stale historical asset label.
+- Preserve SUBMITTED and later external truth when the IIS direct-file fallback verifies a refreshed page, while attaching the real receipt to the growth action and content revision.
+- Add a release gate that recreates the installed-field mismatch and proves it reconciles without weakening public HTTP evidence requirements.
+
 # V2.2.2 R8-34 SEO/GEO Closed Loop — 2026-10-16
 
 - Turn GEO opportunities that reuse an existing public SEO page into a material content revision and verified republish instead of another internal-only task.
