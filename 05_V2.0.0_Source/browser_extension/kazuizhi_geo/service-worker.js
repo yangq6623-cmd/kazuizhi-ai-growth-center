@@ -42,17 +42,25 @@ function tabMatches(tab, hosts) {
 }
 
 async function waitLoaded(tabId, timeoutMs = 45000) {
-  const current = await chrome.tabs.get(tabId).catch(() => null);
-  if (current && current.status === "complete") return current;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); reject(new Error("page_load_timeout")); }, timeoutMs);
-    function listener(id, info, tab) {
-      if (id === tabId && info.status === "complete") {
-        clearTimeout(timer); chrome.tabs.onUpdated.removeListener(listener); resolve(tab);
-      }
+  // AI sites often keep network requests open after their UI is usable.
+  // Accept a real interactive/complete DOM, not just tab.status=complete.
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = await chrome.tabs.get(tabId).catch(() => null);
+    if (!current) throw new Error("tab_closed_during_load");
+    if (current.status === "complete") return current;
+    try {
+      const inspected = await chrome.scripting.executeScript({
+        target: {tabId},
+        func: () => Boolean(document.body) && document.readyState !== "loading"
+      });
+      if (inspected?.[0]?.result === true) return current;
+    } catch (_) {
+      // A navigation can briefly make injection unavailable; keep waiting.
     }
-    chrome.tabs.onUpdated.addListener(listener);
-  });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error("page_load_timeout");
 }
 
 async function platformTab(platform, question, activate = false) {
@@ -92,16 +100,31 @@ async function platformTab(platform, question, activate = false) {
 }
 
 async function ask(tabId, message, timeoutMs = 150000) {
-  let response = chrome.tabs.sendMessage(tabId, message).catch(async () => {
-    await chrome.scripting.executeScript({target: {tabId}, files: ["content-agent.js"]});
-    return chrome.tabs.sendMessage(tabId, message);
-  });
-  const reply = await Promise.race([
-    response,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("agent_response_timeout")), timeoutMs))
-  ]);
-  if (!reply) throw new Error("empty_agent_response");
-  return reply;
+  const send = async () => {
+    try {
+      return await chrome.tabs.sendMessage(tabId, message);
+    } catch (error) {
+      const reason = String(error?.message || error);
+      // Inject only when no content listener exists. Never reinject after
+      // arbitrary execution, navigation or permission failures.
+      if (!/Receiving end does not exist|Could not establish connection/i.test(reason)) throw error;
+      await chrome.scripting.executeScript({target: {tabId}, files: ["content-agent.js"]});
+      return await chrome.tabs.sendMessage(tabId, message);
+    }
+  };
+  let timer;
+  try {
+    const reply = await Promise.race([
+      send(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("agent_response_timeout")), timeoutMs);
+      })
+    ]);
+    if (!reply) throw new Error("empty_agent_response");
+    return reply;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function executeDeepSeek(tabId, platform, question) {
