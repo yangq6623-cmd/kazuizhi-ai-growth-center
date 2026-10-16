@@ -121,7 +121,10 @@ def prepare_phase3_assets(plan):
     if not actions:
         return {"targeted": 0, "created": [], "generated": [], "qc_passed": [], "states": []}
 
-    target_ids = {str(row.get("opportunity_id")) for row in actions}
+    action_by_opportunity = {
+        str(row.get("opportunity_id")): row for row in actions if row.get("opportunity_id")
+    }
+    target_ids = set(action_by_opportunity)
     data = seo_geo_growth._load()
     opportunities = {
         str(row.get("id") or ""): row for row in data.get("opportunities") or [] if isinstance(row, dict)
@@ -133,6 +136,16 @@ def prepare_phase3_assets(plan):
         if not opportunity:
             continue
         asset, was_created = _asset_for_opportunity(data, opportunity)
+        action = action_by_opportunity.get(opportunity_id) or {}
+        action_id = str(action.get("action_id") or "")
+        # Persist only public-safe, factual optimization context.  This makes a
+        # reused service page a real content revision instead of repeatedly
+        # attaching new GEO work to an unchanged historic publication.
+        asset["growth_action_id"] = action_id
+        asset["growth_question"] = str(action.get("question_text") or "")[:240]
+        asset["growth_focus"] = str(action.get("decision") or "")[:240]
+        asset["growth_question_id"] = str(action.get("question_id") or "")[:120]
+        asset["content_revision_id"] = action_id
         target_assets.append(asset.get("id"))
         if was_created:
             created.append(asset.get("id"))
@@ -145,9 +158,22 @@ def prepare_phase3_assets(plan):
     staging = data_root() / "r8_13" / "site_staging"
     staging.mkdir(parents=True, exist_ok=True)
     generated = []
+    refreshed = []
     target_set = {str(value) for value in target_assets if value}
     for asset in data.get("assets") or []:
-        if str(asset.get("id") or "") not in target_set or str(asset.get("stage") or "") != "PLANNED":
+        if str(asset.get("id") or "") not in target_set:
+            continue
+        stage = str(asset.get("stage") or "")
+        action_id = str(asset.get("growth_action_id") or "")
+        is_external = seo_geo_growth.STAGE_INDEX.get(stage, 0) >= seo_geo_growth.STAGE_INDEX["PUBLISHED"]
+        already_prepared = bool(
+            action_id
+            and str(asset.get("prepared_growth_action_id") or "") == action_id
+            and (asset.get("republish_pending") or stage in {"GENERATED", "QC_PASSED"})
+        )
+        if stage != "PLANNED" and not is_external:
+            continue
+        if already_prepared:
             continue
         canonical = urljoin(site, f"seo/{asset['slug']}/")
         related = [
@@ -167,7 +193,6 @@ def prepare_phase3_assets(plan):
         path = folder / "index.html"
         path.write_text(html, encoding="utf-8")
         asset.update({
-            "stage": "GENERATED",
             "title": title,
             "description": description,
             "canonical": canonical,
@@ -175,11 +200,25 @@ def prepare_phase3_assets(plan):
             "generated_at": now_iso(),
             "updated_at": now_iso(),
             "phase3_targeted": True,
+            "prepared_growth_action_id": action_id,
         })
-        generated.append(asset["id"])
+        if is_external:
+            # Preserve durable external truth.  The deployer clears this flag
+            # only after a new public HTTP receipt verifies the revision.
+            asset["republish_pending"] = True
+            asset["republish_requested_at"] = now_iso()
+            refreshed.append(asset["id"])
+        else:
+            asset["stage"] = "GENERATED"
+            generated.append(asset["id"])
     seo_geo_growth._write_staging_infrastructure(data, staging, site)
     if generated:
         seo_geo_growth._audit_event(data, "geo_phase3_assets_generated", {"asset_ids": generated, "truth": "GENERATED 不等于 PUBLISHED"})
+    if refreshed:
+        seo_geo_growth._audit_event(data, "geo_growth_content_revision_prepared", {
+            "asset_ids": refreshed,
+            "truth": "旧页面外部状态保持不变；新版本必须取得新的真实公网发布回执。",
+        })
     seo_geo_growth._save(data)
 
     qc_passed = []
@@ -199,13 +238,21 @@ def prepare_phase3_assets(plan):
 
     final = seo_geo_growth.dashboard()
     states = [
-        {"asset_id": row.get("id"), "stage": row.get("stage"), "public_url": row.get("public_url") or ""}
+        {
+            "asset_id": row.get("id"),
+            "stage": row.get("stage"),
+            "public_url": row.get("public_url") or "",
+            "republish_pending": bool(row.get("republish_pending")),
+            "content_revision_id": row.get("content_revision_id") or "",
+            "last_republished_at": row.get("last_republished_at") or "",
+        }
         for row in final.get("assets") or [] if str(row.get("id") or "") in target_set
     ]
     return {
         "targeted": len(target_set),
         "created": created,
         "generated": generated,
+        "refreshed": refreshed,
         "qc_passed": qc_passed,
         "states": states,
         "truth": "桥接只推进到QC_PASSED；PUBLISHED/SUBMITTED仍必须由真实连接器取得回执。",

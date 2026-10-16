@@ -404,6 +404,8 @@ def deploy_pending(limit: int = 10) -> dict:
                 "public_url": public_url,
                 "verification": verification,
                 "attachments": attachment_receipts,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
                 "created_at": now_iso(),
             }
             deployer._append_receipt(receipt)
@@ -416,12 +418,20 @@ def deploy_pending(limit: int = 10) -> dict:
                 "deploy_receipt": receipt["receipt_id"],
                 "remote_job_id": remote_receipt.get("job_id"),
                 "http_verification": verification,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
             }
             if asset.get("republish_pending"):
                 seo_geo_growth.record_asset_republished(asset_id, evidence)
             else:
                 deployer.record_asset_stage(asset_id, "PUBLISHED", evidence)
-            published.append({"asset_id": asset_id, "public_url": public_url, "receipt": receipt["receipt_id"]})
+            published.append({
+                "asset_id": asset_id,
+                "public_url": public_url,
+                "receipt": receipt["receipt_id"],
+                "republished": bool(asset.get("republish_pending")),
+                "growth_action_id": asset.get("growth_action_id") or "",
+            })
         except (OSError, ValueError, RuntimeError) as error:
             failed.append({"asset_id": asset_id, "reason": str(error)})
 

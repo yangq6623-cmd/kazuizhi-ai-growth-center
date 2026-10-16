@@ -205,6 +205,7 @@
     const cloud=data.cloud||{};
     const policy=data.policy||{};
     const publish=data.publish_connector||{};
+    const retestWindows=data.retest_windows||{};
     const blockers=data.technical_blockers||[];
 
     const badge=byId('geo-os-state');
@@ -239,11 +240,15 @@
       const fresh=today.scheduler_fresh===true;
       const last=String(today.last_run_at||'尚无执行记录');
       const waiting=Number(summary.waiting_publish||0);
+      const retestText=['24h','72h','7d'].map(label=>{
+        const row=retestWindows[label]||{};
+        return `${label} ${Number(row.completed||0)}/${Number(row.scheduled||0)}`;
+      }).join(' · ');
       daily.textContent=snapshotPending?
         '今日真实工作：后台快照尚未完成；不会把尚未核验的数据填写为0。':
         snapshotStale?
         '今日真实工作：历史快照 '+(data.snapshot_age_seconds??'未知')+' 秒前；待后台恢复后核实执行、发布与回执。':
-        `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
+        `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 运营复测 ${retestText} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
       daily.style.color=fresh?'#49667e':'#986000';
     }
 
@@ -254,6 +259,7 @@
       ['正在优化',unknownAware(summary.optimizing),'AI员工执行','optimizing'],
       ['等待发布',unknownAware(summary.waiting_publish),'等待真实公网回执','waiting_publish'],
       ['等待复测',unknownAware(summary.published_or_waiting_retest),'发布后自动复测','retest'],
+      ['24h复盘',snapshotPending?'—':`${Number((retestWindows['24h']||{}).completed||0)} / ${Number((retestWindows['24h']||{}).scheduled||0)}`,'完成后允许下一轮','retest'],
       ['闭环完成',unknownAware(summary.completed),'Before / After','completed'],
       ['正式 A/B',data.formal_ab_completed==null?'待同步 / 50':`${Number(data.formal_ab_completed)} / ${Number(data.formal_ab_target||50)}`,'独立正式真值','formal_ab'],
     ];
@@ -264,7 +270,8 @@
     const rows=data.opportunities||[];
     byId('geo-os-rows').innerHTML=rows.length?rows.map(item=>{
       const delta=item.operating_delta==null?'—':`${Number(item.operating_delta)>=0?'+':''}${Number(item.operating_delta)}`;
-      const result=item.state==='completed'?`${item.outcome||'完成'} · Δ ${delta}`:(item.retest_task_id?'复测排队':item.public_url?'等待复测':'等待');
+      const coverage=item.retest_coverage||{};
+      const result=item.state==='completed'?`${item.outcome||'完成'} · Δ ${delta} · 复测 ${Number(coverage.completed||0)}/${Number(coverage.target||3)}`:(item.retest_task_id?'复测排队':item.public_url?'等待复测':'等待');
       return `<tr data-geo-row-state="${esc(item.state||'')}" data-geo-row-stage="${esc(item.asset_stage||'')}">
         <td><b>${esc(item.gap_label||item.service||'GEO机会')}</b><small>${esc(item.question_text||item.question_id||'')}</small></td>
         <td><span class="geo-os-score">${Number(item.opportunity_score||0)}</span><small>${esc(item.priority||'')}</small></td>

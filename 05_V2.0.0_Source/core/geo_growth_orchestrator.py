@@ -27,7 +27,17 @@ SCHEMA = "kz.geo-growth-os.v1"
 MAX_HISTORY = 2000
 MAX_OPPORTUNITIES = 1000
 DEFAULT_RETEST_SECONDS = 72 * 60 * 60
+DEFAULT_RETEST_WINDOWS = (
+    ("24h", 24 * 60 * 60),
+    ("72h", 72 * 60 * 60),
+    ("7d", 7 * 24 * 60 * 60),
+)
 _RUN_LOCK = threading.Lock()
+ACTIVE_STATES = {
+    "opportunity_created", "ai_employee_queued", "ai_employee_running",
+    "content_ready", "waiting_publish", "waiting_content_update",
+    "waiting_retest", "retest_queued", "deferred",
+}
 
 DEFAULT = {
     "schema": SCHEMA,
@@ -44,6 +54,7 @@ DEFAULT = {
         "formal_ab_side_channel": True,
         "truth_rule": "C级运营Signal可驱动低风险优化，但只有真实A/B Evidence可改变正式GEO成绩。",
         "retest_delay_seconds": DEFAULT_RETEST_SECONDS,
+        "retest_windows_seconds": {label: seconds for label, seconds in DEFAULT_RETEST_WINDOWS},
     },
     "processed_signal_ids": [],
     "opportunities": [],
@@ -130,6 +141,8 @@ def _daily_history(items):
     days = {}
     for item in items:
         if not isinstance(item, dict):
+            continue
+        if str(item.get("state") or "") == "superseded":
             continue
         created_day = str(item.get("created_at") or "")[:10]
         if created_day:
@@ -357,6 +370,9 @@ def _create_from_signal(data, receipt):
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "last_error": "",
+        "coalesced_signal_ids": [],
+        "publication_receipt_id": "",
+        "content_revision_id": "",
     }
 
     seo_opportunity = geo_phase3_seo_bridge.upsert_opportunity({
@@ -369,6 +385,26 @@ def _create_from_signal(data, receipt):
         "source_ref": signal_id,
     })
     item["seo_opportunity_id"] = str(seo_opportunity.get("id") or "")
+    existing = next((
+        row for row in reversed(data.get("opportunities") or [])
+        if str(row.get("seo_opportunity_id") or "") == item["seo_opportunity_id"]
+        and str(row.get("state") or "") in ACTIVE_STATES
+    ), None)
+    if existing:
+        signal_ids = list(existing.get("coalesced_signal_ids") or [])
+        if signal_id and signal_id != existing.get("signal_id") and signal_id not in signal_ids:
+            signal_ids.append(signal_id)
+        existing["coalesced_signal_ids"] = signal_ids[-100:]
+        existing["latest_signal_id"] = signal_id
+        existing["latest_signal_at"] = _tested_at(receipt) or now_iso()
+        existing["updated_at"] = now_iso()
+        _record_history(data, "signal_coalesced", {
+            "id": existing.get("id"),
+            "signal_id": signal_id,
+            "seo_opportunity_id": item["seo_opportunity_id"],
+            "reason": "同一页面同一优化目标已有活动轮次，避免重复任务与重复发布。",
+        })
+        return None
     job = r7_engine.create_job({
         "kind": "manual_task",
         "title": f"GEO 自动增长｜{gap['action']}｜{service}"[:160],
@@ -395,29 +431,82 @@ def _latest_aux_for_question(question_id, after_at):
     return rows[-1] if rows else None
 
 
-def _ensure_retest_task(item):
-    if item.get("retest_task_id") or not item.get("question_id"):
-        return
+def _iso_epoch(value):
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def _ensure_retest_schedule(item):
+    schedule = item.get("retest_schedule")
+    if isinstance(schedule, list) and schedule:
+        return schedule
+    base = _iso_epoch(item.get("published_at")) or time.time()
+    policy = (_load().get("policy") or {})
+    configured = policy.get("retest_windows_seconds") or {}
+    schedule = []
+    for label, default_seconds in DEFAULT_RETEST_WINDOWS:
+        try:
+            seconds = max(300, int(configured.get(label) or default_seconds))
+        except (TypeError, ValueError):
+            seconds = default_seconds
+        schedule.append({
+            "window": label,
+            "due_at_epoch": base + seconds,
+            "task_id": item.get("retest_task_id") if label == "24h" else "",
+            "signal_id": "",
+            "completed_at": "",
+        })
+    item["retest_schedule"] = schedule
+    item["retest_due_at_epoch"] = schedule[0]["due_at_epoch"]
+    return schedule
+
+
+def _latest_aux_for_task(task_id):
+    task_id = str(task_id or "")
+    if not task_id:
+        return None
+    rows = [row for row in _auxiliary_receipts() if str(row.get("task_id") or "") == task_id]
+    return rows[-1] if rows else None
+
+
+def _ensure_retest_task(item, slot=None):
+    if not item.get("question_id"):
+        return ""
+    if slot is None:
+        slot = _ensure_retest_schedule(item)[0]
+    if slot.get("task_id"):
+        return str(slot.get("task_id") or "")
+    window = str(slot.get("window") or "24h")
+    mission_id = f"GEO-GROWTH-OPERATING-RETEST-{window.upper()}"
     queue = geo.queue_summary().get("tasks") or []
     existing = next((
         row for row in queue
         if row.get("provider") == geo_cloud_executor.PROVIDER
         and row.get("question_id") == item.get("question_id")
         and row.get("state") in {"queued", "running", "paused", "authorization_required"}
+        and str(row.get("mission_id") or "") == mission_id
         and str(row.get("created_at") or "") >= str(item.get("published_at") or "")
     ), None)
     if existing:
-        item["retest_task_id"] = existing.get("task_id") or ""
-        return
+        slot["task_id"] = existing.get("task_id") or ""
+        if window == "24h":
+            item["retest_task_id"] = slot["task_id"]
+        return str(slot["task_id"] or "")
     result = geo.create_and_enqueue_plan(
         limit=1,
         provider=geo_cloud_executor.PROVIDER,
         test_method="api",
-        mission_id="GEO-GROWTH-OPERATING-RETEST",
+        mission_id=mission_id,
         question_ids=[item["question_id"]],
     )
     task = (result.get("tasks") or [{}])[0]
-    item["retest_task_id"] = task.get("task_id") or ""
+    slot["task_id"] = task.get("task_id") or ""
+    slot["queued_at"] = now_iso()
+    if window == "24h":
+        item["retest_task_id"] = slot["task_id"]
+    return str(slot["task_id"] or "")
 
 
 def _signal_score(signal):
@@ -432,6 +521,8 @@ def _signal_score(signal):
 
 def _sync_item(data, item, jobs, seo_opportunities, assets):
     item_id = str(item.get("id") or "")
+    if str(item.get("state") or "") == "superseded":
+        return item
     job = jobs.get(str(item.get("job_id") or ""), {})
     if job:
         item["job_state"] = job.get("state") or item.get("job_state")
@@ -451,24 +542,65 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         item["asset_id"] = asset_id
         item["asset_stage"] = asset.get("stage") or item.get("asset_stage") or ""
         item["public_url"] = asset.get("public_url") or item.get("public_url") or ""
+        item["republish_pending"] = bool(asset.get("republish_pending"))
+        item["content_revision_id"] = asset.get("content_revision_id") or item.get("content_revision_id") or ""
 
     prepared_stages = {"GENERATED", "QC_PASSED", "PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}
-    if item.get("job_state") == "completed" and item.get("seo_opportunity_id") and str(item.get("asset_stage") or "") not in prepared_stages:
+    needs_content_revision = bool(
+        item.get("state") == "waiting_content_update"
+        or (
+            asset
+            and str(asset.get("growth_action_id") or "") != item_id
+            and seo_geo_growth.STAGE_INDEX.get(str(asset.get("stage") or ""), 0)
+                >= seo_geo_growth.STAGE_INDEX["PUBLISHED"]
+        )
+    )
+    if item.get("job_state") == "completed" and item.get("seo_opportunity_id") and (
+        str(item.get("asset_stage") or "") not in prepared_stages or needs_content_revision
+    ):
         bridge = geo_phase3_seo_bridge.prepare_phase3_assets({
-            "actions": [{"action_id": item["id"], "job_state": "completed", "opportunity_id": item["seo_opportunity_id"]}]
+            "actions": [{
+                "action_id": item["id"],
+                "job_state": "completed",
+                "opportunity_id": item["seo_opportunity_id"],
+                "question_id": item.get("question_id") or "",
+                "question_text": item.get("question_text") or "",
+                "decision": item.get("decision") or "",
+            }]
         })
         states = bridge.get("states") or []
         if states:
             item["asset_id"] = states[0].get("asset_id") or item.get("asset_id") or ""
             item["asset_stage"] = states[0].get("stage") or item.get("asset_stage") or ""
             item["public_url"] = states[0].get("public_url") or item.get("public_url") or ""
+            item["republish_pending"] = bool(states[0].get("republish_pending"))
+            item["content_revision_id"] = states[0].get("content_revision_id") or item.get("content_revision_id") or ""
+
+    # A reused public page must be materially rebuilt and receive a new live
+    # receipt.  Its old PUBLISHED/SUBMITTED stage is preserved, but the GEO
+    # round remains waiting_publish until the revision is verified.
+    if item.get("republish_pending"):
+        item["state"] = "waiting_publish"
+        item["updated_at"] = now_iso()
+        _clear_blocker(data, "opportunity_sync_deferred", item_id)
+        return item
 
     if item.get("asset_stage") in {"GENERATED", "QC_PASSED"}:
         item["state"] = "waiting_publish"
 
     if item.get("asset_stage") in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}:
         published_asset = assets.get(str(item.get("asset_id") or ""), {})
-        if not item.get("published_at"):
+        refresh_events = [
+            row for row in (published_asset.get("content_refresh_events") or [])
+            if isinstance(row, dict)
+            and str(row.get("growth_action_id") or row.get("content_revision_id") or "") == item_id
+        ]
+        refresh = refresh_events[-1] if refresh_events else {}
+        verified_at = str(refresh.get("at") or "")
+        if verified_at:
+            item["published_at"] = verified_at
+            item["publication_receipt_id"] = str(refresh.get("deploy_receipt") or "")
+        elif not item.get("published_at"):
             item["published_at"] = published_asset.get("published_at") or ""
 
         # A newly discovered opportunity may legitimately map to an existing
@@ -488,21 +620,44 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
 
         if not item.get("published_at"):
             item["published_at"] = now_iso()
-        if not item.get("retest_due_at_epoch"):
-            delay = max(300, int((_load().get("policy") or {}).get("retest_delay_seconds") or DEFAULT_RETEST_SECONDS))
-            item["retest_due_at_epoch"] = time.time() + delay
-        item["state"] = "waiting_retest"
+        schedule = _ensure_retest_schedule(item)
+        if item.get("state") != "completed":
+            item["state"] = "retest_queued" if schedule[0].get("task_id") else "waiting_retest"
 
-    if item.get("state") in {"waiting_retest", "retest_queued"}:
-        fresh = _latest_aux_for_question(item.get("question_id"), item.get("published_at"))
-        if fresh:
-            analysed = geo_analysis.analyze_receipt(fresh)
-            item["after_signal_id"] = _signal_id(fresh)
-            item["after_signal"] = {
-                "brand_mentioned": bool(analysed.get("brand_mentioned")),
-                "brand_recommended": bool(analysed.get("brand_recommended")),
-                "service_match": bool(analysed.get("service_match")),
-            }
+    if _has_verified_publication(item):
+        schedule = _ensure_retest_schedule(item)
+        now_epoch = time.time()
+        for slot in schedule:
+            fresh = _latest_aux_for_task(slot.get("task_id"))
+            if fresh and not slot.get("signal_id"):
+                analysed = geo_analysis.analyze_receipt(fresh)
+                slot["signal_id"] = _signal_id(fresh)
+                slot["completed_at"] = _tested_at(fresh) or now_iso()
+                slot["signal"] = {
+                    "brand_mentioned": bool(analysed.get("brand_mentioned")),
+                    "brand_recommended": bool(analysed.get("brand_recommended")),
+                    "service_match": bool(analysed.get("service_match")),
+                }
+                # 72h/7d are follow-up measurements of the same content
+                # revision.  They must not accidentally open another round;
+                # the 24h result alone drives the next planning decision.
+                if slot.get("window") != "24h" and slot["signal_id"]:
+                    processed = data.setdefault("processed_signal_ids", [])
+                    if slot["signal_id"] not in processed:
+                        processed.append(slot["signal_id"])
+            if not slot.get("signal_id") and now_epoch >= float(slot.get("due_at_epoch") or 0):
+                try:
+                    _ensure_retest_task(item, slot)
+                    _clear_blocker(data, "operating_retest_deferred", item_id)
+                except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                    item["last_error"] = str(error)[:500]
+                    _record_blocker(data, "operating_retest_deferred", error, item_id)
+
+        first = next((slot for slot in schedule if slot.get("window") == "24h"), schedule[0])
+        if first.get("signal_id"):
+            new_result = str(item.get("after_signal_id") or "") != str(first.get("signal_id") or "")
+            item["after_signal_id"] = first.get("signal_id") or ""
+            item["after_signal"] = deepcopy(first.get("signal") or {})
             before = _signal_score(item.get("baseline_signal"))
             after = _signal_score(item.get("after_signal"))
             item["operating_before_score"] = before
@@ -510,20 +665,29 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             item["operating_delta"] = after - before
             item["outcome"] = "improved" if after > before else "regressed" if after < before else "neutral"
             item["state"] = "completed"
-            item["completed_at"] = now_iso()
+            item["completed_at"] = first.get("completed_at") or now_iso()
             _clear_blocker(data, "operating_retest_deferred", item_id)
-            _record_history(data, "before_after_completed", {
-                "id": item["id"], "before": before, "after": after, "delta": after - before,
-                "truth": "C-level operating signal only; formal A/B score unchanged",
-            })
-        elif item.get("state") == "waiting_retest" and time.time() >= float(item.get("retest_due_at_epoch") or 0):
-            try:
-                _ensure_retest_task(item)
-                item["state"] = "retest_queued"
-                _clear_blocker(data, "operating_retest_deferred", item_id)
-            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
-                item["last_error"] = str(error)[:500]
-                _record_blocker(data, "operating_retest_deferred", error, item_id)
+            if new_result:
+                _record_history(data, "before_after_completed", {
+                    "id": item["id"], "before": before, "after": after, "delta": after - before,
+                    "window": "24h",
+                    "next_round_ready": True,
+                    "truth": "C-level operating signal only; formal A/B score unchanged",
+                })
+        elif item.get("state") != "completed":
+            item["state"] = "retest_queued" if first.get("task_id") else "waiting_retest"
+
+        item["retest_coverage"] = {
+            "completed": sum(1 for slot in schedule if slot.get("signal_id")),
+            "target": len(schedule),
+            "windows": {
+                str(slot.get("window") or ""): "completed" if slot.get("signal_id")
+                else "queued" if slot.get("task_id")
+                else "due" if now_epoch >= float(slot.get("due_at_epoch") or 0)
+                else "scheduled"
+                for slot in schedule
+            },
+        }
 
     if item.get("state") != "failed":
         item["last_error"] = ""
@@ -533,6 +697,7 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
 
 
 def _sync_all(data):
+    _coalesce_active_opportunities(data)
     jobs = _jobs()
     _, seo_opportunities, assets = _growth_assets()
     for item in data.get("opportunities") or []:
@@ -545,10 +710,63 @@ def _sync_all(data):
             _record_blocker(data, "opportunity_sync_deferred", error, item.get("id") or "")
     return data
 
+
+def _coalesce_active_opportunities(data):
+    """Collapse historical duplicate work without deleting audit evidence."""
+    groups = {}
+    for item in data.get("opportunities") or []:
+        if str(item.get("state") or "") not in ACTIVE_STATES:
+            continue
+        key = str(item.get("seo_opportunity_id") or item.get("asset_id") or "")
+        if not key:
+            key = "|".join((
+                str(item.get("region") or ""), str(item.get("service") or ""),
+                str(item.get("keyword") or ""), str(item.get("gap_code") or ""),
+            ))
+        if key:
+            groups.setdefault(key, []).append(item)
+    coalesced = 0
+    state_rank = {
+        "retest_queued": 6, "waiting_retest": 6, "waiting_publish": 5,
+        "waiting_content_update": 4, "content_ready": 3,
+        "ai_employee_running": 2, "ai_employee_queued": 1,
+    }
+    for key, rows in groups.items():
+        if len(rows) < 2:
+            continue
+        primary = max(rows, key=lambda row: (
+            state_rank.get(str(row.get("state") or ""), 0),
+            str(row.get("created_at") or ""), str(row.get("id") or ""),
+        ))
+        signal_ids = list(primary.get("coalesced_signal_ids") or [])
+        for row in rows:
+            if row is primary:
+                continue
+            for signal_id in [row.get("signal_id"), *(row.get("coalesced_signal_ids") or [])]:
+                signal_id = str(signal_id or "")
+                if signal_id and signal_id != primary.get("signal_id") and signal_id not in signal_ids:
+                    signal_ids.append(signal_id)
+            row["state"] = "superseded"
+            row["superseded_by"] = primary.get("id") or ""
+            row["superseded_at"] = now_iso()
+            row["updated_at"] = now_iso()
+            coalesced += 1
+        primary["coalesced_signal_ids"] = signal_ids[-100:]
+    if coalesced:
+        _record_history(data, "duplicate_opportunities_coalesced", {
+            "count": coalesced,
+            "truth": "仅合并同一SEO页面的活动任务；历史Signal与审计记录保留。",
+        })
+    return coalesced
+
 def _state_counts(items):
-    counts = {"total": len(items), "optimizing": 0, "waiting_publish": 0, "published_or_waiting_retest": 0, "completed": 0, "failed": 0}
+    counts = {"total": 0, "optimizing": 0, "waiting_publish": 0, "published_or_waiting_retest": 0, "completed": 0, "failed": 0, "superseded": 0}
     for item in items:
         state = str(item.get("state") or "")
+        if state == "superseded":
+            counts["superseded"] += 1
+            continue
+        counts["total"] += 1
         if state in {"opportunity_created", "ai_employee_queued", "ai_employee_running", "content_ready"}:
             counts["optimizing"] += 1
         if state in {"waiting_publish", "waiting_content_update"}:
@@ -560,6 +778,24 @@ def _state_counts(items):
         if state == "failed":
             counts["failed"] += 1
     return counts
+
+
+def _retest_summary(items):
+    summary = {
+        label: {"scheduled": 0, "queued": 0, "completed": 0}
+        for label, _seconds in DEFAULT_RETEST_WINDOWS
+    }
+    for item in items:
+        if str(item.get("state") or "") == "superseded":
+            continue
+        for slot in item.get("retest_schedule") or []:
+            row = summary.get(str(slot.get("window") or ""))
+            if not row:
+                continue
+            row["scheduled"] += 1
+            row["queued"] += int(bool(slot.get("task_id")) and not bool(slot.get("signal_id")))
+            row["completed"] += int(bool(slot.get("signal_id")))
+    return summary
 
 
 def _pipeline(items):
@@ -600,16 +836,23 @@ def fast_status():
     data = _load(snapshot=True)
     items = list(reversed(data.get("opportunities") or []))
     counts = _state_counts(items)
+    visible_items = [item for item in items if str(item.get("state") or "") != "superseded"]
     # Owner-facing "today" is explicitly distinct from lifetime counters.
     # No public URL / verified publish timestamp => NOT a successful release.
     today = now_iso()[:10]
-    published_today = [
-        item for item in items
+    published_today_rows = [
+        item for item in visible_items
         if str(item.get("published_at") or "").startswith(today)
         and str(item.get("public_url") or "").startswith(("https://", "http://"))
     ]
+    # One public page can serve multiple coalesced GEO signals.  The owner-facing
+    # counter must report real URLs, not inflate the number with internal rows.
+    published_today_urls = list(dict.fromkeys(
+        str(item.get("public_url") or "") for item in published_today_rows
+        if item.get("public_url")
+    ))
     new_today = [
-        item for item in items
+        item for item in visible_items
         if str(item.get("created_at") or "").startswith(today)
     ]
     last_run_at = str(data.get("last_run_at") or "")
@@ -681,8 +924,8 @@ def fast_status():
         "today_activity": {
             "date": today,
             "new_opportunities": len(new_today),
-            "verified_publications": len(published_today),
-            "published_urls": [item.get("public_url") for item in published_today[:10]],
+            "verified_publications": len(published_today_urls),
+            "published_urls": published_today_urls[:10],
             "last_run_at": last_run_at,
             "last_run_age_minutes": age_minutes,
             "last_run_error": str(data.get("last_error") or "")[:200],
@@ -705,8 +948,9 @@ def fast_status():
             "signals": len(auxiliary),
             "technical_blockers": len(data.get("technical_blockers") or []),
         },
-        "pipeline": _pipeline_fast(items, len(auxiliary)),
-        "opportunities": items[:30],
+        "pipeline": _pipeline_fast(visible_items, len(auxiliary)),
+        "retest_windows": _retest_summary(visible_items),
+        "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
         "last_run_at": data.get("last_run_at") or "",
         "last_error": data.get("last_error") or "",
@@ -720,6 +964,7 @@ def status():
     data = _load()
     items = list(reversed(data.get("opportunities") or []))
     counts = _state_counts(items)
+    visible_items = [item for item in items if str(item.get("state") or "") != "superseded"]
     cloud = geo_autonomy.status()
     return {
         "schema": SCHEMA,
@@ -738,8 +983,9 @@ def status():
             "ready": bool((cloud.get("executor") or {}).get("ready")),
         },
         "summary": {**counts, "signals": len(_auxiliary_receipts()), "technical_blockers": len(data.get("technical_blockers") or [])},
-        "pipeline": _pipeline(items),
-        "opportunities": items[:30],
+        "pipeline": _pipeline(visible_items),
+        "retest_windows": _retest_summary(visible_items),
+        "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
         "last_run_at": data.get("last_run_at") or "",
         "last_error": data.get("last_error") or "",

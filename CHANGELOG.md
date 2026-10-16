@@ -1,3 +1,12 @@
+# V2.2.2 R8-34 SEO/GEO Closed Loop — 2026-10-16
+
+- Turn GEO opportunities that reuse an existing public SEO page into a material content revision and verified republish instead of another internal-only task.
+- Correlate every refresh and deploy receipt to its growth action and content revision so only real public evidence advances the workflow.
+- Coalesce duplicate active opportunities while preserving historical rows, preventing hundreds of signals from blocking the same page.
+- Schedule distinct 24-hour, 72-hour and 7-day external retests; the verified 24-hour review unlocks the next optimization round while later checks remain attached to the completed round.
+- Deduplicate owner-facing daily publication counts by real public URL and exclude superseded internal rows.
+- Add an end-to-end release gate for revision, republish, receipt, retest, review and next-round creation.
+
 # V2.1.0 R8 Final Stability Update — 2026-09-20
 
 - Fixed the real-device screen disappearing between captures by retaining the last valid frame during background refresh.

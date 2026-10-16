@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin, urlsplit
 
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
-from core.seo_geo_growth import dashboard, record_asset_stage
+from core.seo_geo_growth import dashboard, record_asset_stage, record_asset_republished
 
 STORE = "r8_15/seo_public_deploy.json"
 RECEIPTS = "r8_15/seo_public_deploy_receipts.json"
@@ -485,7 +485,10 @@ def deploy_pending(limit: int = 10) -> dict:
     assert target is not None
     base = _safe_public_base(data.get("public_base_url"))
     snap = dashboard()
-    candidates = [x for x in snap.get("assets", []) if x.get("stage") == "QC_PASSED"]
+    candidates = [
+        x for x in snap.get("assets", [])
+        if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
+    ]
     deferred_scope = [
         {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
         for x in candidates if not publication_scope_allowed(x)
@@ -533,6 +536,8 @@ def deploy_pending(limit: int = 10) -> dict:
                 "public_url": public_url,
                 "verification": verification,
                 "attachments": attachment_receipts,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
                 "created_at": now_iso(),
             }
             if attachment_receipts:
@@ -542,13 +547,25 @@ def deploy_pending(limit: int = 10) -> dict:
             if not verification.get("ok"):
                 failed.append({"asset_id": asset_id, "reason": "public_http_verification_failed", "public_url": public_url, "verification": verification})
                 continue
-            record_asset_stage(asset_id, "PUBLISHED", {
+            evidence = {
                 "public_url": public_url,
                 "connector": "r8_15_local_iis_filesystem",
                 "deploy_receipt": receipt["receipt_id"],
                 "http_verification": verification,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
+            }
+            if asset.get("republish_pending"):
+                record_asset_republished(asset_id, evidence)
+            else:
+                record_asset_stage(asset_id, "PUBLISHED", evidence)
+            published.append({
+                "asset_id": asset_id,
+                "public_url": public_url,
+                "receipt": receipt["receipt_id"],
+                "republished": bool(asset.get("republish_pending")),
+                "growth_action_id": asset.get("growth_action_id") or "",
             })
-            published.append({"asset_id": asset_id, "public_url": public_url, "receipt": receipt["receipt_id"]})
         except (OSError, ValueError, RuntimeError) as error:
             failed.append({"asset_id": asset_id, "reason": str(error)})
 
