@@ -19,6 +19,12 @@ def run() -> None:
     assert "slice(0, automatic ? AUTOMATIC_RECOVERY_BATCH_SIZE" in startup
     assert "自动恢复已暂停，避免持续占用连接" in startup
     assert "if (!critical)" in startup
+    assert "primeScriptSources(SCRIPT_SEQUENCE.slice(0, 1), SCRIPT_TIMEOUT_MS)" in startup
+    assert "primeScriptSources(SCRIPT_SEQUENCE, SCRIPT_TIMEOUT_MS)" not in startup
+
+    geo = read("geo-growth-os.js")
+    assert "if(isForegroundGeoVisible())load();" in geo
+    assert "if(isForegroundGeoVisible()&&!statusLoading)load();" in geo
 
     owner = read("main-productization.js")
     assert "startup?.failed_modules" in owner

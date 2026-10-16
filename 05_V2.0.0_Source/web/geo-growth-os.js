@@ -408,7 +408,10 @@
       if(byId('geo-os-message'))byId('geo-os-message').textContent=`GEO 状态快照暂未返回：${note} ${error.message}`;
       if(!statusRetryTimer){
         const delay=Math.min(15000,2000*Math.max(1,statusFailures));
-        statusRetryTimer=setTimeout(()=>{statusRetryTimer=null;if(!statusLoading)load();},delay);
+        statusRetryTimer=setTimeout(()=>{
+          statusRetryTimer=null;
+          if(isForegroundGeoVisible()&&!statusLoading)load();
+        },delay);
       }
       return null;
     }finally{statusLoading=false;}
@@ -889,7 +892,11 @@
         formal_ab_target:50,
         mission:'正在恢复 GEO 运行状态…'
       });
-      load();
+      // The GEO endpoint is one of the heaviest owner snapshots. Do not spend
+      // the localhost request budget while another workspace is visible. The
+      // SEO/GEO bridge invokes this same boot function after making the GEO
+      // pane visible, so the first real visit still loads immediately.
+      if(isForegroundGeoVisible())load();
       if(!pollTimer)pollTimer=setInterval(()=>{
         if(isForegroundGeoVisible()&&!busy&&!statusLoading)load();
       },20000);

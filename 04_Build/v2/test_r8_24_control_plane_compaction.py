@@ -106,7 +106,8 @@ def main():
             assert path.stat().st_mtime_ns == mtime
 
             startup = STARTUP.read_text(encoding="utf-8")
-            assert "primeScriptSources(SCRIPT_SEQUENCE, SCRIPT_TIMEOUT_MS)" in startup
+            assert "primeScriptSources(SCRIPT_SEQUENCE.slice(0, 1), SCRIPT_TIMEOUT_MS)" in startup
+            assert "primeScriptSources(SCRIPT_SEQUENCE, SCRIPT_TIMEOUT_MS)" not in startup
             control_patch = CONTROL_PATCH.read_text(encoding="utf-8")
             assert "start_background_agent" not in control_patch
             run_source = RUN.read_text(encoding="utf-8")

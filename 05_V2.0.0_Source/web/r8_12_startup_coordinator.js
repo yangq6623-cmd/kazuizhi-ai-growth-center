@@ -780,11 +780,13 @@
 
     state.phase = 'loading_owner_shell';
     exposeStartupStatus();
-    // Prime only the modules that the following loop consumes immediately.
-    // POST_READY modules already have their own delayed loader. Fetching them
-    // here duplicated cold-start traffic and could occupy Chrome's per-origin
-    // connections while GEO or the Connections page needed a real script/API.
-    primeScriptSources(SCRIPT_SEQUENCE, SCRIPT_TIMEOUT_MS);
+    // Prime only the first module. Priming the complete sequence opened six
+    // simultaneous localhost requests before the owner shell was usable. The
+    // bundled Python service intentionally serializes several cold-start data
+    // reads, so Chrome could exhaust its per-origin connection budget and
+    // report rotating script failures even though every file was present.
+    // The loop below keeps the remaining modules strictly sequential.
+    primeScriptSources(SCRIPT_SEQUENCE.slice(0, 1), SCRIPT_TIMEOUT_MS);
     try {
       for (const [src, key] of SCRIPT_SEQUENCE) {
         state.current_module = src;
