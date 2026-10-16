@@ -187,13 +187,29 @@ async function refreshIntegrations(){
   }catch(error){toast(error.message,'error')}
 }
 
+let lastDiagnosticPayload=null;
+function renderDiagnostics(data){
+  lastDiagnosticPayload=data;
+  const startup=window.__KZ_R812_STARTUP_COORDINATOR__;
+  const startupFailures=Array.isArray(startup?.failed_modules)?startup.failed_modules:[];
+  const checks=[...(data.checks||[]),...startupFailures.map(row=>({
+    status:'fail',
+    name:`界面模块 ${String(row.src||'').split('/').pop()||row.src}`,
+    message:`${row.error||'加载失败'}（尝试 ${row.attempts||1} 次）`,
+  }))];
+  const failed=Number(data.summary?.failed||0)+startupFailures.length;
+  const passed=Number(data.summary?.passed||0);
+  const attention=Number(data.summary?.attention||0);
+  $('diagnostic-summary').className='diagnostic-summary';
+  $('diagnostic-summary').innerHTML=`<strong>${failed?'发现异常':'核心服务正常'}</strong><span>${passed} 项通过 · ${attention} 项待配置 · ${failed} 项失败</span>`;
+  $('diagnostic-list').innerHTML=checks.map(x=>`<div class="diagnostic-row"><i class="${esc(x.status)}"></i><strong>${esc(x.name)}</strong><span>${esc(x.message)}</span><b>${x.status==='pass'?'通过':x.status==='attention'?'待配置':'失败'}</b></div>`).join('');
+}
+
 async function runDiagnostics(){
   const button=$('run-diagnostics');button.disabled=true;button.textContent='体检中…';
   try{
     const data=await api('/api/system/diagnostics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    $('diagnostic-summary').className='diagnostic-summary';
-    $('diagnostic-summary').innerHTML=`<strong>${data.summary.failed?'发现异常':'核心服务正常'}</strong><span>${data.summary.passed} 项通过 · ${data.summary.attention} 项待配置 · ${data.summary.failed} 项失败</span>`;
-    $('diagnostic-list').innerHTML=data.checks.map(x=>`<div class="diagnostic-row"><i class="${esc(x.status)}"></i><strong>${esc(x.name)}</strong><span>${esc(x.message)}</span><b>${x.status==='pass'?'通过':x.status==='attention'?'待配置':'失败'}</b></div>`).join('');
+    renderDiagnostics(data);
     toast('系统体检已完成');
   }catch(error){toast(error.message,'error')}finally{button.disabled=false;button.textContent='重新体检'}
 }
@@ -213,6 +229,8 @@ $('test-ai-connection').addEventListener('click',async()=>{
 });
 
 $('run-diagnostics').addEventListener('click',runDiagnostics);
+document.addEventListener('kz:startup-module-failed',()=>{if(lastDiagnosticPayload)renderDiagnostics(lastDiagnosticPayload)});
+document.addEventListener('kz:startup-module-recovered',()=>{if(lastDiagnosticPayload)renderDiagnostics(lastDiagnosticPayload)});
 
 $('ask-ai').addEventListener('click',async()=>{
   const prompt=$('ai-command-prompt').value.trim();if(!prompt){toast('请先输入要分析的问题','error');return}

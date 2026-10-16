@@ -88,16 +88,27 @@
   const sourcePromises = new Map();
   // Failures may occur when a workspace is opened long AFTER boot.
   // A single capped timer prevents duplicate retries and unbounded traffic.
+  // Automatic recovery is deliberately finite: an overloaded local service
+  // must not be kept overloaded by an endless browser retry loop.
+  const MAX_AUTOMATIC_RECOVERY_ROUNDS = 2;
+  const AUTOMATIC_RECOVERY_BATCH_SIZE = 2;
+  const AUTOMATIC_RECOVERY_TIMEOUT_MS = 20000;
   let failureRecoveryTimer = null;
   let failureRecoveryAttempts = 0;
   function scheduleFailedModuleRecovery() {
     if (!state.failed_modules.length || failureRecoveryTimer !== null) return;
+    if (failureRecoveryAttempts >= MAX_AUTOMATIC_RECOVERY_ROUNDS) {
+      document.documentElement.dataset.kzStartupAutoRecovery = 'paused';
+      exposeStartupStatus();
+      renderStartupDiagnostics();
+      return;
+    }
     const delay = Math.min(60000, 5000 * Math.pow(2, Math.min(failureRecoveryAttempts, 4)));
     failureRecoveryTimer = window.setTimeout(async () => {
       failureRecoveryTimer = null;
-      failureRecoveryAttempts = Math.min(failureRecoveryAttempts + 1, 4);
+      failureRecoveryAttempts += 1;
       if (state.retrying_failures) { scheduleFailedModuleRecovery(); return; }
-      try { await retryFailedModules('scheduled_recovery'); }
+      try { await retryFailedModules(`auto_retry_${failureRecoveryAttempts}`, {automatic:true}); }
       catch (error) { console.warn('[KZ startup] module auto-retry failed', error); }
       finally { if (state.failed_modules.length) scheduleFailedModuleRecovery(); }
     }, delay);
@@ -261,6 +272,7 @@
       if (failureRecoveryTimer !== null) window.clearTimeout(failureRecoveryTimer);
       failureRecoveryTimer = null;
       failureRecoveryAttempts = 0;
+      document.documentElement.dataset.kzStartupAutoRecovery = 'complete';
     }
     exposeStartupStatus();
     renderStartupDiagnostics();
@@ -274,6 +286,14 @@
       clearFailure(src, 'normal_load');
       return true;
     } catch (error) {
+      const critical = SCRIPT_SEQUENCE.some(([criticalSrc]) => criticalSrc === src);
+      if (!critical) {
+        // Lazy workspaces are allowed to fail visibly and recover later. An
+        // immediate second fetch here doubled connection pressure exactly
+        // when the local API queue was already busy.
+        rememberFailure(src, error);
+        return false;
+      }
       // A cold local server can be busy completing its first evidence query.
       // Retry once before declaring a UI module degraded; loadScript removes
       // the failed tag before inserting the replacement script.
@@ -612,7 +632,11 @@
     retry.className = 'primary-small';
     retry.textContent = state.retrying_failures ? '正在重试…' : '重试失败模块';
     retry.disabled = state.retrying_failures || !state.failed_modules.length;
-    retry.addEventListener('click', () => retryFailedModules('manual'));
+    retry.addEventListener('click', () => {
+      failureRecoveryAttempts = 0;
+      document.documentElement.dataset.kzStartupAutoRecovery = 'manual';
+      retryFailedModules('manual', {automatic:false});
+    });
     head.append(titleWrap, retry);
     card.appendChild(head);
 
@@ -621,7 +645,10 @@
     const webMcpHint = hasWebMcp()
       ? (window.KazuizhiSiteTools?.registered ? 'WebMCP 工具：已注册' : 'WebMCP 工具：支持但尚未完成注册')
       : 'WebMCP 工具：当前浏览器不支持（可选，不影响本地直连）';
-    note.textContent = `启动阶段：${state.phase} · 当前未恢复 ${state.failed_modules.length} · 本次已自动恢复 ${state.recovered_modules.length}。 ${webMcpHint}。真实加载失败仍保留在下方，不隐藏错误。`;
+    const recoveryHint = state.failed_modules.length && failureRecoveryAttempts >= MAX_AUTOMATIC_RECOVERY_ROUNDS
+      ? '自动恢复已暂停，避免持续占用连接；可在服务空闲后手动重试。'
+      : '系统仅进行有限次数的分批自动恢复。';
+    note.textContent = `启动阶段：${state.phase} · 当前未恢复 ${state.failed_modules.length} · 本次已自动恢复 ${state.recovered_modules.length}。${recoveryHint} ${webMcpHint}。真实加载失败仍保留在下方，不隐藏错误。`;
     card.appendChild(note);
 
     const list = document.createElement('div');
@@ -659,14 +686,19 @@
     document.documentElement.dataset.kzStartupCurrentModule = state.current_module || '';
   }
 
-  async function retryFailedModules(reason = 'auto') {
+  async function retryFailedModules(reason = 'auto', options = {}) {
     if (state.retrying_failures || !state.failed_modules.length) {
       renderStartupDiagnostics();
       return state.failed_modules.length === 0;
     }
     state.retrying_failures = true;
     renderStartupDiagnostics();
-    const pending = state.failed_modules.map(row => ({...row}));
+    const automatic = Boolean(options.automatic);
+    const pending = state.failed_modules
+      .slice()
+      .sort((left, right) => Number(left.attempts || 0) - Number(right.attempts || 0))
+      .slice(0, automatic ? AUTOMATIC_RECOVERY_BATCH_SIZE : state.failed_modules.length)
+      .map(row => ({...row}));
     // Failed connection-related modules are LAZY modules. Omitting these
     // from the recovery registry made the three observed timeout rows
     // impossible to retry, even when their JS files were already available.
@@ -684,7 +716,7 @@
       }
       const [src, key] = tuple;
       try {
-        await loadScript(src, key, false, 30000);
+        await loadScript(src, key, false, automatic ? AUTOMATIC_RECOVERY_TIMEOUT_MS : 30000);
         clearFailure(src, reason);
       } catch (error) {
         const current = state.failed_modules.find(row => row.src === src);
@@ -704,7 +736,7 @@
     if (!state.failed_modules.length && typeof window.toast === 'function') {
       window.toast(`启动模块已自动恢复：本次恢复 ${state.recovered_modules.length} 个。`, 'success');
     }
-    if (state.failed_modules.length) scheduleFailedModuleRecovery();
+    if (state.failed_modules.length && automatic) scheduleFailedModuleRecovery();
     return state.failed_modules.length === 0;
   }
 
@@ -807,8 +839,11 @@
     }
   }, true);
   window.addEventListener('online', () => {
-    if (state.failed_modules.length && !state.retrying_failures)
-      retryFailedModules('network_restored');
+    if (state.failed_modules.length && !state.retrying_failures) {
+      failureRecoveryAttempts = 0;
+      document.documentElement.dataset.kzStartupAutoRecovery = 'network_restored';
+      retryFailedModules('network_restored', {automatic:true});
+    }
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.failed_modules.length)

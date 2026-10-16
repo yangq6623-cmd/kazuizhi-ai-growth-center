@@ -11,7 +11,16 @@ function deviceSnapshot(payload=state.device||{}){const devices=Array.isArray(pa
 function syncOperationalDeviceStatus(payload){if(payload&&typeof payload==='object')state.device=payload;if(state.currentPage==='health')renderHealth();window.dispatchEvent(new CustomEvent('operational:device-status',{detail:payload||null}))}
 function syncWorkbenchReturn(page,nav){const bar=$('workbench-return'),location=$('workbench-location');if(!bar||!location)return;const detail=page!=='dashboard';bar.hidden=!detail;location.textContent=detail?`当前工作台：${nav?.textContent?.trim()||'详情'}`:''}
 function changePage(page){if(page==='device'){page='accounts';notify('真实手机/ADB 已退出社媒运行链路，已打开 PC 扫码账号中心。')}const nav=document.querySelector(`.nav[data-page="${page}"]`),section=$(page);if(!nav||!section)return;const previous=state.currentPage;if(previous==='device'&&page!=='device')window.deviceCenterDeactivate?.();document.querySelectorAll('.nav,.workspace-tab,.page').forEach(x=>x.classList.remove('active'));nav.classList.add('active');document.querySelector(`.workspace-tab[data-workspace="${page}"]`)?.classList.add('active');section.classList.add('active');state.currentPage=page;$('crumb').textContent='AI 运营工作台';$('page-title').textContent=nav.textContent;syncWorkbenchReturn(page,nav);loadPage(page).catch(error=>notify(error.message,'error'))}
-async function loadFactory(){state.factory=await api('/api/content-factory');return state.factory}
+async function loadFactory(){
+  state.factory=await api('/api/content-factory');
+  // The unified browser registry is the current authorization source. The
+  // legacy content-factory account list can contain fewer historical rows and
+  // previously produced a conflicting "6" while the action center reported
+  // 11 real accounts needing verification.
+  const socialAccounts=state.factory?.social_truth?.accounts;
+  if(Array.isArray(socialAccounts))state.factory.accounts=socialAccounts;
+  return state.factory;
+}
 function campaignOptions(selected=''){const campaigns=state.factory?.campaigns||[];return `<option value="">请选择增长战役</option>${campaigns.map(x=>`<option value="${esc(x.id)}" ${x.id===selected?'selected':''}>${esc(x.id)} · ${esc(x.title)}</option>`).join('')}`}
 function renderCampaigns(){const items=state.factory?.campaigns||[];$('campaign-list').innerHTML=items.length?items.map(x=>`<div class="card-row"><div><b>${esc(x.title)}</b><span>${esc(x.id)} · ${esc(x.region)} · ${esc(x.service)} · ${esc(x.goal)}</span></div><em class="status">${esc(statusText(x.status))}</em></div>`).join(''):'<div class="empty">还没有增长战役。先从一个真实用户问题开始。</div>';const select=$('video-campaign');if(select)select.innerHTML=campaignOptions(select.value)}
 function videoTitle(item){const titles=item.production_plan?.titles||[];return titles[0]||item.production_plan?.topic||item.script||item.id}

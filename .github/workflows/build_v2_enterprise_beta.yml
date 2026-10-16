@@ -111,6 +111,7 @@ jobs:
           python 04_Build/v2/test_r8_27_geo_browser_agent.py
           python 04_Build/v2/test_r8_28_geo_browser_extension.py
           python 04_Build/v2/test_r8_24_owner_ui_recovery.py
+          python 04_Build/v2/test_r8_25_runtime_truth_and_backpressure.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }

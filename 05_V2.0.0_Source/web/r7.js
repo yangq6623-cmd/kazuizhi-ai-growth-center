@@ -294,10 +294,16 @@ function ensureAuditCollapse(){
 
 function bindR7OverviewActions(){ensureAuditCollapse()}
 
+let r7LoadPromise=null;
 async function loadR7(){
-  try{
+  if(r7LoadPromise)return r7LoadPromise;
+  r7LoadPromise=(async()=>{try{
     applyAutonomyCopy();
-    const [jobs,agents,engine,audit,routes]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/agents'),api('/api/r7/engine'),api('/api/r7/audit'),api('/api/r7/model-routes')]);
+    // Keep no more than two local requests active at once. Five parallel
+    // requests plus iframe polling previously starved lazy module downloads.
+    const [jobs,engine]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/engine')]);
+    const [agents,audit]=await Promise.all([api('/api/r7/agents'),api('/api/r7/audit')]);
+    const routes=await api('/api/r7/model-routes');
     r7Jobs=jobs.items||[];
     renderTodayCommand(engine);
     renderR7Jobs(r7Jobs);
@@ -312,7 +318,8 @@ async function loadR7(){
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
     bindR7OverviewActions();
     return true;
-  }catch(error){toast(error.message,'error');return false}
+  }catch(error){toast(error.message,'error');return false}finally{r7LoadPromise=null}})();
+  return r7LoadPromise;
 }
 window.loadR7=loadR7;
 

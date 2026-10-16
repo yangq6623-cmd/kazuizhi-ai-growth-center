@@ -94,6 +94,9 @@
   }
 
   function localStateText(){
+    const startup=window.__KZ_R812_STARTUP_COORDINATOR__;
+    const failures=Array.isArray(startup?.failed_modules)?startup.failed_modules:[];
+    if(failures.length)return ['部分降级',`${failures.length} 个界面模块未恢复；本地服务仍在线`];
     const text=document.getElementById('service-text')?.textContent?.trim()||'';
     if(/正常|已连接|运行中/.test(text))return ['正常','本地服务与自治执行可用'];
     if(/失败|异常|断开/.test(text))return ['异常','请运行系统体检查看原因'];
@@ -109,8 +112,14 @@
   }
 
   function anomalyStateText(){
+    const startup=window.__KZ_R812_STARTUP_COORDINATOR__;
+    const failures=Array.isArray(startup?.failed_modules)?startup.failed_modules:[];
+    if(failures.length)return ['需要处理',`${failures.length} 个界面模块加载失败，详见启动模块诊断`];
     const stage=document.getElementById('r810-stage-state')?.textContent?.trim()||'';
-    const banner=[...document.querySelectorAll('main button,main span,main b')].map(x=>String(x.textContent||'').trim()).find(x=>/ChatGPT生产\/QC|异常待处理|自动恢复失败/.test(x));
+    // Generic labels such as "异常待处理" are workflow categories, not an
+    // active system incident. Only a concrete failed-recovery message or the
+    // authoritative stage state may raise the owner-level anomaly flag.
+    const banner=[...document.querySelectorAll('main button,main span,main b')].map(x=>String(x.textContent||'').trim()).find(x=>/自动恢复失败/.test(x));
     if(/异常/.test(stage)||banner)return ['需要处理',banner||stage.replace(/^阶段：/,'')];
     return ['正常','暂无需要老板介入的系统异常'];
   }
@@ -207,6 +216,8 @@
   const scheduleRefresh=()=>window.setTimeout(refreshEnhancements,80);
   document.addEventListener('operational:refreshed',scheduleRefresh);
   document.addEventListener('r810:workbench-ready',scheduleRefresh);
+  document.addEventListener('kz:startup-module-failed',scheduleRefresh);
+  document.addEventListener('kz:startup-module-recovered',scheduleRefresh);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleRefresh();});
   window.addEventListener('load',scheduleRefresh,{once:true});
 
