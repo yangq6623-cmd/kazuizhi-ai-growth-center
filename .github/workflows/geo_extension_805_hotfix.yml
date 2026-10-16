@@ -1,0 +1,48 @@
+name: GEO Chrome Extension Cycle 805 Gate
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/geo-extension-cycle-805-*"
+    paths:
+      - "05_V2.0.0_Source/browser_extension/kazuizhi_geo/**"
+      - "04_Build/v2/test_geo_extension_805.js"
+      - ".github/workflows/geo_extension_805_hotfix.yml"
+permissions:
+  contents: read
+jobs:
+  extension-syntax-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate JavaScript syntax
+        run: |
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/content-agent.js
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/service-worker.js
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/popup.js
+      - name: Regression test cycle cache and messaging
+        run: node 04_Build/v2/test_geo_extension_805.js
+      - name: Package standalone extension
+        shell: bash
+        run: |
+          python - <<'PY'
+          import zipfile, pathlib
+          source = pathlib.Path("05_V2.0.0_Source/browser_extension/kazuizhi_geo")
+          target = pathlib.Path("Kazuizhi_GEO_Chrome_Extension_2.2.2.805.zip")
+          with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+              for item in sorted(source.iterdir()):
+                  if item.is_file():
+                      archive.write(item, item.name)
+          print(target, target.stat().st_size, "bytes")
+          PY
+      - name: Upload extension ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.805
+          path: Kazuizhi_GEO_Chrome_Extension_2.2.2.805.zip
+          if-no-files-found: error
+          retention-days: 60
