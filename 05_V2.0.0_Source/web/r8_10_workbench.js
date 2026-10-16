@@ -206,7 +206,7 @@
   function switchExecutionPage(page,button){
     if(page==='device')page='accounts';
     openRoute('operational-hub');
-    const frame=q('operational-frame');
+    const frame=window.KZEnsureOperationalFrame?.()||q('operational-frame');
     const activate=()=>{try{frame?.contentWindow?.changeOperationalPage?.(page)}catch(error){showNotice('执行中心页面切换失败，请刷新后重试','error')}};
     if(frame){if(frame.contentDocument?.readyState==='complete')activate();else frame.addEventListener('load',activate,{once:true})}
     document.querySelectorAll('.r810-execution-tabs button').forEach(x=>x.classList.toggle('active',x===button));

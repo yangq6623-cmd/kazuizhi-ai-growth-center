@@ -12,6 +12,18 @@ def read(name: str) -> str:
 
 
 def run() -> None:
+    index = read("index.html")
+    fetch_budget = read("build_info.js")
+    assert index.index('src="build_info.js"') < index.index('src="app.js"')
+    assert "const maxConcurrent=2" in fetch_budget
+    assert "url.pathname.startsWith('/api/')" in fetch_budget
+    assert "details.signal.addEventListener('abort'" in fetch_budget
+    assert "window.KZFetchBudget" in fetch_budget
+
+    app = read("app.js")
+    assert 'src="about:blank" data-src="/operational.html?embedded=1" loading="lazy"' in app
+    assert "window.KZEnsureOperationalFrame=ensureOperationalFrame" in app
+
     startup = read("r8_12_startup_coordinator.js")
     assert "MAX_AUTOMATIC_RECOVERY_ROUNDS = 2" in startup
     assert "AUTOMATIC_RECOVERY_BATCH_SIZE = 2" in startup
