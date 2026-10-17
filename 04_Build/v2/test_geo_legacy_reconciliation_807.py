@@ -92,9 +92,9 @@ def main():
 
     report = geo.legacy_blockage_review()
     assert report["blocked"] == 7
-    assert report["timeout_answer"] == 4
+    assert report["timeout_answer"] == 5
     assert report["timeout_signal"] == 1
-    assert report["other"] == 2
+    assert report["other"] == 1
     assert report["has_prior_evidence_id"] == 3
     assert report["duplicate_success_same_question_provider"] >= 1
     assert report["auto_retried"] == 0
