@@ -1,5 +1,6 @@
 const API = "http://127.0.0.1:8876/api/r8-27/geo-browser-agent";
 const ALARM = "kazuizhi-geo-cycle";
+const HEARTBEAT_ALARM = "kazuizhi-geo-heartbeat";
 const PLATFORMS = {
   doubao_web: {url: "https://www.doubao.com/chat/", hosts: ["www.doubao.com"]},
   douyin_search_web: {url: "https://www.douyin.com/search/", hosts: ["www.douyin.com"], search: true},
@@ -13,7 +14,7 @@ let currentStage = "空闲";
 function stage(name) { currentStage = name; }
 
 async function stored() {
-  return chrome.storage.local.get(["agentId", "token", "sessions", "lastVerified", "lastRetryAt", "lastCycle", "lastError", "lastOutcome"]);
+  return chrome.storage.local.get(["agentId", "token", "sessions", "lastVerified", "lastRetryAt", "lastCycle", "lastError", "lastOutcome", "lastHeartbeatAt", "lastHeartbeatError"]);
 }
 
 async function call(path, payload) {
@@ -37,6 +38,28 @@ async function readJson(url) {
 
 async function ensureAlarm() {
   await chrome.alarms.create(ALARM, {periodInMinutes: 3});
+  // The backend expires heartbeats after 180 seconds. A separate 60-second
+  // heartbeat keeps the agent online while a GEO answer is being captured.
+  await chrome.alarms.create(HEARTBEAT_ALARM, {periodInMinutes: 1});
+}
+
+async function heartbeatOnly() {
+  const state = await stored();
+  if (!state.agentId || !state.token) return {skipped: "not_registered"};
+  try {
+    await call("heartbeat", {
+      agent_id: state.agentId,
+      agent_token: state.token,
+      sessions: Array.isArray(state.sessions) ? state.sessions : [],
+      version: chrome.runtime.getManifest().version
+    });
+    await chrome.storage.local.set({lastHeartbeatAt: new Date().toISOString(), lastHeartbeatError: ""});
+    return {ok: true};
+  } catch (error) {
+    const message = String(error?.message || error);
+    await chrome.storage.local.set({lastHeartbeatError: message.slice(0, 180)});
+    return {ok: false, error: message};
+  }
 }
 
 function tabMatches(tab, hosts) {
@@ -316,7 +339,10 @@ async function cycle(options = {}) {
 
 chrome.runtime.onInstalled.addListener(() => { ensureAlarm().then(() => cycle({verify: true})).catch(() => {}); });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm().then(() => cycle({verify: true})).catch(() => {}); });
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) cycle().catch(() => {}); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === HEARTBEAT_ALARM) heartbeatOnly().catch(() => {});
+  if (alarm.name === ALARM) cycle().catch(() => {});
+});
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message && message.type === "kz-cycle") { cycle({verify: Boolean(message.verify), activate: Boolean(message.activate)}).then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
   if (message && message.type === "kz-recover-current") { recoverCurrentPlatform().then(sendResponse).catch(error => sendResponse({error: String(error.message || error)})); return true; }
