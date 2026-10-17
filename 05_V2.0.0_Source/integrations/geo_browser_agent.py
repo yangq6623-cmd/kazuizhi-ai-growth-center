@@ -50,6 +50,7 @@ def _default_state():
         "last_claim_reason": "",
         "last_claim_task_id": "",
         "last_canary_reason": "",
+        "last_retest_reason": "",
         "extension_version": "",
     }
 
@@ -159,6 +160,7 @@ def status():
         "last_claim_reason": str(state.get("last_claim_reason") or ""),
         "last_claim_task_id": str(state.get("last_claim_task_id") or ""),
         "last_canary_reason": str(state.get("last_canary_reason") or ""),
+        "last_retest_reason": str(state.get("last_retest_reason") or ""),
         "extension_version": str(state.get("extension_version") or ""),
         "platforms": platforms,
         "requires_pc_awake": True,
@@ -250,7 +252,18 @@ def claim(payload):
             if canary.get("created") == 1:
                 contract["priority_task_id"] = str(canary["task_id"])
     result = geo.claim_next_task(contract)
+    retest_reason = "ordinary_queued_task"
+    if result.get("skipped"):
+        # Browser baseline 50/50 is not an infinite source of fresh questions.
+        # Schedule at most one authentic 24h follow-up from an already verified
+        # successful slot. Never replay historical failed/ambiguous tasks.
+        retest = geo.enqueue_safe_browser_retest(platform)
+        retest_reason = str(retest.get("reason") or "not_eligible")
+        if retest.get("created") == 1:
+            contract["priority_task_id"] = str(retest["task_id"])
+            result = geo.claim_next_task(contract)
     task = result.get("task") or {}
+    state["last_retest_reason"] = retest_reason
     state["last_claim_at"] = now_iso()
     state["last_claim_platform"] = platform
     state["last_claim_reason"] = ("claimed" if task else str(result.get("reason") or "queue_empty"))
@@ -271,6 +284,24 @@ def receipt(payload):
     _authorize(state, values.pop("agent_token", None))
     values["execution_origin"] = "authenticated_browser_agent"
     values["executor_id"] = str(state.get("agent_id") or "")
+    task_id = str(values.get("task_id") or "")
+    if not task_id:
+        raise ValueError("task_id_required")
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        _queue, task = geo._find_task(task_id)
+        legacy_current_page = (
+            str(values.get("evidence_source") or "") ==
+            "r8_28_chrome_extension_current_page_recovery"
+            and task.get("state") == "failed"
+        )
+        if not legacy_current_page and task.get("state") not in {"running", "succeeded"}:
+            raise ValueError("geo_browser_receipt_requires_claimed_task")
+        if not legacy_current_page and str(task.get("executor_id") or "") != str(state.get("agent_id") or ""):
+            raise PermissionError("geo_browser_receipt_wrong_executor")
+        assigned = str(task.get("expected_platform") or "")
+        if assigned and assigned != str(values.get("platform") or ""):
+            raise ValueError("geo_browser_receipt_platform_mismatch")
     from integrations import geo_browser_validation
     result = geo_browser_validation.record_browser_result(values)
     state["last_task_id"] = str(values.get("task_id") or "")
@@ -304,18 +335,19 @@ def block(payload):
     # task or overwrite the evidence associated with a successful result.
     task = None
     if task_id:
-        _queue, previous = geo._find_task(task_id)
-        if previous.get("state") == "running":
-            task = geo._transition(task_id, target, reason)
-        else:
-            # Old messages from a replaced/finished run are not new failures.
-            # In particular an already-succeeded task must keep its receipt
-            # and clear status; don't make the owner page display a false error.
-            return {
-                "ok": True, "task": previous, "ignored_stale": True,
-                "block_category": "stale_callback",
-                "requires_manual_login": False, "status": status(),
-            }
+        from core.storage import _JSON_IO_LOCK
+        with _JSON_IO_LOCK:
+            _queue, previous = geo._find_task(task_id)
+            if (previous.get("state") == "running"
+                    and str(previous.get("executor_id") or "") == str(state.get("agent_id") or "")):
+                task = geo._transition(task_id, target, reason)
+            else:
+                # A late timeout must never undo a successfully persisted Receipt.
+                return {
+                    "ok": True, "task": previous, "ignored_stale": True,
+                    "block_category": "stale_callback",
+                    "requires_manual_login": False, "status": status(),
+                }
 
     if not technical:
         sessions = dict(state.get("sessions") or {})
