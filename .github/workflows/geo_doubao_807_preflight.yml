@@ -1,0 +1,37 @@
+name: GEO Doubao 807 Preflight (No Package)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/r8-geo-doubao-ack-*"
+    paths:
+      - "05_V2.0.0_Source/browser_extension/kazuizhi_geo/**"
+      - "04_Build/v2/test_geo_extension_807.js"
+      - "04_Build/v2/test_r8_28_geo_browser_extension.py"
+      - ".github/workflows/geo_doubao_807_preflight.yml"
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Syntax
+        shell: pwsh
+        run: |
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/service-worker.js
+          if ($LASTEXITCODE -ne 0) { throw "worker syntax" }
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/content-agent.js
+          if ($LASTEXITCODE -ne 0) { throw "content syntax" }
+      - name: Version and Doubao send/receipt regression
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_r8_28_geo_browser_extension.py
+          if ($LASTEXITCODE -ne 0) { throw "R8-28 regression" }
+          node 04_Build/v2/test_geo_extension_807.js
+          if ($LASTEXITCODE -ne 0) { throw "Doubao send/capture regression" }
