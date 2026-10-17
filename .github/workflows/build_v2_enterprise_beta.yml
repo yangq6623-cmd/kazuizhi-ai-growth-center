@@ -77,6 +77,7 @@ jobs:
       - name: "#812 isolated GEO automatic claim execution and Receipt gate"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#812: synthetic local data only; no external AI question is sent'
           python 04_Build/v2/test_geo_812_claim_execute_receipt.py
           if ($LASTEXITCODE -ne 0) { throw '#812 GEO exactly-once claim / retest / Receipt failed' }
           python 04_Build/v2/test_geo_812_receipt_http_latency.py
