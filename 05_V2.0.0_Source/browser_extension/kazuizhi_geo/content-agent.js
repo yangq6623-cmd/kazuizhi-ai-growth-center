@@ -206,6 +206,23 @@
       }
       return false;
     }
+    // Doubao's composer can have adjacent microphone/tool buttons. Never
+    // treat an arbitrary nearby button as a confirmed Send control.
+    if (platform === "doubao_web") {
+      const buttons = [...document.querySelectorAll("button")]
+        .filter(item => visible(item) && !item.disabled && item.getAttribute("aria-disabled") !== "true");
+      const named = buttons.find(item => /发送|发送消息|send|submit/i.test(
+        [item.innerText, item.getAttribute("aria-label"), item.getAttribute("title"),
+         item.getAttribute("data-testid")].filter(Boolean).join(" ")
+      ));
+      if (named) { named.click(); return true; }
+      if (form?.requestSubmit) { form.requestSubmit(); return true; }
+      // A synthetic Enter may be ignored by some clients, so the caller MUST
+      // verify that the question was really posted before polling any answer.
+      for (const type of ["keydown", "keypress", "keyup"])
+        input.dispatchEvent(new KeyboardEvent(type, {key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true}));
+      return true;
+    }
     const nearby = [...document.querySelectorAll("button")]
       .filter(item => visible(item) && !item.disabled && item.getAttribute("aria-disabled") !== "true")
       .map(item => ({item, rect: item.getBoundingClientRect()}))
@@ -220,6 +237,24 @@
     return true;
   }
   
+  function questionCount(text, question) {
+    return question ? String(text || "").split(question).length - 1 : 0;
+  }
+
+  async function confirmPosted(input, question, beforeCount) {
+    // Composer text is not a posted message. Require a NEW question echo in
+    // the conversation and a cleared/replaced composer; never resend on timeout.
+    for (let i = 0; i < 24; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const pageCount = questionCount(document.body?.innerText || "", question);
+      const composerText = String(
+        input?.value !== undefined ? input.value : input?.innerText || input?.textContent || ""
+      ).trim();
+      if (pageCount > beforeCount && (!input?.isConnected || composerText !== question)) return true;
+    }
+    return false;
+  }
+
   const EXECUTION_KEY = "kz_geo_execution_v2";
   
   function saveExecution(value) {
@@ -239,6 +274,7 @@
     if (state !== "ready") return {ok: false, state, url: location.href};
     const input = await resolveInput(platform);
     if (!input) return {ok: false, state: "auth_required", url: location.href};
+    const oldQuestionCount = questionCount(document.body?.innerText || "", question);
     saveExecution({
       platform,
       question,
@@ -249,6 +285,18 @@
       submittedAt: Date.now()
     });
     fillInput(input, question);
+    if (platform === "doubao_web") {
+      const sent = await submit(input, platform);
+      const confirmed = sent && await confirmPosted(input, question, oldQuestionCount);
+      if (!confirmed) {
+        try { sessionStorage.removeItem(EXECUTION_KEY); } catch (_) {}
+        return {ok: false, state: "error", error: "question_not_submitted", url: location.href};
+      }
+      const execution = loadExecution() || {platform, question};
+      execution.postConfirmed = true;
+      saveExecution(execution);
+      return {ok: true, state: "submitted", url: location.href};
+    }
     if (platform === "so360_ai_search") {
       const submitted = await submit(input, platform);
       if (!submitted) return {ok: false, state: "error", error: "send_button_not_enabled", url: location.href};
@@ -277,6 +325,11 @@
       } else if (platform === "so360_ai_search" && storedExecution && Date.now() - Number(storedExecution.submittedAt || 0) < 30000) {
         return {ok: false, state: "pending", url: location.href};
       } else return {ok: false, state, url: location.href};
+    }
+    if (platform === "doubao_web" && (!storedExecution ||
+        storedExecution.platform !== platform || storedExecution.question !== question ||
+        storedExecution.postConfirmed !== true)) {
+      return {ok: false, state: "error", error: "unconfirmed_question", url: location.href};
     }
     const execution = storedExecution && storedExecution.platform === platform && storedExecution.question === question
       ? storedExecution
