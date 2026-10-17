@@ -223,11 +223,9 @@
       ));
       if (named) { named.click(); return true; }
       if (form?.requestSubmit) { form.requestSubmit(); return true; }
-      // A synthetic Enter may be ignored by some clients, so the caller MUST
-      // verify that the question was really posted before polling any answer.
-      for (const type of ["keydown", "keypress", "keyup"])
-        input.dispatchEvent(new KeyboardEvent(type, {key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true}));
-      return true;
+      // Synthetic keyboard events are untrusted on browser-app editors.
+      // Never pretend a submission happened without a real Send control.
+      return false;
     }
     const nearby = [...document.querySelectorAll("button")]
       .filter(item => visible(item) && !item.disabled && item.getAttribute("aria-disabled") !== "true")
@@ -243,20 +241,26 @@
     return true;
   }
   
-  function questionCount(text, question) {
-    return question ? String(text || "").split(question).length - 1 : 0;
+  function normalizeQuestionText(value) {
+    return String(value || "").replace(/\s+/g, "");
   }
-
+  function questionCount(text, question) {
+    const needle = normalizeQuestionText(question);
+    return needle ? normalizeQuestionText(text).split(needle).length - 1 : 0;
+  }
+  function postedEchoVisible(input, question, beforeCount) {
+    // A still-filled composer does NOT prove the question reached the chat.
+    const count = questionCount(document.body?.innerText || "", question);
+    const composer = String(input?.value !== undefined
+      ? input.value : input?.innerText || input?.textContent || "");
+    return count > beforeCount &&
+      (!input?.isConnected || normalizeQuestionText(composer) !== normalizeQuestionText(question));
+  }
   async function confirmPosted(input, question, beforeCount) {
-    // Composer text is not a posted message. Require a NEW question echo in
-    // the conversation and a cleared/replaced composer; never resend on timeout.
+    // Reconcile only; never send again while the DOM may be catching up.
     for (let i = 0; i < 24; i += 1) {
       await new Promise(resolve => setTimeout(resolve, 500));
-      const pageCount = questionCount(document.body?.innerText || "", question);
-      const composerText = String(
-        input?.value !== undefined ? input.value : input?.innerText || input?.textContent || ""
-      ).trim();
-      if (pageCount > beforeCount && (!input?.isConnected || composerText !== question)) return true;
+      if (postedEchoVisible(input, question, beforeCount)) return true;
     }
     return false;
   }
@@ -288,15 +292,22 @@
       beforeLines: pageTextLines(),
       stable: "",
       stableRounds: 0,
+      beforeCount: oldQuestionCount,
+      postConfirmed: false,
       submittedAt: Date.now()
     });
     fillInput(input, question);
     if (platform === "doubao_web") {
       const sent = await submit(input, platform);
-      const confirmed = sent && await confirmPosted(input, question, oldQuestionCount);
-      if (!confirmed) {
+      if (!sent) {
         try { sessionStorage.removeItem(EXECUTION_KEY); } catch (_) {}
-        return {ok: false, state: "error", error: "question_not_submitted", url: location.href};
+        return {ok: false, state: "error", error: "send_button_not_enabled", url: location.href};
+      }
+      const confirmed = await confirmPosted(input, question, oldQuestionCount);
+      if (!confirmed) {
+        // The Send button was activated but the external result is unknown.
+        // Preserve the session for read-only reconciliation, never resend.
+        return {ok: false, state: "uncertain", error: "question_not_submitted", url: location.href};
       }
       const execution = loadExecution() || {platform, question};
       execution.postConfirmed = true;
@@ -313,6 +324,21 @@
     return {ok: true, state: "submitted", url: location.href};
   }
   
+  function recheckPosted(platform, question) {
+    const previous = loadExecution();
+    if (platform !== "doubao_web" || !previous ||
+        previous.platform !== platform || previous.question !== question)
+      return {ok: false, state: "error", error: "submission_session_missing", url: location.href};
+    if (previous.postConfirmed === true)
+      return {ok: true, state: "confirmed", url: location.href};
+    if (postedEchoVisible(bestInput(platform), question, Number(previous.beforeCount || 0))) {
+      previous.postConfirmed = true;
+      saveExecution(previous);
+      return {ok: true, state: "confirmed", url: location.href};
+    }
+    return {ok: false, state: "pending", error: "question_submission_not_yet_confirmed", url: location.href};
+  }
+
   function captureExecution(platform, question) {
     const storedExecution = loadExecution();
     const state = pageState(platform);
@@ -421,6 +447,7 @@
   runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "kz-probe") { sendResponse({state: pageState(message.platform), url: location.href, nano_marker: nanoReadyMarker(), input_found: Boolean(bestInput(message.platform))}); return false; }
     if (message?.type === "kz-start") { startExecution(message.platform, String(message.question || "")).then(sendResponse).catch(error => sendResponse({ok: false, state: "error", error: String(error.message || error), url: location.href})); return true; }
+    if (message?.type === "kz-recheck-post") { sendResponse(recheckPosted(message.platform, String(message.question || ""))); return false; }
     if (message?.type === "kz-capture") { sendResponse(captureExecution(message.platform, String(message.question || ""))); return false; }
     if (message?.type === "kz-extract-current") { sendResponse(extractCurrentAnswer(message.platform, String(message.question || ""))); return false; }
     if (message?.type === "kz-identify-current-question") { sendResponse(identifyCurrentQuestion(message.items)); return false; }
