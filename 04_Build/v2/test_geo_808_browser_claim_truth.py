@@ -104,7 +104,7 @@ def main():
     old_token = old["agent_token"]
     candidate = agent.claim({"agent_token": old_token, "platform": "qwen_web"})
     assert candidate["claim"]["task"]["task_id"] == "OTHER-PLATFORM"
-    assert agent.status()["last_canary_reason"] == "not_doubao"
+    assert agent.status()["last_canary_reason"] == "already_reserved", "other platform must not erase Doubao canary audit"
     print("PASS 808: one prioritized Doubao canary; no old prompt replay, "
           "strict platform claims, legible status, real Receipt unchanged")
 
