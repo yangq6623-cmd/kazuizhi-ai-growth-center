@@ -37,10 +37,17 @@ async function readJson(url) {
 }
 
 async function ensureAlarm() {
-  await chrome.alarms.create(ALARM, {periodInMinutes: 3});
-  // The backend expires heartbeats after 180 seconds. A separate 60-second
-  // heartbeat keeps the agent online while a GEO answer is being captured.
-  await chrome.alarms.create(HEARTBEAT_ALARM, {periodInMinutes: 1});
+  // IMPORTANT: Chrome replaces the next fire time when create(name) is called
+  // for an existing alarm. This MV3 worker is restarted by the 1-minute
+  // heartbeat, so unconditional create() here indefinitely postponed the
+  // 3-minute GEO cycle on every cold start.
+  const desired = [[ALARM, 3], [HEARTBEAT_ALARM, 1]];
+  for (const [name, minutes] of desired) {
+    const existing = await chrome.alarms.get(name);
+    if (!existing || existing.periodInMinutes !== minutes) {
+      await chrome.alarms.create(name, {periodInMinutes: minutes});
+    }
+  }
 }
 
 async function heartbeatOnly() {
