@@ -456,8 +456,10 @@ def retry_task(task_id, approved_by="chatgpt"):
         raise ValueError("geo_task_not_retryable")
     if approved_by != CONTROLLER:
         raise ValueError("geo_retry_requires_chatgpt_approval")
+    if task.get("retest_origin") == "automatic_24h":
+        raise ValueError("automatic_browser_retest_must_never_replay_after_attempt")
     retry_count = int(task.get("retry_count") or 0)
-    max_retries = int(task.get("max_retries") or MAX_RETRIES)
+    max_retries = int(task.get("max_retries", MAX_RETRIES))
     if retry_count >= max_retries:
         raise ValueError("geo_task_retry_limit_reached")
     task["retry_count"] = retry_count + 1
