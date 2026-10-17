@@ -86,6 +86,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '#808 browser-claim safety regressed' }
           python 04_Build/v2/test_r8_27_geo_browser_agent.py
           if ($LASTEXITCODE -ne 0) { throw '#812 authenticated browser-agent compatibility failed' }
+      - name: "#814 GEO root-cause regression - health GET budget and Doubao no-replay"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          node 04_Build/v2/test_geo_814_diagnostics_budget.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 diagnostics budget regression failed' }
+          node 04_Build/v2/test_geo_814_doubao_reconcile.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 Doubao safe submit/reconcile failed' }
+          node 04_Build/v2/test_geo_extension_808.js
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 808 claim/capture safety regression failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
