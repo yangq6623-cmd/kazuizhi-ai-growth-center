@@ -25,8 +25,9 @@ def main():
         assert platform in worker
     for endpoint in ("register", "heartbeat", "claim", "receipt", "block"):
         assert f'call("{endpoint}"' in worker
-    assert "periodInMinutes: 3" in worker  # bounded three-minute GEO task cycle
-    assert "periodInMinutes: 1" in worker  # dedicated sub-TTL heartbeat
+    assert "[ALARM, 3]" in worker  # bounded 3-minute cycle, preserved on cold starts
+    assert "[HEARTBEAT_ALARM, 1]" in worker  # independent heartbeat
+    assert "chrome.alarms.get(name)" in worker  # never reset an existing cycle
     assert "HEARTBEAT_ALARM" in worker and "heartbeatOnly" in worker
     assert manifest["version"] == "2.2.2.808"
     assert "raw_answer" in worker and "session_url" in worker and "citation_urls" in worker
