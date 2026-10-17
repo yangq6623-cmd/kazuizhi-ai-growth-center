@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 
 
 STORE = "r8_25/runtime_supervisor.json"
@@ -43,8 +43,12 @@ def _save(**changes):
 
 
 def status():
-    value = _load()
-    install = read_json(INSTALL_STORE, {})
+    # Read-only dashboard status must never wait for unrelated ledger writes.
+    # The supervisor's own updates continue using the serialized write path.
+    value = read_json_snapshot(STORE, {})
+    if not isinstance(value, dict) or value.get("schema") != SCHEMA:
+        value = {"schema": SCHEMA, "mode": "user_scheduled_task", "restart_count": 0}
+    install = read_json_snapshot(INSTALL_STORE, {})
     if isinstance(install, dict) and install.get("installed"):
         value["installed"] = True
         value["install_mode"] = install.get("mode") or "user_scheduled_task"
