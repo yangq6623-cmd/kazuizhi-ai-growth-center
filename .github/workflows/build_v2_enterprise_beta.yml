@@ -96,6 +96,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'GEO 814 Doubao safe submit/reconcile failed' }
           node 04_Build/v2/test_geo_extension_808.js
           if ($LASTEXITCODE -ne 0) { throw 'GEO 808 claim/capture safety regression failed' }
+      - name: "#815 browser extension canary version compatibility"
+        run: |
+          python 04_Build/v2/test_geo_815_canary_version.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #815 814/808 canary version and no-replay gate failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

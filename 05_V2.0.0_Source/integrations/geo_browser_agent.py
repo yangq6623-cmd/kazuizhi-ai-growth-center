@@ -238,8 +238,11 @@ def claim(payload):
     }
     canary_reason = "not_doubao"
     if platform == "doubao_web":
-        if state.get("extension_version") != "2.2.2.808":
-            canary_reason = "extension_version_not_808"
+        # #815: this limited one-shot is supported by the original 808 and
+        # the regression-tested 814 executor. Future extension revisions must
+        # be explicitly verified before enabling external canary sends.
+        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814"}:
+            canary_reason = "extension_version_not_supported"
         elif not str(state.get("agent_id") or "").startswith("kz-r8-28-"):
             canary_reason = "agent_not_r8_28"
         else:
