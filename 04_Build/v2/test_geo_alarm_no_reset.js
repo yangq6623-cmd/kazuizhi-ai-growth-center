@@ -23,7 +23,9 @@ async function restartWorker() {
   const env={console,chrome,setTimeout(){},clearTimeout(){},Date};
   vm.createContext(env);
   vm.runInContext(src,env,{filename:"service-worker.js"});
-  await vm.runInContext("ensureAlarm()",env);
+  // Top-level script itself launches ensureAlarm(); wait until it settles
+  // before checking whether the same worker/next cold wake would reset it.
+  await new Promise(resolve => setImmediate(resolve));
 }
 async function main() {
   await restartWorker();
