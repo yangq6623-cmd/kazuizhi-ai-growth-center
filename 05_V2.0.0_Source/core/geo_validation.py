@@ -364,7 +364,7 @@ def enqueue_plan(plan):
             "test_method": plan.get("test_method"),
             "state": "queued",
             "retry_count": 0,
-            "max_retries": int(plan.get("max_retries") or MAX_RETRIES),
+            "max_retries": int(plan.get("max_retries", MAX_RETRIES)),
             "run_id": "",
             "executor_id": "",
             # Retest lineage is persisted together with the queue record; a
