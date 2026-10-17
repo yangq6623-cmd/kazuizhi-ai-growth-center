@@ -64,7 +64,7 @@ jobs:
           python 04_Build/v2/test_geo_809_agent_response_contract.py
           python 04_Build/v2/test_geo_809_queue_routing.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO #809 response regression failed' }
-      - name: #811 GEO read-only HTTP budget and concurrency acceptance
+      - name: "#811 GEO read-only HTTP budget and concurrency acceptance"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           node 04_Build/v2/test_geo_811_fetch_budget.cjs
