@@ -185,7 +185,11 @@ def heartbeat(payload):
         sessions.update(supplied)
         state["sessions"] = sessions
     state["last_heartbeat_at"] = now_iso()
-    state["last_error"] = str(values.get("last_error") or "")
+    # A successful heartbeat proves connectivity, not that the preceding
+    # browser-capture error was resolved. Keep the last failure visible until
+    # a real Receipt succeeds or an explicit new error value is supplied.
+    if "last_error" in values:
+        state["last_error"] = str(values.get("last_error") or "")
     write_json(STATE_PATH, state)
     return {"ok": True, "status": status()}
 
@@ -238,6 +242,12 @@ def receipt(payload):
 
 
 def block(payload):
+    """Distinguish execution failure from real browser authorization barriers.
+
+    A timeout, DOM change or missing reply does not invalidate an existing
+    account login. Do not turn the entire platform into "authorization
+    required" on capture failures. Historical tasks are never rewritten here.
+    """
     values = dict(payload or {})
     state = _load()
     _authorize(state, values.get("agent_token"))
@@ -246,22 +256,43 @@ def block(payload):
         raise ValueError("unsupported_domestic_geo_platform")
     reason = str(values.get("reason") or "external_platform_authorization_required").strip()
     kind = str(values.get("kind") or "authorization_required").strip()
-    sessions = dict(state.get("sessions") or {})
-    row = dict(sessions.get(platform) or {})
-    row.update({
-        "platform": platform,
-        "state": "captcha_required" if kind == "captcha" else "authorization_required",
-        "reason": reason,
-        "verified_at": now_iso(),
-    })
-    sessions[platform] = row
-    state["sessions"] = sessions
+    technical = kind in {"execution_error", "capture_error", "runtime_error", "timeout"}
+    target = "failed" if technical else "authorization_required"
+    task_id = str(values.get("task_id") or "").strip()
+
+    # Receipt can beat the late failure callback; never downgrade a completed
+    # task or overwrite the evidence associated with a successful result.
+    task = None
+    if task_id:
+        _queue, previous = geo._find_task(task_id)
+        if previous.get("state") == "running":
+            task = geo._transition(task_id, target, reason)
+        else:
+            task = previous
+
+    if not technical:
+        sessions = dict(state.get("sessions") or {})
+        row = dict(sessions.get(platform) or {})
+        row.update({
+            "platform": platform,
+            "state": "captcha_required" if kind == "captcha" else "authorization_required",
+            "reason": reason,
+            "verified_at": now_iso(),
+        })
+        sessions[platform] = row
+        state["sessions"] = sessions
+    # For a technical problem, keep the last verified platform session state:
+    # a ready login remains ready; further tasks are subject to queue gates.
     state["last_heartbeat_at"] = now_iso()
     state["last_error"] = reason
-    task_id = str(values.get("task_id") or "").strip()
-    task = geo._transition(task_id, "authorization_required", reason) if task_id else None
     write_json(STATE_PATH, state)
-    return {"ok": True, "task": task, "status": status()}
+    return {
+        "ok": True,
+        "task": task,
+        "block_category": "technical" if technical else "authorization",
+        "requires_manual_login": not technical,
+        "status": status(),
+    }
 
 
 def disconnect(payload):
