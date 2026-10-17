@@ -770,6 +770,69 @@ def legacy_receipt_reconciliation(apply=False, approved_by=""):
         return results
 
 
+
+def queue_single_fresh_doubao_canary_once():
+    """One user-authorized real browser trial, NEVER retry an ambiguous timeout.
+
+    Runs only when the browser agent is online and has exhausted its ordinary
+    queue, as gated by geo_browser_agent.claim. Persist the one-shot reservation
+    before enqueueing so a crash cannot create duplicate external prompts.
+    """
+    from core.storage import _JSON_IO_LOCK
+    marker_path = "geo_validation/one_shot_807_doubao_canary.json"
+    with _JSON_IO_LOCK:
+        marker = read_json(marker_path, {})
+        if marker:
+            return {"created": 0, "reason": "already_reserved",
+                    "question_id": marker.get("question_id", "")}
+        queue = _load_queue()
+        if any(t.get("state") in {"queued", "running"} for t in queue.get("tasks", [])):
+            return {"created": 0, "reason": "other_work_in_progress"}
+        attempted = {
+            str(t.get("question_id") or "") for t in queue.get("tasks", [])
+            if t.get("provider") in {"doubao_web", "doubao_search"}
+            or t.get("expected_platform") == "doubao_web"
+        }
+        attempted.update(
+            str(r.get("question_id") or "")
+            for r in _load_receipts().get("receipts", [])
+            if r.get("provider") in {"doubao_web", "doubao_search"}
+        )
+        fresh = next((
+            q for q in question_set().get("questions", [])
+            if q.get("enabled", True) and
+               q.get("question_id") not in attempted and
+               str(q.get("question_text") or "").strip()
+        ), None)
+        if not fresh:
+            return {"created": 0, "reason": "no_untried_doubao_question"}
+        question_id = str(fresh["question_id"])
+        write_json(marker_path, {
+            "status": "reserved", "question_id": question_id,
+            "created_at": now_iso(), "max_external_prompts": 1,
+            "purpose": "807_real_browser_e2e_canary",
+        })
+        plan = create_and_enqueue_plan(
+            limit=1, provider="doubao_web", test_method="browser",
+            expected_platform="doubao_web", question_ids=[question_id],
+        )
+        if plan.get("created") != 1:
+            # Reservation remains to ensure fail-closed, not duplicate posts.
+            return {"created": 0, "reason": "canary_enqueue_failed"}
+        new_task = plan["tasks"][0]
+        write_json(marker_path, {
+            "status": "queued", "question_id": question_id,
+            "task_id": new_task["task_id"], "created_at": now_iso(),
+            "max_external_prompts": 1, "purpose": "807_real_browser_e2e_canary",
+        })
+        _audit("geo_807_single_fresh_doubao_canary_queued", {
+            "task_id": new_task["task_id"], "question_id": question_id,
+            "note": "one never-before-tested question on Doubao; no historical retry",
+        })
+        return {"created": 1, "task_id": new_task["task_id"],
+                "question_id": question_id, "max_external_prompts": 1}
+
+
 def legacy_blockage_review():
     """Return compact safe categorization without pretending old timeouts are unsent."""
     queue = _load_queue()
