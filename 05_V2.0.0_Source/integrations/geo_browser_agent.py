@@ -268,7 +268,14 @@ def block(payload):
         if previous.get("state") == "running":
             task = geo._transition(task_id, target, reason)
         else:
-            task = previous
+            # Old messages from a replaced/finished run are not new failures.
+            # In particular an already-succeeded task must keep its receipt
+            # and clear status; don't make the owner page display a false error.
+            return {
+                "ok": True, "task": previous, "ignored_stale": True,
+                "block_category": "stale_callback",
+                "requires_manual_login": False, "status": status(),
+            }
 
     if not technical:
         sessions = dict(state.get("sessions") or {})
