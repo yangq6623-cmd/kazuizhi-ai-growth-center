@@ -74,6 +74,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'GEO #811 back-end 200-request HTTP concurrency regression failed' }
           python 04_Build/v2/test_r8_29_geo_evidence_lockfree.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO evidence lockfree regression failed' }
+      - name: "#812 isolated GEO automatic claim execution and Receipt gate"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_812_claim_execute_receipt.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 GEO exactly-once claim / retest / Receipt failed' }
+          python 04_Build/v2/test_geo_812_receipt_http_latency.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 GEO browser HTTP Receipt ACK latency failed' }
+          python 04_Build/v2/test_geo_808_browser_claim_truth.py
+          if ($LASTEXITCODE -ne 0) { throw '#808 browser-claim safety regressed' }
+          python 04_Build/v2/test_r8_27_geo_browser_agent.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 authenticated browser-agent compatibility failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
