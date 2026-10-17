@@ -99,6 +99,36 @@ def main():
     assert report["duplicate_success_same_question_provider"] >= 1
     assert report["auto_retried"] == 0
 
+    # A never-attempted Doubao question is selected once, rather than
+    # replaying any of the old 99 ambiguous timeout tasks.
+    from integrations import geo_browser_agent as agent
+    sessions = [{"platform": platform, "state": "ready",
+                 "session_url": "https://example.com/"} for platform in agent.DOMESTIC_PLATFORMS]
+    reg = agent.register({
+        "owner_confirmed": True, "agent_id": "kz-r8-28-genuine-sample",
+        "browser": "chrome", "sessions": sessions,
+    })
+    token = reg["agent_token"]
+    agent.heartbeat({"agent_token": token, "version": "2.2.2.808", "sessions": sessions})
+    before_len = len(geo._load_queue()["tasks"])
+    claimed = agent.claim({"agent_token": token, "platform": "doubao_web"})["claim"]["task"]
+    assert claimed["expected_platform"] == "doubao_web"
+    assert claimed["provider"] == "doubao_web"
+    assert claimed["state"] == "running"
+    prior_doubao = {
+        t["question_id"] for t in original
+        if t["provider"] in {"doubao_web", "doubao_search"}
+    }
+    assert claimed["question_id"] not in prior_doubao, "old prompt must never be replayed"
+    assert len(geo._load_queue()["tasks"]) == before_len + 1
+    again_claim = agent.claim({"agent_token": token, "platform": "doubao_web"})["claim"]
+    assert again_claim.get("skipped") is True
+    assert len(geo._load_queue()["tasks"]) == before_len + 1, "second canary forbidden"
+    marker = geo.queue_single_fresh_doubao_canary_once()
+    assert marker["reason"] == "already_reserved"
+    # No fake successful Evidence was produced when this task was only claimed.
+    assert geo._load_receipts()["receipts"] == original_receipts
+
     print("PASS 807: backup before reconciled Receipt, no fabricated Evidence, "
           "C-grade stays C, no mass retry, idempotent and foreign/local replies rejected")
 
