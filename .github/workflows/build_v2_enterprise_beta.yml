@@ -58,6 +58,11 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: Verify #809 GEO browser agent lightweight response
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_809_agent_response_contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #809 response regression failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
