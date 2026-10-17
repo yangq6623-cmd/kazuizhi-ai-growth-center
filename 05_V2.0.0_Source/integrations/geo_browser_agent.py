@@ -185,6 +185,8 @@ def heartbeat(payload):
         sessions.update(supplied)
         state["sessions"] = sessions
     state["last_heartbeat_at"] = now_iso()
+    if "version" in values:
+        state["extension_version"] = str(values.get("version") or "")[:40]
     # A successful heartbeat proves connectivity, not that the preceding
     # browser-capture error was resolved. Keep the last failure visible until
     # a real Receipt succeeds or an explicit new error value is supplied.
@@ -208,14 +210,25 @@ def claim(payload):
         raise ValueError("unsupported_domestic_geo_platform")
     if session.get("state") != "ready":
         raise RuntimeError("geo_browser_platform_authorization_required")
-    result = geo.claim_next_task({
+    contract = {
         "real_external": True,
         "authorization_ready": True,
         "provider_ready": True,
         "provider": platform,
         "test_method": "browser",
         "executor_id": state.get("agent_id"),
-    })
+    }
+    result = geo.claim_next_task(contract)
+    # The owner authorized ONE new external trial with #807. The previous 99
+    # ambiguous timed-out prompts are NEVER replayed. Only a question not
+    # previously attempted on Doubao may enter the queue, once per data set.
+    # Real authenticated 2.2.2.808 extension, connected and ready required.
+    if (result.get("skipped") and platform == "doubao_web"
+            and state.get("extension_version") == "2.2.2.808"
+            and str(state.get("agent_id") or "").startswith("kz-r8-28-")):
+        canary = geo.queue_single_fresh_doubao_canary_once()
+        if canary.get("created") == 1:
+            result = geo.claim_next_task(contract)
     task = result.get("task") or {}
     if task:
         state["last_task_id"] = str(task.get("task_id") or "")
