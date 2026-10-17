@@ -910,6 +910,23 @@ def queue_summary():
     blocked_classes = Counter(
         _blocked_reason_class(item.get("authorization_reason")) for item in blocked
     )
+    # Expose route truth without changing or re-claiming any previously
+    # attempted external question. The Chrome worker cannot execute queued
+    # cloud_auto/api work, and historical timeouts must never be resent just
+    # because a login now looks healthy.
+    queued_tasks = [item for item in tasks if item.get("state") == "queued"]
+    queued_routes = Counter(
+        (str(item.get("provider") or "unspecified"),
+         str(item.get("test_method") or "unspecified"),
+         str(item.get("expected_platform") or ""))
+        for item in queued_tasks
+    )
+    unbound_api = [
+        item for item in queued_tasks
+        if item.get("test_method") == "api"
+        and item.get("provider") == "cloud_auto"
+        and not item.get("expected_platform")
+    ]
     return {
         "total": len(tasks),
         "queued": counts.get("queued", 0),
@@ -918,6 +935,20 @@ def queue_summary():
         "failed": counts.get("failed", 0),
         "paused": counts.get("paused", 0),
         "authorization_required": counts.get("authorization_required", 0),
+        "routing_diagnostics": {
+            "queued_by_route": [
+                {"provider": provider, "method": method,
+                 "expected_platform": platform, "count": count}
+                for (provider, method, platform), count in sorted(queued_routes.items())
+            ],
+            "unbound_cloud_auto_api": len(unbound_api),
+            "unbound_cloud_auto_task_ids": [
+                item.get("task_id") for item in unbound_api[:20]
+            ],
+            "browser_agent_can_claim_unbound_api": False,
+            "reason": "cloud_auto/api 队列没有明确外部 API 执行器；Chrome 网页代理不能代领，需核实真实 API 路由与授权。",
+            "mutated": False,
+        },
         "blockage_diagnostics": {
             "legacy_technical_requires_review": blocked_classes.get("legacy_technical_requires_review", 0),
             "real_authorization_or_risk_control": blocked_classes.get("real_authorization_or_risk_control", 0),
