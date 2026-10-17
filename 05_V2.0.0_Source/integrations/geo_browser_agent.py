@@ -271,6 +271,24 @@ def receipt(payload):
     _authorize(state, values.pop("agent_token", None))
     values["execution_origin"] = "authenticated_browser_agent"
     values["executor_id"] = str(state.get("agent_id") or "")
+    task_id = str(values.get("task_id") or "")
+    if not task_id:
+        raise ValueError("task_id_required")
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        _queue, task = geo._find_task(task_id)
+        legacy_current_page = (
+            str(values.get("evidence_source") or "") ==
+            "r8_28_chrome_extension_current_page_recovery"
+            and task.get("state") == "failed"
+        )
+        if not legacy_current_page and task.get("state") not in {"running", "succeeded"}:
+            raise ValueError("geo_browser_receipt_requires_claimed_task")
+        if not legacy_current_page and str(task.get("executor_id") or "") != str(state.get("agent_id") or ""):
+            raise PermissionError("geo_browser_receipt_wrong_executor")
+        assigned = str(task.get("expected_platform") or "")
+        if assigned and assigned != str(values.get("platform") or ""):
+            raise ValueError("geo_browser_receipt_platform_mismatch")
     from integrations import geo_browser_validation
     result = geo_browser_validation.record_browser_result(values)
     state["last_task_id"] = str(values.get("task_id") or "")
@@ -304,18 +322,19 @@ def block(payload):
     # task or overwrite the evidence associated with a successful result.
     task = None
     if task_id:
-        _queue, previous = geo._find_task(task_id)
-        if previous.get("state") == "running":
-            task = geo._transition(task_id, target, reason)
-        else:
-            # Old messages from a replaced/finished run are not new failures.
-            # In particular an already-succeeded task must keep its receipt
-            # and clear status; don't make the owner page display a false error.
-            return {
-                "ok": True, "task": previous, "ignored_stale": True,
-                "block_category": "stale_callback",
-                "requires_manual_login": False, "status": status(),
-            }
+        from core.storage import _JSON_IO_LOCK
+        with _JSON_IO_LOCK:
+            _queue, previous = geo._find_task(task_id)
+            if (previous.get("state") == "running"
+                    and str(previous.get("executor_id") or "") == str(state.get("agent_id") or "")):
+                task = geo._transition(task_id, target, reason)
+            else:
+                # A late timeout must never undo a successfully persisted Receipt.
+                return {
+                    "ok": True, "task": previous, "ignored_stale": True,
+                    "block_category": "stale_callback",
+                    "requires_manual_login": False, "status": status(),
+                }
 
     if not technical:
         sessions = dict(state.get("sessions") or {})
