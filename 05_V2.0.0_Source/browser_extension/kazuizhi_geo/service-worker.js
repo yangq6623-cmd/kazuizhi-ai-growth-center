@@ -164,7 +164,25 @@ async function executeDoubao(tabId, platform, question) {
   // Split send/capture so a page navigation cannot strand a single 150s
   // chrome.tabs.sendMessage awaiting the entire generated answer.
   const started = await ask(tabId, {type: "kz-start", platform, question}, 30000);
-  if (!started?.ok) return started; // question_not_submitted -> no Receipt
+  if (!started?.ok && started?.state !== "uncertain") return started;
+  if (started?.state === "uncertain") {
+    // A Send control was activated, but a new external chat bubble was not
+    // confirmed. Poll without ever sending the question a second time.
+    const reconcileDeadline = Date.now() + 45000;
+    let confirmed = false;
+    while (Date.now() < reconcileDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      let check;
+      try { check = await ask(tabId, {type: "kz-recheck-post", platform, question}, 10000); }
+      catch (_) { continue; } // Same task; still no resend.
+      if (check?.ok) { confirmed = true; break; }
+      if (check?.state === "error") break;
+    }
+    if (!confirmed) return {
+      ok: false, state: "uncertain", error: "question_not_submitted",
+      url: started?.url || ""
+    };
+  }
   const deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
     stage("等待豆包新回答");
