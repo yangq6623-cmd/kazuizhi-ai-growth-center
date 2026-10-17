@@ -128,6 +128,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'GEO autonomous alarms repeatedly reset' }
           python 04_Build/v2/test_geo_blockage_truth_805.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO technical/auth blocker truth gate failed' }
+          python 04_Build/v2/test_geo_legacy_reconciliation_807.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 807 historical receipt reconciliation and single canary gate failed' }
           python 04_Build/v2/test_r8_24_owner_ui_recovery.py
           python 04_Build/v2/test_r8_25_runtime_truth_and_backpressure.py
           node 04_Build/v2/test_r8_25_fetch_budget.js
