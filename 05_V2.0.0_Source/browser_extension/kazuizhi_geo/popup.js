@@ -10,7 +10,7 @@ async function refresh() {
     const line = s.busy
       ? "正在执行：" + (s.stage || "后台任务") + "（" + (s.elapsed_seconds || 0) + "秒）"
       : "最后运行：" + (s.lastCycle || "尚未执行");
-    summary.textContent = notice || line + (s.lastError ? " · 上次错误：" + s.lastError : "");
+    summary.textContent = notice || line + (s.lastHeartbeatAt ? " · 心跳：" + s.lastHeartbeatAt : "") + (s.lastHeartbeatError ? " · 心跳异常：" + s.lastHeartbeatError : "") + (s.lastError ? " · 上次错误：" + s.lastError : "");
     sessionsNode.replaceChildren();
     if (!(s.sessions || []).length) {
       const info = document.createElement("p");
