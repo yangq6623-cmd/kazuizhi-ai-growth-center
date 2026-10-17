@@ -25,7 +25,10 @@ def main():
         assert platform in worker
     for endpoint in ("register", "heartbeat", "claim", "receipt", "block"):
         assert f'call("{endpoint}"' in worker
-    assert "periodInMinutes: 0.5" in worker
+    assert "periodInMinutes: 3" in worker  # bounded three-minute GEO task cycle
+    assert "periodInMinutes: 1" in worker  # dedicated sub-TTL heartbeat
+    assert "HEARTBEAT_ALARM" in worker and "heartbeatOnly" in worker
+    assert manifest["version"] == "2.2.2.806"
     assert "raw_answer" in worker and "session_url" in worker and "citation_urls" in worker
     assert "external_https_session_required" in worker
     assert "answer_capture_timeout" in content
