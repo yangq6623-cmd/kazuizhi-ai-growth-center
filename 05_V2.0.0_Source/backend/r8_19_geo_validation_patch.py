@@ -485,6 +485,16 @@ def install():
     server.DashboardHandler.do_OPTIONS = do_options
     server.DashboardHandler.end_headers = end_headers
     server.DashboardHandler._kz_r8_19_geo_validation = True
+    # Owner explicitly authorized archival reconciliation in #807. Restore only
+    # historical transitions with an independently persisted matching Receipt,
+    # and persist a full backup before changing any task state. An ambiguous
+    # timeout without a Receipt remains blocked and is never resent.
+    try:
+        geo_core.legacy_receipt_reconciliation(apply=True, approved_by="chatgpt")
+    except (OSError, ValueError, RuntimeError) as error:
+        import logging
+        logging.getLogger(__name__).exception(
+            "GEO historical receipt reconciliation skipped without mutating queue: %s", error)
     _INSTALLED = True
 
 
