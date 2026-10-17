@@ -153,6 +153,30 @@ async function ask(tabId, message, timeoutMs = 150000) {
   }
 }
 
+async function executeDoubao(tabId, platform, question) {
+  // Split send/capture so a page navigation cannot strand a single 150s
+  // chrome.tabs.sendMessage awaiting the entire generated answer.
+  const started = await ask(tabId, {type: "kz-start", platform, question}, 30000);
+  if (!started?.ok) return started; // question_not_submitted -> no Receipt
+  const deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    stage("等待豆包新回答");
+    await new Promise(resolve => setTimeout(resolve, 1800));
+    let result;
+    try {
+      result = await ask(tabId, {type: "kz-capture", platform, question}, 12000);
+    } catch (error) {
+      const reason = String(error?.message || error);
+      if (/permission_denied|No tab with id/i.test(reason)) throw error;
+      // The AI page may be navigating; retry reading but never resend.
+      continue;
+    }
+    if (result?.ok || result?.state === "captcha" || result?.state === "auth_required" ||
+        result?.state === "error") return result;
+  }
+  throw new Error("doubao_answer_capture_timeout");
+}
+
 async function executeDeepSeek(tabId, platform, question) {
   const started = await ask(tabId, {type: "kz-start", platform, question}, 30000);
   if (!started?.ok) return started;
@@ -226,7 +250,9 @@ async function executeTask(task, auth) {
   if (!PLATFORMS[platform] || !question) throw new Error("task_contract_invalid");
   const opened = await platformTab(platform, question, false);
   try {
-    const result = ["deepseek_web", "so360_ai_search"].includes(platform)
+    const result = platform === "doubao_web"
+      ? await executeDoubao(opened.tab.id, platform, question)
+      : ["deepseek_web", "so360_ai_search"].includes(platform)
       ? await executeDeepSeek(opened.tab.id, platform, question)
       : await ask(opened.tab.id, {type: "kz-execute", platform, question}, 150000);
     if (result.state === "auth_required" || result.state === "captcha") {
