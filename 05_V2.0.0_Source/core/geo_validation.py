@@ -967,9 +967,13 @@ def queue_single_fresh_doubao_canary_once():
             for r in _load_receipts().get("receipts", [])
             if r.get("provider") in {"doubao_web", "doubao_search"}
         )
+        from core.geo_domestic_matrix import assignments
+        all_questions = question_set().get("questions", [])
+        doubao_slot_ids = set(assignments(all_questions).get("doubao_web") or [])
         fresh = next((
-            q for q in question_set().get("questions", [])
+            q for q in all_questions
             if q.get("enabled", True) and
+               q.get("question_id") in doubao_slot_ids and
                q.get("question_id") not in attempted and
                str(q.get("question_text") or "").strip()
         ), None)
