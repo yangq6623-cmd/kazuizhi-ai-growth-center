@@ -64,6 +64,15 @@ jobs:
           python 04_Build/v2/test_geo_809_agent_response_contract.py
           python 04_Build/v2/test_geo_809_queue_routing.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO #809 response regression failed' }
+      - name: "#811 GEO read-only HTTP budget and concurrency acceptance"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          node 04_Build/v2/test_geo_811_fetch_budget.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #811 front-end 100-loop budget regression failed' }
+          python 04_Build/v2/test_geo_811_http_concurrency.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #811 back-end 200-request HTTP concurrency regression failed' }
+          python 04_Build/v2/test_r8_29_geo_evidence_lockfree.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO evidence lockfree regression failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

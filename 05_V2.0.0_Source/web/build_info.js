@@ -18,6 +18,14 @@
     try{url=new URL(raw,window.location.href)}catch(_error){return null}
     if(url.origin!==window.location.origin||!url.pathname.startsWith('/api/'))return null;
     const method=String(init?.method||input?.method||'GET').toUpperCase();
+    // #811: Fast read-only owner snapshots must not sit behind unrelated
+    // long-running API calls until their 15/20-second abort timers expire.
+    // Only these exact GET routes bypass the two-slot shared request budget;
+    // the GEO UI independently serializes and rate-limits both reads.
+    if(method==='GET'&&(
+      url.pathname==='/api/r8-24/geo-growth/evidence-compact'||
+      url.pathname==='/api/r8-25/phase1-acceptance'
+    ))return null;
     const signal=init?.signal||input?.signal||null;
     let priority=2;
     if(method!=='GET'&&method!=='HEAD')priority=0;

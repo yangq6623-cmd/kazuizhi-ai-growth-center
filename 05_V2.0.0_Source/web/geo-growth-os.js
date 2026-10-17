@@ -488,9 +488,14 @@
     if(node){node.textContent=message||'';node.style.color=bad?'#ad2c2c':'#65758b';}
   }
 
+  let phase1Loading=false;
+  let phase1LastAttemptAt=0;
+  const PHASE1_MIN_INTERVAL_MS=90000;
   async function loadPhase1Acceptance(){
     const node=byId('geo-phase1-acceptance');
-    if(!node)return;
+    if(!node||phase1Loading||Date.now()-phase1LastAttemptAt<PHASE1_MIN_INTERVAL_MS)return;
+    phase1Loading=true;
+    phase1LastAttemptAt=Date.now();
     try{
       const payload=await json('/api/r8-25/phase1-acceptance',{timeoutMs:15000});
       const a=payload.acceptance||{},s=payload.supervisor||{},formal=a.geo_snapshot?.formal_ab_completed??0,target=a.geo_snapshot?.formal_ab_target??50;
@@ -499,6 +504,7 @@
       node.textContent=`第一阶段7天无人值守验收：${state}${candidate} · 时间进度 ${a.progress_percent??0}% · 运行可用率 ${a.uptime_percent??'—'}% · 工作线程成功率 ${a.worker_success_percent??'—'}% · 正式GEO ${formal}/${target} · 守护 ${s.installed?'已安装':'待安装'}`;
       node.style.color=a.status==='passed'?'#14804a':a.status==='needs_review'?'#ad2c2c':'#65758b';
     }catch(error){node.textContent='第一阶段验收账本暂未读取：'+error.message;node.style.color='#986000'}
+    finally{phase1Loading=false}
   }
 
   function bindAdvanced(){
@@ -582,7 +588,8 @@
     if(advancedBusy)return;
     if(!force&&advancedLastGood&&Date.now()-advancedFetchedAt<45000)return;
     advancedBusy=true;
-    loadPhase1Acceptance();
+    // Do not start the phase-1 GET alongside Evidence; these probes must
+    // not compete for the two-slot global API budget on a busy owner page.
     advancedLastAttemptAt=Date.now();
     if(advancedRetryTimer){clearTimeout(advancedRetryTimer);advancedRetryTimer=null;}
     const state=byId('geo-adv-state');
@@ -800,7 +807,12 @@
           if(byId('geo-growth-advanced')?.open)loadAdvanced(true);
         },delay);
       }
-    }finally{advancedBusy=false}
+    }finally{
+      advancedBusy=false;
+      // Serialize the independent phase-1 snapshot after Evidence finishes;
+      // keep it single-flight and capped at one attempt every 90 seconds.
+      if(byId('geo-growth-advanced')?.open)void loadPhase1Acceptance();
+    }
   }
 
   async function prepareAdvancedBrowser(limit,button,formal50=false){
