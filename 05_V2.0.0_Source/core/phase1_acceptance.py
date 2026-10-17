@@ -9,7 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 
 
 STORE = "r8_25/phase1_acceptance.json"
@@ -70,6 +70,21 @@ def _load():
     return value
 
 
+def _snapshot_load():
+    """Read the authoritative atomic ledger without contending with writer I/O.
+
+    Unlike mutation paths, owner GETs must not wait behind unrelated
+    Windows os.replace retries. Existing-but-unreadable ledgers raise a clear
+    error instead of silently resetting seven-day acceptance evidence.
+    """
+    value = read_json_snapshot(STORE, {})
+    if not isinstance(value, dict) or value.get("schema") != SCHEMA:
+        value = _default()
+    for key, default in _default().items():
+        value.setdefault(key, deepcopy(default))
+    return value
+
+
 def _save(value):
     value["schema"] = SCHEMA
     value["updated_at"] = now_iso()
@@ -92,7 +107,7 @@ def _archive(value):
 
 
 def history():
-    value = read_json(HISTORY_STORE, {})
+    value = read_json_snapshot(HISTORY_STORE, {})
     if not isinstance(value, dict) or value.get("schema") != HISTORY_SCHEMA:
         value = {"schema": HISTORY_SCHEMA, "runs": []}
     rows = []
@@ -218,7 +233,7 @@ def observe(*, runtime=None, search=None, geo=None, supervisor=None):
 
 
 def status(value=None):
-    value = deepcopy(value if isinstance(value, dict) else _load())
+    value = deepcopy(value if isinstance(value, dict) else _snapshot_load())
     started = _parse(value.get("started_at")) or datetime.now().astimezone()
     elapsed = max(0, int((datetime.now().astimezone() - started).total_seconds()))
     target_seconds = int(value.get("target_days") or TARGET_DAYS) * 86400
