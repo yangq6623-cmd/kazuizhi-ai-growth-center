@@ -67,6 +67,7 @@ jobs:
       - name: "#811 GEO read-only HTTP budget and concurrency acceptance"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#811 internal test gate: no external GEO submissions or production data mutations'
           node 04_Build/v2/test_geo_811_fetch_budget.cjs
           if ($LASTEXITCODE -ne 0) { throw 'GEO #811 front-end 100-loop budget regression failed' }
           python 04_Build/v2/test_geo_811_http_concurrency.py
