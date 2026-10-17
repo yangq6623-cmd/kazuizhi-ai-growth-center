@@ -331,6 +331,13 @@ def install():
         if path == "/api/r8-19/geo/queue":
             handler._json_ok(queue_summary())
             return
+        if path == "/api/r8-19/geo/recovery-preview":
+            handler._json_ok({
+                "blockages": geo_core.legacy_blockage_review(),
+                "receipt_reconciliation": geo_core.legacy_receipt_reconciliation(),
+                "mutated": False,
+            })
+            return
         if path == "/api/r8-19/geo/receipts":
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})
             return
@@ -374,6 +381,7 @@ def install():
             "/api/r8-19/geo/pause",
             "/api/r8-19/geo/resume",
             "/api/r8-19/geo/retry",
+            "/api/r8-19/geo/reconcile-receipts",
             "/api/r8-19/geo/decision",
             "/api/r8-19/geo/browser/prepare",
             "/api/r8-19/geo/browser/receipt",
@@ -460,6 +468,12 @@ def install():
                 result = resume_task(_task_id(payload))
             elif path == "/api/r8-19/geo/retry":
                 result = retry_task(_task_id(payload), approved_by=str(payload.get("approved_by") or "chatgpt"))
+            elif path == "/api/r8-19/geo/reconcile-receipts":
+                if (payload.get("approved_by") != "chatgpt" or
+                        payload.get("confirmation") != "RECONCILE_MATCHED_RECEIPTS_ONLY"):
+                    raise ValueError("explicit_legacy_reconcile_confirmation_required")
+                result = geo_core.legacy_receipt_reconciliation(
+                    apply=True, approved_by="chatgpt")
             else:
                 result = _set_controller_decision(payload)
             handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
