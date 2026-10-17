@@ -50,6 +50,7 @@ def _default_state():
         "last_claim_reason": "",
         "last_claim_task_id": "",
         "last_canary_reason": "",
+        "last_retest_reason": "",
         "extension_version": "",
     }
 
@@ -159,6 +160,7 @@ def status():
         "last_claim_reason": str(state.get("last_claim_reason") or ""),
         "last_claim_task_id": str(state.get("last_claim_task_id") or ""),
         "last_canary_reason": str(state.get("last_canary_reason") or ""),
+        "last_retest_reason": str(state.get("last_retest_reason") or ""),
         "extension_version": str(state.get("extension_version") or ""),
         "platforms": platforms,
         "requires_pc_awake": True,
@@ -250,7 +252,18 @@ def claim(payload):
             if canary.get("created") == 1:
                 contract["priority_task_id"] = str(canary["task_id"])
     result = geo.claim_next_task(contract)
+    retest_reason = "ordinary_queued_task"
+    if result.get("skipped"):
+        # Browser baseline 50/50 is not an infinite source of fresh questions.
+        # Schedule at most one authentic 24h follow-up from an already verified
+        # successful slot. Never replay historical failed/ambiguous tasks.
+        retest = geo.enqueue_safe_browser_retest(platform)
+        retest_reason = str(retest.get("reason") or "not_eligible")
+        if retest.get("created") == 1:
+            contract["priority_task_id"] = str(retest["task_id"])
+            result = geo.claim_next_task(contract)
     task = result.get("task") or {}
+    state["last_retest_reason"] = retest_reason
     state["last_claim_at"] = now_iso()
     state["last_claim_platform"] = platform
     state["last_claim_reason"] = ("claimed" if task else str(result.get("reason") or "queue_empty"))
