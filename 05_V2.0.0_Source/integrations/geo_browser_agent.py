@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime
 
 from core import geo_validation as geo
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 
 STATE_PATH = "r8_27/geo_browser_agent.json"
 SCHEMA = "kz.geo-browser-agent.v1"
@@ -110,7 +110,12 @@ def _normalize_sessions(rows):
 
 
 def status():
-    state = _load()
+    # The 127.0.0.1 owner/status GET and post-write status response must stay
+    # available even if another JSON ledger is waiting on a Windows file lock.
+    # Existing-but-unreadable state raises rather than inventing a ready agent.
+    state = read_json_snapshot(STATE_PATH, _default_state())
+    if not isinstance(state, dict) or state.get("schema") != SCHEMA:
+        state = _default_state()
     age = _age_seconds(state.get("last_heartbeat_at"))
     connected = bool(state.get("agent_id")) and age is not None and age <= HEARTBEAT_TTL_SECONDS
     sessions = state.get("sessions") if isinstance(state.get("sessions"), dict) else {}
