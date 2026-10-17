@@ -9,7 +9,7 @@ const workerCode = fs.readFileSync(path.join(ext,"service-worker.js"),"utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(ext,"manifest.json"),"utf8"));
 
 async function main() {
-  assert.equal(manifest.version,"2.2.2.808");
+  assert.equal(manifest.version,"2.2.2.814");
   assert.ok(contentCode.includes("question_not_submitted"));
   assert.ok(contentCode.includes("unconfirmed_question"));
   assert.ok(workerCode.includes('type: "kz-start"') && workerCode.includes('type: "kz-capture"'));
