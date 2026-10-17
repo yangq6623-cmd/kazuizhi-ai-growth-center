@@ -646,7 +646,9 @@
       const health=snapshot.health||{};
       const domestic=snapshot.domestic_matrix||dashboard.domestic_matrix||{};
       let browserAgent=null;
-      try{browserAgent=await json('/api/r8-27/geo-browser-agent/status',{timeoutMs:2500})}catch(_){}
+      let browserAgentFetchError='';
+      try{browserAgent=await json('/api/r8-27/geo-browser-agent/status',{timeoutMs:5000})}
+      catch(error){browserAgentFetchError=String(error?.message||error||'status_unknown')}
       const available=Number(snapshot.available_sections||0);
       const total=Number(snapshot.total_sections||4);
       const officialReceipts=receipts.filter(x=>x.official_truth);
@@ -675,9 +677,11 @@
         const platforms=domestic.platforms||[];
         const agentOnline=browserAgent?.connected===true;
         const readyPlatforms=Number(browserAgent?.ready_platforms||0);
-        const agentLine=agentOnline
-          ? `<br><small>浏览器代理：在线 · 国内平台就绪 ${readyPlatforms}/5 · 心跳 ${Number(browserAgent?.heartbeat_age_seconds||0)} 秒前。可自动领取已就绪平台任务；验证码/风控只暂停对应平台。<br>最近领取：${esc(browserAgent?.last_claim_at||"尚未领取")} · ${esc(browserAgent?.last_claim_platform||"未指定平台")} · ${esc(browserAgent?.last_claim_reason||"尚未返回")} · 任务 ${esc(browserAgent?.last_claim_task_id||"—")}<br>豆包一次性试跑：${esc(browserAgent?.last_canary_reason||"尚无判定")} · 最近真实回执：${esc(browserAgent?.last_result_at||"尚无")} · 最近异常：${esc(browserAgent?.last_error||"无记录")}</small>`
-          : `<br><small>浏览器代理：未连接或心跳过期。当前登录网页不会自行领取任务，不能计为自动化；需安装并启动 #788 Chrome 常驻执行器。无需保留五个平台标签页，但 Chrome 与电脑必须保持登录、联网且不可休眠。</small>`;
+        const agentLine=browserAgentFetchError
+          ? `<br><small>浏览器代理：状态暂不可核实（${esc(browserAgentFetchError)}）。本次查询失败不等于代理离线；请以独立状态接口的最新心跳为准。</small>`
+          : agentOnline
+          ? `<br><small>浏览器代理：在线 · 国内平台就绪 ${readyPlatforms}/5 · 心跳 ${Number(browserAgent?.heartbeat_age_seconds||0)} 秒前。只有有合格任务时才自动领取，空队列不代表连接故障。<br>最近领取：${esc(browserAgent?.last_claim_at||"尚未领取")} · ${esc(browserAgent?.last_claim_platform||"未指定平台")} · ${esc(browserAgent?.last_claim_reason||"尚未返回")} · 任务 ${esc(browserAgent?.last_claim_task_id||"—")}<br>24小时安全复测：${esc(browserAgent?.last_retest_reason||"尚未安排")} · 最近真实回执：${esc(browserAgent?.last_result_at||"尚无")} · 最近异常：${esc(browserAgent?.last_error||"无记录")}</small>`
+          : `<br><small>浏览器代理：未连接或心跳过期。请检查 Chrome 扩展实际心跳和本地服务状态；保持电脑唤醒。</small>`;
         domesticBox.innerHTML=platforms.length
           ? `<b>国内 GEO 正式矩阵 ${Number(domestic.completed||0)} / ${Number(domestic.target||50)}</b> · `+
             platforms.map(row=>`${esc(row.label)} ${Number(row.completed||0)}/${Number(row.target||10)}${row.authorization_required?'（待授权）':''}`).join('　')+
