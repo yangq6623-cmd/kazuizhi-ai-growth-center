@@ -210,8 +210,14 @@
     // treat an arbitrary nearby button as a confirmed Send control.
     if (platform === "doubao_web") {
       const buttons = [...document.querySelectorAll("button")]
-        .filter(item => visible(item) && !item.disabled && item.getAttribute("aria-disabled") !== "true");
-      const named = buttons.find(item => /发送|发送消息|send|submit/i.test(
+        .filter(item => {
+          if (!visible(item) || item.disabled || item.getAttribute("aria-disabled") === "true") return false;
+          const box = item.getBoundingClientRect();
+          // Only consider controls physically attached to the current composer.
+          return box.left >= rect.left - 70 && box.right <= rect.right + 170 &&
+            box.top >= rect.top - 100 && box.bottom <= rect.bottom + 130;
+        });
+      const named = buttons.find(item => /发送(消息)?|(^|[_\\s-])(send|submit)([_\\s-]|$)/i.test(
         [item.innerText, item.getAttribute("aria-label"), item.getAttribute("title"),
          item.getAttribute("data-testid")].filter(Boolean).join(" ")
       ));
