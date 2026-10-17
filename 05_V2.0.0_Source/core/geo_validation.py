@@ -489,7 +489,7 @@ def claim_next_task(executor=None):
     def eligible(item):
         if item.get("state") != "queued" or item.get("expected_platform") != requested_platform:
             return False
-        if strict and (str(item.get("provider") or "") != requested_platform
+        if strict and (str(item.get("provider") or "") not in {requested_platform, "browser_external_ai"}
                        or str(item.get("test_method") or "") != "browser"):
             return False
         if fresh_only and (int(item.get("retry_count") or 0) > 0
