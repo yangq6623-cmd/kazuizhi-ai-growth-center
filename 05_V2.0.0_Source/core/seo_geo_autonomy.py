@@ -24,6 +24,7 @@ from core.seo_geo_growth import (
 )
 from integrations import search_engine_submitter
 from integrations import seo_public_deployer
+from promotion import search_growth as seo_site_audit
 
 STORE = "r8_14/seo_geo_autonomy.json"
 SCHEMA = "kz.seo-geo-autonomy.v1"
@@ -264,7 +265,12 @@ def run_once(force=False):
     # Public technical audits run in the background scheduler, never in this
     # synchronous startup/action path. A slow external page must not delay the
     # desktop dashboard from opening.
-    technical_audit = {"scheduled": bool(data["policy"].get("auto_technical_audit", True))}
+    technical_audit = {"scheduled": False, "reason": "disabled_by_policy"}
+    if mode == "autonomous" and data["policy"].get("auto_technical_audit", True):
+        try:
+            technical_audit = seo_site_audit.schedule_automatic_audit()
+        except (OSError, ValueError, RuntimeError, TypeError) as error:
+            technical_audit = {"scheduled": False, "reason": "seo_audit_scheduler_error", "error": str(error)[:300]}
 
     if mode in {"assisted", "autonomous"}:
         try:
