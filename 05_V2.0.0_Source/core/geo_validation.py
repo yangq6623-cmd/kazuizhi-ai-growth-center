@@ -471,6 +471,13 @@ def retry_task(task_id, approved_by="chatgpt"):
 
 
 def claim_next_task(executor=None):
+    """Atomically reserve one real task; competing workers must not double claim."""
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        return _claim_next_task_locked(executor)
+
+
+def _claim_next_task_locked(executor=None):
     """Claim one task only when a real external executor is explicitly ready.
 
     A generic/local model can never satisfy this contract. Provider or
@@ -601,6 +608,41 @@ def _extract_urls(raw_answer, citation_urls):
 
 
 def record_result(payload):
+    """Idempotently persist exactly one Receipt per task.
+
+    The Receipt ledger is authoritative if a previous HTTP request committed
+    Evidence but crashed before the queue could be marked succeeded.
+    Holding the same lock as claim/block prevents double claim and duplicate
+    Evidence under concurrent HTTP requests.
+    """
+    from core.storage import _JSON_IO_LOCK
+    values = dict(payload or {})
+    task_id = str(values.get("task_id") or "").strip()
+    if not task_id:
+        raise ValueError("task_id_required")
+    with _JSON_IO_LOCK:
+        queue, task = _find_task(task_id)
+        previous = next((
+            item for item in _load_receipts().get("receipts", [])
+            if isinstance(item, dict) and item.get("task_id") == task_id
+            and str(item.get("evidence_id") or item.get("receipt_id") or "")
+        ), None)
+        if previous is not None:
+            if (str(previous.get("question_id") or "") != str(task.get("question_id") or "")
+                    or str(previous.get("run_id") or "") != str(task.get("run_id") or "")):
+                raise ValueError("geo_existing_receipt_identity_conflict")
+            if task.get("state") != "succeeded" or task.get("evidence_id") != previous.get("evidence_id"):
+                task["state"] = "succeeded"
+                task["evidence_id"] = previous.get("evidence_id")
+                task["evidence_level"] = previous.get("evidence_level")
+                task["official_truth"] = bool(previous.get("official_truth"))
+                task["updated_at"] = now_iso()
+                _save_queue(queue)
+            return dict(previous, already_recorded=True)
+        return _record_result_once(values)
+
+
+def _record_result_once(payload):
     payload = dict(payload or {})
     task_id = str(payload.get("task_id") or "").strip()
     if not task_id:
