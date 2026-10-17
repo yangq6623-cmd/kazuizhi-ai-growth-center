@@ -7,6 +7,7 @@ data, or makes strategy decisions; ChatGPT remains the controller.
 from __future__ import annotations
 
 import json
+import threading
 from urllib.parse import parse_qs, urlsplit
 
 from backend import server
@@ -187,6 +188,29 @@ def _migrate_pending_api_tasks_to_browser():
 
 def _refresh_analysis():
     return geo_analysis.refresh(receipts(1000))
+
+
+# Receipt commit is authoritative; slow analysis must not hold the browser
+# HTTP request open until Chrome's 15-second transport deadline expires.
+_ANALYSIS_WORKER_LOCK = threading.Lock()
+
+
+def _refresh_analysis_deferred():
+    if not _ANALYSIS_WORKER_LOCK.acquire(blocking=False):
+        return {"scheduled": False, "reason": "refresh_in_progress"}
+
+    def worker():
+        try:
+            _refresh_analysis()
+        finally:
+            _ANALYSIS_WORKER_LOCK.release()
+
+    try:
+        threading.Thread(target=worker, daemon=True, name="geo-evidence-analysis").start()
+    except Exception:
+        _ANALYSIS_WORKER_LOCK.release()
+        raise
+    return {"scheduled": True}
 
 
 def _dashboard_with_executor():
@@ -411,7 +435,7 @@ def install():
                 result = geo_browser_agent.claim(payload)
             elif path == "/api/r8-27/geo-browser-agent/receipt":
                 result = geo_browser_agent.receipt(payload)
-                _refresh_analysis()
+                _refresh_analysis_deferred()
             elif path == "/api/r8-27/geo-browser-agent/block":
                 result = geo_browser_agent.block(payload)
             elif path == "/api/r8-27/geo-browser-agent/disconnect":
