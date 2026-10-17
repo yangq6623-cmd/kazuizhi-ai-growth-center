@@ -696,9 +696,29 @@ def fail_task(task_id, reason):
     return _transition(task_id, "failed", reason=reason)
 
 
+def _blocked_reason_class(reason):
+    """Read-only diagnostic for old queue rows; never authorize auto-retries."""
+    code = str(reason or "").strip().lower()
+    technical = (
+        "capture_failed:", "question_not_submitted", "unconfirmed_question",
+        "agent_response_timeout", "doubao_answer_capture_timeout",
+        "page_load_timeout", "signal timed out", "execution_timeout",
+    )
+    if code.startswith(technical):
+        return "legacy_technical_requires_review"
+    if any(word in code for word in ("captcha", "login", "oauth", "authorization",
+                                    "permission", "account", "risk_control")):
+        return "real_authorization_or_risk_control"
+    return "unclassified_requires_review"
+
+
 def queue_summary():
     tasks = _load_queue()["tasks"]
     counts = Counter(item.get("state") or "unknown" for item in tasks)
+    blocked = [item for item in tasks if item.get("state") == "authorization_required"]
+    blocked_classes = Counter(
+        _blocked_reason_class(item.get("authorization_reason")) for item in blocked
+    )
     return {
         "total": len(tasks),
         "queued": counts.get("queued", 0),
@@ -707,6 +727,13 @@ def queue_summary():
         "failed": counts.get("failed", 0),
         "paused": counts.get("paused", 0),
         "authorization_required": counts.get("authorization_required", 0),
+        "blockage_diagnostics": {
+            "legacy_technical_requires_review": blocked_classes.get("legacy_technical_requires_review", 0),
+            "real_authorization_or_risk_control": blocked_classes.get("real_authorization_or_risk_control", 0),
+            "unclassified_requires_review": blocked_classes.get("unclassified_requires_review", 0),
+            "auto_requeued": 0,
+            "note": "诊断不改状态；旧技术失败、登录/验证码和未知阻塞必须分别处理，禁止批量重试。",
+        },
         "tasks": tasks,
     }
 
@@ -731,7 +758,14 @@ def manual_requirements():
                 "question_id": item.get("question_id"),
                 "reason": item.get("authorization_reason")
                 or "external_platform_authorization_required",
-                "action_type": "login_oauth_captcha_or_permission",
+                "action_type": (
+                    "inspect_technical_failure_no_auto_retry"
+                    if _blocked_reason_class(item.get("authorization_reason")) == "legacy_technical_requires_review"
+                    else "login_oauth_captcha_or_permission"
+                    if _blocked_reason_class(item.get("authorization_reason")) == "real_authorization_or_risk_control"
+                    else "investigate_blocking_reason"
+                ),
+                "reason_class": _blocked_reason_class(item.get("authorization_reason")),
             }
             for item in tasks
         ],
