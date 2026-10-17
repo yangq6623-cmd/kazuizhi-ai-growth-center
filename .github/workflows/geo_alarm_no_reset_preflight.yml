@@ -1,0 +1,26 @@
+name: GEO MV3 Alarm Persistence Preflight
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/geo-alarm-not-reset-*"
+    paths:
+      - "05_V2.0.0_Source/browser_extension/kazuizhi_geo/**"
+      - "04_Build/v2/test_geo_alarm_no_reset.js"
+      - ".github/workflows/geo_alarm_no_reset_preflight.yml"
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check syntax and auto cycle stability
+        run: |
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/service-worker.js
+          node 04_Build/v2/test_geo_alarm_no_reset.js
+          node 04_Build/v2/test_geo_extension_807.js
