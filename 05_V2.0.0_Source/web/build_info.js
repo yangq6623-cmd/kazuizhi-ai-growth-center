@@ -24,7 +24,12 @@
     // the GEO UI independently serializes and rate-limits both reads.
     if(method==='GET'&&(
       url.pathname==='/api/r8-24/geo-growth/evidence-compact'||
-      url.pathname==='/api/r8-25/phase1-acceptance'
+      url.pathname==='/api/r8-25/phase1-acceptance'||
+      url.pathname==='/api/r8-24/geo-growth/evidence-health'||
+      url.pathname==='/api/r8-24/geo-growth/fast-health'||
+      url.pathname==='/api/r8-24/geo-growth/http-health'||
+      url.pathname==='/api/r8-24/geo-growth/liveness'||
+      url.pathname==='/api/r8-27/geo-browser-agent/status'
     ))return null;
     const signal=init?.signal||input?.signal||null;
     let priority=2;

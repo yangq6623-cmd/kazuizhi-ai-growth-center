@@ -86,6 +86,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '#808 browser-claim safety regressed' }
           python 04_Build/v2/test_r8_27_geo_browser_agent.py
           if ($LASTEXITCODE -ne 0) { throw '#812 authenticated browser-agent compatibility failed' }
+      - name: "#814 GEO root-cause regression - health GET budget and Doubao no-replay"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          node 04_Build/v2/test_geo_814_diagnostics_budget.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 diagnostics budget regression failed' }
+          node 04_Build/v2/test_geo_814_doubao_reconcile.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 Doubao safe submit/reconcile failed' }
+          node 04_Build/v2/test_geo_extension_808.js
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 808 claim/capture safety regression failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -221,19 +230,19 @@ jobs:
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
           Copy-Item docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md installer_output_v2/PHASE1_ACCEPTANCE.md
-      - name: Package GEO Chrome extension 2.2.2.808
+      - name: Package GEO Chrome extension 2.2.2.814
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
-          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.808.zip'
+          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip'
           Compress-Archive -Path "$source/*" -DestinationPath $bundle -CompressionLevel Optimal -Force
           $sum = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash
-          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.808.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
+          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
           Copy-Item docs/GEO_808_ALARM_BLOCKAGE_HANDOFF_20261017.md installer_output_v2/GEO_808_HANDOFF.md
       - name: Upload standalone GEO Chrome extension
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.808
-          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.808.zip
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.814
+          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip
           if-no-files-found: error
           retention-days: 90
       - name: Upload final Windows installer
