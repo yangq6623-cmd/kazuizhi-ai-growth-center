@@ -480,15 +480,33 @@ def claim_next_task(executor=None):
     executor = dict(executor or {})
     queue = _load_queue()
     requested_platform = str(executor.get("provider") or "").strip()
-    matching = [
-        item for item in queue["tasks"]
-        if item.get("state") == "queued"
-        and item.get("expected_platform") == requested_platform
-    ] if requested_platform else []
-    task = (matching[0] if matching else next((
-        item for item in queue["tasks"]
-        if item.get("state") == "queued" and not item.get("expected_platform")
-    ), None))
+    # A platform-specific Chrome worker must never inherit an unspecified
+    # historical task or retry an ambiguous external prompt. Legacy non-browser
+    # callers retain their old fallback unless they explicitly opt into strict.
+    strict = bool(executor.get("strict_provider"))
+    fresh_only = bool(executor.get("fresh_only"))
+    priority_id = str(executor.get("priority_task_id") or "")
+    def eligible(item):
+        if item.get("state") != "queued" or item.get("expected_platform") != requested_platform:
+            return False
+        if strict and (str(item.get("provider") or "") != requested_platform
+                       or str(item.get("test_method") or "") != "browser"):
+            return False
+        if fresh_only and (int(item.get("retry_count") or 0) > 0
+                           or bool(item.get("run_id"))
+                           or bool(item.get("started_at"))
+                           or bool(item.get("uncertain_external_submission"))):
+            return False
+        return True
+    matching = [item for item in queue["tasks"] if eligible(item)] if requested_platform else []
+    task = (next((item for item in matching if item.get("task_id") == priority_id), None)
+            if priority_id else None)
+    if task is None:
+        task = matching[0] if matching else (
+            None if strict else next((
+                item for item in queue["tasks"]
+                if item.get("state") == "queued" and not item.get("expected_platform")
+            ), None))
     if task is None:
         return {"ok": True, "skipped": True, "reason": "queue_empty"}
 
@@ -786,8 +804,13 @@ def queue_single_fresh_doubao_canary_once():
             return {"created": 0, "reason": "already_reserved",
                     "question_id": marker.get("question_id", "")}
         queue = _load_queue()
-        if any(t.get("state") in {"queued", "running"} for t in queue.get("tasks", [])):
-            return {"created": 0, "reason": "other_work_in_progress"}
+        # Pending unrelated work must not permanently starve the one authorized
+        # fresh Doubao canary. An active Doubao execution *does* block it.
+        if any(t.get("state") == "running" and (
+                t.get("provider") in {"doubao_web", "doubao_search"}
+                or t.get("expected_platform") == "doubao_web")
+                for t in queue.get("tasks", [])):
+            return {"created": 0, "reason": "doubao_execution_in_progress"}
         attempted = {
             str(t.get("question_id") or "") for t in queue.get("tasks", [])
             if t.get("provider") in {"doubao_web", "doubao_search"}
