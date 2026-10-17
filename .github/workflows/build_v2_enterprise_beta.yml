@@ -89,6 +89,7 @@ jobs:
       - name: "#814 GEO root-cause regression - health GET budget and Doubao no-replay"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#814 isolated Windows release gate: no external questions or production data changes'
           node 04_Build/v2/test_geo_814_diagnostics_budget.cjs
           if ($LASTEXITCODE -ne 0) { throw 'GEO 814 diagnostics budget regression failed' }
           node 04_Build/v2/test_geo_814_doubao_reconcile.cjs
