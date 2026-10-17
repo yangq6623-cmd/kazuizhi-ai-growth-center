@@ -181,7 +181,7 @@ function renderR7Jobs(items){
     let actions='';
     if(job.state==='awaiting_approval')actions='<span class="subtle">这是旧版本遗留记录，新版本启动后会按新自动化策略迁移处理。</span>';
     if(job.state==='human_required')actions='<span class="subtle">请到小程序/平台后台由人工处理资金事项；R7 只记录，不执行。</span>';
-    if(job.state==='queued'&&job.mode==='local')actions='<span class="subtle">已进入自动执行队列，无需人工批准。</span>';
+    if(job.state==='queued'&&job.mode==='local')actions=`<span class="subtle">${esc(job.authorization_note||'已进入自动执行队列，无需人工批准。')}</span>`;
     if(job.state==='failed'&&job.risk!=='financial')actions=r7Action(job,'retry','立即重试')+r7Action(job,'cancel','取消');
     const riskLabel=job.risk==='financial'?'平台人工':'全自动';
     const summary=r7ResultSummary(job.result);

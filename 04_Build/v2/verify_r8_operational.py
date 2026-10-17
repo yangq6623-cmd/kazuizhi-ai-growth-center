@@ -30,7 +30,7 @@ def source_checks():
     r7_html = (source / "web/index.html").read_text(encoding="utf-8")
     r7_app = (source / "web/app.js").read_text(encoding="utf-8")
     check(BUILD in html, "Operational UI build identity missing")
-    for label in ("今天让什么结果发生", "增长战役", "内容工厂", "手机与真机", "账号与发布", "咨询与订单", "SEO 与 GEO", "连接与体检"):
+    for label in ("今天让什么结果发生", "增长目标", "AI 内容生产中心", "人工辅助终端", "发布准备", "咨询与订单", "SEO 与 GEO", "连接与体检"):
         check(label in html, f"Operational page missing: {label}")
     check("返回 R7 完整总控制台" in html and "/index.html" in html, "Operational workspace cannot return to R7")
     for label in ("AI 指挥中心", "任务与员工", "今日复盘", "经营分析", "内容增长", "市场洞察", "任务日历", "运营总结", "明日计划", "历史记录", "运营记忆"):
@@ -70,6 +70,63 @@ def http_json(base, path, payload=None):
     request = urllib.request.Request(base + path, data=data, headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.status, json.load(response)
+
+
+def seed_verified_social_control(temporary):
+    """Seed an isolated CI control-plane truth state without weakening production rules.
+
+    CI cannot attach a physical Android phone, so this acceptance helper invokes the
+    same control-plane functions used by the ADB/platform adapters: register a real-
+    Android-shaped terminal, record an ADB-origin probe, register the platform account,
+    then record platform authorization. The content factory must discover this state
+    through sync_accounts_from_control; it never receives a writable verified flag.
+    """
+    source = ROOT / "05_V2.0.0_Source"
+    old_local = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = temporary
+    sys.path.insert(0, str(source))
+    try:
+        from core import r8_control
+
+        device_id = "CI-ADB-R8-001"
+        r8_control.register_device({
+            "device_id": device_id,
+            "label": "CI隔离验收真机",
+            "device_type": "real_android",
+            "transport": "usb",
+        })
+        r8_control.record_device_probe(
+            device_id,
+            True,
+            source="adb",
+            detail="CI隔离环境模拟硬件适配器的ADB探测结果；不代表真实用户设备",
+        )
+        state = r8_control.register_account({
+            "platform": "douyin",
+            "device_id": device_id,
+            "alias": "涟水家电维修测试账号",
+            "label": "抖音CI验收账号",
+            "role": "service",
+            "region": "涟水县",
+            "service_category": "家电安装维修",
+            "automation_level": "L2",
+        })
+        account_id = state["accounts"][-1]["account_id"]
+        r8_control.update_account_status({
+            "account_id": account_id,
+            "login_status": "authorized",
+            "risk_level": "normal",
+        })
+        return account_id
+    finally:
+        try:
+            sys.path.remove(str(source))
+        except ValueError:
+            pass
+        if old_local is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = old_local
 
 
 def exercise(command):
@@ -171,7 +228,10 @@ def exercise(command):
                 # The independent video worker should pick the job automatically. No
                 # owner click is allowed between ChatGPT plan and FINAL.MP4.
                 qc_video = None
-                for _ in range(120):
+                # The installed package can have a longer first-run encoder warmup
+                # than source mode.  Preserve the same failure state and content-QC
+                # gates, while allowing four minutes before calling it stalled.
+                for _ in range(240):
                     _, factory = http_json(base, "/api/content-factory")
                     current = next(x for x in factory["videos"] if x["id"] == video["id"])
                     if current["status"] in {"等待ChatGPT质检", "等待人工审核"}:
@@ -220,15 +280,34 @@ def exercise(command):
                 check(asset["exists"] and Path(asset["local_path"]).is_file(), "Optional material intake failed")
                 check(asset.get("source_origin") == "manual_upload", "Structured asset origin metadata missing")
 
-                # Final owner gate must remain mandatory before platform rules allow a plan.
+                # Final owner gate remains mandatory. A metadata form is explicitly
+                # unable to self-declare a verified publishing account.
                 _, approved = http_json(base, "/api/content-factory/review", {
                     "video_id": video["id"], "decision": "确认发布", "candidate_id": candidate["id"], "note": "验收通过",
                 })
                 check(approved["status"] == "已授权发布", "Owner approval gate did not authorize publication")
-                _, account = http_json(base, "/api/content-factory/accounts", {
-                    "platform": "抖音", "account_name": "涟水家电维修测试账号", "region": "涟水县",
+                _, manual_account = http_json(base, "/api/content-factory/accounts", {
+                    "platform": "抖音", "account_name": "人工元数据账号", "region": "涟水县",
                     "service": "家电安装维修", "connection_status": "已验证可发布",
                 })
+                check(manual_account.get("connection_status") != "已验证可发布",
+                      "Manual content-factory metadata illegally self-declared verified publish state")
+
+                # CI cannot host a physical Android device. Seed the isolated control
+                # plane through the same device/account state functions used by adapters,
+                # then require the factory to discover verification from that truth source.
+                social_account_id = seed_verified_social_control(temporary)
+                _, factory = http_json(base, "/api/content-factory")
+                account = next(
+                    (x for x in factory.get("accounts", [])
+                     if x.get("social_account_id") == social_account_id),
+                    None,
+                )
+                check(account and account.get("connection_status") == "已验证可发布",
+                      "Verified control-plane account was not synchronized into content factory")
+                check(account.get("verification_source") == "r8_social_control",
+                      "Verified account did not preserve its control-plane evidence source")
+
                 _, publish_plan = http_json(base, "/api/content-factory/publish-plans", {
                     "video_id": video["id"], "account_id": account["id"],
                 })
@@ -282,7 +361,7 @@ def main():
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> platform rules")
+    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> verified control-plane account -> platform rules")
 
 
 if __name__ == "__main__":

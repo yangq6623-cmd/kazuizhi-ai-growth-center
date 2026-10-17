@@ -15,7 +15,8 @@ a = Analysis([str(source / "run.py")], pathex=[str(source)],
              binaries=ff_binaries + pil_binaries,
              datas=[(str(source / "web"), "web"),
                     (str(source / "config"), "config"),
-                    (str(source / "version"), "version")] + ff_datas + pil_datas,
+                    (str(source / "version"), "version"),
+                    (str(source / "core" / "release_manifest.json"), "core")] + ff_datas + pil_datas,
              hiddenimports=ff_hidden + pil_hidden, hookspath=[], hooksconfig={},
              runtime_hooks=[], excludes=[], noarchive=False)
 pyz = PYZ(a.pure)

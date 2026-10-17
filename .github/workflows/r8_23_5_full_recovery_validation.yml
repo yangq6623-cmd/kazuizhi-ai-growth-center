@@ -1,0 +1,27 @@
+name: R8-23.5 Full Regression Recovery Validation
+
+on:
+  push:
+    branches:
+      - r8-23-5-full-regression-recovery-20261004
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+      - name: Compile recovery patches
+        run: |
+          python -m py_compile 05_V2.0.0_Source/promotion/chatgpt_mission_patch.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_23_5_full_recovery_patch.py
+      - name: Run R8-23.5 targeted regression tests
+        run: python -m pytest -q 04_Build/v2/test_r8_23_5_full_recovery.py

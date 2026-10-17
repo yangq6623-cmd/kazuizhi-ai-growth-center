@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>卡嘴子 AI 内容创导平台</title>
+  <link rel="stylesheet" href="/ai-production-center.css">
+  <link rel="stylesheet" href="/content-reference-center.css">
+  <style>
+    :root{font-family:Inter,"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#10223d;background:#f4f7fb;--kz-blue:#1768e5;--kz-navy:#0c2d57;--kz-border:#dfe7f1;--kz-muted:#6d7f96;--kz-green:#1b9a64;--kz-amber:#b7791f;--kz-red:#d14343}
+    *{box-sizing:border-box} html,body{margin:0;background:#f4f7fb} body{overflow-x:hidden}
+    #studio-root{width:100%;margin:0;padding:0 0 16px;background:#f4f7fb}
+    .studio-shell{position:sticky;top:0;z-index:40;background:#f4f7fb;padding:0 0 10px}
+    .studio-nav{min-height:52px;background:#0d2e57;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 14px;border-radius:0 0 8px 8px;box-shadow:0 4px 14px rgba(14,46,87,.08)}
+    .studio-brand{min-width:220px}.studio-brand small{display:block;font-size:11px;opacity:.72}.studio-brand b{display:block;font-size:14px;margin-top:2px}
+    .studio-tabs{display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none}.studio-tabs::-webkit-scrollbar{display:none}
+    .studio-tab{height:36px;border:0;border-radius:4px;padding:0 12px;background:transparent;color:#cbd8e9;font-size:13px;white-space:nowrap;cursor:pointer}.studio-tab:hover{background:rgba(255,255,255,.08);color:#fff}.studio-tab.active{background:#1768e5;color:#fff;font-weight:700}
+    .studio-route-meta{display:flex;gap:8px;align-items:center;white-space:nowrap}.studio-chip{height:28px;display:inline-flex;align-items:center;padding:0 9px;border-radius:4px;background:rgba(255,255,255,.08);font-size:12px;color:#dbe8f7}
+    #studio-pages>.page{display:none!important;width:100%;margin:0;padding:0}#studio-pages>.page.active{display:block!important}
+    .studio-page{padding:0 14px}.studio-page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid var(--kz-border);border-radius:8px;padding:12px 16px;margin-bottom:12px}.studio-page-head small{display:block;color:var(--kz-blue);font-size:11px;font-weight:700}.studio-page-head h2{margin:3px 0 0;font-size:20px}.studio-page-head p{margin:4px 0 0;font-size:12px;color:var(--kz-muted)}
+    .studio-primary,.studio-secondary{height:36px;border-radius:4px;padding:0 13px;font-size:13px;cursor:pointer}.studio-primary{background:var(--kz-blue);border:1px solid var(--kz-blue);color:#fff;font-weight:700}.studio-secondary{background:#fff;border:1px solid #b9cbe0;color:#24496f}
+    .studio-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}.studio-card{background:#fff;border:1px solid var(--kz-border);border-radius:8px;padding:14px}.studio-card small{display:block;font-size:11px;color:var(--kz-muted)}.studio-card strong{display:block;font-size:24px;margin:6px 0 2px}.studio-card span{font-size:12px;color:var(--kz-muted)}
+    .studio-main-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:12px}.studio-section{background:#fff;border:1px solid var(--kz-border);border-radius:8px;padding:14px}.studio-section h3{font-size:14px;margin:0 0 10px}.studio-list{display:grid;gap:8px}.studio-row{min-height:44px;border-top:1px solid #edf1f6;display:grid;grid-template-columns:120px 1fr auto;gap:12px;align-items:center;padding:8px 0}.studio-row:first-child{border-top:0}.studio-row b{font-size:13px}.studio-row span{font-size:12px;color:var(--kz-muted)}.studio-status{height:24px;padding:0 8px;border-radius:4px;display:inline-flex;align-items:center;font-size:11px}.studio-status.blue{background:#e8f1ff;color:#1768e5}.studio-status.green{background:#e8f7f0;color:#16875c}.studio-status.amber{background:#fff4df;color:#9a671c}.studio-status.red{background:#ffebeb;color:#c53b3b}
+    .studio-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.studio-form label{font-size:12px;color:#53677e}.studio-form label.wide{grid-column:1/-1}.studio-form input,.studio-form select,.studio-form textarea{width:100%;margin-top:5px;border:1px solid #c9d7e7;border-radius:4px;background:#fff;color:#17324f;font:inherit;padding:0 10px}.studio-form input,.studio-form select{height:36px}.studio-form textarea{min-height:110px;padding:9px 10px;resize:vertical}
+    .studio-empty{border:1px dashed #cedaea;border-radius:6px;padding:22px;text-align:center;color:#71839a;font-size:12px;background:#fbfdff}.studio-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}.studio-note{font-size:12px;color:#6f8198;background:#f7faff;border:1px solid #e1e9f3;padding:10px;border-radius:6px}
+    #reference,#content{min-height:0!important}.reference-page,.apc-shell{max-width:none!important;margin:0!important}.reference-page{padding-top:0!important}.reference-page .content-platform-switch{display:none!important}.apc-shell .apc-topbar{margin-top:0!important}
+    @media(max-width:1100px){.studio-route-meta{display:none}.studio-main-grid{grid-template-columns:1fr}.studio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+  <main id="studio-root" aria-label="卡嘴子 AI 内容创导平台">
+    <div class="studio-shell">
+      <div class="studio-nav">
+        <div class="studio-brand"><small>卡嘴子 AI 内容创导平台</small><b id="studio-route-title">创导总览</b></div>
+        <nav class="studio-tabs" aria-label="内容创导工作区">
+          <button class="studio-tab active" data-route="overview">创导总览</button>
+          <button class="studio-tab" data-route="intelligence">内容情报</button>
+          <button class="studio-tab" data-route="reference">参考内容</button>
+          <button class="studio-tab" data-route="creative">创意策划</button>
+          <button class="studio-tab" data-route="director">AI 导演</button>
+          <button class="studio-tab" data-route="content">生产工作台</button>
+          <button class="studio-tab" data-route="assets">资产中心</button>
+          <button class="studio-tab" data-route="qc">AI 质检</button>
+          <button class="studio-tab" data-route="library">成片库</button>
+        </nav>
+        <div class="studio-route-meta"><span class="studio-chip" id="studio-automation-level">自动化：L3</span><span class="studio-chip" id="studio-local-state">本地执行</span></div>
+      </div>
+    </div>
+
+    <div id="studio-pages">
+      <section id="overview" class="page studio-page active">
+        <header class="studio-page-head"><div><small>01 · 创导驾驶舱</small><h2>今天的内容生产从这里开始</h2><p>只显示真实已建立的参考、项目、任务与成片状态；没有数据时明确显示 0。</p></div><button class="studio-primary" data-go="reference">导入参考内容</button></header>
+        <div class="studio-grid">
+          <article class="studio-card"><small>参考内容</small><strong id="ov-reference">0</strong><span>本机参考库记录</span></article>
+          <article class="studio-card"><small>生产项目</small><strong id="ov-projects">0</strong><span>AI 内容生产项目</span></article>
+          <article class="studio-card"><small>本地任务</small><strong id="ov-tasks">0</strong><span>候选 / 分镜 / 执行任务</span></article>
+          <article class="studio-card"><small>待处理</small><strong id="ov-pending">0</strong><span>排队、分析或待确认</span></article>
+        </div>
+        <div class="studio-main-grid">
+          <section class="studio-section"><h3>内容创导主线</h3><div class="studio-list">
+            <div class="studio-row"><b>内容情报</b><span>用户问题、搜索机会、行业参考进入选题池</span><em class="studio-status blue">发现</em></div>
+            <div class="studio-row"><b>参考学习</b><span>拆解结构、钩子、节奏与风格，不直接复制未授权素材</span><em class="studio-status blue">分析</em></div>
+            <div class="studio-row"><b>AI 导演</b><span>把创意变成镜头、人物、场景、声音与素材策略</span><em class="studio-status amber">策划</em></div>
+            <div class="studio-row"><b>生产工作台</b><span>真实素材优先，缺口再调用本地图片 / 视频 / 语音能力</span><em class="studio-status green">生产</em></div>
+            <div class="studio-row"><b>质检与成片</b><span>人物一致性、字幕、品牌、授权与最终成片统一复核</span><em class="studio-status green">闭环</em></div>
+          </div></section>
+          <section class="studio-section"><h3>需要关注</h3><div id="ov-attention" class="studio-empty">正在读取本机内容中心状态…</div></section>
+        </div>
+      </section>
+
+      <section id="intelligence" class="page studio-page">
+        <header class="studio-page-head"><div><small>02 · 内容情报</small><h2>决定什么值得做，而不是随机生成</h2><p>后续接入搜索、用户问题、经营反馈与外部趋势；当前先建立可追踪的选题入口。</p></div><button class="studio-primary" id="intel-new">新建选题</button></header>
+        <div class="studio-main-grid"><section class="studio-section"><h3>内容机会池</h3><div id="intel-list" class="studio-empty">还没有手工建立的内容机会。</div></section><section class="studio-section"><h3>机会评分原则</h3><div class="studio-list"><div class="studio-row"><b>真实需求</b><span>用户问题是否明确</span><em class="studio-status blue">25%</em></div><div class="studio-row"><b>本地相关度</b><span>是否与涟水 / 淮安服务强相关</span><em class="studio-status blue">20%</em></div><div class="studio-row"><b>商业价值</b><span>是否有咨询或订单转化机会</span><em class="studio-status blue">20%</em></div><div class="studio-row"><b>搜索价值</b><span>是否具备 SEO / GEO 内容价值</span><em class="studio-status blue">15%</em></div></div></section></div>
+      </section>
+
+      <section id="content" class="page"></section>
+
+      <section id="creative" class="page studio-page">
+        <header class="studio-page-head"><div><small>04 · 创意策划</small><h2>把选题变成可执行的创意卡</h2><p>一条选题可以生成真实案例、师傅科普、数字人口播等不同生产方向。</p></div><button class="studio-primary" data-go="director">进入 AI 导演</button></header>
+        <section class="studio-section"><div class="studio-form"><label>主题<input id="creative-topic" placeholder="例如：空调不制冷一定要加氟吗"></label><label>表现形式<select id="creative-format"><option>真实案例</option><option>师傅科普</option><option>数字人口播</option><option>真实素材 + AI 补镜</option></select></label><label>目标用户<input id="creative-audience" placeholder="例如：涟水家庭用户"></label><label>建议时长<select id="creative-duration"><option>15 秒</option><option selected>30 秒</option><option>45 秒</option></select></label><label class="wide">核心观点<textarea id="creative-core" placeholder="这条内容最想让用户记住什么？"></textarea></label></div><div class="studio-actions"><button class="studio-secondary" id="creative-save">保存创意卡</button><button class="studio-primary" id="creative-to-director">交给 AI 导演</button></div></section>
+      </section>
+
+      <section id="director" class="page studio-page">
+        <header class="studio-page-head"><div><small>05 · AI 导演</small><h2>先决定怎么拍，再交给模型生成</h2><p>导演层负责节奏、镜头、人物、场景、素材来源和生成策略，模型只负责执行。</p></div><button class="studio-primary" id="director-to-production">生成分镜并进入生产</button></header>
+        <div class="studio-main-grid"><section class="studio-section"><h3>导演方案</h3><div class="studio-form"><label>视频目标<select id="director-goal"><option>获得咨询</option><option>知识科普</option><option>品牌曝光</option><option>案例证明</option></select></label><label>全片风格<select id="director-style"><option>真实纪实</option><option>专业科普</option><option>生活化口播</option><option>轻剧情</option></select></label><label>默认人物<input id="director-character" placeholder="稍后从资产中心选择"></label><label>默认场景<input id="director-scene" placeholder="稍后从资产中心选择"></label><label class="wide">导演说明<textarea id="director-brief" placeholder="例如：前三秒展示真实故障，中段用师傅解释原因，真实素材优先，缺口再 AI 补镜。"></textarea></label></div></section><section class="studio-section"><h3>生产策略</h3><div class="studio-list"><div class="studio-row"><b>真实素材</b><span>优先匹配素材池</span><em class="studio-status green">优先</em></div><div class="studio-row"><b>图生视频</b><span>固定人物 / 场景一致性镜头</span><em class="studio-status blue">补充</em></div><div class="studio-row"><b>文生视频</b><span>无素材的辅助镜头</span><em class="studio-status blue">补充</em></div><div class="studio-row"><b>数字人</b><span>口播类镜头按需使用</span><em class="studio-status amber">按需</em></div></div></section></div>
+      </section>
+
+      <section id="assets" class="page studio-page"><header class="studio-page-head"><div><small>07 · 资产中心</small><h2>人物、数字人、场景、声音与品牌资产</h2><p>资产必须带来源和授权状态，未确认授权的资产不能自动进入生产。</p></div><button class="studio-primary" data-go="content">进入生产工作台</button></header><div class="studio-grid"><article class="studio-card"><small>人物 / 数字人</small><strong>0</strong><span>等待登记</span></article><article class="studio-card"><small>场景 / 物品</small><strong>0</strong><span>等待登记</span></article><article class="studio-card"><small>声音</small><strong>0</strong><span>等待登记</span></article><article class="studio-card"><small>真实 / 品牌素材</small><strong>0</strong><span>等待登记</span></article></div><div class="studio-note">当前资产登记仍由“生产工作台 → 登记资产”承接；下一轮再把资产中心独立成完整可编辑资料库。</div></section>
+
+      <section id="qc" class="page studio-page"><header class="studio-page-head"><div><small>08 · AI 质检</small><h2>生成完成不等于可以发布</h2><p>后续逐项接入人物一致性、错字、音频、品牌、二维码、授权和相似度检查。</p></div></header><div class="studio-main-grid"><section class="studio-section"><h3>质量门禁</h3><div class="studio-list"><div class="studio-row"><b>人物一致性</b><span>脸、服装、年龄与固定人物资产</span><em class="studio-status amber">待接入</em></div><div class="studio-row"><b>字幕与语音</b><span>错字、漏字、同步与音量</span><em class="studio-status amber">待接入</em></div><div class="studio-row"><b>品牌正确性</b><span>Logo、服务热线、小程序码</span><em class="studio-status amber">待接入</em></div><div class="studio-row"><b>授权 / 二创风险</b><span>素材来源与相似度</span><em class="studio-status amber">待接入</em></div></div></section><section class="studio-section"><h3>待质检成片</h3><div class="studio-empty">当前没有真实成片进入质检队列。</div></section></div></section>
+
+      <section id="library" class="page studio-page"><header class="studio-page-head"><div><small>09 · 成片库</small><h2>保存项目、版本、比例与真实发布回执</h2><p>只有取得真实成片文件才进入成片库；发布状态继续与生产状态严格分离。</p></div></header><div class="studio-empty">当前没有真实成片记录。</div></section>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+      const ROUTE_META={overview:['创导总览','内容情报、参考学习、AI 导演、生产与质检统一协同'],intelligence:['内容情报','发现值得做的主题与真实内容机会'],reference:['参考内容','导入优秀内容，AI 拆解结构与方法'],creative:['创意策划','把选题变成可执行创意卡'],director:['AI 导演','统一决定节奏、镜头、人物、场景与素材策略'],content:['生产工作台','分镜、资产、候选任务与本地生成'],assets:['资产中心','人物、数字人、场景、声音与品牌资产'],qc:['AI 质检','连续性、字幕、品牌、授权与质量门禁'],library:['成片库','版本、比例、成片与真实发布回执']};
+      let currentRoute='overview',heightTimer=null;
+      const byId=id=>document.getElementById(id);
+      function notifyHeight(){clearTimeout(heightTimer);heightTimer=setTimeout(()=>{const active=document.querySelector('#studio-pages>.page.active');const shell=document.querySelector('.studio-shell');const h=Math.max(520,(shell?.offsetHeight||0)+(active?.scrollHeight||0)+24);try{parent.postMessage({type:'kz-content-studio-height',height:h},location.origin)}catch(_){}},40)}
+      function notifyRoute(page){const [title,subtitle]=ROUTE_META[page]||ROUTE_META.overview;byId('studio-route-title').textContent=title;document.querySelectorAll('.studio-tab').forEach(b=>b.classList.toggle('active',b.dataset.route===page));try{parent.postMessage({type:'kz-content-studio-route-changed',route:page,title,subtitle},location.origin)}catch(_){}}
+      function changeRoute(page){const target=byId(page);if(!target)return false;currentRoute=page;document.querySelectorAll('#studio-pages>.page').forEach(n=>n.classList.toggle('active',n.id===page));notifyRoute(page);if(page==='content')window.dispatchEvent(new CustomEvent('operational:content'));if(page==='overview')refreshOverview();window.scrollTo({top:0,behavior:'auto'});notifyHeight();return true}
+      window.changeOperationalPage=changeRoute;window.changePage=changeRoute;
+      document.querySelectorAll('[data-route]').forEach(b=>b.addEventListener('click',()=>changeRoute(b.dataset.route)));document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>changeRoute(b.dataset.go)));
+      function readReferences(){try{return JSON.parse(localStorage.getItem('kazuizhi.reference-center.v1')||'{}').items||[]}catch{return[]}}
+      async function refreshOverview(){const refs=readReferences();byId('ov-reference').textContent=refs.length;byId('ov-pending').textContent=refs.filter(x=>/待|分析中|处理中|排队/.test(String(x.status||''))).length;try{const r=await fetch('/api/ai-content-center',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error();byId('ov-projects').textContent=(d.projects||[]).length;byId('ov-tasks').textContent=(d.tasks||[]).length;const pending=(d.tasks||[]).filter(x=>!/完成|已完成|已同步/.test(String(x.status||''))).length+Number(byId('ov-pending').textContent||0);byId('ov-pending').textContent=pending;byId('ov-attention').innerHTML=pending?`当前有 <b>${pending}</b> 项参考分析或本地任务仍在处理中。`:'当前没有需要处理的内容生产事项。'}catch{byId('ov-attention').textContent='本地内容中心暂时无法读取；不显示推测数据。'}}
+      function saveCreative(){const data={topic:byId('creative-topic').value.trim(),format:byId('creative-format').value,audience:byId('creative-audience').value.trim(),duration:byId('creative-duration').value,core:byId('creative-core').value.trim(),updatedAt:new Date().toISOString()};localStorage.setItem('kazuizhi.content-creative-card.v1',JSON.stringify(data));return data}
+      byId('creative-save')?.addEventListener('click',()=>{saveCreative();alert('创意卡已保存在本机。')});byId('creative-to-director')?.addEventListener('click',()=>{const d=saveCreative();byId('director-brief').value=[d.topic&&`主题：${d.topic}`,d.core&&`核心观点：${d.core}`,d.format&&`形式：${d.format}`,d.audience&&`用户：${d.audience}`].filter(Boolean).join('\n');changeRoute('director')});
+      byId('director-to-production')?.addEventListener('click',()=>{const brief=byId('director-brief').value.trim();if(brief)localStorage.setItem('kazuizhi.reference-production-handoff.v1',JSON.stringify({title:'AI 导演方案',brief,createdAt:new Date().toLocaleString('zh-CN',{hour12:false})}));changeRoute('content');setTimeout(()=>{const script=byId('apc-script');if(script&&brief){script.value=brief;script.dispatchEvent(new Event('input',{bubbles:true}))}},220)});
+      byId('intel-new')?.addEventListener('click',()=>{const topic=prompt('输入一个真实内容机会/用户问题：');if(!topic)return;const items=JSON.parse(localStorage.getItem('kazuizhi.content-intelligence.v1')||'[]');items.unshift({topic,createdAt:new Date().toLocaleString('zh-CN',{hour12:false})});localStorage.setItem('kazuizhi.content-intelligence.v1',JSON.stringify(items));renderIntel()});
+      function renderIntel(){let items=[];try{items=JSON.parse(localStorage.getItem('kazuizhi.content-intelligence.v1')||'[]')}catch{}const root=byId('intel-list');root.className=items.length?'studio-list':'studio-empty';root.innerHTML=items.length?items.map(x=>`<div class="studio-row"><b>${String(x.topic).replace(/[&<>]/g,'')}</b><span>${x.createdAt}</span><em class="studio-status amber">待策划</em></div>`).join(''):'还没有手工建立的内容机会。'}
+      function openInitial(attempt=0){const desired=new URLSearchParams(location.search).get('entry')||'overview';if(changeRoute(desired))return;if(attempt<80)setTimeout(()=>openInitial(attempt+1),80)}
+      window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='kz-content-studio-route'){const route=ROUTE_META[e.data.route]?e.data.route:'overview';if(!changeRoute(route))openInitial(0)}});
+      if('ResizeObserver'in window){const o=new ResizeObserver(notifyHeight);o.observe(document.documentElement);o.observe(document.body)}new MutationObserver(notifyHeight).observe(document.documentElement,{subtree:true,childList:true,attributes:true});window.addEventListener('load',()=>{renderIntel();openInitial(0);refreshOverview();notifyHeight()});window.addEventListener('resize',notifyHeight);setTimeout(()=>openInitial(0),120);
+    })();
+  </script>
+  <script src="/ai-production-center.js"></script>
+</body>
+</html>
