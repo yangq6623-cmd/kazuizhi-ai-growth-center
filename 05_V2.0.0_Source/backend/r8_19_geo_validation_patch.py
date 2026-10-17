@@ -476,7 +476,16 @@ def install():
                     apply=True, approved_by="chatgpt")
             else:
                 result = _set_controller_decision(payload)
-            handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
+            # Browser extension calls run frequently (heartbeat/claim/receipt).
+            # Building the full GEO dashboard synchronously for every response
+            # can block the extension behind ledger reads/analysis and turn an
+            # otherwise successful operation into a client-side fetch timeout.
+            # Keep the existing result envelope; owner/legacy GEO actions still
+            # receive the comprehensive dashboard for backwards compatibility.
+            if path.startswith("/api/r8-27/geo-browser-agent/"):
+                handler._json_ok({"result": result})
+            else:
+                handler._json_ok({"result": result, "geo": _dashboard_with_executor()})
         except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
             handler._json_error(400, error)
 
