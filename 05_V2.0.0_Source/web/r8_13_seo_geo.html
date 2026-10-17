@@ -202,6 +202,17 @@ function renderTechnical(){
   ['网络响应检查',networkBadge,networkDetail,measured?'info':'warn'],
   ['内链结构',linkBadge,linkDetail,measured?'info':'warn']
  ];$('health').innerHTML=rows.map(([name,badge,detail,kind])=>`<div class="health-item"><div><b>${name}</b><div class="sub">${detail}</div></div>${tag(badge,kind)}</div>`).join('');
+ const oldPanel=$('seo816-audit-details');
+ const panel=oldPanel||document.createElement('div');panel.id='seo816-audit-details';panel.className='source-note';
+ const observedAt=Date.parse(site.audited_at||''),hours=observedAt?Math.max(0,(Date.now()-observedAt)/3600000):null;
+ const stale=hours===null||hours>=24;
+ const auto=((t.public_site||{}).automatic_audit||{});
+ const scanLabel=hours===null?'未检查':`${technicalTime(site.audited_at)} · ${Math.floor(hours)}小时前`;
+ panel.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><strong>官网完整诊断 · ${esc(scanLabel)}</strong>${tag(stale?'历史检测·待更新':'24小时内已检查',stale?'warn':'ok')}</div>`+
+  `<div class="sub">自动检查状态：${esc(auto.state||'未开始')}。以下为${stale?'历史':'最新'}扫描记录；公网扫描失败与网站缺少标签分开判断，不将提交当作收录。</div>`+
+  (blockers.length?`<ol style="padding-left:22px;margin:8px 0">${blockers.map(x=>`<li style="padding:3px 0">${esc(x)}</li>`).join('')}</ol>`:'<div class="sub">无已记录问题；仍需按扫描时间判定证据是否有效。</div>')+
+  (auto.last_error?`<div class="sub" style="color:#b42318">最近自动检查异常：${esc(auto.last_error)}</div>`:'');
+ if(!oldPanel)$('health').insertAdjacentElement('afterend',panel);
 }
 function renderConnectors(){
  const con=(state.technical||{}).connectors||{},deploy=(state.technical||{}).public_deploy||{},submission=state.search_submit||{},last=submission.last_result||{},at=submission.last_run_at||'',summary=submission.automation_summary||{};

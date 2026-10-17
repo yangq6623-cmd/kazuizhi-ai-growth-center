@@ -101,6 +101,13 @@ jobs:
           Write-Host '#815 safety test: no real external AI questions and no state replay'
           python 04_Build/v2/test_geo_815_canary_version.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO #815 814/808 canary version and no-replay gate failed' }
+      - name: "#816 SEO isolated audit retry and UI regression"
+        run: |
+          Write-Host '#816 SEO-only tests: isolated fake HTTP, no real web publication or GEO state changes'
+          python 04_Build/v2/test_seo_816_audit_isolation.py
+          if ($LASTEXITCODE -ne 0) { throw '#816 SEO audit isolation contract failed' }
+          node 04_Build/v2/test_seo_816_ui_audit.cjs
+          if ($LASTEXITCODE -ne 0) { throw '#816 SEO audit UI contract failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -17,6 +19,23 @@ from promotion import content_factory
 STORE = "r8/search_growth.json"
 DEFAULT_SITE = "https://kazuizhi.com/"
 
+# Dedicated to SEO public-site auditing; does not change GEO browser workers.
+_AUDIT_LOCK = threading.Lock()
+_AUDIT_IN_FLIGHT = False
+
+
+def _hours_since(value: str) -> float | None:
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds() / 3600)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 
 def _load():
     data = read_json(STORE, {"audits": [], "packs": []})
@@ -29,12 +48,84 @@ def _load():
 
 def status():
     data = _load()
+    latest = data["audits"][0] if data["audits"] else None
+    age = _hours_since(latest.get("audited_at")) if isinstance(latest, dict) else None
     return {
         "status": "available", "site": DEFAULT_SITE,
-        "latest_audit": data["audits"][0] if data["audits"] else None,
+        "latest_audit": latest,
+        "latest_audit_age_hours": round(age, 2) if age is not None else None,
+        "latest_audit_stale": age is None or age >= 24,
+        "automatic_audit": {
+            "state": data.get("automatic_audit_state") or "not_started",
+            "last_attempt_at": data.get("automatic_audit_last_attempt_at") or "",
+            "last_completed_at": data.get("automatic_audit_last_completed_at") or "",
+            "last_error": data.get("automatic_audit_last_error") or "",
+        },
         "packs": data["packs"][:30],
         "truth_rule": "收录、排名和AI引用只记录实际观察结果；生成内容包不等于已经部署或收录。",
     }
+
+
+def schedule_automatic_audit(min_hours=24, retry_hours=3):
+    """Schedule one bounded SEO-only public audit without blocking the five-minute loop.
+
+    Failed network reads remain visible as errors, never as a healthy site.
+    A crashing desktop may retry after the bounded attempt delay.
+    """
+    global _AUDIT_IN_FLIGHT
+    with _AUDIT_LOCK:
+        data = _load()
+        latest = data["audits"][0] if data["audits"] else None
+        age = _hours_since(latest.get("audited_at")) if isinstance(latest, dict) else None
+        failed = data.get("automatic_audit_state") in {"degraded", "failed"}
+        if _AUDIT_IN_FLIGHT:
+            return {"scheduled": False, "reason": "audit_in_progress"}
+        if age is not None and age < min_hours and not failed:
+            return {"scheduled": False, "reason": "fresh_audit", "age_hours": round(age, 2)}
+        attempt_age = _hours_since(data.get("automatic_audit_last_attempt_at"))
+        if attempt_age is not None and attempt_age < retry_hours:
+            return {"scheduled": False, "reason": "retry_cooldown", "age_hours": round(attempt_age, 2)}
+        _AUDIT_IN_FLIGHT = True
+        data["automatic_audit_last_attempt_at"] = now_iso()
+        data["automatic_audit_state"] = "running"
+        data["automatic_audit_last_error"] = ""
+        try:
+            write_json(STORE, data)
+        except Exception:
+            _AUDIT_IN_FLIGHT = False
+            raise
+
+    def worker():
+        global _AUDIT_IN_FLIGHT
+        try:
+            result = audit({"site": DEFAULT_SITE})
+            report = _load()
+            inaccessible = any(int(result.get(key) or 0) == 0 for key in
+                               ("homepage_status", "robots_status", "sitemap_status"))
+            report["automatic_audit_state"] = "degraded" if inaccessible else "completed"
+            report["automatic_audit_last_completed_at"] = now_iso()
+            report["automatic_audit_last_error"] = "public_http_unavailable" if inaccessible else ""
+            write_json(STORE, report)
+        except Exception as error:
+            try:
+                report = _load()
+                report["automatic_audit_state"] = "failed"
+                report["automatic_audit_last_completed_at"] = now_iso()
+                report["automatic_audit_last_error"] = f"{type(error).__name__}: {error}"[:300]
+                write_json(STORE, report)
+            except Exception:
+                pass
+        finally:
+            with _AUDIT_LOCK:
+                _AUDIT_IN_FLIGHT = False
+
+    try:
+        threading.Thread(target=worker, daemon=True, name="kz-seo-public-audit").start()
+    except Exception:
+        with _AUDIT_LOCK:
+            _AUDIT_IN_FLIGHT = False
+        raise
+    return {"scheduled": True, "reason": "seo_public_audit_started"}
 
 
 def _fetch(url):
@@ -44,7 +135,9 @@ def _fetch(url):
             body = response.read(2 * 1024 * 1024)
             return {"url": response.geturl(), "status": response.status, "content_type": response.headers.get("Content-Type", ""), "body": body.decode("utf-8", "replace")}
     except urllib.error.HTTPError as error:
-        return {"url": url, "status": error.code, "content_type": error.headers.get("Content-Type", ""), "body": ""}
+        return {"url": url, "status": error.code, "content_type": error.headers.get("Content-Type", ""), "body": "", "error": f"HTTP {error.code}"}
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+        return {"url": url, "status": 0, "content_type": "", "body": "", "error": f"{type(error).__name__}: {error}"[:300]}
 
 
 def _visible_text(body):
@@ -143,15 +236,15 @@ def audit(payload=None):
         blockers.append("robots.txt 尚未部署")
     if sitemap["status"] != 200:
         blockers.append("sitemap.xml 尚未部署")
-    if not item["has_structured_data"]:
+    if home["status"] == 200 and not item["has_structured_data"]:
         blockers.append("缺少结构化数据")
-    if not item["has_canonical"]:
+    if home["status"] == 200 and not item["has_canonical"]:
         blockers.append("首页缺少 canonical 标准网址")
-    if not item["has_open_graph"]:
+    if home["status"] == 200 and not item["has_open_graph"]:
         blockers.append("首页缺少 Open Graph 分享摘要")
-    if item["is_js_shell"]:
+    if home["status"] == 200 and item["is_js_shell"]:
         blockers.append("首页可抓取正文偏少，可能只有前端JS壳")
-    if item["internal_link_count"] == 0:
+    if home["status"] == 200 and item["internal_link_count"] == 0:
         blockers.append("首页源码没有可抓取的普通内部链接")
     if root_map.get("kind") == "urlset" and any(url.rstrip("/").endswith("sitemap.xml") for url in root_map.get("urls") or []):
         blockers.append("主站点地图把子站点地图当作普通网页，应改为 sitemapindex")
