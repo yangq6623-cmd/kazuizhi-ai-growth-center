@@ -45,6 +45,12 @@ def _default_state():
         "last_task_id": "",
         "last_result_at": "",
         "last_error": "",
+        "last_claim_at": "",
+        "last_claim_platform": "",
+        "last_claim_reason": "",
+        "last_claim_task_id": "",
+        "last_canary_reason": "",
+        "extension_version": "",
     }
 
 
@@ -148,6 +154,12 @@ def status():
         "last_task_id": str(state.get("last_task_id") or ""),
         "last_result_at": str(state.get("last_result_at") or ""),
         "last_error": str(state.get("last_error") or ""),
+        "last_claim_at": str(state.get("last_claim_at") or ""),
+        "last_claim_platform": str(state.get("last_claim_platform") or ""),
+        "last_claim_reason": str(state.get("last_claim_reason") or ""),
+        "last_claim_task_id": str(state.get("last_claim_task_id") or ""),
+        "last_canary_reason": str(state.get("last_canary_reason") or ""),
+        "extension_version": str(state.get("extension_version") or ""),
         "platforms": platforms,
         "requires_pc_awake": True,
         "captcha_policy": "pause_platform_and_require_owner",
@@ -217,23 +229,38 @@ def claim(payload):
         "provider": platform,
         "test_method": "browser",
         "executor_id": state.get("agent_id"),
+        # Never give a logged-in browser a generic/old cross-platform task
+        # or re-send a task with an earlier external attempt.
+        "strict_provider": True,
+        "fresh_only": True,
     }
+    canary_reason = "not_doubao"
+    if platform == "doubao_web":
+        if state.get("extension_version") != "2.2.2.808":
+            canary_reason = "extension_version_not_808"
+        elif not str(state.get("agent_id") or "").startswith("kz-r8-28-"):
+            canary_reason = "agent_not_r8_28"
+        else:
+            # Reserve the single genuinely untried question *before* looking
+            # at the ordinary queue. Otherwise fresh unrelated background work
+            # could starve this one authorized browser end-to-end test forever.
+            canary = geo.queue_single_fresh_doubao_canary_once()
+            canary_reason = str(canary.get("reason") or (
+                "queued" if canary.get("created") == 1 else "not_created"))
+            if canary.get("created") == 1:
+                contract["priority_task_id"] = str(canary["task_id"])
     result = geo.claim_next_task(contract)
-    # The owner authorized ONE new external trial with #807. The previous 99
-    # ambiguous timed-out prompts are NEVER replayed. Only a question not
-    # previously attempted on Doubao may enter the queue, once per data set.
-    # Real authenticated 2.2.2.808 extension, connected and ready required.
-    if (result.get("skipped") and platform == "doubao_web"
-            and state.get("extension_version") == "2.2.2.808"
-            and str(state.get("agent_id") or "").startswith("kz-r8-28-")):
-        canary = geo.queue_single_fresh_doubao_canary_once()
-        if canary.get("created") == 1:
-            result = geo.claim_next_task(contract)
     task = result.get("task") or {}
+    state["last_claim_at"] = now_iso()
+    state["last_claim_platform"] = platform
+    state["last_claim_reason"] = ("claimed" if task else str(result.get("reason") or "queue_empty"))
+    state["last_claim_task_id"] = str(task.get("task_id") or "")
+    if platform == "doubao_web":
+        state["last_canary_reason"] = canary_reason
     if task:
         state["last_task_id"] = str(task.get("task_id") or "")
-        state["last_heartbeat_at"] = now_iso()
-        write_json(STATE_PATH, state)
+    state["last_heartbeat_at"] = now_iso()
+    write_json(STATE_PATH, state)
     from integrations import geo_browser_validation
     return {"claim": result, "contract": geo_browser_validation.contract(task, platform=platform)}
 
