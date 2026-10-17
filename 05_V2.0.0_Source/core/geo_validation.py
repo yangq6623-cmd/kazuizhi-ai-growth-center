@@ -696,6 +696,111 @@ def fail_task(task_id, reason):
     return _transition(task_id, "failed", reason=reason)
 
 
+
+def legacy_receipt_reconciliation(apply=False, approved_by=""):
+    """Restore historical state only when an authoritative matching Receipt exists.
+
+    Never repeat an external AI question from an ambiguous timeout. Existing
+    A/B/C evidence levels and the original Receipt are immutable here.
+    """
+    from core.storage import _JSON_IO_LOCK
+    if apply and approved_by != CONTROLLER:
+        raise ValueError("geo_reconcile_requires_chatgpt_approval")
+    with _JSON_IO_LOCK:
+        queue = _load_queue()
+        ledger = _load_receipts()
+        tasks = list(queue.get("tasks") or [])
+        stored_receipts = list(ledger.get("receipts") or [])
+        by_identity = {}
+        for receipt in stored_receipts:
+            if not isinstance(receipt, dict):
+                continue
+            identity = (str(receipt.get("task_id") or ""), str(
+                receipt.get("evidence_id") or receipt.get("receipt_id") or ""))
+            if all(identity):
+                by_identity.setdefault(identity, []).append(receipt)
+
+        blocked = [task for task in tasks if task.get("state") == "authorization_required"]
+        results = {"blocked": len(blocked), "safe_receipt_matches": 0,
+                   "ambiguous_or_missing_receipt": 0,
+                   "technical_waiting_review": 0,
+                   "reconciled": 0, "backup_path": "",
+                   "automatic_external_retries": 0, "new_evidence": 0,
+                   "ready_to_auto_retry": 0}
+        matches = []
+        for task in blocked:
+            if _blocked_reason_class(task.get("authorization_reason")) != "legacy_technical_requires_review":
+                continue
+            results["technical_waiting_review"] += 1
+            identity = (str(task.get("task_id") or ""), str(task.get("evidence_id") or ""))
+            found = by_identity.get(identity, [])
+            def valid(receipt):
+                same_q = str(receipt.get("question_id") or "") == str(task.get("question_id") or "")
+                same_p = str(receipt.get("provider") or "") == str(task.get("provider") or "")
+                url = str(receipt.get("session_url") or "")
+                return (same_q and same_p and url.startswith("https://") and
+                        "127.0.0.1" not in url and "localhost" not in url and
+                        bool(str(receipt.get("tested_at") or "")) and
+                        len(str(receipt.get("raw_answer") or "").strip()) >= 20)
+            if len(found) != 1 or not valid(found[0]):
+                results["ambiguous_or_missing_receipt"] += 1
+                continue
+            matches.append(task)
+        results["safe_receipt_matches"] = len(matches)
+        if not apply or not matches:
+            return results
+
+        # Snapshot must be written successfully before touching queue.json.
+        snapshot = "geo_validation/backups/pre_legacy_receipt_reconcile_" + _new_id("", 16) + ".json"
+        write_json(snapshot, queue)
+        timestamp = now_iso()
+        for task in matches:
+            task["state"] = "succeeded"
+            task["historical_authorization_reason"] = str(task.get("authorization_reason") or "")
+            task["authorization_reason"] = ""
+            task["legacy_receipt_reconciled_at"] = timestamp
+            task["updated_at"] = timestamp
+        _save_queue(queue)
+        _audit("geo_legacy_receipt_state_reconciled", {
+            "count": len(matches), "backup_path": snapshot,
+            "note": "historical state fix only; zero new verified AI replies",
+        })
+        results["reconciled"] = len(matches)
+        results["backup_path"] = snapshot
+        return results
+
+
+def legacy_blockage_review():
+    """Return compact safe categorization without pretending old timeouts are unsent."""
+    queue = _load_queue()
+    all_tasks = list(queue.get("tasks") or [])
+    blocked = [task for task in all_tasks if task.get("state") == "authorization_required"]
+    outcomes = {"blocked": len(blocked), "timeout_answer": 0,
+                "timeout_signal": 0, "other": 0,
+                "has_prior_evidence_id": 0, "retries_exhausted": 0,
+                "duplicate_success_same_question_provider": 0,
+                "auto_retried": 0}
+    succeeded = {(str(t.get("question_id") or ""), str(t.get("provider") or ""))
+                 for t in all_tasks if t.get("state") == "succeeded"}
+    for task in blocked:
+        reason = str(task.get("authorization_reason") or "")
+        if reason == "capture_failed:agent_response_timeout":
+            outcomes["timeout_answer"] += 1
+        elif reason == "capture_failed:signal timed out":
+            outcomes["timeout_signal"] += 1
+        else:
+            outcomes["other"] += 1
+        if task.get("evidence_id"):
+            outcomes["has_prior_evidence_id"] += 1
+        if int(task.get("retry_count") or 0) >= int(task.get("max_retries") or MAX_RETRIES):
+            outcomes["retries_exhausted"] += 1
+        if (str(task.get("question_id") or ""), str(task.get("provider") or "")) in succeeded:
+            outcomes["duplicate_success_same_question_provider"] += 1
+    outcomes["note"] = ("Ambiguous historical timeout is not proof of an unsent question. "
+                        "No blocked task is automatically resent.")
+    return outcomes
+
+
 def _blocked_reason_class(reason):
     """Read-only diagnostic for old queue rows; never authorize auto-retries."""
     code = str(reason or "").strip().lower()
