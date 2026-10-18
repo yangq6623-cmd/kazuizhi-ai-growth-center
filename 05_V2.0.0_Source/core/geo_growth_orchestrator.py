@@ -798,6 +798,79 @@ def _retest_summary(items):
     return summary
 
 
+def _geo_task_blockage_snapshot():
+    """Read-only classification; never rewrite historical send state."""
+    try:
+        source = read_json_snapshot(geo.QUEUE_PATH, {"tasks": []})
+        tasks = source.get("tasks") if isinstance(source, dict) else []
+        if not isinstance(tasks, list):
+            tasks = []
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return {"status": "unavailable"}
+    blocked = [task for task in tasks if isinstance(task, dict)
+               and task.get("state") == "authorization_required"]
+    counts = {}
+    for task in blocked:
+        category = geo._blocked_reason_class(task.get("authorization_reason") or
+                                             task.get("failure_reason"))
+        counts[category] = counts.get(category, 0) + 1
+    return {
+        "status": "ready", "blocked_total": len(blocked),
+        "legacy_technical_requires_review": counts.get("legacy_technical_requires_review", 0),
+        "real_authorization_or_risk_control": counts.get("real_authorization_or_risk_control", 0),
+        "unclassified_requires_review": counts.get("unclassified_requires_review", 0),
+        "uncertain_external_submission": sum(
+            1 for task in blocked if task.get("uncertain_external_submission")
+            or "timeout" in str(task.get("authorization_reason") or "").lower()
+            or "timed out" in str(task.get("authorization_reason") or "").lower()
+        ),
+        "auto_requeued": 0,
+    }
+
+
+def _retest_archive_summary(items, receipts=None, tasks=None):
+    """Count unique historic linked signals; only succeeded C receipts are confirmed."""
+    receipt_by_task = {
+        str(row.get("task_id") or ""): row
+        for row in (receipts or []) if isinstance(row, dict) and row.get("task_id")
+        and row.get("evidence_level") == "C" and not row.get("official_truth")
+    }
+    task_by_id = {
+        str(row.get("task_id") or ""): row
+        for row in (tasks or []) if isinstance(row, dict) and row.get("task_id")
+    }
+    summary = {window: {"linked_distinct": 0, "confirmed_c_receipts": 0,
+                        "duplicate_links": 0, "superseded_links": 0}
+               for window, _ in DEFAULT_RETEST_WINDOWS}
+    seen = {window: set() for window, _ in DEFAULT_RETEST_WINDOWS}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        superseded = str(item.get("state") or "") == "superseded"
+        for slot in item.get("retest_schedule") or []:
+            if not isinstance(slot, dict):
+                continue
+            window = str(slot.get("window") or "")
+            row = summary.get(window)
+            if row is None or not slot.get("signal_id"):
+                continue
+            task_id = str(slot.get("task_id") or "")
+            signal_id = str(slot.get("signal_id") or "")
+            identity = ("task", task_id) if task_id else ("signal", signal_id)
+            if superseded:
+                row["superseded_links"] += 1
+            if identity in seen[window]:
+                row["duplicate_links"] += 1
+                continue
+            seen[window].add(identity)
+            row["linked_distinct"] += 1
+            receipt = receipt_by_task.get(task_id)
+            receipt_id = (receipt or {}).get("evidence_id") or (receipt or {}).get("receipt_id") or (receipt or {}).get("response_id")
+            if receipt and task_by_id.get(task_id, {}).get("state") == "succeeded" and str(receipt_id or "") == signal_id:
+                row["confirmed_c_receipts"] += 1
+    return summary
+
+
 def _pipeline(items):
     return [
         {"id": "signal", "label": "豆包运营Signal", "count": len(_auxiliary_receipts()), "state": "active"},
@@ -950,6 +1023,9 @@ def fast_status():
         },
         "pipeline": _pipeline_fast(visible_items, len(auxiliary)),
         "retest_windows": _retest_summary(visible_items),
+        "historical_retest": _retest_archive_summary(
+            items, receipts, (read_json_snapshot(geo.QUEUE_PATH, {"tasks": []}).get("tasks") or [])),
+        "task_blockage": _geo_task_blockage_snapshot(),
         "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
         "last_run_at": data.get("last_run_at") or "",
@@ -985,6 +1061,9 @@ def status():
         "summary": {**counts, "signals": len(_auxiliary_receipts()), "technical_blockers": len(data.get("technical_blockers") or [])},
         "pipeline": _pipeline(visible_items),
         "retest_windows": _retest_summary(visible_items),
+        "historical_retest": _retest_archive_summary(
+            items, geo.receipts(1000), geo.queue_summary().get("tasks") or []),
+        "task_blockage": _geo_task_blockage_snapshot(),
         "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
         "last_run_at": data.get("last_run_at") or "",
