@@ -479,7 +479,9 @@ def _ensure_retest_task(item, slot=None):
     if slot.get("task_id"):
         return str(slot.get("task_id") or "")
     window = str(slot.get("window") or "24h")
-    mission_id = f"GEO-GROWTH-OPERATING-RETEST-{window.upper()}"
+    mission_base = f"GEO-GROWTH-OPERATING-RETEST-{window.upper()}"
+    # Distinct opportunity revisions must never share an unrelated retest Task.
+    mission_id = f"{mission_base}/{str(item.get('id') or '')}"
     queue = geo.queue_summary().get("tasks") or []
     existing = next((
         row for row in queue
@@ -494,6 +496,15 @@ def _ensure_retest_task(item, slot=None):
         if window == "24h":
             item["retest_task_id"] = slot["task_id"]
         return str(slot["task_id"] or "")
+    # An unscoped legacy task may already have made an external request.
+    # Block a duplicate rather than claiming a different opportunity's Task.
+    if any(row.get("provider") == geo_cloud_executor.PROVIDER
+           and row.get("question_id") == item.get("question_id")
+           and str(row.get("mission_id") or "") == mission_base
+           and row.get("state") in {"queued", "running", "authorization_required", "paused"}
+           and str(row.get("created_at") or "") >= str(item.get("published_at") or "")
+           for row in queue):
+        raise ValueError("legacy_unscoped_operating_retest_requires_review")
     result = geo.create_and_enqueue_plan(
         limit=1,
         provider=geo_cloud_executor.PROVIDER,
@@ -519,7 +530,7 @@ def _signal_score(signal):
     )
 
 
-def _sync_item(data, item, jobs, seo_opportunities, assets):
+def _sync_item(data, item, jobs, seo_opportunities, assets, task_by_id=None):
     item_id = str(item.get("id") or "")
     if str(item.get("state") or "") == "superseded":
         return item
@@ -628,7 +639,9 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         schedule = _ensure_retest_schedule(item)
         now_epoch = time.time()
         for slot in schedule:
-            fresh = _latest_aux_for_task(slot.get("task_id"))
+            task_id = str(slot.get("task_id") or "")
+            task = (task_by_id or {}).get(task_id) if task_id else None
+            fresh = _latest_aux_for_task(task_id) if task and task.get("state") == "succeeded" else None
             if fresh and not slot.get("signal_id"):
                 analysed = geo_analysis.analyze_receipt(fresh)
                 slot["signal_id"] = _signal_id(fresh)
@@ -682,6 +695,7 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             "target": len(schedule),
             "windows": {
                 str(slot.get("window") or ""): "completed" if slot.get("signal_id")
+                else "blocked" if (task_by_id or {}).get(str(slot.get("task_id") or ""), {}).get("state") in {"failed", "authorization_required", "paused"}
                 else "queued" if slot.get("task_id")
                 else "due" if now_epoch >= float(slot.get("due_at_epoch") or 0)
                 else "scheduled"
@@ -700,9 +714,11 @@ def _sync_all(data):
     _coalesce_active_opportunities(data)
     jobs = _jobs()
     _, seo_opportunities, assets = _growth_assets()
+    task_by_id = {str(row.get("task_id") or ""): row
+                  for row in geo._load_queue().get("tasks", []) if isinstance(row, dict)}
     for item in data.get("opportunities") or []:
         try:
-            _sync_item(data, item, jobs, seo_opportunities, assets)
+            _sync_item(data, item, jobs, seo_opportunities, assets, task_by_id=task_by_id)
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             item["last_error"] = str(error)[:500]
             if item.get("state") not in {"completed", "failed"}:
@@ -796,6 +812,59 @@ def _retest_summary(items):
             row["queued"] += int(bool(slot.get("task_id")) and not bool(slot.get("signal_id")))
             row["completed"] += int(bool(slot.get("signal_id")))
     return summary
+
+
+
+def _historical_retest_truth(items, tasks, receipts):
+    """Deduplicate persisted C-level outcomes across superseded opportunities.
+
+    A Receipt is eligible only if its task actually succeeded. Old failed
+    tasks with an associated Receipt are flagged, not promoted into success.
+    """
+    by_task = {str(t.get("task_id") or ""): t for t in tasks if isinstance(t, dict)}
+    by_receipt = {}
+    for receipt in receipts:
+        if isinstance(receipt, dict) and str(receipt.get("task_id") or ""):
+            by_receipt[str(receipt["task_id"])] = receipt
+    windows = {key: {"unique_task_refs": 0, "valid_c_receipts": 0,
+                     "duplicated_opportunity_refs": 0, "failed_with_receipt": 0,
+                     "missing_or_unverified_receipt": 0, "superseded_refs": 0}
+               for key, _ in DEFAULT_RETEST_WINDOWS}
+    seen = {key: set() for key in windows}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for slot in item.get("retest_schedule") or []:
+            label = str(slot.get("window") or "")
+            if label not in windows:
+                continue
+            task_id = str(slot.get("task_id") or "")
+            if not task_id:
+                continue
+            counter = windows[label]
+            if item.get("state") == "superseded":
+                counter["superseded_refs"] += 1
+            if task_id in seen[label]:
+                counter["duplicated_opportunity_refs"] += 1
+                continue
+            seen[label].add(task_id)
+            counter["unique_task_refs"] += 1
+            task = by_task.get(task_id) or {}
+            receipt = by_receipt.get(task_id) or {}
+            receipt_id = str(receipt.get("evidence_id") or receipt.get("receipt_id") or "")
+            valid_c = (task.get("state") == "succeeded" and receipt_id
+                       and receipt.get("provider") == geo_cloud_executor.PROVIDER
+                       and receipt.get("evidence_level") == "C"
+                       and not receipt.get("official_truth")
+                       and str(slot.get("signal_id") or "") == receipt_id)
+            if valid_c:
+                counter["valid_c_receipts"] += 1
+            elif receipt_id and task.get("state") != "succeeded":
+                counter["failed_with_receipt"] += 1
+            else:
+                counter["missing_or_unverified_receipt"] += 1
+    return {"scope": "retained_opportunity_history", "evidence_level": "C_operating_only",
+            "windows": windows, "mutated": False}
 
 
 def _pipeline(items):
@@ -913,6 +982,14 @@ def fast_status():
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
         executor = {"ready": False, "label": "豆包API"}
 
+    try:
+        queue_doc = read_json_snapshot(geo.QUEUE_PATH, {"tasks": []})
+        tasks_for_truth = queue_doc.get("tasks") if isinstance(queue_doc, dict) else []
+        tasks_for_truth = tasks_for_truth if isinstance(tasks_for_truth, list) else []
+    except (OSError, ValueError, RuntimeError, TypeError):
+        tasks_for_truth = []
+    historical_retests = _historical_retest_truth(items, tasks_for_truth, receipts)
+
     return {
         "schema": SCHEMA,
         "status_mode": "fast_snapshot",
@@ -950,6 +1027,7 @@ def fast_status():
         },
         "pipeline": _pipeline_fast(visible_items, len(auxiliary)),
         "retest_windows": _retest_summary(visible_items),
+        "historical_retests": historical_retests,
         "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
         "last_run_at": data.get("last_run_at") or "",
@@ -966,6 +1044,9 @@ def status():
     counts = _state_counts(items)
     visible_items = [item for item in items if str(item.get("state") or "") != "superseded"]
     cloud = geo_autonomy.status()
+    tasks = geo._load_queue().get("tasks") or []
+    receipts = geo._load_receipts().get("receipts") or []
+    historical_retests = _historical_retest_truth(items, tasks, receipts)
     return {
         "schema": SCHEMA,
         "state": "paused" if data.get("paused") else "running" if data.get("enabled") else "stopped",
