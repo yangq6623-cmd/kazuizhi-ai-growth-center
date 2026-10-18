@@ -291,7 +291,8 @@ def _geo_fast_ui_compact(snapshot=None):
                               for k in ("ready", "configured", "reason")},
         "retest_windows": {
             label: {key: (data.get("retest_windows") or {}).get(label, {}).get(key)
-                    for key in ("scheduled", "queued", "completed", "blocked")}
+                    for key in ("scheduled", "queued", "completed", "blocked")
+                    if key in (data.get("retest_windows") or {}).get(label, {})}
             for label in ("24h", "72h", "7d")
         },
         "historical_retests": data.get("historical_retests") or {},
