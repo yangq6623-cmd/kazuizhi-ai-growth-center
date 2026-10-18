@@ -234,3 +234,81 @@ https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions?query=branch%
 https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/commit/db4e3b7aebf377753bb736f9e50f89655f50142f
 
 前轮报告包含coverage字段保留、未知值不填0、24h判断与三窗口区分及新增回归门禁。本轮未修改这些实现。生产仍是c7764e59，不需要执行代码或数据回滚，没有SQL迁移。本文档更新只针对独立候选分支，不改变生产分支或安装包。
+
+
+## 2026-10-18 原始任务账本专项诊断（只读取证阶段）
+
+### 本机能力边界与已取得证据
+
+本轮没有重复连接诊断。Google Chrome 仍能操作 #817 页面，但 Work 浏览器控制只提供网页读取与交互，不提供用户 Windows 文件系统或 PowerShell 终端访问；页面也没有开放73条历史任务的逐条原始 JSON。直接把只读接口当浏览器页面导航会被客户端拦截，因此不能在当前会话中取得 `queue.json`、`receipts.json` 和 `growth_orchestrator.json` 的原文。
+
+现场再次复现：
+
+- GEO 概览可读，Opportunity 13、闭环5、正式50/50仍存在；明细显示24h `0/0`。
+- 页面提示后台快照已就绪，但 `/api/r8-24/geo-growth/fast-ui` 在5秒内未返回。
+- Chrome 日志记录 `Fetch request failed: kz_geo_os_timeout`，来源为 `geo-growth-os.js` 的前端 AbortController。
+- 源码确认主面板对 `fast-ui` 明确设置 `timeoutMs:5000`；失败时读取 `fast-health` 并用概览快照回退，所以 **0/0 是明细超时后的占位显示，不是原始账本被清空**。
+- 后端源码确认 `fast-ui` 只读取内存快照并压缩字段，不读取完整 jobs/receipts/ledgers；缓存后台每20秒刷新，读取工作线程上限2。现场同时显示“后台快照已就绪”，因此本次5秒失败不支持“缓存尚未生成”的解释，更符合浏览器到本地服务的请求排队/处理延迟。要区分后端HTTP线程排队与浏览器/扩展路径延迟，仍需本机直接GET耗时和 `http-health` 原始响应。
+
+当前证据可解释 `0/0`，但尚不能仅凭网页解释历史 `11/12 → 5/13`。确定该变化属于任务替换、Opportunity合并、历史快照口径或真实账本变化，必须读取当下原始三本账及历史事件；缺少的证据已精确限定，不再以UI推断。
+
+### 只读导出工具
+
+新增：
+
+`tools/Export-KZ817-GeoLedgerReadOnly.ps1`
+
+GitHub：
+
+https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/blob/codex/817-runtime-acceptance-20261018/tools/Export-KZ817-GeoLedgerReadOnly.ps1
+
+工具依据 #817 源码中的真实数据根目录与账本路径读取：
+
+- `%LOCALAPPDATA%\Kazuizhi_AI_Enterprise_V2.0.0_Beta\data\geo_validation\queue.json`
+- `geo_validation\receipts.json`
+- `geo_validation\growth_orchestrator.json`
+- `geo_validation\audit.json`
+- `geo_validation\question_set.json`
+- `r8_27\geo_browser_agent.json`
+- `r8_14\seo_geo_autonomy.json`
+
+工具只在桌面新建 `KZ817_GEO_READONLY_时间` 输出目录，不在生产data目录写文件；不调用POST、不重试、不改变状态、不清冷却、不覆盖 #817。密码、Token、Cookie、API Key、私钥和凭据字段会脱敏，Task ID、Receipt ID、Signal ID、原始发送状态和失败原因保留。
+
+运行命令（下载脚本后在 PowerShell 中执行）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Export-KZ817-GeoLedgerReadOnly.ps1"
+```
+
+输出包括：
+
+| 文件 | 作用 |
+| --- | --- |
+| `73_historical_tasks.csv` | 全部历史Task ID、平台、原始发送状态、失败原因、互斥主分类和“不确定发送”重叠标签 |
+| `geo_retest_ledger.csv` | Opportunity→Task→Signal/Receipt→24h/72h/7d→Before/After关联 |
+| `geo_retest_history_evidence.json` | 含复测、24h、快照、合并关键字的历史事件 |
+| `readonly_http_diagnostics.json` | liveness、fast-health、http-health、fast-ui各一次GET的状态、耗时、大小与脱敏响应 |
+| `diagnostic_summary.json` | 任务分类数量、三窗口账本计数、SEO自治只读状态及诊断结论 |
+| `*_sanitized.json` | 脱敏后的原始账本副本，供逐项复核 |
+
+### 73条分类规则与11→5判定门槛
+
+脚本保留全部原始Task ID，并使用以下可审计规则：
+
+- `authorization_required` 或失败原因为登录、授权、验证码、风控：登录/授权/风控。
+- `failed` 且不属于上述：历史技术失败。
+- `succeeded`：已成功并有终态。
+- `queued`：排队未发送；`running`：执行中；`paused`：暂停；其他：未分类。
+- “不确定发送”是可与主分类重叠的布尔标签：已有started/external attempt、仍在running，或失败文本含超时/未知/中断但没有Evidence。它不会被加总成互斥第六类。
+
+取得输出后，只有以下证据足以判定 `11/12 → 5/13`：
+
+1. 同一Task ID在原始queue、Receipt及Opportunity复测槽的状态变化；
+2. 新旧Opportunity ID及 `coalesced_signal_ids` / 历史合并事件；
+3. `retest_schedule` 的scheduled、task_id、signal_id及时间；
+4. 对应Receipt tested_at、Before/After与Evidence ID；
+5. 当时11/12快照是否被历史事件保留。若未保留，报告必须明确“历史11/12快照缺失”，不得伪造原因。
+
+### 本轮结论
+
+已确认：`0/0` 是 `fast-ui` 5秒前端超时后的概览回退显示。尚未确认：`11/12 → 5/13` 的真实账本原因及73条逐项分类，因为当前Work会话没有Windows文件/终端读取能力。只读导出工具已提交，等待一次本机执行结果；SEO自治仅读取，不改变配置。#818继续不放行。
