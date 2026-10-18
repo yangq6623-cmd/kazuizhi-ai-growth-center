@@ -294,6 +294,15 @@ def _geo_fast_ui_compact(snapshot=None):
                     for key in ("scheduled", "queued", "completed")}
             for label in ("24h", "72h", "7d")
         },
+        "historical_retest": {
+            label: {key: (data.get("historical_retest") or {}).get(label, {}).get(key)
+                    for key in ("linked_distinct", "confirmed_c_receipts", "duplicate_links", "superseded_links")}
+            for label in ("24h", "72h", "7d")
+        },
+        "task_blockage": {key: (data.get("task_blockage") or {}).get(key)
+                         for key in ("status", "blocked_total", "legacy_technical_requires_review",
+                                     "real_authorization_or_risk_control", "unclassified_requires_review",
+                                     "uncertain_external_submission", "auto_requeued")},
         "pipeline": [
             {k: row.get(k) for k in ("id", "label", "count", "state")}
             for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)
@@ -328,6 +337,9 @@ def _geo_fast_health_overview():
                             if isinstance(v, (int, float, bool))},
                 "cloud": {k: (payload.get("cloud") or {}).get(k)
                           for k in ("state", "completed", "target", "ready")},
+                "retest_windows": payload.get("retest_windows"),
+                "historical_retest": payload.get("historical_retest"),
+                "task_blockage": payload.get("task_blockage"),
                 "formal_ab_completed": payload.get("formal_ab_completed"),
                 "formal_ab_target": payload.get("formal_ab_target") or 50,
                 "today_activity": {k: (payload.get("today_activity") or {}).get(k)
