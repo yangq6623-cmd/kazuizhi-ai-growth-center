@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*', 'codex/geo-818-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -65,6 +65,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Retest UI regression failed' }
           python 04_Build/v2/test_geo_816_operating_retest.py
           if ($LASTEXITCODE -ne 0) { throw 'Operating retest regression failed' }
+      - name: "#818 deduplicated GEO history, timeout task classification and three-window safety"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_818_ledger_safety.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 818 ledger regression failed' }
       - name: Verify #809 GEO browser agent lightweight response
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
