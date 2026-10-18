@@ -1060,13 +1060,44 @@ def _blocked_reason_class(reason):
     return "unclassified_requires_review"
 
 
+
+def classify_blocked_tasks(tasks):
+    """Pure read-only task diagnostics: a persisted authorization_required
+    state is not proof of a login problem. Do not replay ambiguous sends."""
+    blocked = [task for task in tasks if isinstance(task, dict)
+               and task.get("state") == "authorization_required"]
+    def reason(task):
+        return (task.get("authorization_reason") or task.get("failure_reason")
+                or task.get("failure_code") or "")
+    counts = Counter(_blocked_reason_class(reason(task)) for task in blocked)
+    def uncertain(task):
+        text = " ".join(str(task.get(k) or "") for k in
+                        ("authorization_reason", "failure_reason", "failure_code")).lower()
+        return bool(task.get("uncertain_external_submission")) or (
+            not task.get("evidence_id") and (
+                bool(task.get("external_attempted_at")) or bool(task.get("started_at"))
+                or bool(task.get("run_id"))
+                or any(x in text for x in ("timeout", "timed out", "unknown",
+                                           "interrupted", "超时", "未知", "中断"))))
+    return {
+        "legacy_technical_requires_review": counts.get("legacy_technical_requires_review", 0),
+        "real_authorization_or_risk_control": counts.get("real_authorization_or_risk_control", 0),
+        "unclassified_requires_review": counts.get("unclassified_requires_review", 0),
+        "uncertain_external_submission": sum(1 for task in blocked if uncertain(task)),
+        "blocked_total": len(blocked),
+        "technical_task_ids": [str(t.get("task_id") or "") for t in blocked
+            if _blocked_reason_class(reason(t)) == "legacy_technical_requires_review"][:30],
+        "auto_requeued": 0,
+        "mutated": False,
+        "note": "Technical timeouts are not login failures. Historical tasks remain untouched and cannot be auto-resent.",
+    }
+
+
 def queue_summary():
     tasks = _load_queue()["tasks"]
     counts = Counter(item.get("state") or "unknown" for item in tasks)
     blocked = [item for item in tasks if item.get("state") == "authorization_required"]
-    blocked_classes = Counter(
-        _blocked_reason_class(item.get("authorization_reason")) for item in blocked
-    )
+    blocked_diagnostics = classify_blocked_tasks(tasks)
     # Expose route truth without changing or re-claiming any previously
     # attempted external question. The Chrome worker cannot execute queued
     # cloud_auto/api work, and historical timeouts must never be resent just
@@ -1106,18 +1137,7 @@ def queue_summary():
             "reason": "cloud_auto/api 队列没有明确外部 API 执行器；Chrome 网页代理不能代领，需核实真实 API 路由与授权。",
             "mutated": False,
         },
-        "blockage_diagnostics": {
-            "legacy_technical_requires_review": blocked_classes.get("legacy_technical_requires_review", 0),
-            "real_authorization_or_risk_control": blocked_classes.get("real_authorization_or_risk_control", 0),
-            "unclassified_requires_review": blocked_classes.get("unclassified_requires_review", 0),
-            "uncertain_external_submission": sum(
-                1 for item in blocked if item.get("uncertain_external_submission")
-                or "timeout" in str(item.get("authorization_reason") or "").lower()
-                or "timed out" in str(item.get("authorization_reason") or "").lower()
-            ),
-            "auto_requeued": 0,
-            "note": "诊断不改状态；旧技术失败、登录/验证码和未知阻塞必须分别处理，禁止批量重试。",
-        },
+        "blockage_diagnostics": blocked_diagnostics,
         "tasks": tasks,
     }
 
