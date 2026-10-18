@@ -338,11 +338,13 @@ def run_once(transport=None):
             and task.get("provider") == geo_cloud_executor.PROVIDER
             and task.get("test_method") == "api"
             and not task.get("expected_platform")
-            and task.get("mission_id") in {
-                "GEO-GROWTH-OPERATING-RETEST-24H",
-                "GEO-GROWTH-OPERATING-RETEST-72H",
-                "GEO-GROWTH-OPERATING-RETEST-7D",
-            }
+            and any(str(task.get("mission_id") or "") == prefix
+                    or str(task.get("mission_id") or "").startswith(prefix + "/")
+                    for prefix in (
+                        "GEO-GROWTH-OPERATING-RETEST-24H",
+                        "GEO-GROWTH-OPERATING-RETEST-72H",
+                        "GEO-GROWTH-OPERATING-RETEST-7D",
+                    ))
             and float(task.get("next_retry_at_epoch") or 0) <= time.time()
         ]
         if operating_ids:
