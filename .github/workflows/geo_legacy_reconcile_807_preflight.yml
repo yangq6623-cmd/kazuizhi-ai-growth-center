@@ -1,0 +1,34 @@
+name: GEO 807 Legacy Recovery Safety
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/geo-legacy-timeout-safe-recovery-*"
+    paths:
+      - "05_V2.0.0_Source/core/geo_validation.py"
+      - "05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py"
+      - "04_Build/v2/test_geo_legacy_reconciliation_807.py"
+      - ".github/workflows/geo_legacy_reconcile_807_preflight.yml"
+permissions:
+  contents: read
+jobs:
+  safety-regression:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax
+        shell: pwsh
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_19_geo_validation_patch.py
+      - name: Historical data safety tests
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_geo_legacy_reconciliation_807.py
+          if ($LASTEXITCODE -ne 0) { throw "GEO historical Receipt repair regression" }
+          python 04_Build/v2/test_geo_blockage_truth_805.py
+          if ($LASTEXITCODE -ne 0) { throw "GEO blocker classification regression" }

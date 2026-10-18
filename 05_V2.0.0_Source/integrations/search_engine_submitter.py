@@ -1,0 +1,1066 @@
+"""R8-16 truthful search-engine submission connectors.
+
+This module advances verified public SEO assets from PUBLISHED to SUBMITTED only
+when an external search endpoint returns an observable acceptance response.
+
+Supported paths:
+- IndexNow: automatic key generation/hosting inside the guarded /seo/ subtree and
+  batch URL submission to the official IndexNow endpoint.
+- Google Search Console: sitemap submission through an actually authorized GSC
+  account stored by the R8-12 OAuth/DPAPI account center.
+- Baidu Search Resource Platform: optional API submission using the site's own
+  token. Baidu's documented endpoint is HTTP, so this path is opt-in and the token
+  remains in the local DPAPI vault rather than project files/logs.
+
+A successful submission receipt is not treated as crawl/index/rank evidence.
+
+Submission is deliberately conservative: only versioned public pages are
+eligible, a page/version is attempted at most once per engine per natural day,
+and every external batch is capped at three URLs.  This keeps a rejected
+endpoint (especially a Baidu quota response) from repeatedly consuming work on
+the same historical inventory.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from core.storage import now_iso, read_json, write_json
+from core.seo_geo_growth import STAGE_INDEX, dashboard, record_asset_stage
+from integrations.credential_vault import get_secret, put_secret
+from integrations import seo_public_deployer
+from integrations import geo_cloud_executor
+from integrations.oauth_token_broker import refresh_google_access_token
+
+STORE = "r8_16/search_submitter.json"
+RECEIPTS = "r8_16/search_submission_receipts.json"
+REGISTRY = "r8_12/account_registry.json"
+SCHEMA = "kz.search-submitter.v1"
+DEFAULT = {
+    "schema": SCHEMA,
+    "site_url": "https://kazuizhi.com/",
+    # The verified Search Console resource is a domain property, not a
+    # URL-prefix property.  Google requires the same identifier for Sitemap
+    # API writes that it exposes in Search Console (sc-domain:...).
+    "google_site_url": "sc-domain:kazuizhi.com",
+    "baidu_site": "kazuizhi.com",
+    "allow_baidu_http_submission": False,
+    "indexnow_endpoint": "https://api.indexnow.org/indexnow",
+    "updated_at": "",
+    "last_run_at": "",
+    "last_result": {},
+    "last_indexnow_initialization": {},
+    "submission_attempts": {},
+    # A recovered asset may already have an independently verified public URL
+    # from a previous installer, but no local submission receipt.  It is safe
+    # to backfill that narrow case once, in normal capped batches; this is not
+    # a blanket retry of arbitrary historical pages.
+    "allow_verified_receipt_backfill": True,
+}
+
+MAX_SUBMISSION_BATCH = 3
+RETRY_BACKOFF_MINUTES = (15, 60, 360, 1440)
+PUBLISH_SCOPE_HINTS = {"publish", "video_publish", "video.publish", "content_publish", "content.publish", "user_video_publish"}
+
+
+def _load() -> dict:
+    data = read_json(STORE, deepcopy(DEFAULT))
+    if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+        data = deepcopy(DEFAULT)
+    for key, value in DEFAULT.items():
+        data.setdefault(key, deepcopy(value))
+    # Migrate the previous URL-prefix default so existing local installs do
+    # not keep submitting against a different Search Console property.
+    if data.get("google_site_url") == "https://kazuizhi.com/":
+        data["google_site_url"] = DEFAULT["google_site_url"]
+    _normalize_baidu_quota_failure(data)
+    return data
+
+
+def _save(data: dict) -> dict:
+    data["schema"] = SCHEMA
+    data["updated_at"] = now_iso()
+    write_json(STORE, data)
+    return data
+
+
+def _https_url(value: str, field: str) -> str:
+    raw = str(value or "").strip()
+    parts = urlsplit(raw)
+    if parts.scheme != "https" or not parts.netloc:
+        raise ValueError(f"{field} 必须是有效 HTTPS 地址")
+    return raw.rstrip("/") + "/"
+
+
+def _google_site_property(value: str) -> str:
+    raw = str(value or "").strip()
+    if raw.startswith("sc-domain:"):
+        domain = raw.split(":", 1)[1].strip().lower()
+        if not re.fullmatch(r"[a-z0-9.-]+", domain) or "." not in domain:
+            raise ValueError("Google 域名资源格式不正确")
+        return f"sc-domain:{domain}"
+    return _https_url(raw, "google_site_url")
+
+
+def _vault_get(key: str, env_name: str = "") -> str:
+    env_value = str(os.environ.get(env_name, "") if env_name else "").strip()
+    if env_value:
+        return env_value
+    try:
+        return str(get_secret(key) or "").strip()
+    except (OSError, RuntimeError, ValueError):
+        return ""
+
+
+def _vault_put(key: str, value: str) -> None:
+    put_secret(key, str(value or "").strip())
+
+
+def _indexnow_key() -> str:
+    return _vault_get("search.indexnow.key", "KZ_INDEXNOW_KEY")
+
+
+def _baidu_token() -> str:
+    return _vault_get("search.baidu.site_token", "KZ_BAIDU_SITE_TOKEN")
+
+
+def _valid_indexnow_key(value: str) -> bool:
+    raw = str(value or "").strip()
+    return bool(8 <= len(raw) <= 128 and re.fullmatch(r"[A-Za-z0-9-]+", raw))
+
+
+def _connected_account(platform: str) -> dict | None:
+    registry = read_json(REGISTRY, {})
+    accounts = registry.get("accounts") if isinstance(registry, dict) else []
+    candidates: list[dict] = []
+    for row in accounts or []:
+        if not isinstance(row, dict) or row.get("platform") != platform:
+            continue
+        auth = row.get("auth") if isinstance(row.get("auth"), dict) else {}
+        if auth.get("status") == "connected" and not auth.get("reauthorization_required"):
+            candidates.append(row)
+    if not candidates:
+        return None
+
+    # OAuth consent may be repeated for the same real Google account.  Each
+    # callback is intentionally recorded as a durable account asset, so the
+    # registry can contain older access tokens beside the freshly authorized
+    # one.  Never pick the first historical row: prefer the most recently
+    # verified usable token, then fall back to the newest connected row for a
+    # truthful "needs reauthorization" response.
+    candidates.sort(
+        key=lambda row: str((row.get("auth") or {}).get("last_verified_at") or row.get("updated_at") or ""),
+        reverse=True,
+    )
+    for row in candidates:
+        if _vault_get(f"oauth.{row.get('account_id')}.access_token"):
+            return deepcopy(row)
+    return deepcopy(candidates[0])
+
+
+def _google_access_token(account: dict | None) -> str:
+    if not account:
+        return ""
+    return _vault_get(f"oauth.{account.get('account_id')}.access_token")
+
+
+def _google_refresh_available(account: dict | None) -> bool:
+    if not account:
+        return False
+    refresh = _vault_get(f"oauth.{account.get('account_id')}.refresh_token")
+    client_id = _vault_get("r8_12.oauth.google_search_console.client_id", "KZ_GOOGLE_SEARCH_CLIENT_ID")
+    client_secret = _vault_get("r8_12.oauth.google_search_console.client_secret", "KZ_GOOGLE_SEARCH_CLIENT_SECRET")
+    return bool(refresh and client_id and client_secret)
+
+
+def _google_token_near_expiry(account: dict | None) -> bool:
+    auth = account.get("auth") if isinstance(account, dict) and isinstance(account.get("auth"), dict) else {}
+    expires = _parse_time(auth.get("expires_at"))
+    return bool(expires and expires <= datetime.now(timezone.utc) + timedelta(minutes=5))
+
+
+def _receipt_summary() -> dict:
+    payload = read_json(RECEIPTS, {})
+    items = payload.get("items") if isinstance(payload, dict) else []
+    result = {key: {"last_success_at": "", "last_failure_at": "", "last_failure_reason": ""}
+              for key in ("baidu", "bing", "google")}
+    engine_key = {"baidu": "baidu", "indexnow": "bing", "google_search_console": "google"}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        key = engine_key.get(str(item.get("engine") or ""))
+        if not key:
+            continue
+        row = result[key]
+        detail = item.get("result") if isinstance(item.get("result"), dict) else {}
+        stamp = str(item.get("created_at") or detail.get("at") or "")
+        if detail.get("ok") and not row["last_success_at"]:
+            row["last_success_at"] = stamp
+        elif not detail.get("ok") and not row["last_failure_at"]:
+            row["last_failure_at"] = stamp
+            row["last_failure_reason"] = str(detail.get("error") or detail.get("response") or "提交端点未接受")[:240]
+    return result
+
+
+def _append_receipt(row: dict) -> None:
+    data = read_json(RECEIPTS, {"schema": "kz.search-submission-receipts.v1", "items": []})
+    if not isinstance(data, dict):
+        data = {"schema": "kz.search-submission-receipts.v1", "items": []}
+    data.setdefault("items", []).insert(0, row)
+    data["items"] = data["items"][:1000]
+    data["updated_at"] = now_iso()
+    write_json(RECEIPTS, data)
+
+
+def _existing_engine_receipt(asset: dict, engine: str) -> bool:
+    matches = [
+        row for row in (asset.get("submission_receipts") or [])
+        if isinstance(row, dict) and str(row.get("engine") or "") == engine
+    ]
+    revision = _parse_time(_submission_revision(asset))
+    if not revision:
+        return bool(matches)
+    return any(
+        (stamp := _parse_time(row.get("at"))) is not None and stamp >= revision
+        for row in matches
+    )
+
+
+def _record_submission(asset: dict, engine: str, receipt_id: str) -> None:
+    current = str(asset.get("stage") or "PUBLISHED")
+    if STAGE_INDEX.get(current, 0) <= STAGE_INDEX["SUBMITTED"]:
+        record_asset_stage(asset["id"], "SUBMITTED", {"engine": engine, "receipt": receipt_id})
+
+
+def _public_assets() -> list[dict]:
+    snap = dashboard()
+    assets = []
+    for row in snap.get("assets", []):
+        if not isinstance(row, dict):
+            continue
+        stage = str(row.get("stage") or "DISCOVERED")
+        if STAGE_INDEX.get(stage, 0) < STAGE_INDEX["PUBLISHED"]:
+            continue
+        url = str(row.get("public_url") or "").strip()
+        if url.startswith("https://"):
+            assets.append(row)
+    return assets
+
+
+def _submission_revision(asset: dict) -> str:
+    """Return the public version marker used to decide whether an asset is new.
+
+    ``updated_at`` cannot be used here because recording a search receipt also
+    updates it. ``last_republished_at`` and ``published_at`` are written only
+    after the corresponding public version passes the live verifier, so they
+    are stable markers for new or materially refreshed page versions.
+    """
+    return str(asset.get("last_republished_at") or asset.get("published_at") or "").strip()
+
+
+def _batch_limit(limit: int | None) -> int:
+    return max(1, min(MAX_SUBMISSION_BATCH, int(limit or MAX_SUBMISSION_BATCH)))
+
+
+def _parse_time(value: str):
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00")).astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _retry_blocked(data: dict, engine: str, asset: dict) -> bool:
+    attempts = data.get("submission_attempts") or {}
+    entry = ((attempts.get(engine) or {}).get(str(asset.get("id"))) or {})
+    if not isinstance(entry, dict) or entry.get("revision") != _submission_revision(asset):
+        return False
+    next_retry = _parse_time(entry.get("next_retry_at"))
+    if next_retry:
+        return datetime.now(timezone.utc) < next_retry
+    # Backward compatibility for pre-R8-24 records: a same-day attempt without
+    # retry metadata keeps the old conservative behaviour for one day.
+    return entry.get("date") == now_iso().split("T", 1)[0]
+
+
+def _record_attempt(data: dict, engine: str, assets: list[dict]) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    stamp = now_iso()
+    today = stamp.split("T", 1)[0]
+    for asset in assets:
+        key = str(asset.get("id"))
+        previous = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        attempts[key] = {
+            **previous,
+            "date": today,
+            "revision": _submission_revision(asset),
+            "last_attempt_at": stamp,
+            "attempt_count": int(previous.get("attempt_count") or 0) + 1,
+        }
+
+
+def _record_failure(data: dict, engine: str, assets: list[dict], reason: str) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    now = datetime.now(timezone.utc)
+    for asset in assets:
+        key = str(asset.get("id"))
+        entry = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        failures = int(entry.get("failure_count") or 0) + 1
+        delay = RETRY_BACKOFF_MINUTES[min(failures - 1, len(RETRY_BACKOFF_MINUTES) - 1)]
+        entry.update({
+            "revision": _submission_revision(asset),
+            "failure_count": failures,
+            "last_failure_reason": str(reason or "")[:160],
+            "last_failure_at": now.isoformat(),
+            "next_retry_at": (now + timedelta(minutes=delay)).isoformat(),
+        })
+        attempts[key] = entry
+
+
+def _failure_text(result: dict) -> str:
+    if not isinstance(result, dict):
+        return str(result or "")
+    response = result.get("response")
+    if isinstance(response, dict):
+        response = " ".join(str(value) for value in response.values())
+    return " ".join(str(value or "") for value in (
+        result.get("status"), response, result.get("error"), result.get("message")
+    )).strip().lower()
+
+
+def _classify_failure(engine: str, result: dict, fallback_reason: str) -> dict:
+    """Return a truthful operational class without turning failure into success.
+
+    The connector previously exposed every rejection as one generic reason.
+    Operators therefore could not tell whether to wait, re-authorize, repair a
+    request, or stop retrying a daily quota.  Classification is evidence only;
+    it never advances an asset stage or fabricates an external receipt.
+    """
+    result = result if isinstance(result, dict) else {}
+    try:
+        status = int(result.get("status") or 0)
+    except (TypeError, ValueError):
+        status = 0
+    text = _failure_text(result)
+    if engine == "baidu" and _baidu_quota_exhausted(result):
+        category, retryable, owner_action = "quota_exhausted", True, False
+    elif status in {401, 403} or any(mark in text for mark in (
+        "unauthenticated", "invalid credential", "invalid token", "forbidden"
+    )):
+        category, retryable, owner_action = "authorization_required", False, True
+    elif status == 400:
+        category, retryable, owner_action = "request_rejected", False, True
+    elif status in {408, 425, 429} or status >= 500:
+        category, retryable, owner_action = "remote_transient", True, False
+    elif any(mark in text for mark in (
+        "timeout", "timed out", "handshake", "unexpected_eof", "ssl", "network", "temporarily"
+    )):
+        category, retryable, owner_action = "network_transient", True, False
+    else:
+        category, retryable, owner_action = "endpoint_rejected", True, False
+    return {
+        "category": category,
+        "reason": str(fallback_reason or category),
+        "http_status": status or None,
+        "retryable": retryable,
+        "owner_action_required": owner_action,
+    }
+
+
+def _record_success(data: dict, engine: str, assets: list[dict]) -> None:
+    attempts = data.setdefault("submission_attempts", {}).setdefault(engine, {})
+    stamp = now_iso()
+    for asset in assets:
+        key = str(asset.get("id"))
+        entry = attempts.get(key) if isinstance(attempts.get(key), dict) else {}
+        entry.update({
+            "revision": _submission_revision(asset),
+            "failure_count": 0,
+            "next_retry_at": "",
+            "last_success_at": stamp,
+        })
+        attempts[key] = entry
+
+
+def _retry_queue_count(data: dict) -> int:
+    now = datetime.now(timezone.utc)
+    total = 0
+    for engine_rows in (data.get("submission_attempts") or {}).values():
+        if not isinstance(engine_rows, dict):
+            continue
+        for entry in engine_rows.values():
+            if not isinstance(entry, dict):
+                continue
+            next_retry = _parse_time(entry.get("next_retry_at"))
+            if next_retry and next_retry > now:
+                total += 1
+    return total
+
+
+def _eligible_assets(data: dict, engine: str, assets: list[dict], limit: int) -> tuple[list[dict], int]:
+    """Return at most ``limit`` fresh page revisions for one search engine.
+
+    Pre-existing public records without ``published_at`` normally stay outside
+    the automatic queue.  The single exception is an asset recovered from an
+    immutable, verified deployment receipt: it can receive one capped search
+    submission because it is a genuine public page whose local ledger was
+    restored after an upgrade, not an arbitrary historic retry.
+    """
+    legacy = 0
+    eligible = []
+    for asset in assets:
+        recovered = any(
+            isinstance(event, dict)
+            and isinstance(event.get("payload"), dict)
+            and event["payload"].get("recovered_from_verified_receipt")
+            for event in (asset.get("events") or [])
+        )
+        if not _submission_revision(asset) and not (
+            data.get("allow_verified_receipt_backfill", True) and recovered
+        ):
+            legacy += 1
+            continue
+        if _existing_engine_receipt(asset, engine) or _retry_blocked(data, engine, asset):
+            continue
+        eligible.append(asset)
+    eligible.sort(key=lambda asset: _submission_revision(asset), reverse=True)
+    return eligible[:limit], legacy
+
+
+def _baidu_quota_exhausted(result: dict) -> bool:
+    response = result.get("response") if isinstance(result, dict) else ""
+    if isinstance(response, dict):
+        response = " ".join(str(value) for value in response.values())
+    # Older local records sometimes stored the decoded Baidu payload directly
+    # under ``result`` rather than under ``response``.
+    detail = response if response else result
+    return "over quota" in str(detail or "").lower()
+
+
+def _normalize_baidu_quota_failure(data: dict) -> None:
+    """Upgrade older saved results to the explicit quota state.
+
+    R8-17 installs may already contain a same-day ``api_submit_failed`` record
+    whose Baidu payload says ``over quota``.  Preserve that evidence, but label
+    it correctly so a first run after the upgrade does not retry it.
+    """
+    last = data.get("last_result") or {}
+    for failure in last.get("failed") or []:
+        if (
+            isinstance(failure, dict)
+            and failure.get("engine") == "baidu"
+            and _baidu_quota_exhausted(failure.get("result") or {})
+        ):
+            failure["reason"] = "baidu_quota_exhausted"
+
+
+def _baidu_quota_held_today(data: dict) -> bool:
+    last = data.get("last_result") or {}
+    if str(data.get("last_run_at") or "").split("T", 1)[0] != now_iso().split("T", 1)[0]:
+        return False
+    return any(
+        isinstance(failure, dict)
+        and failure.get("engine") == "baidu"
+        and failure.get("reason") == "baidu_quota_exhausted"
+        for failure in (last.get("failed") or [])
+    )
+
+
+def _atomic_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".kz-indexnow-", suffix=".tmp", dir=str(path.parent))
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+
+
+def _ensure_indexnow_key_file(key: str, timeout: int = 8) -> dict:
+    deploy = seo_public_deployer.status()
+    if not deploy.get("ready"):
+        return {"ok": False, "reason": deploy.get("reason") or "public_deploy_not_ready"}
+    root = Path(str(deploy.get("site_root") or ""))
+    if not root.is_absolute() or not root.exists():
+        return {"ok": False, "reason": "site_root_not_available"}
+    managed = root / "seo"
+    destination = managed / f"{key}.txt"
+    _atomic_text(destination, key)
+    base = str(deploy.get("public_base_url") or "").rstrip("/") + "/"
+    public_url = urllib.parse.urljoin(base, f"seo/{key}.txt")
+    request = urllib.request.Request(public_url, headers={"User-Agent": "Kazuizhi-R8-16-IndexNow/1.0"}, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - validated HTTPS public URL
+            status_code = int(getattr(response, "status", 200) or 200)
+            body = response.read(4096).decode("utf-8", errors="replace").strip()
+        ok = 200 <= status_code < 300 and body == key
+        return {"ok": ok, "status": status_code, "key_location": public_url, "checked_at": now_iso()}
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "key_location": public_url, "checked_at": now_iso()}
+
+
+def initialize_indexnow() -> dict:
+    """Create and verify the managed IndexNow key before a submission attempt.
+
+    This is deliberately separate from ``status``: reading a dashboard must not
+    create secrets or write to a public site.  The autonomous worker calls this
+    once the guarded public deploy connector is ready, and persists only
+    non-secret verification metadata for the owner-facing status card.
+    """
+    data = _load()
+    deploy = seo_public_deployer.status()
+    result = {
+        "ok": False,
+        "initialized": False,
+        "key_created": False,
+        "checked_at": now_iso(),
+    }
+    if not deploy.get("ready"):
+        result["reason"] = deploy.get("reason") or "public_deploy_not_ready"
+        data["last_indexnow_initialization"] = result
+        _save(data)
+        return result
+
+    key = _indexnow_key()
+    if not key:
+        try:
+            key = secrets.token_hex(16)
+            _vault_put("search.indexnow.key", key)
+            result["key_created"] = True
+        except (OSError, RuntimeError, ValueError) as error:
+            result["reason"] = "key_generation_failed"
+            result["error"] = str(error)
+            data["last_indexnow_initialization"] = result
+            _save(data)
+            return result
+    if not _valid_indexnow_key(key):
+        result["reason"] = "invalid_indexnow_key"
+        data["last_indexnow_initialization"] = result
+        _save(data)
+        return result
+
+    verification = _ensure_indexnow_key_file(key)
+    result.update({
+        "ok": bool(verification.get("ok")),
+        "initialized": True,
+        "key_location": verification.get("key_location"),
+        "verification": verification,
+    })
+    if not result["ok"]:
+        result["reason"] = "key_file_public_verification_failed"
+    data["last_indexnow_initialization"] = result
+    _save(data)
+    return result
+
+
+def _submit_indexnow(urls: list[str], key: str, key_location: str, endpoint: str, timeout: int = 15) -> dict:
+    host = urlsplit(urls[0]).netloc
+    payload = {"host": host, "key": key, "keyLocation": key_location, "urlList": urls[:10000]}
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "Kazuizhi-R8-16/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - configured official HTTPS endpoint
+            code = int(getattr(response, "status", 200) or 200)
+            response_body = response.read(16 * 1024).decode("utf-8", errors="replace")
+        return {"ok": code in {200, 202}, "status": code, "response": response_body[:2000], "submitted": len(urls), "at": now_iso()}
+    except urllib.error.HTTPError as error:
+        response_body = error.read(16 * 1024).decode("utf-8", errors="replace") if getattr(error, "fp", None) else ""
+        return {"ok": False, "status": int(error.code), "response": response_body[:2000], "error": str(error), "at": now_iso()}
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "at": now_iso()}
+
+
+def _submit_google_sitemap(site_url: str, sitemap_url: str, access_token: str, timeout: int = 20) -> dict:
+    site = urllib.parse.quote(site_url, safe="")
+    feed = urllib.parse.quote(sitemap_url, safe="")
+    endpoint = f"https://www.googleapis.com/webmasters/v3/sites/{site}/sitemaps/{feed}"
+    request = urllib.request.Request(
+        endpoint,
+        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json", "User-Agent": "Kazuizhi-R8-16/1.0"},
+        method="PUT",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - fixed Google HTTPS endpoint
+            code = int(getattr(response, "status", 204) or 204)
+            body = response.read(16 * 1024).decode("utf-8", errors="replace")
+        return {"ok": 200 <= code < 300, "status": code, "response": body[:2000], "sitemap": sitemap_url, "at": now_iso()}
+    except urllib.error.HTTPError as error:
+        body = error.read(16 * 1024).decode("utf-8", errors="replace") if getattr(error, "fp", None) else ""
+        return {"ok": False, "status": int(error.code), "response": body[:2000], "error": str(error), "sitemap": sitemap_url, "at": now_iso()}
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "sitemap": sitemap_url, "at": now_iso()}
+
+
+def _submit_baidu(urls: list[str], site: str, token: str, timeout: int = 15) -> dict:
+    endpoint = "http://data.zz.baidu.com/urls?" + urllib.parse.urlencode({"site": site, "token": token})
+    body = "\n".join(urls).encode("utf-8")
+    request = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "text/plain", "User-Agent": "Kazuizhi-R8-16/1.0"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - Baidu documents this HTTP endpoint
+            code = int(getattr(response, "status", 200) or 200)
+            raw = response.read(32 * 1024).decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            payload = {"raw": raw[:2000]}
+        ok = bool(200 <= code < 300 and isinstance(payload, dict) and not payload.get("error"))
+        return {"ok": ok, "status": code, "response": payload, "submitted": len(urls), "at": now_iso()}
+    except urllib.error.HTTPError as error:
+        raw = error.read(16 * 1024).decode("utf-8", errors="replace") if getattr(error, "fp", None) else ""
+        return {"ok": False, "status": int(error.code), "response": raw[:2000], "error": str(error), "at": now_iso()}
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "at": now_iso()}
+
+
+def configure(payload: dict) -> dict:
+    data = _load()
+    if "site_url" in payload:
+        data["site_url"] = _https_url(payload.get("site_url"), "site_url")
+    if "google_site_url" in payload:
+        data["google_site_url"] = _google_site_property(payload.get("google_site_url"))
+    if "baidu_site" in payload:
+        value = str(payload.get("baidu_site") or "").strip().lower()
+        if not value or "/" in value or ":" in value:
+            raise ValueError("baidu_site 只填写已验证站点域名，例如 kazuizhi.com")
+        data["baidu_site"] = value
+    if "allow_baidu_http_submission" in payload:
+        data["allow_baidu_http_submission"] = bool(payload.get("allow_baidu_http_submission"))
+    if "indexnow_key" in payload and str(payload.get("indexnow_key") or "").strip():
+        key = str(payload.get("indexnow_key") or "").strip()
+        if not _valid_indexnow_key(key):
+            raise ValueError("IndexNow key 必须为 8-128 位字母/数字/短横线")
+        _vault_put("search.indexnow.key", key)
+    if payload.get("generate_indexnow_key"):
+        key = secrets.token_hex(16)
+        _vault_put("search.indexnow.key", key)
+    if "baidu_token" in payload and str(payload.get("baidu_token") or "").strip():
+        _vault_put("search.baidu.site_token", str(payload.get("baidu_token") or "").strip())
+    _save(data)
+    return status()
+
+
+def status() -> dict:
+    data = _load()
+    deploy = seo_public_deployer.status()
+    index_key = _indexnow_key()
+    google_account = _connected_account("google_search_console")
+    google_token = _google_access_token(google_account)
+    google_refresh = _google_refresh_available(google_account)
+    google_auth_error = _google_oauth_reauthorization_required(data.get("last_result") or {}, google_account)
+    google_ready = bool(google_account and (google_token or google_refresh) and (not google_auth_error or google_refresh))
+    baidu_token = _baidu_token()
+    assets = _public_assets()
+    deferred_scope_assets = [
+        asset for asset in assets
+        if not seo_public_deployer.publication_scope_allowed(asset)
+    ]
+    pending_assets = [
+        asset for asset in assets
+        if seo_public_deployer.publication_scope_allowed(asset)
+        if not (asset.get("submission_receipts") or [])
+    ]
+    receipt_summary = _receipt_summary()
+    cloud = geo_cloud_executor.snapshot_status()
+    douyin_account = _connected_account("douyin")
+    douyin_auth = douyin_account.get("auth") if isinstance(douyin_account, dict) and isinstance(douyin_account.get("auth"), dict) else {}
+    douyin_scopes = {str(x or "").strip().lower() for x in (douyin_auth.get("scopes") or [])}
+    douyin_publish = bool(douyin_account and douyin_scopes & PUBLISH_SCOPE_HINTS)
+    indexnow_init = deepcopy(data.get("last_indexnow_initialization") or {})
+    indexnow_ready = bool(index_key and deploy.get("ready") and indexnow_init.get("ok"))
+    return {
+        "site_url": data.get("site_url"),
+        "public_pages": len(assets),
+        "connectors": {
+            "baidu": {
+                **receipt_summary["baidu"],
+                "label": "百度搜索资源平台",
+                "channel_group": "search_submission",
+                "setup_state": "API Token/站点授权",
+                "extra_paid_api": False,
+                "configured": bool(baidu_token),
+                "ready": bool(baidu_token and data.get("allow_baidu_http_submission")),
+                "submit_capable": True,
+                "monitoring_only": False,
+                "authorization_state": "已授权" if baidu_token else "待Token",
+                "automation_state": "自动提交" if baidu_token and data.get("allow_baidu_http_submission") else "等待授权",
+                "mode": "普通收录 API",
+                "requires_owner": not bool(baidu_token),
+                "transport": "official_http_endpoint",
+                "reason": "" if baidu_token and data.get("allow_baidu_http_submission") else ("需要站点API token" if not baidu_token else "已保存token；需确认允许调用百度官方HTTP提交端点"),
+            },
+            "bing": {
+                **receipt_summary["bing"],
+                "label": "Bing / IndexNow",
+                "channel_group": "search_submission",
+                "setup_state": "无需登录，自动初始化",
+                "extra_paid_api": False,
+                "configured": bool(index_key),
+                "ready": indexnow_ready,
+                "submit_capable": True,
+                "monitoring_only": False,
+                "authorization_state": "无需登录",
+                "automation_state": "自动提交" if indexnow_ready else "自动初始化中",
+                "mode": "IndexNow",
+                "requires_owner": False,
+                "initialization": indexnow_init,
+                "reason": "" if indexnow_ready else (
+                    deploy.get("reason") or
+                    ("等待自动初始化并验证 IndexNow key 文件" if index_key else "公网部署就绪后会自动生成并验证 IndexNow key")
+                ),
+            },
+            "google": {
+                **receipt_summary["google"],
+                "label": "Google Search Console",
+                "channel_group": "search_submission",
+                "setup_state": "OAuth/站点授权",
+                "extra_paid_api": False,
+                "configured": bool(google_account and (google_token or google_refresh)),
+                "ready": google_ready,
+                "submit_capable": True,
+                "monitoring_only": False,
+                "reauthorization_required": bool(google_auth_error and not google_refresh),
+                "refresh_available": google_refresh,
+                "authorization_state": "已授权·可自动续签" if google_ready and google_refresh else "已授权" if google_ready else "需重新授权" if google_auth_error else "待OAuth",
+                "automation_state": "Sitemap自动提交" if google_ready else "等待授权",
+                "mode": "Search Console Sitemap API",
+                "requires_owner": not google_ready,
+                "account_id": google_account.get("account_id") if google_account else None,
+                "portal_url": "https://search.google.com/search-console",
+                "portal_action_label": "打开 Search Console",
+                "oauth_launch_path": "/api/r8-12/auth/launch/google_search_console",
+                "oauth_callback_path": "/api/r8-12/oauth/callback/google_search_console",
+                "reason": (
+                    "最近一次 Google API 返回 401，且本机没有可用 refresh_token；请重新官方授权"
+                    if google_auth_error and not google_refresh else (
+                        "" if google_ready else "需要通过统一账号中心完成 Google Search Console OAuth 授权"
+                    )
+                ),
+            },
+            "so360": {
+                "label": "360搜索站长平台",
+                "channel_group": "search_submission",
+                "setup_state": "建议配置站点验证与Sitemap",
+                "extra_paid_api": False,
+                "configured": False,
+                "ready": False,
+                "submit_capable": False,
+                "monitoring_only": True,
+                "authorization_state": "需站长平台登录/站点验证",
+                "automation_state": "Sitemap监测",
+                "mode": "360站长平台 / Sitemap",
+                "requires_owner": True,
+                "portal_url": "https://zhanzhang.so.com/",
+                "portal_action_label": "配置360站长平台",
+                "reason": "360纳入搜索提交渠道：建议完成站点验证并配置Sitemap；未取得可审计官方程序化回执前只显示站长平台/监测状态，不伪造SUBMITTED。",
+            },
+            "doubao_search": {
+                "label": "豆包搜索 / 豆包浏览器",
+                "channel_group": "ai_content_ecosystem",
+                "setup_state": "复用现有豆包API，无需重复配置",
+                "extra_paid_api": False,
+                "configured": bool(cloud.get("configured")),
+                "ready": bool(cloud.get("ready")),
+                "submit_capable": False,
+                "monitoring_only": True,
+                "authorization_state": "连接验证通过" if cloud.get("ready") else "已配置·待连接验证" if cloud.get("configured") else "待配置现有API",
+                "automation_state": "GEO/搜索可见性自动监测" if cloud.get("ready") else "等待API连接验证",
+                "mode": "豆包搜索可见性观测",
+                "requires_owner": False,
+                "reuse_existing_api": True,
+                "last_success_at": str(cloud.get("last_test_at") or "") if cloud.get("ready") else "",
+                "last_failure_at": str(cloud.get("last_test_at") or "") if cloud.get("last_error") else "",
+                "last_failure_reason": str(cloud.get("last_error") or "")[:240],
+                "reason": ("复用已验证的现有豆包API做品牌、URL与答案可见性观测；普通回答只计C级运营Signal，不计正式A/B。" if cloud.get("ready") else (cloud.get("reason") or "现有豆包API尚未通过连接验证")),
+            },
+            "douyin_search": {
+                "label": "抖音搜索 / 抖音浏览器",
+                "channel_group": "ai_content_ecosystem",
+                "setup_state": "监测无需额外模型；自动发布时再授权官方账号",
+                "extra_paid_api": False,
+                "configured": bool(douyin_account),
+                "ready": douyin_publish,
+                "submit_capable": douyin_publish,
+                "monitoring_only": not douyin_publish,
+                "authorization_state": "官方发布权限已授权" if douyin_publish else "账号已连接·缺发布权限" if douyin_account else "开放平台待授权",
+                "automation_state": "官方发布通道可用" if douyin_publish else "监测可用·发布等待授权",
+                "mode": "抖音搜索与内容分发观测",
+                "requires_owner": not douyin_publish,
+                "portal_url": "https://open.douyin.com/",
+                "portal_action_label": "后续授权自动发布",
+                "publish_authorized": douyin_publish,
+                "authorized_scopes": sorted(douyin_scopes),
+                "last_success_at": "",
+                "last_failure_at": "",
+                "last_failure_reason": "",
+                "reason": ("已记录真实官方发布scope；每次发布仍必须取得真实Post ID/URL/Receipt。" if douyin_publish else "当前可做搜索/内容生态监测；尚未取得官方发布scope时明确显示待授权，不冒充已就绪。"),
+            },
+        },
+        "ready_engines": [name for name, row in {
+            "baidu": bool(baidu_token and data.get("allow_baidu_http_submission")),
+            "bing": indexnow_ready,
+            "google": google_ready,
+        }.items() if row],
+        "monitoring_channels": ["so360", "doubao_search", "douyin_search"],
+        "channel_groups": {
+            "search_submission": ["baidu", "bing", "google", "so360"],
+            "ai_content_ecosystem": ["doubao_search", "douyin_search"],
+        },
+        "cost_policy": {
+            "new_paid_model_dependencies": 0,
+            "doubao_reuse_existing_api": True,
+            "douyin_monitoring_requires_new_model": False,
+            "truth": "不为新增渠道重复购买模型或Token；豆包复用现有API，抖音监测不增加模型费用，自动发布仅在需要时做官方账号授权。",
+        },
+        "automation_summary": {
+            "auto_submit_enabled": True,
+            "public_pages": len(assets),
+            "pending_unique_urls": len(pending_assets),
+            "deferred_scope_urls": len(deferred_scope_assets),
+            "submitted_unique_urls": sum(1 for asset in assets if STAGE_INDEX.get(str(asset.get("stage") or ""), 0) >= STAGE_INDEX["SUBMITTED"]),
+            "failed_last_run": len((data.get("last_result") or {}).get("failed") or []),
+            "retry_queue": _retry_queue_count(data),
+            "pending_pages": [
+                {
+                    "asset_id": str(asset.get("id") or ""),
+                    "public_url": str(asset.get("public_url") or ""),
+                    "published_at": str(asset.get("published_at") or ""),
+                    "stage": str(asset.get("stage") or ""),
+                }
+                for asset in pending_assets[:20]
+            ],
+            "deferred_scope_pages": [
+                {
+                    "asset_id": str(asset.get("id") or ""),
+                    "public_url": str(asset.get("public_url") or ""),
+                    "reason": "publication_scope_not_approved",
+                }
+                for asset in deferred_scope_assets[:20]
+            ],
+            "gap_explanation": (
+                f"{len(pending_assets)} 个已公开页面正在等待搜索平台真实接收回执；"
+                "自动提交会继续重试，取得回执前不会计为 SUBMITTED。"
+                if pending_assets else (
+                    f"{len(deferred_scope_assets)} 个已公开页面因未取得发布范围批准而保留审计、暂停搜索提交。"
+                    if deferred_scope_assets else "所有已公开页面均已取得至少一个搜索提交回执。"
+                )
+            ),
+        },
+        "truth": "配置/授权只代表连接器可用；只有官方提交端点返回可审计接收响应后，页面才进入 SUBMITTED。360/豆包/抖音监测通道不会伪造提交回执；SUBMITTED 仍不等于 CRAWLED/INDEXED/RANKED。",
+        "last_run_at": data.get("last_run_at") or "",
+        "last_result": deepcopy(data.get("last_result") or {}),
+    }
+
+
+def _google_oauth_reauthorization_required(last_result: dict, account: dict | None = None) -> bool:
+    """Return true only when the latest real Google 401 is newer than authorization.
+
+    A successful reauthorization must supersede an older persisted 401. The
+    previous implementation kept reading the historical last_result forever,
+    which could leave the UI stuck on "需要重新授权" after a fresh token.
+    """
+    auth = account.get("auth") if isinstance(account, dict) and isinstance(account.get("auth"), dict) else {}
+    verified_source = auth.get("last_verified_at") or (account.get("updated_at") if isinstance(account, dict) else "")
+    verified_at = _parse_time(verified_source)
+    for failure in list(last_result.get("failed") or []):
+        if failure.get("engine") != "google_search_console":
+            continue
+        result = failure.get("result") or {}
+        status = str(result.get("status") or "")
+        body = str(result.get("response") or "").upper()
+        error = str(result.get("error") or "").upper()
+        rejected = status == "401" or "UNAUTHENTICATED" in body or "INVALID CREDENTIAL" in body or "INVALID CREDENTIAL" in error
+        if not rejected:
+            continue
+        failed_at = _parse_time(result.get("at") or failure.get("at") or "")
+        if verified_at and failed_at and verified_at > failed_at:
+            continue
+        return True
+    return False
+
+
+def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
+    data = _load()
+    data["last_run_at"] = now_iso()
+    public_assets = _public_assets()
+    deferred_scope = [
+        {"asset_id": str(asset.get("id") or ""), "reason": "publication_scope_not_approved"}
+        for asset in public_assets
+        if not seo_public_deployer.publication_scope_allowed(asset)
+    ]
+    assets = [
+        asset for asset in public_assets
+        if seo_public_deployer.publication_scope_allowed(asset)
+    ]
+    if not assets:
+        result = {"skipped": True, "reason": "no_verified_public_pages", "submitted": [], "failed": [], "deferred_scope": deferred_scope}
+        data["last_result"] = result
+        _save(data)
+        return result
+
+    batch_limit = _batch_limit(limit)
+    pending_by_engine = {}
+    legacy_by_engine = {}
+    baidu_quota_hold = _baidu_quota_held_today(data)
+    for engine in ("indexnow", "google_search_console", "baidu"):
+        pending_by_engine[engine], legacy_by_engine[engine] = _eligible_assets(data, engine, assets, batch_limit)
+    if baidu_quota_hold:
+        pending_by_engine["baidu"] = []
+
+    if not any(pending_by_engine.values()):
+        result = {
+            "skipped": True,
+            "reason": "no_new_or_updated_public_pages",
+            "submitted": [],
+            "failed": [],
+            "batch_limit": batch_limit,
+            "eligible_by_engine": {engine: 0 for engine in pending_by_engine},
+            "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
+            "baidu_quota_hold": baidu_quota_hold,
+            "deferred_scope": deferred_scope,
+            "truth": "仅提交新发布或实质更新的页面版本；已在当天尝试过的页面不会重复提交。",
+        }
+        data["last_result"] = result
+        _save(data)
+        return result
+
+    submitted: list[dict] = []
+    failed: list[dict] = []
+    site_url = _https_url(data.get("site_url"), "site_url")
+    deploy = seo_public_deployer.status()
+
+    # IndexNow / Bing: key can be generated locally and hosted inside /seo/, so no
+    # external account login is required. The key file must itself be reachable first.
+    initialization = initialize_indexnow()
+    key = _indexnow_key()
+    if initialization.get("ok") and key and deploy.get("ready"):
+        verification = dict(initialization.get("verification") or {})
+        pending = pending_by_engine["indexnow"]
+        if verification.get("ok") and pending:
+            _record_attempt(data, "indexnow", pending)
+            receipt = _submit_indexnow([x["public_url"] for x in pending], key, verification["key_location"], str(data.get("indexnow_endpoint") or DEFAULT["indexnow_endpoint"]))
+            receipt_id = f"INDEXNOW-{now_iso().replace(':','').replace('-','')}"
+            _append_receipt({"receipt_id": receipt_id, "engine": "indexnow", "result": receipt, "key_location": verification.get("key_location"), "created_at": now_iso()})
+            if receipt.get("ok"):
+                _record_success(data, "indexnow", pending)
+                for asset in pending:
+                    _record_submission(asset, "indexnow", receipt_id)
+                    submitted.append({"asset_id": asset["id"], "engine": "indexnow", "receipt": receipt_id})
+            else:
+                classification = _classify_failure("indexnow", receipt, "endpoint_rejected")
+                _record_failure(data, "indexnow", pending, classification["reason"])
+                failed.append({"engine": "indexnow", "reason": classification["reason"], "classification": classification, "result": receipt})
+        elif pending:
+            failed.append({"engine": "indexnow", "reason": "key_file_public_verification_failed", "verification": verification})
+    elif deploy.get("ready"):
+        failed.append({"engine": "indexnow", "reason": initialization.get("reason") or "indexnow_initialization_failed", "initialization": initialization})
+
+    # Google Search Console: submit the verified /seo/sitemap.xml through the
+    # OAuth account already held by the unified account center.
+    google_account = _connected_account("google_search_console")
+    google_token = _google_access_token(google_account)
+    google_pending = pending_by_engine["google_search_console"]
+    refresh_available = _google_refresh_available(google_account)
+    refresh_error = ""
+    token_refreshed = False
+    if google_account and google_pending and refresh_available and (_google_token_near_expiry(google_account) or not google_token):
+        try:
+            refreshed = refresh_google_access_token(google_account)
+            google_token = str(refreshed.get("access_token") or "")
+            token_refreshed = bool(google_token)
+        except (OSError, RuntimeError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as error:
+            refresh_error = f"{type(error).__name__}: {error}"[:240]
+    if google_account and google_token and google_pending:
+        _record_attempt(data, "google_search_console", google_pending)
+        sitemap_url = urllib.parse.urljoin(site_url, "seo/sitemap.xml")
+        g_result = _submit_google_sitemap(str(data.get("google_site_url") or site_url), sitemap_url, google_token)
+        if int(g_result.get("status") or 0) == 401 and refresh_available:
+            try:
+                refreshed = refresh_google_access_token(google_account)
+                google_token = str(refreshed.get("access_token") or "")
+                token_refreshed = bool(google_token)
+                if google_token:
+                    g_result = _submit_google_sitemap(str(data.get("google_site_url") or site_url), sitemap_url, google_token)
+            except (OSError, RuntimeError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as error:
+                refresh_error = f"{type(error).__name__}: {error}"[:240]
+        g_result["token_refreshed"] = token_refreshed
+        if refresh_error:
+            g_result["refresh_error"] = refresh_error
+        receipt_id = f"GSC-{now_iso().replace(':','').replace('-','')}"
+        _append_receipt({"receipt_id": receipt_id, "engine": "google_search_console", "result": g_result, "created_at": now_iso()})
+        if g_result.get("ok"):
+            _record_success(data, "google_search_console", google_pending)
+            for asset in google_pending:
+                _record_submission(asset, "google_search_console", receipt_id)
+                submitted.append({"asset_id": asset["id"], "engine": "google_search_console", "receipt": receipt_id})
+        else:
+            classification = _classify_failure("google_search_console", g_result, "sitemap_submit_failed")
+            _record_failure(data, "google_search_console", google_pending, classification["reason"])
+            failed.append({"engine": "google_search_console", "reason": classification["reason"], "classification": classification, "result": g_result})
+    elif google_account and google_pending and not google_token:
+        _record_attempt(data, "google_search_console", google_pending)
+        reason = refresh_error or "google_access_token_unavailable"
+        _record_failure(data, "google_search_console", google_pending, reason)
+        failed.append({"engine": "google_search_console", "reason": reason})
+
+    # Baidu: the official ordinary-indexing API is documented as HTTP. Keep it
+    # disabled until the owner explicitly opts in after supplying the verified
+    # site's token; never expose the token in returned status/results.
+    baidu_token = _baidu_token()
+    baidu_pending = pending_by_engine["baidu"]
+    if baidu_token and data.get("allow_baidu_http_submission") and baidu_pending:
+        _record_attempt(data, "baidu", baidu_pending)
+        b_result = _submit_baidu([x["public_url"] for x in baidu_pending], str(data.get("baidu_site") or "kazuizhi.com"), baidu_token)
+        receipt_id = f"BAIDU-{now_iso().replace(':','').replace('-','')}"
+        _append_receipt({"receipt_id": receipt_id, "engine": "baidu", "result": b_result, "created_at": now_iso()})
+        if b_result.get("ok"):
+            _record_success(data, "baidu", baidu_pending)
+            for asset in baidu_pending:
+                _record_submission(asset, "baidu", receipt_id)
+                submitted.append({"asset_id": asset["id"], "engine": "baidu", "receipt": receipt_id})
+        else:
+            failure_reason = "baidu_quota_exhausted" if _baidu_quota_exhausted(b_result) else "api_submit_failed"
+            classification = _classify_failure("baidu", b_result, failure_reason)
+            _record_failure(data, "baidu", baidu_pending, failure_reason)
+            failed.append({
+                "engine": "baidu",
+                "reason": failure_reason,
+                "classification": classification,
+                "result": b_result,
+            })
+
+    result = {
+        "skipped": False,
+        "attempted_public_assets": max((len(rows) for rows in pending_by_engine.values()), default=0),
+        "batch_limit": batch_limit,
+        "eligible_by_engine": {engine: len(rows) for engine, rows in pending_by_engine.items()},
+        "legacy_public_assets_skipped": max(legacy_by_engine.values(), default=0),
+        "baidu_quota_hold": baidu_quota_hold,
+        "submitted": submitted,
+        "submitted_count": len(submitted),
+        "failed": failed,
+        "failed_count": len(failed),
+        "deferred_scope": deferred_scope,
+        "retry_queue": _retry_queue_count(data),
+        "indexnow_initialization": initialization,
+        "truth": "每次最多提交 3 个新发布或实质更新的页面版本；成功回执永久去重，失败按15分钟→1小时→6小时→24小时自动退避重试。搜索平台接收回执只推进到 SUBMITTED；抓取、收录、排名和AI引用必须继续等待真实外部证据。",
+    }
+    data["last_result"] = result
+    _save(data)
+    return result

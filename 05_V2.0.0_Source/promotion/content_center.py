@@ -9,6 +9,7 @@ from core.storage import now_iso, read_json, write_json
 
 
 SAFE_POSITIONING = "专业维修找师傅，生活小事也能发任务"
+HISTORY_RETENTION = 3650
 SEED_KEYWORDS = (
     ("涟水水电工师傅上门服务", "涟水", "水电维修"),
     ("涟水家电维修服务", "涟水", "家电维修"),
@@ -103,7 +104,10 @@ def _save(kind, payload, output):
               "execution": "proposal_only", "review_status": "待人工审核", "output": output}
     history = read_json("promotion/history.json", {"items": []})
     history.setdefault("items", []).insert(0, record)
-    history["items"] = history["items"][:100]
+    # Keep enough history for daily/weekly owner comparisons.  The previous
+    # 100-row cap was exhausted within hours by GEO proposals and erased the
+    # evidence needed to answer "today versus yesterday".
+    history["items"] = history["items"][:HISTORY_RETENTION]
     write_json("promotion/history.json", history)
     return record
 

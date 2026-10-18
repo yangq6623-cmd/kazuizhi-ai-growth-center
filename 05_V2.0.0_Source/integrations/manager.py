@@ -128,6 +128,24 @@ def save_ai_config(payload):
 
 
 def _ai_status():
+    # R8-18 model connection centre is the preferred source of truth.  Keep
+    # the legacy R7-compatible form below as a migration fallback only.
+    try:
+        from integrations.ai_gateway import gateway_status
+        centre = gateway_status()
+        if centre.get("configured"):
+            active = ((centre.get("routes") or {}).get(centre.get("active_route")) or {})
+            return {
+                "id": "external_ai", "name": "外部大模型", "configured": True,
+                "status": "connected" if active.get("verified") else "configured",
+                "status_label": "连接已验证" if active.get("verified") else "等待连接测试",
+                "provider": active.get("provider"), "base_url": active.get("endpoint", ""),
+                "model": active.get("model", ""), "has_key": bool(active.get("credential_source") != "none"),
+                "last_test": {"ok": bool(active.get("verified")), "tested_at": active.get("last_test_at")},
+                "message": f"当前使用：{active.get('label') or '模型路线'}。云端与本地模型可在模型接入中心切换；发布仍需人工审核。",
+            }
+    except (OSError, ValueError, RuntimeError, ImportError):
+        pass
     config = _config()
     has_key = bool(_read_key())
     configured = bool(config.get("base_url") and config.get("model") and has_key)
@@ -149,6 +167,27 @@ def integration_status():
     ai = _ai_status()
     bridge = bridge_status()
     business_ready = analytics.get("status") == "verified"
+    # R8-23 queues content automatically only after its local QC has passed and
+    # only for the matching, PC-browser-authorized account.  Keep the status
+    # centre aligned with that policy: the old R7 wording said every item was
+    # manual even after an automatic queue had been enabled.
+    publishing = {
+        "id": "publishing", "name": "内容发布", "status": "configured",
+        "status_label": "质检后自动入队",
+        "message": "质检通过后，内容仅会进入已完成 PC 扫码授权且风险正常的匹配账号队列；平台成功仍必须回传 Post ID、URL 或 Receipt。",
+    }
+    try:
+        from core.r8_growth_ops import publication_policy
+        policy = publication_policy()
+        if not policy.get("enabled"):
+            publishing.update({
+                "status": "paused", "status_label": "自动队列已暂停",
+                "message": "自动发布队列已暂停；恢复后仍只会向已完成 PC 扫码授权的匹配账号入队。",
+            })
+    except (OSError, ValueError, RuntimeError, ImportError):
+        # The integration page must remain available while an older local data
+        # store is being migrated; its conservative queue explanation is safe.
+        pass
     return {
         "generated_at": now_iso(), "external_ai": ai, "bridge": bridge,
         "items": [
@@ -156,24 +195,55 @@ def integration_status():
             ai,
             {"id": "business_data", "name": "经营数据", "status": "ready" if business_ready else "not_connected", "status_label": "已验证" if business_ready else "未接入", "message": analytics.get("message", "真实经营数据尚未接入。")},
             bridge,
-            {"id": "publishing", "name": "内容发布", "status": "manual", "status_label": "人工审核", "message": "系统只生成草稿，不会自动对外发布。"},
+            publishing,
             {"id": "finance", "name": "资金操作", "status": "blocked", "status_label": "永久禁止", "message": "付款、退款、提现、改价和结算必须由人工处理。"},
         ],
     }
 
 
 def model_routes():
-    """Expose only usable model routes; never imply ChatGPT web access."""
-    ai = _ai_status()
+    """Expose only verified model routes; never imply ChatGPT web access.
+
+    A saved endpoint is not a working model.  The R7 work queue must retain its
+    offline rule route until the selected cloud or local runtime has passed the
+    small `/models` health check exposed by the Model Connection Centre.
+    """
     routes = [{"id": "local_rules", "label": "本地规则引擎", "status": "ready",
                "uses_external_data": False, "purpose": "离线复盘、任务和内容草稿"}]
-    if ai["status"] == "connected":
-        routes.append({"id": "external_compatible", "label": ai["model"],
-                       "status": "ready", "uses_external_data": True,
-                       "purpose": "经用户主动提交的 AI 建议"})
-    return {"default": "local_rules", "routes": routes,
-            "external_status": ai["status"],
-            "note": "ChatGPT 网页会话不是本机连接；双向运营桥用于交换结构化运营状态和待审批计划。"}
+    try:
+        from integrations.ai_gateway import gateway_status
+        centre = gateway_status()
+        verified_routes = []
+        for route_id in ("cloud", "local"):
+            route = (centre.get("routes") or {}).get(route_id) or {}
+            if not route.get("verified"):
+                continue
+            verified_routes.append(route_id)
+            routes.append({
+                "id": f"model_{route_id}",
+                "label": route.get("label") or ("云端模型" if route_id == "cloud" else "本地开源模型"),
+                "status": "ready", "uses_external_data": route_id == "cloud",
+                "purpose": "仅用于研究、草稿和质检建议；发布仍需审核",
+                "route": route_id, "model": route.get("model"),
+            })
+        active = str(centre.get("active_route") or "")
+        default = f"model_{active}" if active in verified_routes else "local_rules"
+        return {
+            "default": default, "routes": routes,
+            "external_status": centre.get("status"),
+            "active_route": active,
+            "fallback_enabled": bool(centre.get("fallback_enabled")),
+            "note": "只有通过连接测试的云端或本地模型才会进入任务路线；否则自动使用本地规则引擎。ChatGPT 网页会话不是本机 API 连接。",
+        }
+    except (OSError, ValueError, RuntimeError, ImportError):
+        ai = _ai_status()
+        if ai["status"] == "connected":
+            routes.append({"id": "external_compatible", "label": ai["model"],
+                           "status": "ready", "uses_external_data": True,
+                           "purpose": "经用户主动提交的 AI 建议"})
+        return {"default": "local_rules", "routes": routes,
+                "external_status": ai["status"],
+                "note": "ChatGPT 网页会话不是本机连接；双向运营桥用于交换结构化运营状态和待审批计划。"}
 
 
 def _request_json(url, *, method="GET", payload=None, key="", timeout=12):
@@ -247,6 +317,43 @@ def system_diagnostics():
         {"id": "business", "name": "经营数据", "status": "pass" if build_analytics().get("status") == "verified" else "attention", "message": "已验证" if build_analytics().get("status") == "verified" else "待接入真实数据"},
         {"id": "safety", "name": "发布与资金安全", "status": "pass", "message": "发布需审核，资金操作已禁止"},
     ])
+    try:
+        from core.phase1_acceptance import status as acceptance_status
+        acceptance = acceptance_status()
+        acceptance_checks = acceptance.get("checks") or {}
+        accepted = acceptance.get("status") == "passed"
+        failed_names = [name for name, ok in acceptance_checks.items() if not ok]
+        checks.append({
+            "id": "phase1_acceptance", "name": "第一阶段连续运行验收",
+            "status": "pass" if accepted else "attention",
+            "message": "已通过" if accepted else f"未通过/进行中：{', '.join(failed_names) or acceptance.get('status')}",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "phase1_acceptance", "name": "第一阶段连续运行验收", "status": "attention", "message": "状态暂时无法读取"})
+    try:
+        from promotion.ai_production_center import dashboard as content_dashboard
+        content_tasks = content_dashboard().get("tasks") or []
+        pending_content = sum(
+            str(row.get("status") or "") in {"待本地执行器", "执行失败", "待总控确认"}
+            for row in content_tasks
+        )
+        checks.append({
+            "id": "content_backlog", "name": "AI内容任务积压",
+            "status": "attention" if pending_content else "pass",
+            "message": f"{pending_content} 项待恢复/确认" if pending_content else "没有待恢复积压",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "content_backlog", "name": "AI内容任务积压", "status": "attention", "message": "状态暂时无法读取"})
+    try:
+        from promotion.search_growth import status as search_growth_status
+        blockers = ((search_growth_status().get("latest_audit") or {}).get("blockers") or [])
+        checks.append({
+            "id": "technical_seo", "name": "官网技术SEO",
+            "status": "attention" if blockers else "pass",
+            "message": f"{len(blockers)} 项已验证问题" if blockers else "最近审计未发现技术阻塞",
+        })
+    except (OSError, ValueError, TypeError, KeyError):
+        checks.append({"id": "technical_seo", "name": "官网技术SEO", "status": "attention", "message": "状态暂时无法读取"})
     return {"status": "healthy" if not any(x["status"] == "fail" for x in checks) else "degraded",
             "checked_at": now_iso(), "checks": checks,
             "summary": {"passed": sum(x["status"] == "pass" for x in checks), "attention": sum(x["status"] == "attention" for x in checks), "failed": sum(x["status"] == "fail" for x in checks)}}

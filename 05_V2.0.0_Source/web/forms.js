@@ -62,6 +62,7 @@ toast = function(message, type='ok') {
 // patch immediately and refresh R7 once so the four manager KPI cards work on
 // the first visit, not only after waiting for the scheduler refresh.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r7-manager-patch]')) return;
   const script = document.createElement('script');
   script.src = 'r7_manager_patch.js';
@@ -82,6 +83,7 @@ toast = function(message, type='ok') {
 // Autonomous Decision Center V1 is deliberately a separate enhancement layer:
 // employee reports -> R7 manager summary -> ChatGPT strategy handoff.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r7-decision-center]')) return;
   const script = document.createElement('script');
   script.src = 'decision_center.js';
@@ -111,6 +113,7 @@ toast = function(message, type='ok') {
 // R8 Final identity is an additive display/package layer over the frozen R7 core.
 // build_info.js is stamped by GitHub Actions with the real run number and commit.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r8-build-info]')) return;
   const info = document.createElement('script');
   info.src = 'build_info.js';
@@ -133,6 +136,7 @@ toast = function(message, type='ok') {
 // key, keep bridge/device settings outside the install directory, and avoid
 // forcing the owner to re-enter already verified configuration after upgrades.
 (() => {
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-r8-persistence-patch]')) return;
   const script = document.createElement('script');
   script.src = 'r8_persistence_patch.js';
@@ -142,35 +146,10 @@ toast = function(message, type='ok') {
   document.body.appendChild(script);
 })();
 
-// R8 Social Media Center is the single business entry for real phones,
-// platform/account bindings and device operation. Connection & health stays
-// infrastructure-only; it no longer owns a second copy of phone controls.
+// R8-23 PC browser mode deliberately does not load the retired phone/ADB
+// console. Account QR login lives in the lightweight R8-12 account center.
 (() => {
-  if (document.querySelector('script[data-r8-social-center]')) return;
-  const social = document.createElement('script');
-  social.src = 'social_media_center.js';
-  social.async = false;
-  social.dataset.r8SocialCenter = '1';
-  social.onload = () => {
-    if (document.querySelector('script[data-r8-device-center]')) return;
-    const device = document.createElement('script');
-    device.src = 'r8_device_center.js';
-    device.async = false;
-    device.dataset.r8DeviceCenter = '1';
-    device.onload = () => {
-      if (document.querySelector('script[data-r8-device-file-patch]')) return;
-      const transfer = document.createElement('script');
-      transfer.src = 'r8_device_file_patch.js';
-      transfer.async = false;
-      transfer.dataset.r8DeviceFilePatch = '1';
-      transfer.onerror = () => toast('R8 真机文件传输模块加载失败，请重新安装最新版本', 'error');
-      document.body.appendChild(transfer);
-    };
-    device.onerror = () => toast('R8 单真机设备控制模块加载失败，请重新安装最新版本', 'error');
-    document.body.appendChild(device);
-  };
-  social.onerror = () => toast('R8 社媒中心加载失败，请重新安装最新版本', 'error');
-  document.body.appendChild(social);
+  document.documentElement.dataset.kzSocialRuntime = 'desktop_browser_qr';
 })();
 
 // V2.2.1 main-console productization layer. This keeps all legacy capabilities
@@ -184,11 +163,32 @@ toast = function(message, type='ok') {
     style.dataset.mainProductization = '1';
     document.head.appendChild(style);
   }
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
   if (document.querySelector('script[data-main-productization]')) return;
   const script = document.createElement('script');
   script.src = 'main-productization.js';
   script.async = false;
   script.dataset.mainProductization = '1';
   script.onerror = () => toast('产品化导航增强模块加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();
+
+// One shared Mission strip makes R7 boss control and R8 execution feel like one
+// continuous operating system.  Both views read the same backend world state.
+(() => {
+  if (!document.querySelector('link[data-autonomous-ops]')) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = 'autonomous-ops.css';
+    style.dataset.autonomousOps = '1';
+    document.head.appendChild(style);
+  }
+  if (window.__KZ_R812_STARTUP_COORDINATOR__) return;
+  if (document.querySelector('script[data-autonomous-ops]')) return;
+  const script = document.createElement('script');
+  script.src = 'autonomous-ops.js';
+  script.async = false;
+  script.dataset.autonomousOps = '1';
+  script.onerror = () => toast('自治运营主线加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();

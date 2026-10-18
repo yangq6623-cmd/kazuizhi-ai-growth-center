@@ -23,6 +23,11 @@ from promotion import content_factory
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 _WORKER_LOCK = threading.Lock()
+# Listing an encoder only proves that FFmpeg was compiled with it.  It does not
+# prove that the installed NVIDIA driver supports the encoder API required by
+# that FFmpeg build.  Cache one real probe per process so a stale RTX driver
+# cannot repeatedly send jobs into a failing NVENC queue.
+_NVENC_PROBE = {}
 
 
 def _flags():
@@ -79,6 +84,25 @@ def _nvidia():
     return {"available": True, "description": text.splitlines()[0]}
 
 
+def _nvenc_usable(ffmpeg, advertised, gpu):
+    if not (ffmpeg and advertised and gpu.get("available")):
+        return False, "NVENC 不可用，使用 CPU 兼容编码"
+    key = str(ffmpeg)
+    cached = _NVENC_PROBE.get(key)
+    if cached is not None:
+        return cached
+    command = [
+        str(ffmpeg), "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=c=black:s=16x16:d=0.1", "-frames:v", "1",
+        "-c:v", "h264_nvenc", "-f", "null", "-",
+    ]
+    result = _run(command, 20)
+    detail = result.stderr.decode("utf-8", "replace").strip().replace("\n", " ")[-300:]
+    value = (result.returncode == 0, detail or ("NVENC 可用" if result.returncode == 0 else "NVENC 自检失败"))
+    _NVENC_PROBE[key] = value
+    return value
+
+
 def status():
     ffmpeg = find_ffmpeg()
     gpu = _nvidia()
@@ -90,16 +114,17 @@ def status():
         nvenc = "h264_nvenc" in listing
         probe = _run([str(ffmpeg), "-hide_banner", "-version"], 10)
         version = probe.stdout.decode("utf-8", "replace").splitlines()[0] if probe.stdout else ""
-    ready = bool(ffmpeg and gpu.get("available") and nvenc)
+    nvenc_ready, nvenc_detail = _nvenc_usable(ffmpeg, nvenc, gpu)
+    ready = bool(nvenc_ready)
     data = content_factory._load()
     waiting = sum(1 for x in data.get("videos", []) if x.get("status") == "等待生产")
     return {
         "status": "ready" if ready else "partial",
         "ffmpeg_found": bool(ffmpeg), "ffmpeg_path": str(ffmpeg or ""),
-        "ffmpeg_version": version, "gpu": gpu, "nvenc": nvenc,
-        "encoder": "h264_nvenc" if nvenc else "libx264",
+        "ffmpeg_version": version, "gpu": gpu, "nvenc": nvenc, "nvenc_ready": nvenc_ready,
+        "nvenc_detail": nvenc_detail, "encoder": "h264_nvenc" if nvenc_ready else "libx264",
         "busy": _WORKER_LOCK.locked(), "queue_depth": waiting,
-        "message": "RTX 3060 视频执行队列已就绪" if ready else "视频执行可降级到兼容编码；请检查GPU/NVENC状态",
+        "message": "RTX 3060 视频执行队列已就绪" if ready else "视频执行已切换为 CPU 兼容编码；不会因 NVENC/驱动版本不匹配卡住",
         "generation_scope": (
             "执行ChatGPT分镜；本地真实素材可选。缺素材时先走安全降级并继续输出MP4；"
             "AI生成镜头仅在本地生成适配器可用时启用，真实维修过程不会被伪造。"
@@ -157,8 +182,8 @@ def _card(path, title, subtitle, accent="#2865df", badge="卡嘴子 · 淮安本
     image.save(path, "PNG")
 
 
-def _encode_args(worker):
-    if worker.get("status") == "ready":
+def _encode_args(worker, *, force_cpu=False):
+    if worker.get("status") == "ready" and not force_cpu:
         return ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23", "-b:v", "0"]
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "23"]
 
@@ -175,12 +200,21 @@ def _render_segment(ffmpeg, source, output, duration, width, height, fps, worker
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={fps}"
     )
-    command = [
-        str(ffmpeg), "-y", "-hide_banner", "-loglevel", "error",
-        *input_args, "-t", str(duration), "-vf", vf, "-an",
-        *_encode_args(worker), "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output),
-    ]
-    result = _run(command, timeout=max(120, int(duration * 25)))
+    def command(force_cpu=False):
+        return [
+            str(ffmpeg), "-y", "-hide_banner", "-loglevel", "error",
+            *input_args, "-t", str(duration), "-vf", vf, "-an",
+            *_encode_args(worker, force_cpu=force_cpu), "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output),
+        ]
+    result = _run(command(), timeout=max(120, int(duration * 25)))
+    # A driver can be downgraded while the application is running.  Preserve
+    # the video job by retrying the current segment in libx264 once instead of
+    # marking the entire autonomous production loop as failed.
+    if result.returncode != 0 and worker.get("encoder") == "h264_nvenc":
+        nvenc_error = result.stderr.decode("utf-8", "replace")[-500:]
+        worker.update({"status": "partial", "encoder": "libx264", "nvenc_ready": False,
+                       "nvenc_fallback": "NVENC 编码失败，已自动切换 CPU：" + nvenc_error[:240]})
+        result = _run(command(force_cpu=True), timeout=max(120, int(duration * 25)))
     if result.returncode != 0 or not output.is_file() or output.stat().st_size < 1024:
         error = result.stderr.decode("utf-8", "replace")[-1200:]
         raise RuntimeError(f"镜头渲染失败：{error or '未生成有效镜头'}")

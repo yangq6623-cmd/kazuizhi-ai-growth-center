@@ -10,7 +10,7 @@
   let summary = {counts:{},gates:[],video_worker:{hardware:{}},connectors:[]};
   const CN = {
     ready:'已就绪',pending:'待完成',published:'已发布',approved:'已审核',rejected:'已退回',failed:'失败',queued:'排队中',running:'执行中',
-    pending_connector:'待授权平台',pending_device:'待连接真机',waiting_first_case:'待首条真实任务',pending_worker:'待配置视频模型',
+    pending_connector:'待授权平台',pending_device:'待 PC 扫码登录',waiting_first_case:'待首条真实任务',pending_worker:'待配置视频模型',
     waiting_first_receipt:'待真实发布回执',waiting_first_message:'待真实消息',waiting_metrics:'待效果数据',waiting_learning_cycle:'待首轮复盘',
     new:'新建',routed:'已路由',no_matching_account:'无匹配账号',candidate_needs_authorization:'候选账号待授权',planning:'策划中',
     content_pending_approval:'内容待审核',content_approved:'内容已通过',revision_requested:'待修改',waiting_worker:'等待视频模型',
@@ -97,9 +97,9 @@
   }
 
   function publish(){
-    const approved=items('content_jobs').filter(x=>x.approval_state==='approved'); const accounts=(summary.connectors||[]).reduce((n,x)=>n+x.authorized,0);
+    const approved=items('content_jobs').filter(x=>x.approval_state==='approved'); const accounts=(summary.connectors||[]).reduce((n,x)=>n+x.authorized,0); const policy=summary.publication_policy||{};
     const rows=items('publish_jobs');
-    return `<div class="r8-final-split"><article><label>R8-06 人工审核授权</label><h3>审核通过内容</h3><div class="r8-final-list">${approved.length?approved.map(c=>`<div class="r8-final-row"><h4>${esc(c.title_candidates?.[0]||c.content_id)}</h4><p>${esc(c.cta)}</p><div class="r8-final-actions"><button class="primary" data-r8-publish-create="${esc(c.content_id)}">确认发布并进入择时队列</button></div></div>`).join(''):'<div class="r8-empty">尚无审核通过内容。</div>'}</div></article><article><label>R8-07 发布条件</label><h3>真实账号与回执</h3><div class="r8-final-note">已授权账号：${accounts}<br>发布成功必须保存平台内容 ID、真实 URL、执行时间和执行来源。没有回执只能标记“已提交/待确认”。</div></article></div>
+    return `<div class="r8-final-split"><article><label>R8-06 自动发布策略</label><h3>质检通过后自动入队</h3><div class="r8-final-list">${approved.length?approved.map(c=>`<div class="r8-final-row"><h4>${esc(c.title_candidates?.[0]||c.content_id)}</h4><p>${esc(c.cta)}</p><div class="r8-final-meta"><span>${esc(c.publish_state||'等待自动队列')}</span><span>${esc(c.account_id||'等待账号路由')}</span></div></div>`).join(''):'<div class="r8-empty">尚无质检通过内容。</div>'}</div></article><article><label>R8-07 发布条件</label><h3>${policy.enabled?'自动发布队列已启用':'自动发布队列已暂停'}</h3><div class="r8-final-note">已授权账号：${accounts}<br>每个已扫码账号独立排队，默认每日 ${esc(policy.max_posts_per_account_per_day||2)} 条。登录失效、验证码、风控提示会自动暂停；拿到平台内容 ID、真实 URL 或 Receipt 前不会显示为发布成功。</div></article></div>
       <article class="wide" style="margin-top:14px"><label>发布队列</label><div class="r8-final-list">${rows.length?rows.map(p=>`<div class="r8-final-row"><div class="r8-final-row-head"><div><h4>${esc(p.publish_id)}</h4><div class="r8-final-meta"><span>${esc(p.platform)}</span><span>${esc(p.account_id)}</span><span>${esc(p.scheduled_at)}</span></div></div><span class="r8-state ${stateClass(p.status)}">${esc(p.status)}</span></div><p>${p.receipt?.url?`真实回执：<a href="${esc(p.receipt.url)}" target="_blank" rel="noreferrer">${esc(p.receipt.url)}</a>`:'等待真实平台执行回执'}</p><div class="r8-final-actions">${['queued','submitted_waiting_confirmation'].includes(p.status)?`<button class="primary" data-r8-receipt-success="${esc(p.publish_id)}">回填成功回执</button><button data-r8-receipt-failed="${esc(p.publish_id)}">记录失败</button>`:''}${p.status==='published'?`<button data-r8-metrics="${esc(p.publish_id)}">记录 24h/72h/7天数据</button>`:''}</div></div>`).join(''):'<div class="r8-empty">尚无发布任务。</div>'}</div></article>`;
   }
 
@@ -139,9 +139,8 @@
     document.querySelectorAll('[data-r8-video-complete]').forEach(b=>b.onclick=()=>{const output_path=prompt('请输入真实成片路径');if(output_path)action(()=>post('/api/r8/growth/videos/update',{video_id:b.dataset.r8VideoComplete,action:'complete',output_path,visual:85,script:85,subtitle:85,risk:0}),'成片已进入老板审核');});
     document.querySelectorAll('[data-r8-video-approve]').forEach(b=>b.onclick=()=>action(()=>post('/api/r8/growth/videos/update',{video_id:b.dataset.r8VideoApprove,action:'approve',actor:'owner'}),'老板已确认成片'));
     document.querySelectorAll('[data-r8-video-reject]').forEach(b=>b.onclick=()=>{const reason=prompt('请输入需要重做的镜头或原因');if(reason)action(()=>post('/api/r8/growth/videos/update',{video_id:b.dataset.r8VideoReject,action:'reject',reason,actor:'owner'}),'已退回指定镜头');});
-    document.querySelectorAll('[data-r8-publish-create]').forEach(b=>b.onclick=()=>{const account_id=prompt('请输入已在真机授权的平台账号 ID');if(account_id)action(()=>post('/api/r8/growth/publishing',{content_id:b.dataset.r8PublishCreate,account_id,owner_approved:true,reviewer:'owner'}),'已进入择时发布队列');});
-    document.querySelectorAll('[data-r8-receipt-success]').forEach(b=>b.onclick=()=>{const url=prompt('请输入真实平台内容 URL');const platform_content_id=url&&prompt('请输入真实平台内容 ID');if(url&&platform_content_id)action(()=>post('/api/r8/growth/publishing/receipt',{publish_id:b.dataset.r8ReceiptSuccess,result:'success',url,platform_content_id,executed_by:'real_device'}),'真实发布回执已保存');});
-    document.querySelectorAll('[data-r8-receipt-failed]').forEach(b=>b.onclick=()=>{const error=prompt('请输入失败原因');if(error)action(()=>post('/api/r8/growth/publishing/receipt',{publish_id:b.dataset.r8ReceiptFailed,result:'failed',error,executed_by:'real_device'}),'发布失败已如实记录');});
+    document.querySelectorAll('[data-r8-receipt-success]').forEach(b=>b.onclick=()=>{const url=prompt('请输入真实平台内容 URL');const platform_content_id=url&&prompt('请输入真实平台内容 ID');if(url&&platform_content_id)action(()=>post('/api/r8/growth/publishing/receipt',{publish_id:b.dataset.r8ReceiptSuccess,result:'success',url,platform_content_id,executed_by:'desktop_browser'}),'真实发布回执已保存');});
+    document.querySelectorAll('[data-r8-receipt-failed]').forEach(b=>b.onclick=()=>{const error=prompt('请输入失败原因');if(error)action(()=>post('/api/r8/growth/publishing/receipt',{publish_id:b.dataset.r8ReceiptFailed,result:'failed',error,executed_by:'desktop_browser'}),'发布失败已如实记录');});
     document.querySelectorAll('[data-r8-metrics]').forEach(b=>b.onclick=()=>{const checkpoint=prompt('输入复盘时间点：24h、72h 或 7d','24h');if(checkpoint)action(()=>post('/api/r8/growth/metrics',{publish_id:b.dataset.r8Metrics,checkpoint,source:'manual_verified',impressions:Number(prompt('曝光量','0')||0),plays:Number(prompt('播放量','0')||0),comments:Number(prompt('评论数','0')||0),dms:Number(prompt('私信数','0')||0),consultations:Number(prompt('有效咨询数','0')||0),orders:Number(prompt('订单数','0')||0),completed_orders:Number(prompt('完成订单数','0')||0)}),'真实效果数据已保存');});
     byId('r8-message-save')?.addEventListener('click',()=>action(()=>post('/api/r8/growth/messages',{platform:byId('r8-message-platform').value,account_id:byId('r8-message-account').value,user_ref:byId('r8-message-user').value,kind:byId('r8-message-kind').value,direction:'inbound',content:byId('r8-message-content').value,source:'human_import'}),'消息已进入统一会话'));
     document.querySelectorAll('[data-r8-stop-contact]').forEach(b=>b.onclick=()=>action(()=>post('/api/r8/growth/conversations/update',{conversation_id:b.dataset.r8StopContact,state:'closed',do_not_contact:true,actor:'owner'}),'已停止后续联系'));
@@ -154,13 +153,22 @@
   function mount(){
     if(byId('r8-final-center'))return;
     const nav=document.querySelector('aside nav');const main=document.querySelector('main');if(!nav||!main)return;
-    const firstGroup=[...nav.querySelectorAll('.nav-group')].find(x=>x.textContent.includes('分析与内容'));
-    const group=document.createElement('small');group.className='nav-group';group.textContent='R8 增长闭环';
-    const button=document.createElement('button');button.className='nav';button.dataset.page='r8-final-center';button.dataset.title='R8 增长运营总控';button.dataset.subtitle='从真实需求到发布、线索、订单和学习回写';button.innerHTML='<span>◆</span>R8 增长总控';
-    if(firstGroup){nav.insertBefore(group,firstGroup);nav.insertBefore(button,firstGroup);}else{nav.append(group,button);}
-    const section=document.createElement('section');section.id='r8-final-center';section.className='page';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 最终版 · 全链路增长运营</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 老板确认发布 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-action-feedback" class="r8-action-feedback" hidden></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
+    // Single-home rule: dashboard is the only visible owner home. Keep this
+    // older R8 center as a hidden compatibility route for historical tools.
+    nav.querySelectorAll('.nav[data-page="r8-final-center"]').forEach(node=>node.remove());
+    let proxy=nav.querySelector('.nav[data-page="r8-final-center"]');
+    if(!proxy){
+      proxy=document.createElement('button');
+      proxy.className='nav r810-legacy-route';
+      proxy.dataset.page='r8-final-center';
+      proxy.dataset.title='历史 R8 增长工具';
+      proxy.dataset.subtitle='兼容旧增长记录与工具，不作为主页';
+      proxy.hidden=true;
+      proxy.textContent='历史 R8 增长工具';
+      nav.appendChild(proxy);
+    }
+    const section=document.createElement('section');section.id='r8-final-center';section.className='page r8-final-legacy-page';section.dataset.kzLegacyWorkspace='1';section.innerHTML=`<div class="r8-final-hero"><div><small>R8 最终版 · 全链路增长运营</small><h2>真实互联网增长闭环</h2><p>平台信号 → 唯一增长 ID → 八员工联合策划 → 3060 视频任务 → 质检通过自动入队 → 真实回执 → 评论/私信/线索 → 订单归因 → 24h/72h/7天复盘 → 下一轮调整。</p></div><button id="r8-final-refresh">刷新全部状态</button></div><div id="r8-action-feedback" class="r8-action-feedback" hidden></div><div id="r8-final-body"><div class="r8-empty">正在读取 R8 全部模块…</div></div>`;
     main.appendChild(section);
-    button.addEventListener('click',()=>{if(typeof openPage==='function')openPage('r8-final-center');refresh();});
     byId('r8-final-refresh').addEventListener('click',()=>refresh());
     refresh(true);
   }

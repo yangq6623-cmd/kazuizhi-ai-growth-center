@@ -181,7 +181,7 @@ function renderR7Jobs(items){
     let actions='';
     if(job.state==='awaiting_approval')actions='<span class="subtle">这是旧版本遗留记录，新版本启动后会按新自动化策略迁移处理。</span>';
     if(job.state==='human_required')actions='<span class="subtle">请到小程序/平台后台由人工处理资金事项；R7 只记录，不执行。</span>';
-    if(job.state==='queued'&&job.mode==='local')actions='<span class="subtle">已进入自动执行队列，无需人工批准。</span>';
+    if(job.state==='queued'&&job.mode==='local')actions=`<span class="subtle">${esc(job.authorization_note||'已进入自动执行队列，无需人工批准。')}</span>`;
     if(job.state==='failed'&&job.risk!=='financial')actions=r7Action(job,'retry','立即重试')+r7Action(job,'cancel','取消');
     const riskLabel=job.risk==='financial'?'平台人工':'全自动';
     const summary=r7ResultSummary(job.result);
@@ -294,10 +294,25 @@ function ensureAuditCollapse(){
 
 function bindR7OverviewActions(){ensureAuditCollapse()}
 
+let r7LoadPromise=null;
+async function r7Api(path,timeoutMs=10000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{return await api(path,{signal:controller.signal})}
+  catch(error){
+    if(error?.name==='AbortError')throw new Error(`读取${path}超时，本页已停止等待；后台任务不受影响`);
+    throw error;
+  }finally{clearTimeout(timer)}
+}
 async function loadR7(){
-  try{
+  if(r7LoadPromise)return r7LoadPromise;
+  r7LoadPromise=(async()=>{try{
     applyAutonomyCopy();
-    const [jobs,agents,engine,audit,routes]=await Promise.all([api('/api/r7/jobs'),api('/api/r7/agents'),api('/api/r7/engine'),api('/api/r7/audit'),api('/api/r7/model-routes')]);
+    // Keep no more than two local requests active at once. Five parallel
+    // requests plus iframe polling previously starved lazy module downloads.
+    const [jobs,engine]=await Promise.all([r7Api('/api/r7/jobs'),r7Api('/api/r7/engine')]);
+    const [agents,audit]=await Promise.all([r7Api('/api/r7/agents'),r7Api('/api/r7/audit')]);
+    const routes=await r7Api('/api/r7/model-routes');
     r7Jobs=jobs.items||[];
     renderTodayCommand(engine);
     renderR7Jobs(r7Jobs);
@@ -312,7 +327,14 @@ async function loadR7(){
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
     bindR7OverviewActions();
     return true;
-  }catch(error){toast(error.message,'error');return false}
+  }catch(error){
+    $('r7-model-route').textContent=error.message;
+    $('r7-engine-status').textContent='状态读取未完成，可点击刷新重试';
+    $('r7-exceptions').textContent='未取得完整状态，不显示为零或正常';
+    $('r7-audit-integrity').textContent='状态读取超时 · 未判定';
+    toast(error.message,'error');return false
+  }finally{r7LoadPromise=null}})();
+  return r7LoadPromise;
 }
 window.loadR7=loadR7;
 

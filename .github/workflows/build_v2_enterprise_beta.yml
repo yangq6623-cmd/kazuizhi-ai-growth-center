@@ -1,19 +1,22 @@
-name: Build Kazuizhi AI Enterprise V2.2 R8 Operational
+name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*']
-    tags: ['v2.2.0-r8-operational*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*', 'codex/geo-818-*']
+    tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
       - 'docs/R8_OPERATIONAL_*'
+      - 'docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     branches: [main]
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
+      - 'docs/R8_OPERATIONAL_*'
+      - 'docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -42,23 +45,95 @@ jobs:
           $text = $text.Replace('__GITHUB_RUN_NUMBER__', '${{ github.run_number }}')
           $text = $text.Replace('__GITHUB_SHA__', $shortSha)
           Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding UTF8
+          $manifestPath = '05_V2.0.0_Source/core/release_manifest.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $manifest.installed.release = 'R8-24 GEO Growth OS'
+          $manifest.installed.github_run = '#${{ github.run_number }}'
+          $manifest.installed.commit = $shortSha
+          $manifest.installed.package_status = 'packaged_by_github_actions'
+          $manifest.candidate.package_status = 'packaged_by_github_actions'
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -NoNewline -Encoding UTF8
       - name: Install pinned build and video dependencies
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: GEO operating retest independent schedule regression
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          node 04_Build/v2/test_geo_817_retest_ui.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Retest UI regression failed' }
+          python 04_Build/v2/test_geo_816_operating_retest.py
+          if ($LASTEXITCODE -ne 0) { throw 'Operating retest regression failed' }
+      - name: "#818 deduplicated GEO history, timeout task classification and three-window safety"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_818_ledger_safety.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 818 ledger regression failed' }
+      - name: Verify #809 GEO browser agent lightweight response
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_809_agent_response_contract.py
+          python 04_Build/v2/test_geo_809_queue_routing.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #809 response regression failed' }
+      - name: "#811 GEO read-only HTTP budget and concurrency acceptance"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#811 internal test gate: no external GEO submissions or production data mutations'
+          node 04_Build/v2/test_geo_811_fetch_budget.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #811 front-end 100-loop budget regression failed' }
+          python 04_Build/v2/test_geo_811_http_concurrency.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #811 back-end 200-request HTTP concurrency regression failed' }
+          python 04_Build/v2/test_r8_29_geo_evidence_lockfree.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO evidence lockfree regression failed' }
+      - name: "#812 isolated GEO automatic claim execution and Receipt gate"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#812: synthetic local data only; no external AI question is sent'
+          python 04_Build/v2/test_geo_812_claim_execute_receipt.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 GEO exactly-once claim / retest / Receipt failed' }
+          python 04_Build/v2/test_geo_812_receipt_http_latency.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 GEO browser HTTP Receipt ACK latency failed' }
+          python 04_Build/v2/test_geo_808_browser_claim_truth.py
+          if ($LASTEXITCODE -ne 0) { throw '#808 browser-claim safety regressed' }
+          python 04_Build/v2/test_r8_27_geo_browser_agent.py
+          if ($LASTEXITCODE -ne 0) { throw '#812 authenticated browser-agent compatibility failed' }
+      - name: "#814 GEO root-cause regression - health GET budget and Doubao no-replay"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#814 isolated Windows release gate: no external questions or production data changes'
+          node 04_Build/v2/test_geo_814_diagnostics_budget.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 diagnostics budget regression failed' }
+          node 04_Build/v2/test_geo_814_doubao_reconcile.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 814 Doubao safe submit/reconcile failed' }
+          node 04_Build/v2/test_geo_extension_808.js
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 808 claim/capture safety regression failed' }
+      - name: "#815 browser extension canary version compatibility"
+        run: |
+          Write-Host '#815 safety test: no real external AI questions and no state replay'
+          python 04_Build/v2/test_geo_815_canary_version.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #815 814/808 canary version and no-replay gate failed' }
+      - name: "#816 SEO isolated audit retry and UI regression"
+        run: |
+          Write-Host '#816 SEO-only tests: isolated fake HTTP, no real web publication or GEO state changes'
+          python 04_Build/v2/test_seo_816_audit_isolation.py
+          if ($LASTEXITCODE -ne 0) { throw '#816 SEO audit isolation contract failed' }
+          node 04_Build/v2/test_seo_816_ui_audit.cjs
+          if ($LASTEXITCODE -ne 0) { throw '#816 SEO audit UI contract failed' }
       - name: Verify inherited R7 data safety and command engine
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_r7_engine.py
+          python 04_Build/v2/test_r8_migration_backup_nesting.py
           python 04_Build/v2/test_r7_block_a.py
           python 04_Build/v2/test_r7_block_b.py
-      - name: Verify inherited R8 final control plane and growth loop
+      - name: Verify inherited R8 final control plane and autonomous Mission loop
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_daily_workforce.py
           python 04_Build/v2/test_decision_center.py
           python 04_Build/v2/test_region_strategy.py
           python 04_Build/v2/test_r8_block_00.py
-          python 04_Build/v2/test_r8_device_center.py
-          python 04_Build/v2/test_r8_social_center.py
           python 04_Build/v2/test_r8_complete_growth_ops.py
           python 04_Build/v2/test_r8_identity.py
           python 04_Build/v2/test_r8_completion_upgrade.py
@@ -66,11 +141,68 @@ jobs:
           python 04_Build/v2/test_live_business_source.py
           python 04_Build/v2/test_ui_interactions.py
           python 04_Build/v2/test_v221_productization.py
-          python 04_Build/v2/test_r8_realtime_mirror.py
+          python 04_Build/v2/test_r8_ui_final.py
+          python 04_Build/v2/test_autonomous_ops.py
+          python 04_Build/v2/test_ai_gateway.py
+      - name: Verify release-gate R8-10 R8-11 R8-12 regressions
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_10_async_control_bus.py
+          python 04_Build/v2/test_r8_10_video_idempotency.py
+          python 04_Build/v2/test_r8_12_unified_account_center.py
+          python 04_Build/v2/test_r8_12_account_publish_runtime.py
+      - name: Verify release-gate R8-13 R8-14 R8-15 R8-16 SEO autonomy, public deployment and search submission
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_13_multi_account_auth.py
+          python 04_Build/v2/test_r8_13_seo_geo_growth.py
+          python 04_Build/v2/test_r8_14_seo_geo_autonomy.py
+          python 04_Build/v2/test_r8_15_seo_public_deploy.py
+          python 04_Build/v2/test_r8_15_server_bootstrap.py
+          python 04_Build/v2/test_r8_16_search_submitters.py
+          python 04_Build/v2/test_r8_17_direct_file_fallback.py
+          python 04_Build/v2/test_r8_31_template_rollback.py
+          python 04_Build/v2/test_r8_33_growth_p0_regression.py
+          python 04_Build/v2/test_r8_34_geo_seo_closed_loop.py
+          python 04_Build/v2/test_r8_35_republish_reconciliation.py
+          python 04_Build/v2/test_r8_36_truth_recovery.py
+      - name: Verify R8-20 through R8-23 complete workbench release gates
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_r8_20_seo_geo_growth.py
+          python 04_Build/v2/test_r8_21_unified_connectors.py
+          python 04_Build/v2/test_r8_22_autonomous_convergence.py
+          python 04_Build/v2/test_r8_23_final_growth_os.py
+          python 04_Build/v2/test_r8_23_final_workbench_parity.py
+          python 04_Build/v2/test_r8_24_control_plane_compaction.py
+          python 04_Build/v2/test_geo_774_async_boot_browser.py
+          python 04_Build/v2/test_r8_24_geo_evidence_failsafe.py
+          python 04_Build/v2/test_r8_24_geo_lockfree_snapshot.py
+          python 04_Build/v2/test_business_refresh_nonblocking.py
+          python 04_Build/v2/test_phase1_stability_channels_geo.py
+          python 04_Build/v2/test_r8_25_website_geo_loop.py
+          python 04_Build/v2/test_r8_26_cn_geo_matrix.py
+          python 04_Build/v2/test_r8_27_geo_browser_agent.py
+          python 04_Build/v2/test_r8_28_geo_browser_extension.py
+          node 04_Build/v2/test_geo_extension_808.js
+          if ($LASTEXITCODE -ne 0) { throw 'GEO Doubao 808 real-send and Evidence gate failed' }
+          node 04_Build/v2/test_geo_alarm_no_reset.js
+          if ($LASTEXITCODE -ne 0) { throw 'GEO autonomous alarms repeatedly reset' }
+          python 04_Build/v2/test_geo_blockage_truth_805.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO technical/auth blocker truth gate failed' }
+          python 04_Build/v2/test_geo_legacy_reconciliation_807.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 807 historical receipt reconciliation and single canary gate failed' }
+          python 04_Build/v2/test_geo_808_browser_claim_truth.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO 808 strict browser claim and nonstarving canary gate failed' }
+          python 04_Build/v2/test_r8_24_owner_ui_recovery.py
+          python 04_Build/v2/test_r8_25_runtime_truth_and_backpressure.py
+          node 04_Build/v2/test_r8_25_fetch_budget.js
+          python 04_Build/v2/test_r8_25_owner_cold_start.py
       - name: Check every browser script
         run: |
           Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" } }
-      - name: Verify V2.2 R8 Operational source closed loop
+          Get-ChildItem 05_V2.0.0_Source/browser_extension/kazuizhi_geo -Filter *.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE -ne 0) { throw "Extension JavaScript syntax failed: $($_.Name)" } }
+      - name: Verify V2.2 R8 Autonomous source closed loop
         run: python 04_Build/v2/verify_r8_operational.py --source
       - name: Build packaged runtime and installer
         run: ./04_Build/build_v2_windows.ps1
@@ -88,15 +220,15 @@ jobs:
           endpoint: ${{ vars.KZ_ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.KZ_ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.KZ_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe
+          files: ${{ github.workspace }}\installer_output_v2\Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: 卡嘴子 AI 自动化运行平台
+          description: 卡嘴子 AI R8-23 完整运营工作台
           description-url: https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center
       - name: Verify final installer signature
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
           $signature = Get-AuthenticodeSignature -LiteralPath $setup
           if ('${{ vars.KZ_ARTIFACT_SIGNING_ENABLED }}' -eq 'true' -and $signature.Status -ne 'Valid') {
             throw "Artifact Signing was enabled but the installer signature is not valid: $($signature.Status)"
@@ -108,43 +240,59 @@ jobs:
         run: ./04_Build/v2/test_installer.ps1
       - name: Record verified artifact provenance
         run: |
-          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe'
+          $setup = 'installer_output_v2/Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe'
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
-          "$hash  Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
+          "$hash  Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe" | Set-Content installer_output_v2/SHA256SUMS.txt
           @{
-            version = '2.2.0 R8 Operational'
-            build = 'KZ-ENTERPRISE-V2.2-R8-OPERATIONAL-20260920'
+            version = '2.2.2 R8-23 Final Complete Workbench'
+            build = 'KZ-ENTERPRISE-V2.2.2-R8-AUTONOMOUS-20260922'
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('operational UI identity', 'overwrite migration backup', 'legacy R7 data safety', 'managed local media upload', 'automatic material inbox index', 'ChatGPT production contract', 'ChatGPT post-render content QC', 'platform hard-rule center', 'platform adaptation', 'production audit events', 'licensed-media safe adapter', 'AI-shot adapter', 'local TTS/subtitle adapter', 'owner video approval gate', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'persistent Android H264 live mirror with PNG fallback', 'screen lock human takeover', 'verified publication receipt', 'cross-origin mutation rejection', 'V2.2.1 productization regression contract', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated gates passed; real social account login/captcha and live platform publication remain owner-authorized field acceptance'
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'retired Android/ADB runtime', 'Windows browser QR session routing', 'truthful publication planning', 'receipt-gated publication truth', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'Google OAuth automatic refresh', 'user scheduled-task runtime supervisor', 'seven-day durable acceptance ledger', 'GEO mention/recommendation/citation split', '24h/72h/7d GEO retest coverage', 'formal 50-question queue gate', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            acceptance = 'Automated release gates passed and the candidate can start the seven-day field ledger. Seven elapsed days and formal GEO 50/50 are not claimed by CI. Real OAuth/login/captcha, Douyin publish scope, RTX3060 field stability, live platform publication and independent external-AI Evidence remain field acceptance; PUBLISHED and SUBMITTED still require their own real receipts.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
+          Copy-Item docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md installer_output_v2/PHASE1_ACCEPTANCE.md
+      - name: Package GEO Chrome extension 2.2.2.814
+        run: |
+          $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
+          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip'
+          Compress-Archive -Path "$source/*" -DestinationPath $bundle -CompressionLevel Optimal -Force
+          $sum = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash
+          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
+          Copy-Item docs/GEO_808_ALARM_BLOCKAGE_HANDOFF_20261017.md installer_output_v2/GEO_808_HANDOFF.md
+      - name: Upload standalone GEO Chrome extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.814
+          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip
+          if-no-files-found: error
+          retention-days: 90
       - name: Upload final Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench
           path: installer_output_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_AI_Enterprise_V2.2.0_R8_Operational_Portable
+          name: Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench_Portable
           path: dist_v2/
           if-no-files-found: error
           retention-days: 90
       - name: Publish final installer to GitHub Releases
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.0-r8-operational')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v2.2.2-r8-23-final-workbench')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.0-r8-operational' }
+          $tag = if ('${{ github.ref }}'.StartsWith('refs/tags/')) { '${{ github.ref_name }}' } else { 'v2.2.2-r8-23-final-workbench' }
           gh release view $tag --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag installer_output_v2/* --clobber
           } else {
-            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.0 R8 Operational' --generate-notes
+            gh release create $tag installer_output_v2/* --target '${{ github.sha }}' --title '卡嘴子 AI V2.2.2 R8-23 完整运营工作台' --generate-notes
           }

@@ -1,0 +1,77 @@
+/* R8-19 Phase 1 final UX polish. Scope: SEO/GEO only. */
+:root{--kz-progress-blue:#2563eb;--kz-progress-green:#169b6b;--kz-progress-amber:#d89218;--kz-progress-line:#dfe7f2;--kz-progress-bg:#f7f9fc}
+
+/* Embedded SEO/GEO pages use the owner shell as the single page scroller. */
+html.kz-growth-embedded,html.kz-growth-embedded body{overflow:visible!important;height:auto!important;min-height:0!important}
+html.kz-growth-embedded body{background:#f4f7fb!important}
+body.geo-direct-embed #search-growth-switch{display:none!important}
+body.geo-direct-embed .geo-direct-main{padding-top:0!important}
+
+.kz-growth-progress{margin:12px 0 14px;padding:14px 16px;border:1px solid var(--kz-progress-line);border-radius:14px;background:#fff;box-shadow:0 6px 20px rgba(15,42,76,.04)}
+.kz-growth-progress-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.kz-growth-progress-kicker{display:block;margin-bottom:3px;color:#6b7b91;font-size:11px;font-weight:700}
+.kz-growth-progress-title{margin:0;color:#12233f;font-size:16px;font-weight:800;line-height:1.35}
+.kz-growth-progress-status{flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#eef4ff;color:#245ec7;font-size:10px;font-weight:800}
+.kz-growth-progress-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-top:12px}
+.kz-growth-progress-track{height:8px;overflow:hidden;border-radius:999px;background:#e9eef6}
+.kz-growth-progress-track>i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#2563eb,#5d87f3);transition:width .25s ease}
+.kz-growth-progress-value{min-width:62px;text-align:right;font-variant-numeric:tabular-nums;color:#1c3f7d;font-size:13px;font-weight:800}
+.kz-growth-progress-detail{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;color:#64748b;font-size:11px}
+.kz-growth-progress-detail b{color:#334155}
+
+.kz-growth-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:11px}
+.kz-growth-step{position:relative;padding:8px 9px;border:1px solid #e5eaf1;border-radius:9px;background:#f8fafc;color:#7a8798;font-size:10px;line-height:1.35}
+.kz-growth-step b{display:block;margin-bottom:2px;color:inherit;font-size:10px}
+.kz-growth-step.done{border-color:#cdebdc;background:#f0faf5;color:#16845d}
+.kz-growth-step.active{border-color:#bfd3ff;background:#eef4ff;color:#245ec7;box-shadow:inset 0 0 0 1px rgba(37,99,235,.04)}
+.kz-growth-step.waiting{color:#8794a6}
+
+/* Humanise GEO KPI cards and reduce technical noise. */
+#geo-growth-pane .geo-kpis article.geo-kpi-action:after{content:"›"!important;float:right;margin-top:-20px;color:#a8b5c6;font-size:16px!important;font-weight:800}
+#geo-growth-pane .geo-control-ids{opacity:.58;font-size:9px}
+#geo-growth-pane .geo-version,#geo-growth-pane .geo-footnote{color:#7d8999}
+#geo-growth-pane .geo-mode-grid article{border-radius:10px!important}
+#geo-growth-pane .geo-mode-grid article.mode-browser{box-shadow:inset 3px 0 0 #2563eb!important}
+
+/* One obvious daily action. Secondary and technical controls live in Advanced tools. */
+#geo-growth-pane .geo-command-main{border-radius:11px!important}
+#geo-growth-pane .geo-command-main [data-slot="main"]{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#geo-growth-pane #geo-browser-one{font-size:11px!important;font-weight:800!important}
+#geo-growth-pane #geo-browser-ten{background:#fff!important;color:#3e5f94!important}
+#geo-growth-pane .geo-task-actions button.warning{display:none!important}
+
+/* Three-step browser validation workspace. */
+#geo-growth-pane .geo-human-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:7px 0 10px}
+#geo-growth-pane .geo-human-flow-step{padding:9px 10px;border:1px solid #e4eaf2;border-radius:9px;background:#f8fafc;color:#718096;font-size:10px;line-height:1.4}
+#geo-growth-pane .geo-human-flow-step b{display:block;margin-bottom:2px;color:#334155;font-size:11px}
+#geo-growth-pane .geo-human-flow-step.done{border-color:#cce9db;background:#f0faf5;color:#16845d}
+#geo-growth-pane .geo-human-flow-step.active{border-color:#bad0ff;background:#eef4ff;color:#245ec7}
+#geo-growth-pane .geo-human-flow-step.active b{color:#245ec7}
+#geo-growth-pane .geo-evidence-advanced{margin-top:7px;border:1px solid #e6ebf2;border-radius:8px;background:#fbfcfe}
+#geo-growth-pane .geo-evidence-advanced summary{cursor:pointer;padding:8px 10px;color:#5f6f84;font-size:10px;font-weight:700}
+#geo-growth-pane .geo-evidence-advanced .geo-browser-citation-wrap{padding:0 10px 10px}
+#geo-growth-pane #geo-browser-submit{min-width:152px;font-weight:800}
+
+/* Keep only data-heavy lists locally scrollable; make those scrollbars quiet. */
+#geo-growth-pane .geo-table-wrap,#geo-growth-pane .geo-task-list{scrollbar-width:thin;scrollbar-color:#aeb9c8 transparent}
+#geo-growth-pane .geo-table-wrap::-webkit-scrollbar,#geo-growth-pane .geo-task-list::-webkit-scrollbar{width:7px;height:7px}
+#geo-growth-pane .geo-table-wrap::-webkit-scrollbar-thumb,#geo-growth-pane .geo-task-list::-webkit-scrollbar-thumb{background:#aeb9c8;border-radius:999px}
+#geo-growth-pane .geo-table-wrap::-webkit-scrollbar-track,#geo-growth-pane .geo-task-list::-webkit-scrollbar-track{background:transparent}
+
+/* SEO progress card stays compact and operational. */
+body .kz-seo-progress{margin:16px 0}
+body .kz-seo-progress .kz-growth-steps{grid-template-columns:repeat(7,minmax(0,1fr))}
+
+/* R8-19 Phase 2 field truth semantics fix: do not mix cumulative stage state with today's delta. */
+#pipeline-section h3{font-size:0!important}
+#pipeline-section h3::after{content:"自动作业流水线（累计真实状态）";font-size:20px;color:var(--ink,#10223e);font-weight:800;line-height:1.35}
+#pipeline-section #pipeline .step:nth-child(5) small::before,
+#pipeline-section #pipeline .step:nth-child(6) small::before{content:"累计状态：";font-weight:700;color:#64748b}
+#pipeline-section::after{content:"口径说明：上方 01–07 显示累计真实阶段状态；下方“今日增量”仅统计当天新发生的规划、生成、公开与提交。两者不混用。";display:block;margin-top:10px;padding:9px 11px;border:1px solid #d8e6ff;border-radius:9px;background:#eef5ff;color:#315d9f;font-size:11px;line-height:1.55}
+
+@media(max-width:900px){
+  .kz-growth-steps{grid-template-columns:1fr 1fr 1fr}
+  body .kz-seo-progress .kz-growth-steps{grid-template-columns:1fr 1fr 1fr}
+  #geo-growth-pane .geo-human-flow{grid-template-columns:1fr}
+}
+@media(max-width:620px){.kz-growth-progress-main{grid-template-columns:1fr}.kz-growth-progress-value{text-align:left}.kz-growth-steps,body .kz-seo-progress .kz-growth-steps{grid-template-columns:1fr 1fr}}

@@ -12,6 +12,10 @@ const CORE_BUSINESS_FIELDS = [
   'new_orders', 'completed_orders', 'cancelled_orders',
 ];
 
+function coreMissingLabels(core) {
+  return (core?.missing_fields || []).map(key => metricLabels[key] || key).join('、');
+}
+
 function showValue(value, suffix = '') {
   return value === null || value === undefined ? '<b class="missing-value">未接入</b>' : `<b>${esc(value)}${suffix}</b>`;
 }
@@ -132,6 +136,36 @@ function ensureLiveBusinessPanel() {
   return panel;
 }
 
+function ensureWeChatMiniProgramPanel() {
+  let panel = $('wechat-mini-program-panel');
+  if (panel) return panel;
+  const anchor = $('live-business-panel');
+  if (!anchor) return null;
+  panel = document.createElement('article');
+  panel.id = 'wechat-mini-program-panel';
+  panel.className = 'wide ai-command-card';
+  panel.innerHTML = `
+    <div class="article-head"><div><label>小程序访问数据 · 复用既有业务接入</label><h3>微信小程序访问数据</h3></div><span id="wechat-mini-program-badge" class="status-pill waiting">检查中</span></div>
+    <div id="wechat-mini-program-message" class="notice">正在检查现有小程序业务连接与访问统计状态。</div>
+    <div id="wechat-mini-program-summary" class="analysis-body"></div>
+    <div id="wechat-mini-program-entry" class="notice" style="margin-top:12px">正在检查官网小程序直达入口。</div>
+    <div class="button-row" style="margin-top:12px"><button id="generate-wechat-mini-program-link" class="outline-button">生成官网小程序直达链接</button></div>
+    <details id="wechat-mini-program-direct-config" style="margin-top:12px">
+      <summary style="cursor:pointer;font-weight:700">高级：配置 AppSecret 以生成直达链接并读取访问统计</summary>
+      <div class="content-form" style="margin-top:12px">
+        <label>小程序 AppID<input id="wechat-mini-program-app-id" maxlength="64" autocomplete="off" value="wxcc5ca2cefb937dba" readonly></label>
+        <label>小程序 AppSecret<input id="wechat-mini-program-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="仅填写小程序后台的 AppSecret"></label>
+        <small class="form-help">这是访问趋势的可选直连恢复通道，不代表重新接入小程序业务。凭据只在当前 Windows 用户下加密保存，不上传 GitHub、不写入运营日志。</small>
+        <div class="button-row"><button id="save-wechat-mini-program" class="primary-button">保存并验证微信访问统计</button><button id="refresh-wechat-mini-program" class="outline-button">立即刷新访问数据</button></div>
+      </div>
+    </details>`;
+  anchor.insertAdjacentElement('afterend', panel);
+  $('save-wechat-mini-program').addEventListener('click', saveWeChatMiniProgram);
+  $('refresh-wechat-mini-program').addEventListener('click', refreshWeChatMiniProgram);
+  $('generate-wechat-mini-program-link').addEventListener('click', generateWeChatMiniProgramLink);
+  return panel;
+}
+
 function businessStat(label, value) {
   const suffix = value === 0 ? ' · 真实值' : '';
   return `<div><b>${value === null || value === undefined ? '—' : esc(value)}</b><small>${esc(label)}${suffix}</small></div>`;
@@ -139,6 +173,7 @@ function businessStat(label, value) {
 
 function renderBusinessSource(data) {
   ensureLiveBusinessPanel();
+  ensureWeChatMiniProgramPanel();
   if (!data) return;
   const connected = data.status === 'connected';
   const core = coreCompleteness(data);
@@ -164,6 +199,7 @@ function renderBusinessSource(data) {
     </div>
     <div class="rate-list">
       <span>核心完整度：${core.present}/${core.total}</span>
+      ${core.missing_fields.length ? `<span>待接入：${esc(coreMissingLabels(core))}</span>` : ''}
       <span>只读：${q.read_only === true ? '已验证' : '待验证'}</span>
       <span>写操作：${esc(q.write_operations ?? '—')}</span>
       <span>0 是真实统计值，不等于未接入</span>
@@ -172,18 +208,108 @@ function renderBusinessSource(data) {
 
   const importPanel = $('business-json')?.closest('article');
   if (importPanel) importPanel.style.display = connected ? 'none' : '';
+  renderWeChatMiniProgram(data.wechat_mini_program);
+}
+
+function renderWeChatMiniProgram(data) {
+  ensureWeChatMiniProgramPanel();
+  if (!data) return;
+  const connected = data.status === 'connected';
+  const businessConnected = data.business_connected === true || data.status === 'business_connected';
+  const recovered = data.status === 'recovered_snapshot';
+  const needsRepair = data.status === 'error';
+  const summary = data.summary || {};
+  const hasAggregate = ['visit_uv','visit_pv','session_cnt','visit_uv_new'].some(key => summary[key] !== null && summary[key] !== undefined);
+  const mode = data.source_mode || '';
+  const badgeReady = connected || businessConnected || recovered;
+  $('wechat-mini-program-badge').textContent = data.status_label || (connected ? '微信数据已验证' : businessConnected ? '小程序业务已接入' : '访问统计待同步');
+  $('wechat-mini-program-badge').className = `status-pill ${badgeReady ? 'ready' : 'waiting'}`;
+  $('wechat-mini-program-app-id').placeholder = data.has_credentials ? 'AppID 已加密保存；无需重复填写' : '仅在需要直连微信统计时填写';
+  $('wechat-mini-program-secret').placeholder = data.has_credentials ? 'AppSecret 已加密保存；无需重复填写' : '仅在需要直连微信统计时填写';
+  const entry = data.entry || {};
+  const identity = data.public_identity || entry.identity || {};
+  const entryBox = $('wechat-mini-program-entry');
+  const entryButton = $('generate-wechat-mini-program-link');
+  if (entryBox) {
+    entryBox.textContent = entry.active
+      ? `官网直达入口已生成 · 页面：${entry.url_link?.page_path || identity.default_path || 'pages/index/index'} · 有效期至：${entry.url_link?.expires_at || '—'}`
+      : `官网直达入口待生成 · 小程序：${identity.name || '卡嘴子本地服务'} · 页面：${identity.default_path || 'pages/index/index'}${entry.can_generate ? '' : ' · 需要先在下方安全保存 AppSecret'}`;
+  }
+  if (entryButton) entryButton.disabled = !entry.can_generate;
+  const details = $('wechat-mini-program-direct-config');
+  if (details) details.open = needsRepair && !businessConnected;
+  const dateNote = summary.ref_date ? ` · 最近完整日：${summary.ref_date}` : '';
+  $('wechat-mini-program-message').textContent = `${data.message || ''}${dateNote}`;
+  if (hasAggregate) {
+    $('wechat-mini-program-summary').innerHTML = `
+      <div class="analysis-values">
+        ${businessStat(`小程序访问UV ${summary.ref_date || ''}`, summary.visit_uv)}
+        ${businessStat('访问PV', summary.visit_pv)}
+        ${businessStat('打开次数', summary.session_cnt)}
+        ${businessStat('新访客UV', summary.visit_uv_new)}
+      </div><div class="rate-list"><span>来源：${mode === 'server_aggregate' ? '既有服务器小程序聚合接口' : mode === 'local_verified_snapshot' ? '此前已验证访问快照' : '微信官方访问趋势'}</span><span>不要求重复接入小程序业务</span></div>`;
+  } else if (businessConnected) {
+    $('wechat-mini-program-summary').innerHTML = '<div class="empty">小程序业务已经接入；当前仅等待访问趋势聚合字段同步。系统不会因此把小程序判为“未接入”，也不会要求重新配置整个小程序。</div>';
+  } else {
+    $('wechat-mini-program-summary').innerHTML = `<div class="empty">${needsRepair ? '微信访问统计直连需要修复；这不会影响已经存在的小程序业务连接。' : '如需额外读取微信访问趋势，可展开下方高级直连配置。'}</div>`;
+  }
 }
 
 async function loadBusinessSource() {
   ensureLiveBusinessPanel();
   try {
     const data = await api('/api/business-source/status');
+    window.__lastBusinessSource = data;
     renderBusinessSource(data);
     return data;
   } catch (error) {
     $('business-source-message').textContent = error.message;
     return null;
   }
+}
+
+async function saveWeChatMiniProgram() {
+  const app_id = $('wechat-mini-program-app-id').value.trim();
+  const app_secret = $('wechat-mini-program-secret').value.trim();
+  if (!app_id || !app_secret) { toast('请填写小程序后台的 AppID 与 AppSecret','error'); return; }
+  const button = $('save-wechat-mini-program'); button.disabled = true; button.textContent = '微信验证中…';
+  try {
+    const data = await api('/api/wechat-mini-program/configure', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({app_id, app_secret})});
+    $('wechat-mini-program-secret').value = '';
+    renderWeChatMiniProgram(data);
+    await generateWeChatMiniProgramLink(true);
+    await Promise.all([loadBusinessSource(), loadAnalytics(), window.loadIntegrations ? window.loadIntegrations() : Promise.resolve()]);
+    toast('微信小程序访问数据已验证；以后可按需刷新');
+  } catch (error) { toast(error.message,'error'); }
+  finally { button.disabled = false; button.textContent = '保存并验证微信访问统计'; }
+}
+
+async function generateWeChatMiniProgramLink(quiet=false) {
+  const button = $('generate-wechat-mini-program-link');
+  if (button) { button.disabled = true; button.textContent = '生成中…'; }
+  try {
+    const data = await api('/api/wechat-mini-program/url-link', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({page_path:'pages/index/index', expire_days:30})});
+    const status = await api('/api/wechat-mini-program/status');
+    renderWeChatMiniProgram(status);
+    if (!quiet) toast('官网小程序直达链接已生成');
+    return data;
+  } catch (error) {
+    if (!quiet) toast(error.message,'error');
+    return null;
+  } finally {
+    if (button) { button.disabled = false; button.textContent = '生成官网小程序直达链接'; }
+  }
+}
+
+async function refreshWeChatMiniProgram() {
+  const button = $('refresh-wechat-mini-program'); button.disabled = true; button.textContent = '刷新中…';
+  try {
+    const data = await api('/api/wechat-mini-program/refresh', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    renderWeChatMiniProgram(data);
+    await Promise.all([loadBusinessSource(), loadAnalytics()]);
+    toast('微信小程序访问数据已刷新');
+  } catch (error) { toast(error.message,'error'); }
+  finally { button.disabled = false; button.textContent = '立即刷新访问数据'; }
 }
 
 async function saveBusinessSource() {
@@ -227,7 +353,7 @@ async function loadAnalytics() {
   $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
   $('analytics-truth').textContent = connected && core.missing_fields.length
-    ? `只显示已验证真实数据；核心分析仍缺 ${core.missing_fields.length} 项，不会用 0、估算值或公开市场信号代替。`
+    ? `只显示已验证真实数据；当前待接入：${coreMissingLabels(core)}。不会用 0、估算值或公开市场信号代替。`
     : '7 个核心指标均有真实来源；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合，0 表示真实统计为 0。';
 
   if (source?.status === 'connected') {

@@ -5,7 +5,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "05_V2.0.0_Source"
 sys.path.insert(0, str(SOURCE))
 
-from integrations.business_data import ENDPOINT, snapshot_from_remote, validate_remote_summary
+from integrations.business_data import ENDPOINT, snapshot_from_remote, validate_entry_signals, validate_remote_summary
+from backend.r8_13_seo_geo_patch import _normalized_asset_signals
+from core.seo_geo_growth import source_tracking_id
 
 
 def fixture():
@@ -24,6 +26,7 @@ def fixture():
         "mini_program": {
             "status": "ok", "ref_date": "20260916", "visit_uv": 88,
             "visit_pv": 140, "session_cnt": 95, "visit_uv_new": 12,
+            "error_code": "", "message": "",
         },
         "funnel": {"mini_program_visits": 88, "repair_requests": 5, "leads": 4},
         "data_quality": {
@@ -55,6 +58,49 @@ def main():
     assert snapshot_no_wechat["mini_program_visits"] is None
     assert snapshot_no_wechat["repair_requests"] == 5
     assert snapshot_no_wechat["leads"] == 4
+
+    upstream_error = fixture()
+    upstream_error["mini_program"] = {
+        "status": "wechat_error", "ref_date": "20260916", "visit_uv": None,
+        "error_code": "48001", "message": "analytics permission unavailable",
+    }
+    clean_error = validate_remote_summary(upstream_error)
+    assert clean_error["mini_program"]["error_code"] == "48001"
+    assert clean_error["mini_program"]["message"] == "analytics permission unavailable"
+
+    signals = validate_entry_signals({
+        "ok": True,
+        "window_days": 30,
+        "landing_signals": 12,
+        "open_click_signals": 5,
+        "by_source": {"KZSEO-864C4B1861DD": {"landing": 12, "open_click": 5}},
+        "by_asset": {"SEO-123456789ABC": {"landing": 9, "open_click": 4}},
+        "by_day": {
+            "2026-10-15": {"landing": 7, "open_click": 3},
+            "2026-10-14": {"landing": 5, "open_click": 2},
+        },
+        "truth": "client_signal_only_not_order_or_consultation",
+        "as_of": "2026-10-15T00:00:00Z",
+    })
+    assert signals["landing_signals"] == 12
+    assert signals["open_click_signals"] == 5
+    assert signals["by_asset"]["SEO-123456789ABC"]["open_click"] == 4
+    assert signals["by_day"]["2026-10-15"]["landing"] == 7
+    assert signals["truth"] == "client_signal_only_not_order_or_consultation"
+
+    asset = {"id": "SEO-REAL-ASSET", "region": "涟水县", "service": "水电维修", "keyword": "涟水水电维修"}
+    source_id = source_tracking_id(asset)
+    normalized, aliases, unmatched, anomalies = _normalized_asset_signals({
+        "by_asset": {
+            source_id: {"landing": 2, "open_click": 1},
+            "SEO-123456789ABC": {"landing": 9, "open_click": 4},
+        }
+    }, [asset])
+    assert aliases[source_id] == "SEO-REAL-ASSET"
+    assert normalized["SEO-REAL-ASSET"]["open_click"] == 1
+    assert normalized["未归因"]["landing"] == 9
+    assert unmatched == ["SEO-123456789ABC"]
+    assert anomalies == ["SEO-123456789ABC"]
 
     unsafe = fixture()
     unsafe["phone"] = "13800000000"
