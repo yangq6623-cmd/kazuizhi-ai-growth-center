@@ -102,7 +102,17 @@
     summary.innerHTML=`<article><small>内容包</small><b>${packs.length}</b><span>已绑定增长ID</span></article><article><small>官网技术底座</small><b class="${audit?.result==='ready'?'good':'warn'}">${audit?.result==='ready'?'通过':'待处理'}</b><span>${audit?`堵点 ${audit.blockers?.length||0} 项`:'尚未检查'}</span></article><article><small>已标记部署</small><b>${deployed}</b><span>仅统计明确部署状态</span></article><article><small>已标记收录</small><b>${indexed}</b><span>只记录真实观察结果</span></article>`;
   }
 
-  function refresh(){renderAccountWorkbench();ensureConversionWorkbench();ensureSearchSummary();syncParentFrameHeight()}
+  function clarifyPublicationScope(){
+    const evidence=byId('execution-overview')?.querySelector('.exec-evidence');
+    if(!evidence)return;
+    const first=evidence.querySelector('dl>div:first-child dt');
+    if(first)first.textContent='社媒/内容平台发布';
+    let note=evidence.querySelector('[data-kz-publication-scope]');
+    if(!note){note=document.createElement('p');note.dataset.kzPublicationScope='1';evidence.appendChild(note)}
+    note.textContent='这里只统计执行中心的平台发布回执，不含 SEO 公网 URL、搜索 SUBMITTED 或 GEO 机会公网 URL；三类结果请在 SEO/GEO 增长页分别核对。';
+  }
+
+  function refresh(){renderAccountWorkbench();ensureConversionWorkbench();ensureSearchSummary();clarifyPublicationScope();syncParentFrameHeight()}
   window.addEventListener('operational:refreshed',refresh);
   window.addEventListener('operational:search-updated',ensureSearchSummary);
   window.addEventListener('operational:device-status',refresh);

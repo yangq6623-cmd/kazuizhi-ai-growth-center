@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*', 'codex/geo-818-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -70,6 +70,12 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python 04_Build/v2/test_geo_818_ledger_safety.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO 818 ledger regression failed' }
+      - name: "#824 field truth, scope labels and no-early-retest regression"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#824 synthetic/read-only tests: no production task retry or external send'
+          python 04_Build/v2/test_geo_824_field_truth.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #824 field truth regression failed' }
       - name: Verify #809 GEO browser agent lightweight response
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -255,6 +261,7 @@ jobs:
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
           Copy-Item docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md installer_output_v2/PHASE1_ACCEPTANCE.md
+          Copy-Item docs/SEO_GEO_824_FIELD_REPAIR_ACCEPTANCE_20261018.md installer_output_v2/SEO_GEO_824_REPAIR_REPORT.md
       - name: Package GEO Chrome extension 2.2.2.814
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'

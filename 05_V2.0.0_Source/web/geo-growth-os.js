@@ -206,6 +206,22 @@
     return `${all?'三窗口复测完成':'三窗口复测未完成'} ${coverage.completed}/${coverage.target} · `+
       ['24h','72h','7d'].map(key=>`${key} ${windows[key]==='completed'?'已完成':windows[key]?'未完成':'待同步'}`).join(' · ');
   }
+  function shortAt(value){
+    if(!value)return '—';
+    const date=value instanceof Date?value:new Date(value);
+    if(!Number.isFinite(date.getTime()))return String(value);
+    const pad=n=>String(n).padStart(2,'0');
+    return `${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  function retestScheduleText(schedule){
+    if(!Array.isArray(schedule)||!schedule.length)return '到期时间待同步';
+    const now=Date.now();
+    return schedule.map(slot=>{
+      const dueMs=Number(slot?.due_at_epoch||0)*1000;
+      const state=slot?.signal_id?'已完成':slot?.task_id?'已排队':dueMs&&now>=dueMs?'已到期待调度':'未到期';
+      return `${slot?.window||'?'} ${shortAt(dueMs?new Date(dueMs):'')} ${state}`;
+    }).join(' · ');
+  }
 
   function render(data){
     cache=data||{};
@@ -310,8 +326,8 @@
         <td><span class="geo-os-score">${Number(item.opportunity_score||0)}</span><small>${esc(item.priority||'')}</small></td>
         <td>${esc(item.decision||'自动判断')}<small>${esc(item.keyword||'')}</small></td>
         <td><span class="geo-os-pill ${item.job_state==='completed'?'ok':item.job_state==='failed'?'bad':'wait'}">${esc(itemState(item.state))}</span><small>${esc(item.job_id||'待派发')}</small></td>
-        <td><span class="geo-os-pill ${item.public_url?'ok':item.asset_stage==='QC_PASSED'?'wait':''}">${esc(item.asset_stage||'等待')}</span><small>${item.public_url?esc(item.public_url):'必须有真实公网回执'}</small>${(item.state==='waiting_publish'||item.state==='deferred')?'<button type="button" class="geo-os-mini-action" data-geo-advance="1">立即推进</button>':''}</td>
-        <td><span class="geo-os-pill ${stateClass(item.state)}">${esc(result)}</span><small>${item.operating_before_score==null?'C级运营复测，不改变正式A/B':`Before ${item.operating_before_score} → After ${item.operating_after_score}`}</small></td>
+        <td><span class="geo-os-pill ${item.public_url?'ok':item.asset_stage==='QC_PASSED'?'wait':''}">${esc(item.asset_stage||'等待')}</span><small>${item.public_url?esc(item.public_url):'必须有真实公网回执'}</small><small>${item.published_at?'公网时间 '+esc(shortAt(item.published_at)):'公网时间待核实'}</small>${(item.state==='waiting_publish'||item.state==='deferred')?'<button type="button" class="geo-os-mini-action" data-geo-advance="1">立即推进</button>':''}</td>
+        <td><span class="geo-os-pill ${stateClass(item.state)}">${esc(result)}</span><small>${item.operating_before_score==null?'C级运营复测，不改变正式A/B':`Before ${item.operating_before_score} → After ${item.operating_after_score}`}</small><small>${esc(retestScheduleText(item.retest_schedule))}</small></td>
       </tr>`;
     }).join(''):snapshotPending?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">真实机会明细尚未读取，不代表机会池为空。</td></tr>':transportDegraded?'<tr><td colspan="6" style="padding:18px;text-align:center;color:#986000">运行概览已读取，机会明细暂不可用；不代表任务为零。</td></tr>':'<tr><td colspan="6" style="padding:18px;text-align:center;color:#8290a3">当前还没有可执行 GEO 缺口。新的豆包 C级 Signal 到达后会自动判断并创建机会。</td></tr>';
 

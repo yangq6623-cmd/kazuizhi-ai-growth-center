@@ -325,7 +325,12 @@
   }
 
   function auditDisabledButtons(){
-    document.querySelectorAll('button:disabled').forEach(btn=>{if(!btn.title)btn.title=btn.dataset.disabledReason||'当前条件未满足；完成前置步骤后按钮会自动可用。'});
+    document.querySelectorAll('button:not(:disabled)[data-kz-disabled-title="1"]').forEach(btn=>{
+      btn.removeAttribute('title');delete btn.dataset.kzDisabledTitle;
+    });
+    document.querySelectorAll('button:disabled').forEach(btn=>{
+      if(!btn.title){btn.title=btn.dataset.disabledReason||'当前条件未满足；完成前置步骤后按钮会自动可用。';btn.dataset.kzDisabledTitle='1'}
+    });
     if(!q('r810-button-reason')){const node=document.createElement('div');node.id='r810-button-reason';node.className='r810-button-reason';document.body.appendChild(node)}
   }
 

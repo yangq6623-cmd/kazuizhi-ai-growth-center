@@ -440,27 +440,48 @@ def _iso_epoch(value):
 
 def _ensure_retest_schedule(item):
     schedule = item.get("retest_schedule")
-    if isinstance(schedule, list) and schedule:
-        return schedule
     base = _iso_epoch(item.get("published_at")) or time.time()
     policy = (_load().get("policy") or {})
     configured = policy.get("retest_windows_seconds") or {}
-    schedule = []
+    existing = {
+        str(slot.get("window") or ""): slot
+        for slot in (schedule or []) if isinstance(slot, dict)
+    }
+    normalized = []
     for label, default_seconds in DEFAULT_RETEST_WINDOWS:
         try:
             seconds = max(300, int(configured.get(label) or default_seconds))
         except (TypeError, ValueError):
             seconds = default_seconds
-        schedule.append({
-            "window": label,
-            "due_at_epoch": base + seconds,
-            "task_id": item.get("retest_task_id") if label == "24h" else "",
-            "signal_id": "",
-            "completed_at": "",
-        })
-    item["retest_schedule"] = schedule
-    item["retest_due_at_epoch"] = schedule[0]["due_at_epoch"]
-    return schedule
+        required_due = base + seconds
+        slot = existing.get(label)
+        if slot is None:
+            slot = {
+                "window": label,
+                "due_at_epoch": required_due,
+                "task_id": item.get("retest_task_id") if label == "24h" else "",
+                "signal_id": "",
+                "completed_at": "",
+            }
+        else:
+            # A verified content refresh may move published_at after the first
+            # schedule was created. Only untouched future windows may move:
+            # never rewrite an existing Task, Receipt or completed history.
+            try:
+                current_due = float(slot.get("due_at_epoch") or 0)
+            except (TypeError, ValueError, OverflowError):
+                current_due = 0.0
+            if not slot.get("task_id") and not slot.get("signal_id") and current_due < required_due:
+                slot["due_at_epoch"] = required_due
+                slot["schedule_rebased_at"] = now_iso()
+                slot["schedule_basis_published_at"] = item.get("published_at") or ""
+        normalized.append(slot)
+    if isinstance(schedule, list):
+        schedule[:] = normalized
+        normalized = schedule
+    item["retest_schedule"] = normalized
+    item["retest_due_at_epoch"] = normalized[0]["due_at_epoch"]
+    return normalized
 
 
 def _latest_aux_for_task(task_id):
@@ -877,7 +898,7 @@ def _pipeline(items):
         {"id": "opportunity", "label": "机会识别", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "decision", "label": "总控策略判断", "count": len(items), "state": "active" if items else "waiting"},
         {"id": "execute", "label": "AI员工执行", "count": sum(1 for x in items if x.get("job_id")), "state": "active" if any(x.get("job_id") for x in items) else "waiting"},
-        {"id": "publish", "label": "真实发布", "count": sum(1 for x in items if _has_verified_publication(x)), "state": "active" if any(_has_verified_publication(x) for x in items) else "waiting"},
+        {"id": "publish", "label": "GEO累计公网URL", "count": sum(1 for x in items if _has_verified_publication(x)), "state": "active" if any(_has_verified_publication(x) for x in items) else "waiting"},
         {"id": "retest", "label": "自动复测", "count": sum(1 for x in items if x.get("after_signal_id")), "state": "active" if any(x.get("after_signal_id") for x in items) else "waiting"},
         {"id": "learn", "label": "Before / After", "count": sum(1 for x in items if x.get("state") == "completed"), "state": "active" if any(x.get("state") == "completed" for x in items) else "waiting"},
     ]

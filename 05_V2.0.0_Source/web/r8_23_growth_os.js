@@ -225,10 +225,12 @@
     }).join('');
   }
 
-  function capabilityTable(growth){
+  function capabilityTable(growth, formalCompleted){
     const caps = capsArray(growth.capabilities);
     if(!caps.length) return '<div class="kz23-truth">等待能力状态。</div>';
-    return `<table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>实际利用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
+    const formalCap=caps.find(cap=>String(cap.id||'')==='formal_geo_browser')||{};
+    const formalCalls=Number((formalCap.utilization||{}).invoke_count||0);
+    return `<div class="kz23-truth">当前正式 Evidence ${Number(formalCompleted||0)}/50 来自独立历史证据账本；“真实外部 AI 网页 A/B 验证”本机路由调用 ${formalCalls} 次只统计当前安装的能力调度。两者可以同时成立，不能相互替代。</div><table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>本机路由调用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
       const util=cap.utilization||{}; const ready=cap.ready===true; const unknown=cap.ready==null;
       const state=unknown?(cap.state||'策略就绪'):ready?'可用':(cap.state||'等待');
       return `<tr><td><b>${esc(cap.name||cap.id)}</b></td><td class="${ready?'kz23-ok':'kz23-wait'}">${esc(state)}</td><td>${Number(util.invoke_count||0)} 次${util.last_invoked_at?`<br>${esc(shortTime(util.last_invoked_at))}`:''}</td><td>${esc(cap.truth_level||'—')}${util.last_receipt_id?`<br>${esc(util.last_receipt_id)}`:''}</td></tr>`;
@@ -304,7 +306,7 @@
           </div>
         </div>
         <div class="kz23-truth">${esc(growth.truth_rule || '普通API、本地模型和内部任务只作辅助，不冒充公网发布、搜索收录、排名或正式GEO成绩。')} ${esc(growth.operating_rule || '')}</div>
-        <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth)}</div></details>
+        <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth,tested)}</div></details>
         <details class="kz23-details" id="kz-r8-23-legacy"><summary>技术主线与历史审计 · 默认收起</summary><div class="kz23-details-content kz23-legacy-slot"><div id="kz-r8-23-r22-slot"></div><div id="kz-r8-23-ledger-slot"></div></div></details>
       </div>`;
 

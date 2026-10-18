@@ -156,12 +156,17 @@ def _reconciled_daily_runs(data):
         if not date:
             rows.append(row)
             continue
+        planned = sum(1 for asset in assets if str(asset.get("created_at") or "").startswith(date))
+        generated = sum(1 for asset in assets if str(asset.get("generated_at") or "").startswith(date))
         published = sum(1 for asset in assets if str(asset.get("published_at") or "").startswith(date))
         submitted = sum(
             1 for asset in assets
             if any(str(receipt.get("at") or "").startswith(date) for receipt in (asset.get("submission_receipts") or []))
         )
-        if row.get("published") != published or row.get("submitted") != submitted:
+        if (row.get("planned") != planned or row.get("generated") != generated
+                or row.get("published") != published or row.get("submitted") != submitted):
+            row["planned"] = planned
+            row["generated"] = generated
             row["published"] = published
             row["submitted"] = submitted
             row["receipt_reconciled"] = True

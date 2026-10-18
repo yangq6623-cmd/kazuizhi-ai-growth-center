@@ -250,7 +250,8 @@ _GEO_UI_OPPORTUNITY_FIELDS = (
     "opportunity_score", "priority", "decision", "keyword", "state",
     "job_state", "asset_stage", "job_id", "public_url", "outcome",
     "operating_delta", "retest_task_id", "operating_before_score",
-    "operating_after_score", "retest_coverage",
+    "operating_after_score", "retest_coverage", "published_at",
+    "publication_receipt_id", "retest_schedule",
 )
 
 
@@ -308,8 +309,18 @@ def _geo_fast_ui_compact(snapshot=None):
             for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)
         ],
         "opportunities": [
-            {k: (str(row[k])[:260] if isinstance(row.get(k), str) else row.get(k))
-             for k in _GEO_UI_OPPORTUNITY_FIELDS if k in row}
+            {
+                **{k: (str(row[k])[:260] if isinstance(row.get(k), str) else row.get(k))
+                   for k in _GEO_UI_OPPORTUNITY_FIELDS
+                   if k in row and k != "retest_schedule"},
+                "retest_schedule": [
+                    {key: slot.get(key) for key in (
+                        "window", "due_at_epoch", "task_id", "signal_id", "completed_at",
+                    )}
+                    for slot in (row.get("retest_schedule") or [])[:3]
+                    if isinstance(slot, dict)
+                ],
+            }
             for row in rows[:15] if isinstance(row, dict)
         ],
         "technical_blockers": [
