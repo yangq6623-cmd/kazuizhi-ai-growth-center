@@ -38,6 +38,27 @@ class FieldTruth(TestCase):
         self.assertEqual(slots[1]["task_id"], "existing-task")
         self.assertEqual(slots[2]["signal_id"], "done-receipt")
 
+    def test_duplicate_receipt_moves_untouched_schedule_back_to_first_exposure(self):
+        first = "2026-10-18T17:04:07+08:00"
+        duplicate = "2026-10-18T22:30:20+08:00"
+        item = {
+            "published_at": first,
+            "retest_schedule": [
+                {"window": "24h", "due_at_epoch": geo_growth._iso_epoch(duplicate) + 86400,
+                 "task_id": "", "signal_id": "", "completed_at": "",
+                 "schedule_basis_published_at": duplicate},
+                {"window": "72h", "due_at_epoch": geo_growth._iso_epoch(duplicate) + 259200,
+                 "task_id": "existing-task", "signal_id": "", "completed_at": ""},
+            ],
+        }
+        with patch.object(geo_growth, "_load", return_value={"policy": {}}), \
+             patch.object(geo_growth, "now_iso", return_value="2026-10-18T22:31:00+08:00"):
+            slots = geo_growth._ensure_retest_schedule(item)
+        self.assertEqual(slots[0]["due_at_epoch"], geo_growth._iso_epoch(first) + 86400)
+        self.assertEqual(slots[0]["schedule_basis_published_at"], first)
+        self.assertEqual(slots[1]["task_id"], "existing-task")
+        self.assertEqual(slots[1]["due_at_epoch"], geo_growth._iso_epoch(duplicate) + 259200)
+
     def test_fast_ui_exposes_bounded_schedule_provenance(self):
         item = {
             "id": "opp", "published_at": "2026-10-18T17:04:07+08:00",
@@ -83,7 +104,8 @@ class FieldTruth(TestCase):
         self.assertIn("社媒/内容平台发布", execution)
         self.assertIn("不含 SEO 公网 URL", execution)
         self.assertIn('button:not(:disabled)[data-kz-disabled-title="1"]', workbench)
-        self.assertIn("公网时间", geo)
+        self.assertIn("有效公网时间", geo)
+        self.assertIn("发布回执", geo)
         self.assertIn("已到期待调度", geo)
 
 

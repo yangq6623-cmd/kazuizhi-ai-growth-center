@@ -462,6 +462,7 @@ def _ensure_retest_schedule(item):
                 "task_id": item.get("retest_task_id") if label == "24h" else "",
                 "signal_id": "",
                 "completed_at": "",
+                "schedule_basis_published_at": item.get("published_at") or "",
             }
         else:
             # A verified content refresh may move published_at after the first
@@ -471,7 +472,16 @@ def _ensure_retest_schedule(item):
                 current_due = float(slot.get("due_at_epoch") or 0)
             except (TypeError, ValueError, OverflowError):
                 current_due = 0.0
-            if not slot.get("task_id") and not slot.get("signal_id") and current_due < required_due:
+            # For an untouched slot the verified publication event is the sole
+            # timing source. Reconcile in either direction: #826 could move a
+            # slot too late after selecting a duplicate verification receipt,
+            # while older builds could leave it too early. Existing Task,
+            # Signal and Receipt history remains immutable.
+            if (
+                not slot.get("task_id")
+                and not slot.get("signal_id")
+                and abs(current_due - required_due) >= 1
+            ):
                 slot["due_at_epoch"] = required_due
                 slot["schedule_rebased_at"] = now_iso()
                 slot["schedule_basis_published_at"] = item.get("published_at") or ""
@@ -615,8 +625,17 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             row for row in (published_asset.get("content_refresh_events") or [])
             if isinstance(row, dict)
             and str(row.get("growth_action_id") or row.get("content_revision_id") or "") == item_id
+            and bool(row.get("deploy_receipt"))
+            and str(row.get("public_url") or "").startswith(("https://", "http://"))
         ]
-        refresh = refresh_events[-1] if refresh_events else {}
+        # A content revision becomes public at its first verified receipt.
+        # Re-copying the same revision later is audit history, not a new
+        # exposure event and must not postpone 24h/72h/7d indefinitely.
+        refresh = min(
+            refresh_events,
+            key=lambda row: _iso_epoch(row.get("at")) or float("inf"),
+            default={},
+        )
         verified_at = str(refresh.get("at") or "")
         if verified_at:
             item["published_at"] = verified_at

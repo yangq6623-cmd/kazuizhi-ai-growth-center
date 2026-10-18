@@ -166,10 +166,21 @@ def prepare_phase3_assets(plan):
         stage = str(asset.get("stage") or "")
         action_id = str(asset.get("growth_action_id") or "")
         is_external = seo_geo_growth.STAGE_INDEX.get(stage, 0) >= seo_geo_growth.STAGE_INDEX["PUBLISHED"]
+        verified_for_action = any(
+            isinstance(event, dict)
+            and str(event.get("growth_action_id") or event.get("content_revision_id") or "") == action_id
+            and bool(event.get("deploy_receipt"))
+            and str(event.get("public_url") or "").startswith(("https://", "http://"))
+            for event in (asset.get("content_refresh_events") or [])
+        )
         already_prepared = bool(
             action_id
             and str(asset.get("prepared_growth_action_id") or "") == action_id
-            and (asset.get("republish_pending") or stage in {"GENERATED", "QC_PASSED"})
+            and (
+                asset.get("republish_pending")
+                or stage in {"GENERATED", "QC_PASSED"}
+                or verified_for_action
+            )
         )
         if stage != "PLANNED" and not is_external:
             continue

@@ -103,6 +103,31 @@ def main():
             assert event["growth_action_id"] == "ROUND-2", event
             assert event["deploy_receipt"], event
 
+            # The same completed action must not regenerate/re-publish on each
+            # autonomous loop after its first verified public receipt.
+            event_count = len(published["content_refresh_events"])
+            repeated = bridge.prepare_phase3_assets({"actions": [{
+                "action_id": "ROUND-2",
+                "job_state": "completed",
+                "opportunity_id": opportunity["id"],
+                "question_id": "GEO50-D01",
+                "question_text": "涟水水电维修服务能力是否充足？",
+                "decision": "补强服务范围、检测报价和订单留痕说明",
+            }]})
+            assert repeated["refreshed"] == [], repeated
+            stable = next(row for row in growth.dashboard()["assets"] if row.get("id") == asset_id)
+            assert stable["republish_pending"] is False, stable
+            assert len(stable["content_refresh_events"]) == event_count, stable
+
+            # Preserve a duplicate deployment Receipt as audit history, but
+            # never let it replace the first public exposure of this revision.
+            duplicate_event = dict(event)
+            duplicate_event["at"] = (
+                datetime.fromisoformat(event["at"].replace("Z", "+00:00")) + timedelta(hours=5)
+            ).isoformat()
+            duplicate_event["deploy_receipt"] = f'{event["deploy_receipt"]}-DUPLICATE'
+            published["content_refresh_events"].append(duplicate_event)
+
             item = {
                 "id": "ROUND-2",
                 "signal_id": "SIGNAL-2",
@@ -145,7 +170,9 @@ def main():
             # real external task is queued. Its receipt closes the review and
             # makes the next round eligible.
             elapsed_at = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-            published["content_refresh_events"][-1]["at"] = elapsed_at
+            for refresh_event in published["content_refresh_events"]:
+                if refresh_event.get("growth_action_id") == "ROUND-2":
+                    refresh_event["at"] = elapsed_at
             item["retest_schedule"] = []
             orchestrator._sync_item(data, item, {}, {opportunity["id"]: opportunity}, assets)
             first_slot = item["retest_schedule"][0]
