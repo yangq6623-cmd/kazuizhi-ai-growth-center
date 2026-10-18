@@ -291,9 +291,10 @@ def _geo_fast_ui_compact(snapshot=None):
                               for k in ("ready", "configured", "reason")},
         "retest_windows": {
             label: {key: (data.get("retest_windows") or {}).get(label, {}).get(key)
-                    for key in ("scheduled", "queued", "completed")}
+                    for key in ("scheduled", "queued", "completed", "blocked")}
             for label in ("24h", "72h", "7d")
         },
+        "historical_retests": data.get("historical_retests") or {},
         "pipeline": [
             {k: row.get(k) for k in ("id", "label", "count", "state")}
             for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)
@@ -330,6 +331,10 @@ def _geo_fast_health_overview():
                           for k in ("state", "completed", "target", "ready")},
                 "formal_ab_completed": payload.get("formal_ab_completed"),
                 "formal_ab_target": payload.get("formal_ab_target") or 50,
+                # Preserve missing/unknown retest counts rather than converting
+                # a failed main GET to a misleading 0/0.
+                "retest_windows": payload.get("retest_windows") or {},
+                "historical_retests": payload.get("historical_retests") or {},
                 "today_activity": {k: (payload.get("today_activity") or {}).get(k)
                                    for k in ("last_run_at", "scheduler_fresh", "new_opportunities",
                                              "verified_publications")},
