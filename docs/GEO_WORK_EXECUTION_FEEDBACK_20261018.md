@@ -106,3 +106,13 @@ Windows 完整 CI 与安装包状态另行追加；在其通过之前不得把�
 ## 回滚
 
 本次仅提交候选源码，现场无安装变更。源码回滚到 #816 的 540ff6bd 即可；不需要 SQL 迁移，不应删除或回滚生产 Evidence/Receipt 账本。部署前后均需单独验收 SEO 仍在运行。
+
+## 最终构建与同步记录
+
+- 修复代码提交：[c7764e59dad19bccd5e4d3fbfb1ba6abb8170155](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/commit/c7764e59dad19bccd5e4d3fbfb1ba6abb8170155)。
+- Windows 构建 #817：[39093879002](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions/runs/39093879002)，已完成，结论 **success**。
+- 全部 Windows 测试门禁、打包、签名验证、扫描步骤、静默安装/启动/覆盖升级/卸载测试通过。安装测试发生在 CI 的 Windows runner，非用户本机。
+- [#817 安装包产物](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions/runs/39093879002/artifacts/12123967299)。另有 Portable 产物 12123523992、扩展 2.2.2.814 产物 12123788113。没有要求重装扩展。
+- 没有在用户电脑安装 #817；当前安装仍为 #816。真实外部网页 Receipt 验收仍未完成，构建 success 不能替代该验收。
+- 收尾只读检查 SEO 页面：显示“自动运行”、累计公开回执31、已提交URL30，今日URL提交8；历史异常周期106仍显示“需复核”，不宣称所有SEO历史问题已消失。未操作 SEO 开关，最后返回 GEO 页。
+- Git 命令推送因容器没有 GitHub 用户名凭据失败，随后已通过 GitHub 连接器成功创建独立分支、上传8个文件并提交；已重新读取远端交接文档确认存在。此次是实际远端同步，不是仅本地 commit。
