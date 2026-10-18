@@ -641,7 +641,8 @@ def _sync_item(data, item, jobs, seo_opportunities, assets, task_by_id=None):
         for slot in schedule:
             task_id = str(slot.get("task_id") or "")
             task = (task_by_id or {}).get(task_id) if task_id else None
-            fresh = _latest_aux_for_task(task_id) if task and task.get("state") == "succeeded" else None
+            fresh = (_latest_aux_for_task(task_id) if task and task.get("state") == "succeeded"
+                     and not slot.get("signal_id") else None)
             if fresh and not slot.get("signal_id"):
                 analysed = geo_analysis.analyze_receipt(fresh)
                 slot["signal_id"] = _signal_id(fresh)
