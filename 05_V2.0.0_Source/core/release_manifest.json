@@ -1,0 +1,25 @@
+{
+  "schema": "kz.release-manifest.v1",
+  "product": "Kazuizhi AI Enterprise",
+  "product_version": "2.2.2",
+  "baseline": {
+    "installed_release": "R8-17 #76",
+    "github_run": "#76",
+    "commit": "6e8270e",
+    "package_status": "installed_baseline"
+  },
+  "installed": {
+    "release": "R8-24 GEO Growth OS",
+    "github_run": "source_checkout",
+    "commit": "source_checkout",
+    "package_status": "source_checkout"
+  },
+  "candidate": {
+    "release": "R8-24 GEO Growth OS",
+    "scope": "真实发布、国内 GEO50、自动复测与下一轮闭环",
+    "package_status": "source_checkout",
+    "external_model_configured": false,
+    "local_model_deployed": false
+  },
+  "truth_rule": "安装包身份、外部回执、抓取、收录、排名、AI引用和经营结果必须分别记录；候选源码不代表已经安装或已产生外部结果。"
+}

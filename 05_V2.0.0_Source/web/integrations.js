@@ -80,15 +80,74 @@ function renderBridgePanel(bridge){
     <div class="ai-role"><span>模</span><div><strong>当前运行模式</strong><small>桥断开也不会停止已批准本地任务</small></div><i class="ready">${esc(bridge.operating_mode_label)}</i></div>`;
 }
 
+function ensureEvidenceLedgerPanel(){
+  let panel=$('evidence-ledger-panel');if(panel)return panel;
+  const grid=$('integration-grid');if(!grid)return null;
+  panel=document.createElement('article');
+  panel.id='evidence-ledger-panel';panel.className='wide ai-command-card';
+  panel.innerHTML=`<div class="article-head"><div><label>版本身份与证据底座</label><h3>安装包身份与增长证据总账</h3></div><span id="evidence-ledger-badge" class="status-pill waiting">正在核验</span></div>
+    <div id="release-provenance-grid" class="ai-role-grid"></div>
+    <div id="evidence-ledger-summary" class="notice">正在读取已有本地证据…</div>
+    <div class="button-row"><button id="refresh-evidence-ledger" class="outline-button">汇总已有证据</button></div>
+    <div id="evidence-ledger-events" class="r7-audit-list friendly-empty">尚未汇总；不会自动执行搜索提交或外部发布。</div>`;
+  const anchor=$('bridge-panel')||grid;
+  anchor.insertAdjacentElement('afterend',panel);
+  $('refresh-evidence-ledger').addEventListener('click',refreshEvidenceLedger);
+  return panel;
+}
+
+function evidenceKindLabel(kind){
+  return ({search_submission_receipt:'搜索提交回执',crawl_evidence:'抓取证据',index_evidence:'收录证据',geo_observation:'GEO 观察',business_snapshot:'经营只读快照',mission_receipt:'Mission 回执',search_connector_run:'搜索连接器运行记录'})[kind]||kind||'未知记录';
+}
+
+function renderEvidenceLedger(manifest, ledger){
+  const panel=ensureEvidenceLedgerPanel();if(!panel)return;
+  const baseline=manifest?.baseline||{};const installed=manifest?.installed||{};const candidate=manifest?.candidate||{};const summary=ledger?.summary||{};
+  const packaged=installed.package_status==='packaged_by_github_actions';
+  $('evidence-ledger-badge').textContent=packaged?'安装包身份已验证':'源码工作区';
+  $('evidence-ledger-badge').className=`status-pill ${packaged?'ready':'waiting'}`;
+  $('release-provenance-grid').innerHTML=`
+    <div class="ai-role"><span>装</span><div><strong>当前安装包</strong><small>${esc(installed.release||'待核验')} · ${esc(installed.github_run||'')} · ${esc(installed.commit||'')}</small></div><i class="${packaged?'ready':'waiting'}">${packaged?'CI 已打包':'源码状态'}</i></div>
+    <div class="ai-role"><span>基</span><div><strong>历史基线</strong><small>${esc(baseline.installed_release||'未记录')} · ${esc(baseline.commit||'')}</small></div><i class="ready">保留追溯</i></div>
+    <div class="ai-role"><span>候</span><div><strong>当前能力范围</strong><small>${esc(candidate.scope||'待定义')}</small></div><i class="${packaged?'ready':'waiting'}">${packaged?'随包安装':'待 CI 打包'}</i></div>
+    <div class="ai-role"><span>证</span><div><strong>已汇总外部证据</strong><small>提交、抓取、收录、引用与经营快照分别统计</small></div><i class="${summary.external?'ready':'waiting'}">${esc(String(summary.external||0))} 条</i></div>
+    <div class="ai-role"><span>模</span><div><strong>本地模型</strong><small>本阶段不下载、不部署、不配置密钥</small></div><i class="waiting">稍后部署</i></div>`;
+  const kinds=Object.entries(summary.by_kind||{}).map(([name,count])=>`${evidenceKindLabel(name)} ${count} 条`).join(' · ')||'暂无可追溯外部证据';
+  $('evidence-ledger-summary').textContent=`总账 ${summary.total||0} 条，其中外部证据 ${summary.external||0} 条。${kinds}。${ledger?.truth||''}`;
+  const events=(ledger?.events||[]).slice(0,8);
+  $('evidence-ledger-events').innerHTML=events.length?events.map(row=>`<div class="r7-audit-row"><i class="${row.external?'ready':'waiting'}"></i><div><strong>${esc(evidenceKindLabel(row.kind))}</strong><p>${esc(row.source||'')} · ${esc(row.reference||'无引用')}</p></div><time>${esc(formatTime(row.observed_at)||'')}</time></div>`).join(''):'尚未汇总；点击“汇总已有证据”只读取并整理本机既有记录，不会执行外部动作。';
+}
+
+async function loadEvidenceLedger(){
+  try{
+    const [manifest,ledger]=await Promise.all([api('/api/r8-18/release-manifest'),api('/api/r8-18/evidence-ledger')]);
+    renderEvidenceLedger(manifest,ledger);
+  }catch(error){
+    const panel=ensureEvidenceLedgerPanel();if(panel){$('evidence-ledger-summary').textContent='当前安装包尚未提供证据总账接口；版本身份与外部证据均按未核验处理。';}
+  }
+}
+
+async function refreshEvidenceLedger(){
+  const button=$('refresh-evidence-ledger');button.disabled=true;button.textContent='汇总中…';
+  try{
+    const data=await api('/api/r8-18/evidence-ledger/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    await loadEvidenceLedger();
+    toast(`已汇总 ${data.result?.added||0} 条既有证据；未执行外部提交或发布`);
+  }catch(error){toast(error.message,'error')}finally{button.disabled=false;button.textContent='汇总已有证据'}
+}
+
 function bindIntegrationCards(){
   document.querySelectorAll('.integration-card-action').forEach(card=>{
     const activate=async()=>{
       const id=card.dataset.integration;
       if(id==='local_engine'){toast('正在执行本地系统体检');await runDiagnostics();return}
-      if(id==='external_ai'){$('ai-base-url')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到外部大模型配置');return}
+      if(id==='external_ai'){
+        if(typeof window.kzOpenModelConnectionCenter==='function'){window.kzOpenModelConnectionCenter();return}
+        $('ai-base-url')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到外部大模型配置');return
+      }
       if(id==='business_data'){openPage('analytics');setTimeout(()=>{$('business-json')?.scrollIntoView({behavior:'smooth',block:'center'});toast('真实经营数据尚未实时接入；当前支持导入已验证聚合快照')},0);return}
       if(id==='operations_bridge'){$('bridge-panel')?.scrollIntoView({behavior:'smooth',block:'center'});toast('已定位到双向运营桥');return}
-      if(id==='publishing'){openPage('promotion');toast('内容发布目前仍是人工审核模式；R7 不会自动对外发布');return}
+      if(id==='publishing'){openPage('promotion');toast('质检通过的内容会向已完成 PC 扫码授权的匹配账号自动入队；平台成功必须回传真实回执');return}
       if(id==='finance'){toast('资金操作按安全策略永久禁止自动执行','error');return}
       toast('该连接当前没有可执行操作','error');
     };
@@ -120,16 +179,33 @@ async function refreshIntegrations(){
     $('ai-config-badge').textContent=ai.status_label;
     $('ai-config-badge').className=`status-pill ${ai.status==='connected'?'ready':'waiting'}`;
     $('ai-connection-message').textContent=ai.message;
+    loadEvidenceLedger();
   }catch(error){toast(error.message,'error')}
+}
+
+let lastDiagnosticPayload=null;
+function renderDiagnostics(data){
+  lastDiagnosticPayload=data;
+  const startup=window.__KZ_R812_STARTUP_COORDINATOR__;
+  const startupFailures=Array.isArray(startup?.failed_modules)?startup.failed_modules:[];
+  const checks=[...(data.checks||[]),...startupFailures.map(row=>({
+    status:'fail',
+    name:`界面模块 ${String(row.src||'').split('/').pop()||row.src}`,
+    message:`${row.error||'加载失败'}（尝试 ${row.attempts||1} 次）`,
+  }))];
+  const failed=Number(data.summary?.failed||0)+startupFailures.length;
+  const passed=Number(data.summary?.passed||0);
+  const attention=Number(data.summary?.attention||0);
+  $('diagnostic-summary').className='diagnostic-summary';
+  $('diagnostic-summary').innerHTML=`<strong>${failed?'发现异常':'核心服务正常'}</strong><span>${passed} 项通过 · ${attention} 项待配置 · ${failed} 项失败</span>`;
+  $('diagnostic-list').innerHTML=checks.map(x=>`<div class="diagnostic-row"><i class="${esc(x.status)}"></i><strong>${esc(x.name)}</strong><span>${esc(x.message)}</span><b>${x.status==='pass'?'通过':x.status==='attention'?'待配置':'失败'}</b></div>`).join('');
 }
 
 async function runDiagnostics(){
   const button=$('run-diagnostics');button.disabled=true;button.textContent='体检中…';
   try{
     const data=await api('/api/system/diagnostics',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    $('diagnostic-summary').className='diagnostic-summary';
-    $('diagnostic-summary').innerHTML=`<strong>${data.summary.failed?'发现异常':'核心服务正常'}</strong><span>${data.summary.passed} 项通过 · ${data.summary.attention} 项待配置 · ${data.summary.failed} 项失败</span>`;
-    $('diagnostic-list').innerHTML=data.checks.map(x=>`<div class="diagnostic-row"><i class="${esc(x.status)}"></i><strong>${esc(x.name)}</strong><span>${esc(x.message)}</span><b>${x.status==='pass'?'通过':x.status==='attention'?'待配置':'失败'}</b></div>`).join('');
+    renderDiagnostics(data);
     toast('系统体检已完成');
   }catch(error){toast(error.message,'error')}finally{button.disabled=false;button.textContent='重新体检'}
 }
@@ -149,6 +225,8 @@ $('test-ai-connection').addEventListener('click',async()=>{
 });
 
 $('run-diagnostics').addEventListener('click',runDiagnostics);
+document.addEventListener('kz:startup-module-failed',()=>{if(lastDiagnosticPayload)renderDiagnostics(lastDiagnosticPayload)});
+document.addEventListener('kz:startup-module-recovered',()=>{if(lastDiagnosticPayload)renderDiagnostics(lastDiagnosticPayload)});
 
 $('ask-ai').addEventListener('click',async()=>{
   const prompt=$('ai-command-prompt').value.trim();if(!prompt){toast('请先输入要分析的问题','error');return}

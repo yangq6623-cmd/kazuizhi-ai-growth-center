@@ -88,9 +88,17 @@ try:
         raise AssertionError("Decision center refresh API route missing")
 
     run = (SRC / "run.py").read_text(encoding="utf-8")
-    for token in ("tick % 20 == 0", "refresh_decision_center()", "export_decision_handoff(manager_report)"):
+    for token in ("refresh_decision_center()", "export_decision_handoff(manager_report)"):
         if token not in run:
             raise AssertionError(f"Manager refresh/bridge loop missing: {token}")
+    legacy_five_minute = "tick % 20 == 0" in run
+    monotonic_five_minute = (
+        "HEAVY_CONTROL_INTERVAL_SECONDS = 300" in run
+        and "next_heavy_at = time.monotonic()" in run
+        and "next_heavy_at = time.monotonic() + HEAVY_CONTROL_INTERVAL_SECONDS" in run
+    )
+    if not (legacy_five_minute or monotonic_five_minute):
+        raise AssertionError("Manager refresh/bridge loop must retain an effective five-minute cadence")
 
     print("PASS: autonomous decision center, eight employee reports, manager decisions, interactive drill-down controls, team collaboration view, ChatGPT bridge handoff and guardrails")
 finally:

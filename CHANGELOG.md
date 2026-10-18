@@ -1,3 +1,28 @@
+# V2.2.2 R8-36 Truth Convergence and Recovery — 2026-10-17
+
+- Make the official CN-GEO50 domestic matrix the owner-facing GEO measurement source; mismatched auxiliary evidence remains visible but cannot inflate mention, recommendation or citation rates.
+- Bound decision-center and workflow reads so a slow endpoint reports an explicit unknown/timeout state instead of leaving the page loading or displaying false zeroes.
+- Recheck persisted local content work every minute and resume the single ComfyUI worker when port 8188 becomes healthy, without duplicating completed candidates.
+- Include phase-one acceptance gaps, content backlog and verified technical-SEO blockers in daily review and system diagnostics instead of treating a connected data source as proof of health.
+- Stamp the installed release manifest with the actual GitHub run and commit during CI packaging, while keeping the historical baseline separately traceable.
+- Add a release gate covering GEO truth precedence, recovery behavior, operational exception reporting and the installed-build identity contract.
+
+# V2.2.2 R8-35 Verified Republish Reconciliation — 2026-10-16
+
+- Keep the durable public-template contract synchronized when a GEO action rebuilds an existing submitted page.
+- Verify pending republishes against the installed renderer version instead of a stale historical asset label.
+- Preserve SUBMITTED and later external truth when the IIS direct-file fallback verifies a refreshed page, while attaching the real receipt to the growth action and content revision.
+- Add a release gate that recreates the installed-field mismatch and proves it reconciles without weakening public HTTP evidence requirements.
+
+# V2.2.2 R8-34 SEO/GEO Closed Loop — 2026-10-16
+
+- Turn GEO opportunities that reuse an existing public SEO page into a material content revision and verified republish instead of another internal-only task.
+- Correlate every refresh and deploy receipt to its growth action and content revision so only real public evidence advances the workflow.
+- Coalesce duplicate active opportunities while preserving historical rows, preventing hundreds of signals from blocking the same page.
+- Schedule distinct 24-hour, 72-hour and 7-day external retests; the verified 24-hour review unlocks the next optimization round while later checks remain attached to the completed round.
+- Deduplicate owner-facing daily publication counts by real public URL and exclude superseded internal rows.
+- Add an end-to-end release gate for revision, republish, receipt, retest, review and next-round creation.
+
 # V2.1.0 R8 Final Stability Update — 2026-09-20
 
 - Fixed the real-device screen disappearing between captures by retaining the last valid frame during background refresh.

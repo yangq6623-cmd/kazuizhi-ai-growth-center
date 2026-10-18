@@ -1,0 +1,584 @@
+"""R8-15 guarded public SEO page deployment connector.
+
+The connector is deliberately narrow:
+- it only writes below <site_root>/seo/
+- it never overwrites Web.config, App_Data, uploads, APKs, databases or other site roots
+- it uses atomic file replacement
+- a page is marked PUBLISHED only after its public URL returns HTTP 2xx and passes
+  content, canonical, Schema and robots/indexability verification
+- missing configuration is a human setup item, not a fake deployment failure
+
+The deployment target is intentionally configured at runtime. No server password,
+GitHub token or platform secret is stored here.
+"""
+from __future__ import annotations
+
+import json
+import html
+import os
+import re
+import shutil
+import tempfile
+import urllib.error
+import urllib.request
+import urllib.robotparser
+from copy import deepcopy
+from pathlib import Path, PurePosixPath
+from urllib.parse import urljoin, urlsplit
+
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
+from core.seo_geo_growth import dashboard, record_asset_stage, record_asset_republished
+
+STORE = "r8_15/seo_public_deploy.json"
+RECEIPTS = "r8_15/seo_public_deploy_receipts.json"
+SCHEMA = "kz.seo-public-deploy.v1"
+DEFAULT = {
+    "schema": SCHEMA,
+    "enabled": False,
+    "mode": "local_iis_filesystem",
+    "site_root": "",
+    "public_base_url": "https://kazuizhi.com/",
+    "managed_subdir": "seo",
+    "verify_http": True,
+    "verify_timeout_seconds": 8,
+    "updated_at": "",
+    "last_run_at": "",
+    "last_result": {},
+}
+
+
+def _load():
+    data = read_json(STORE, deepcopy(DEFAULT))
+    if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+        data = deepcopy(DEFAULT)
+    for key, value in DEFAULT.items():
+        data.setdefault(key, deepcopy(value))
+    return data
+
+
+def _save(data):
+    data["schema"] = SCHEMA
+    data["updated_at"] = now_iso()
+    write_json(STORE, data)
+    return data
+
+
+def _safe_root(value: str) -> Path:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("site_root 不能为空")
+    root = Path(raw).expanduser()
+    if not root.is_absolute():
+        raise ValueError("site_root 必须是绝对路径")
+    resolved = root.resolve()
+    # Never accept filesystem/drive roots. The connector may only work in a
+    # specific website directory, and later only inside its /seo child.
+    if resolved == Path(resolved.anchor):
+        raise ValueError("禁止把磁盘根目录作为网站部署目录")
+    return resolved
+
+
+def _safe_public_base(value: str) -> str:
+    url = str(value or "").strip()
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.netloc:
+        raise ValueError("public_base_url 必须是有效 HTTPS 公网地址")
+    return url.rstrip("/") + "/"
+
+
+def configure(payload: dict) -> dict:
+    data = _load()
+    if "site_root" in payload:
+        data["site_root"] = str(_safe_root(payload.get("site_root")))
+    if "public_base_url" in payload:
+        data["public_base_url"] = _safe_public_base(payload.get("public_base_url"))
+    if "enabled" in payload:
+        data["enabled"] = bool(payload.get("enabled"))
+    if "verify_http" in payload:
+        data["verify_http"] = bool(payload.get("verify_http"))
+    if "verify_timeout_seconds" in payload:
+        data["verify_timeout_seconds"] = max(3, min(20, int(payload.get("verify_timeout_seconds") or 8)))
+    _save(data)
+    return status()
+
+
+def _target_dir(data: dict) -> Path | None:
+    try:
+        root = _safe_root(data.get("site_root"))
+    except ValueError:
+        return None
+    return root / "seo"
+
+
+def _status_from_config(data) -> dict:
+    # Isolated projection: never mutates the authenticated deployer settings.
+    if not isinstance(data, dict):
+        data = deepcopy(DEFAULT)
+    for key, value in DEFAULT.items():
+        data.setdefault(key, deepcopy(value))
+    target = _target_dir(data)
+    root = None
+    exists = False
+    writable = False
+    if target is not None:
+        root = target.parent
+        exists = root.exists() and root.is_dir()
+        if exists:
+            try:
+                probe_dir = target if target.exists() else root
+                writable = os.access(probe_dir, os.W_OK)
+            except OSError:
+                writable = False
+    ready = bool(data.get("enabled") and exists and writable)
+    reason = ""
+    if not data.get("enabled"):
+        reason = "公网部署连接器未启用"
+    elif target is None:
+        reason = "尚未配置网站绝对目录"
+    elif not exists:
+        reason = "配置的网站目录在当前机器不可见"
+    elif not writable:
+        reason = "当前运行账户对网站目录没有写权限"
+    return {
+        "configured": bool(data.get("site_root")),
+        "enabled": bool(data.get("enabled")),
+        "ready": ready,
+        "mode": data.get("mode"),
+        "site_root": str(root) if root else "",
+        "managed_subdir": "seo",
+        "public_base_url": data.get("public_base_url"),
+        "verify_http": bool(data.get("verify_http")),
+        "reason": reason,
+        "last_run_at": data.get("last_run_at") or "",
+        "last_result": deepcopy(data.get("last_result") or {}),
+        "safety": {
+            "writes_only_below": "<site_root>/seo/",
+            "touches_web_config": False,
+            "touches_app_data": False,
+            "touches_uploads": False,
+            "touches_database": False,
+            "atomic_replace": True,
+            "public_http_verification_required": bool(data.get("verify_http")),
+            "canonical_verification_required": True,
+            "schema_verification_required": True,
+            "robots_verification_required": True,
+        },
+        "truth": "写入文件不等于已公开；只有公网URL真实返回2xx，并通过内容、canonical、Schema、robots/indexability校验后才记录 PUBLISHED。",
+    }
+
+
+
+def status() -> dict:
+    return _status_from_config(_load())
+
+
+def status_snapshot() -> dict:
+    """Stable read-only API, not subject to legacy status() wrapper signatures."""
+    return _status_from_config(read_json_snapshot(STORE, deepcopy(DEFAULT)))
+
+
+
+def _atomic_copy(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".kz-seo-", suffix=".tmp", dir=str(destination.parent))
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        shutil.copyfile(source, tmp)
+        os.replace(tmp, destination)
+    finally:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+
+
+def _asset_attachments(asset: dict, page_source: Path) -> list[dict]:
+    """Return only files explicitly staged below this page's directory."""
+    page_root = page_source.parent.resolve()
+    valid = []
+    for raw in asset.get("staging_attachments") or []:
+        if not isinstance(raw, dict):
+            continue
+        relative = PurePosixPath(str(raw.get("relative_path") or ""))
+        source = Path(str(raw.get("path") or ""))
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts or not source.is_file():
+            continue
+        try:
+            resolved = source.resolve()
+            resolved.relative_to(page_root)
+        except (OSError, ValueError):
+            continue
+        valid.append({**raw, "path": str(resolved), "relative_path": relative.as_posix()})
+    return valid
+
+
+def _verify_public_attachment(url: str, timeout: int) -> dict:
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Kazuizhi-R8-Campaign-Media/1.0"}, method="GET")
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - URL derives from validated production base
+            status = int(getattr(response, "status", 200) or 200)
+            content_type = str(response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            body = response.read(64)
+        return {
+            "ok": 200 <= status < 300 and content_type.startswith("image/") and bool(body),
+            "status": status,
+            "content_type": content_type,
+            "checked_at": now_iso(),
+        }
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "checked_at": now_iso()}
+
+
+def _normalize_compare_url(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parts = urlsplit(raw)
+    scheme = parts.scheme.lower()
+    host = parts.netloc.lower()
+    path = parts.path or "/"
+    if path != "/":
+        path = path.rstrip("/") + "/"
+    return f"{scheme}://{host}{path}"
+
+
+def _tag_attributes(tag: str) -> dict:
+    return {
+        key.lower(): value.strip()
+        for key, _quote, value in re.findall(r"([:\w-]+)\s*=\s*([\"'])(.*?)\2", tag, flags=re.I | re.S)
+    }
+
+
+def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> dict:
+    content_match = bool(not expected or expected in body)
+    professional_hero_urls = []
+    for tag in re.findall(r"<img\b[^>]*>", body, flags=re.I | re.S):
+        attrs = _tag_attributes(tag)
+        if attrs.get("data-kz-role", "").lower() == "professional-hero-image":
+            src = attrs.get("src", "").strip()
+            if src:
+                professional_hero_urls.append(src)
+
+    canonical = ""
+    for tag in re.findall(r"<link\b[^>]*>", body, flags=re.I | re.S):
+        attrs = _tag_attributes(tag)
+        rel_tokens = {token.strip().lower() for token in attrs.get("rel", "").split()}
+        if "canonical" in rel_tokens:
+            canonical = attrs.get("href", "").strip()
+            break
+    canonical_match = bool(
+        canonical
+        and expected_canonical
+        and _normalize_compare_url(canonical) == _normalize_compare_url(expected_canonical)
+    )
+
+    schema_valid = False
+    schema_urls_valid = False
+    schema_types = []
+    for match in re.finditer(
+        r"<script\b[^>]*type\s*=\s*([\"'])application/ld\+json\1[^>]*>(.*?)</script>",
+        body,
+        flags=re.I | re.S,
+    ):
+        try:
+            payload = json.loads(match.group(2).strip())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, (dict, list)):
+            schema_valid = True
+            serialized = json.dumps(payload, ensure_ascii=False)
+            schema_urls_valid = not bool(re.search(r"\{\{\s*https?://|https?://[^\"']*[{}]", serialized, flags=re.I))
+            if isinstance(payload, dict):
+                graph = payload.get("@graph") if isinstance(payload.get("@graph"), list) else [payload]
+                schema_types.extend(str(item.get("@type")) for item in graph if isinstance(item, dict) and item.get("@type"))
+            break
+
+    noindex = False
+    for tag in re.findall(r"<meta\b[^>]*>", body, flags=re.I | re.S):
+        attrs = _tag_attributes(tag)
+        if attrs.get("name", "").lower() in {"robots", "googlebot", "bingbot", "baiduspider"}:
+            directives = {part.strip().lower() for part in attrs.get("content", "").split(",")}
+            if "noindex" in directives or "none" in directives:
+                noindex = True
+                break
+
+    template_match = re.search(
+        r'<meta\b[^>]*name=["\']kazuizhi-template-version["\'][^>]*content=["\']([^"\']+)["\']',
+        body,
+        flags=re.I,
+    )
+    return {
+        "content_match": content_match,
+        "canonical": canonical,
+        "canonical_match": canonical_match,
+        "schema_valid": schema_valid,
+        "schema_urls_valid": schema_urls_valid,
+        "schema_types": schema_types,
+        "page_indexable": not noindex,
+        "source_tracking_present": bool(re.search(r"<meta\b[^>]*name=[\"']kazuizhi-source-id[\"'][^>]*content=[\"']KZSEO-[A-F0-9]{12}[\"']", body, flags=re.I)),
+        "template_version": template_match.group(1).strip() if template_match else "",
+        "mini_program_entry_present": bool(re.search(r'<a\b[^>]*href=["\'][^"\']*/open/\?kz_source=KZSEO-[A-F0-9]{12}[^"\']*["\']', body, flags=re.I)),
+        "mini_program_image_present": bool(re.search(r'<img\b[^>]*(?:data-kz-role=["\']mini-program-code["\']|kazuizhi-mini-program-code\.(?:jpg|png|webp))', body, flags=re.I)),
+        "professional_hero_image_present": bool(professional_hero_urls),
+        "professional_hero_image_urls": professional_hero_urls,
+        "visible_text_chars": len(re.sub(r"\s+", "", re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", body, flags=re.I | re.S)))),
+    }
+
+
+def publication_scope_allowed(asset: dict) -> bool:
+    """Allow only explicitly approved/repaired or professionally illustrated pages."""
+    if not isinstance(asset, dict):
+        return False
+    event_approved = any(
+        isinstance(event, dict)
+        and str(event.get("stage") or "") == "QC_PASSED"
+        and bool((event.get("payload") or {}).get("publish_approved"))
+        for event in reversed(asset.get("events") or [])
+    )
+    hero = str(asset.get("hero_image_url") or "").strip()
+    hero_parts = urlsplit(hero)
+    professional_hero_approved = bool(
+        hero_parts.scheme.lower() == "https"
+        and hero_parts.netloc.lower() == "kazuizhi.com"
+        and re.search(r"\.(?:jpe?g|png|webp)$", hero_parts.path.lower())
+        and "kazuizhi-mini-program-code" not in hero_parts.path.lower()
+    )
+    return bool(
+        asset.get("republish_pending")
+        or asset.get("publish_approved")
+        or event_approved
+        or professional_hero_approved
+    )
+
+
+def _apply_professional_hero_contract(asset: dict, verification: dict) -> dict:
+    expected = str((asset or {}).get("hero_image_url") or "").strip()
+    if not expected:
+        return verification
+    urls = [str(value or "").strip() for value in verification.get("professional_hero_image_urls") or []]
+    hero_ok = bool(verification.get("professional_hero_image_present") and expected in urls)
+    verification["expected_hero_image_url"] = expected
+    verification["professional_hero_contract_ok"] = hero_ok
+    verification["ok"] = bool(verification.get("ok") and hero_ok)
+    return verification
+
+
+def _verify_robots(url: str, timeout: int) -> dict:
+    robots_url = urljoin(url, "/robots.txt")
+    request = urllib.request.Request(
+        robots_url,
+        headers={"User-Agent": "Kazuizhi-R8-15-Public-Deploy-Verifier/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            code = int(getattr(response, "status", 200) or 200)
+            body = response.read(256 * 1024).decode("utf-8", errors="replace")
+            if not 200 <= code < 300:
+                return {"ok": False, "allowed": False, "status": code, "url": robots_url}
+            parser = urllib.robotparser.RobotFileParser()
+            parser.set_url(robots_url)
+            parser.parse(body.splitlines())
+            allowed = bool(parser.can_fetch("*", url))
+            return {"ok": allowed, "allowed": allowed, "status": code, "url": robots_url}
+    except urllib.error.HTTPError as error:
+        # A missing robots.txt means there is no robots rule blocking /seo/.
+        if int(getattr(error, "code", 0) or 0) == 404:
+            return {"ok": True, "allowed": True, "status": 404, "url": robots_url, "reason": "robots_not_present"}
+        return {"ok": False, "allowed": False, "status": int(getattr(error, "code", 0) or 0), "url": robots_url, "error": str(error)}
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return {"ok": False, "allowed": False, "url": robots_url, "error": str(error)}
+
+
+def _verify_public_url(url: str, expected: str, expected_canonical: str, timeout: int) -> dict:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Kazuizhi-R8-15-Public-Deploy-Verifier/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            code = int(getattr(response, "status", 200) or 200)
+            body = response.read(512 * 1024).decode("utf-8", errors="replace")
+            page = _inspect_public_html(body, expected, expected_canonical)
+            robots = _verify_robots(url, timeout)
+            ok = bool(
+                200 <= code < 300
+                and page["content_match"]
+                and page["canonical_match"]
+                and page["schema_valid"]
+                and page["schema_urls_valid"]
+                and page["page_indexable"]
+                and page["source_tracking_present"]
+                and page["visible_text_chars"] >= 500
+                and robots.get("allowed")
+            )
+            return {
+                "ok": ok,
+                "status": code,
+                **page,
+                "robots": robots,
+                "checked_at": now_iso(),
+            }
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        return {"ok": False, "error": str(error), "checked_at": now_iso()}
+
+
+def _append_receipt(receipt: dict) -> None:
+    data = read_json(RECEIPTS, {"schema": "kz.seo-public-deploy-receipts.v1", "items": []})
+    if not isinstance(data, dict):
+        data = {"schema": "kz.seo-public-deploy-receipts.v1", "items": []}
+    data.setdefault("items", []).insert(0, receipt)
+    data["items"] = data["items"][:500]
+    data["updated_at"] = now_iso()
+    write_json(RECEIPTS, data)
+
+
+def verified_publication_receipts() -> list[dict]:
+    """Return durable receipts that independently prove a public deployment.
+
+    The SEO asset ledger can be absent after an interrupted upgrade while the
+    guarded deploy receipt file remains intact.  Only receipts that already
+    passed the real public verifier are exposed for ledger recovery; a file
+    upload or a failed verification is never enough to recreate PUBLISHED.
+    """
+    data = read_json(RECEIPTS, {"schema": "kz.seo-public-deploy-receipts.v1", "items": []})
+    items = data.get("items") if isinstance(data, dict) else []
+    return [
+        deepcopy(row)
+        for row in (items or [])
+        if isinstance(row, dict)
+        and bool((row.get("verification") or {}).get("ok"))
+        and str(row.get("asset_id") or "").strip()
+        and str(row.get("public_url") or "").startswith("https://")
+    ]
+
+
+def _write_managed_sitemap(target: Path) -> str:
+    snap = dashboard()
+    rows = sorted(
+        [asset for asset in snap.get("assets", []) if str(asset.get("public_url") or "").startswith(("http://", "https://"))],
+        key=lambda asset: str(asset.get("public_url") or ""),
+    )
+    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
+    xml += "\n".join(
+        f"  <url><loc>{html.escape(str(asset.get('public_url') or ''), quote=True)}</loc><lastmod>{str(asset.get('updated_at') or asset.get('published_at') or now_iso())[:10]}</lastmod></url>"
+        for asset in rows
+    )
+    xml += "\n</urlset>\n"
+    path = target / "sitemap.xml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(xml, encoding="utf-8")
+    return str(path)
+
+
+def deploy_pending(limit: int = 10) -> dict:
+    data = _load()
+    state = status()
+    data["last_run_at"] = now_iso()
+    if not state.get("ready"):
+        result = {"skipped": True, "reason": state.get("reason") or "deploy_connector_not_ready", "published": [], "failed": []}
+        data["last_result"] = result
+        _save(data)
+        return result
+
+    target = _target_dir(data)
+    assert target is not None
+    base = _safe_public_base(data.get("public_base_url"))
+    snap = dashboard()
+    candidates = [
+        x for x in snap.get("assets", [])
+        if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
+    ]
+    deferred_scope = [
+        {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
+        for x in candidates if not publication_scope_allowed(x)
+    ]
+    pending = [x for x in candidates if publication_scope_allowed(x)][: max(0, int(limit))]
+    published = []
+    failed = []
+    timeout = int(data.get("verify_timeout_seconds") or 8)
+
+    for asset in pending:
+        asset_id = str(asset.get("id") or "")
+        slug = str(asset.get("slug") or "").strip()
+        source = Path(str(asset.get("staging_path") or ""))
+        if not asset_id or not slug or "/" in slug or "\\" in slug or not source.is_file():
+            failed.append({"asset_id": asset_id, "reason": "invalid_asset_or_staging_file"})
+            continue
+        destination = target / slug / "index.html"
+        try:
+            attachment_receipts = []
+            for attachment in _asset_attachments(asset, source):
+                attachment_source = Path(attachment["path"])
+                attachment_destination = destination.parent.joinpath(*PurePosixPath(attachment["relative_path"]).parts)
+                _atomic_copy(attachment_source, attachment_destination)
+                attachment_url = urljoin(base, f"seo/{slug}/{attachment['relative_path']}")
+                media_verification = _verify_public_attachment(attachment_url, timeout) if data.get("verify_http") else {"ok": False, "reason": "http_verification_disabled"}
+                attachment_receipts.append({
+                    "relative_path": attachment["relative_path"],
+                    "public_url": attachment_url,
+                    "sha256": attachment.get("sha256"),
+                    "verification": media_verification,
+                })
+            _atomic_copy(source, destination)
+            public_url = urljoin(base, f"seo/{slug}/")
+            expected_canonical = str(asset.get("canonical") or public_url)
+            verification = (
+                _verify_public_url(public_url, str(asset.get("title") or ""), expected_canonical, timeout)
+                if data.get("verify_http")
+                else {"ok": False, "reason": "http_verification_disabled", "checked_at": now_iso()}
+            )
+            _apply_professional_hero_contract(asset, verification)
+            receipt = {
+                "receipt_id": f"DEPLOY-{asset_id}-{now_iso().replace(':','').replace('-','')}",
+                "asset_id": asset_id,
+                "destination": str(destination),
+                "public_url": public_url,
+                "verification": verification,
+                "attachments": attachment_receipts,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
+                "created_at": now_iso(),
+            }
+            if attachment_receipts:
+                verification["campaign_media_ok"] = all(row["verification"].get("ok") for row in attachment_receipts)
+                verification["ok"] = bool(verification.get("ok") and verification["campaign_media_ok"])
+            _append_receipt(receipt)
+            if not verification.get("ok"):
+                failed.append({"asset_id": asset_id, "reason": "public_http_verification_failed", "public_url": public_url, "verification": verification})
+                continue
+            evidence = {
+                "public_url": public_url,
+                "connector": "r8_15_local_iis_filesystem",
+                "deploy_receipt": receipt["receipt_id"],
+                "http_verification": verification,
+                "growth_action_id": asset.get("growth_action_id") or "",
+                "content_revision_id": asset.get("content_revision_id") or "",
+            }
+            if asset.get("republish_pending"):
+                record_asset_republished(asset_id, evidence)
+            else:
+                record_asset_stage(asset_id, "PUBLISHED", evidence)
+            published.append({
+                "asset_id": asset_id,
+                "public_url": public_url,
+                "receipt": receipt["receipt_id"],
+                "republished": bool(asset.get("republish_pending")),
+                "growth_action_id": asset.get("growth_action_id") or "",
+            })
+        except (OSError, ValueError, RuntimeError) as error:
+            failed.append({"asset_id": asset_id, "reason": str(error)})
+
+    sitemap_path = _write_managed_sitemap(target)
+    result = {
+        "skipped": False,
+        "attempted": len(pending),
+        "published": published,
+        "failed": failed,
+        "deferred_scope": deferred_scope,
+        "managed_sitemap": sitemap_path,
+        "truth": "只有已通过公网HTTP、内容、canonical、Schema、robots/indexability验证的页面才进入 PUBLISHED；仅写入服务器文件不计成功。",
+    }
+    data["last_result"] = result
+    _save(data)
+    return result

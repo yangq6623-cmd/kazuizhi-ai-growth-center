@@ -9,6 +9,7 @@ import base64
 import ctypes
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from ctypes import wintypes
@@ -18,10 +19,14 @@ from core.storage import data_root, now_iso, read_json, write_json
 
 
 ENDPOINT = "https://kazuizhi.com/ai-business-summary.ashx"
+ENTRY_SIGNAL_ENDPOINT = "https://kazuizhi.com/open/track.ashx?mode=summary"
 SECRET_PATH = "integrations/business_readonly_key.bin"
 STATUS_PATH = "integrations/business_source.json"
 REMOTE_SUMMARY_PATH = "business/remote_summary.json"
 REFRESH_SECONDS = 300
+# A source update may call a remote 20-second HTTP endpoint and write aggregate
+# ledgers. It must run only on a dedicated worker, never in owner GET threads.
+_REFRESH_EXECUTION_LOCK = threading.Lock()
 FORBIDDEN_PARTS = (
     "phone", "mobile", "address", "openid", "unionid", "id_card", "identity",
     "password", "secret", "token", "adminkey", "admin_key", "bank", "card_no",
@@ -180,6 +185,9 @@ def validate_remote_summary(payload):
     promotion = _safe_object(payload.get("promotion"), "promotion")
     funnel = _safe_object(payload.get("funnel"), "funnel")
     mini_program = _safe_object(payload.get("mini_program"), "mini_program")
+    attribution = _safe_object(payload.get("attribution"), "attribution")
+    attribution_channels = _safe_object(attribution.get("channels"), "attribution.channels")
+    allowed_channels = ("seo", "geo", "search_engine", "ai_citation", "direct", "unknown")
     clean = {
         "ok": True,
         "source": source[:160],
@@ -193,6 +201,17 @@ def validate_remote_summary(payload):
         "services": payload.get("services") if isinstance(payload.get("services"), list) else [],
         "promotion": {key: _safe_number(promotion.get(key), "promotion." + key) for key in ("event_records", "partner_attributed_orders")},
         "funnel": {key: _safe_number(funnel.get(key), "funnel." + key) for key in ("mini_program_visits", "repair_requests", "leads")},
+        "attribution": {
+            "status": str(attribution.get("status") or "")[:40],
+            "mapped_consultations": _safe_number(attribution.get("mapped_consultations"), "attribution.mapped_consultations"),
+            "mapped_orders": _safe_number(attribution.get("mapped_orders"), "attribution.mapped_orders"),
+            "asset_id_coverage": _safe_number(attribution.get("asset_id_coverage"), "attribution.asset_id_coverage"),
+            "channels": {
+                key: _safe_number(attribution_channels.get(key), "attribution.channels." + key)
+                for key in allowed_channels
+                if key in attribution_channels
+            },
+        },
         "mini_program": {
             "status": str(mini_program.get("status") or "")[:40],
             "ref_date": str(mini_program.get("ref_date") or "")[:20],
@@ -200,6 +219,12 @@ def validate_remote_summary(payload):
             "visit_pv": _safe_number(mini_program.get("visit_pv"), "mini_program.visit_pv"),
             "session_cnt": _safe_number(mini_program.get("session_cnt"), "mini_program.session_cnt"),
             "visit_uv_new": _safe_number(mini_program.get("visit_uv_new"), "mini_program.visit_uv_new"),
+            # Keep bounded, non-secret diagnostics from the aggregate endpoint.
+            # Without these fields an upstream WeChat API failure was flattened
+            # into ``visits=null`` and could not be distinguished from a source
+            # that had simply not synchronized yet.
+            "error_code": str(mini_program.get("error_code") or mini_program.get("errcode") or "")[:40],
+            "message": str(mini_program.get("message") or mini_program.get("error") or "")[:240],
         },
         "data_quality": {
             "verified": bool(quality.get("verified")),
@@ -212,6 +237,53 @@ def validate_remote_summary(payload):
         },
     }
     return clean
+
+
+def validate_entry_signals(payload):
+    """Validate browser-side landing/click signals without treating them as conversions."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError("官网入口信号接口返回无效")
+    _reject_sensitive(payload)
+    if str(payload.get("truth") or "") != "client_signal_only_not_order_or_consultation":
+        raise ValueError("官网入口信号缺少真实性口径")
+    by_source = _safe_object(payload.get("by_source"), "entry_signals.by_source")
+    by_asset = _safe_object(payload.get("by_asset"), "entry_signals.by_asset")
+    by_day = _safe_object(payload.get("by_day"), "entry_signals.by_day")
+
+    def clean_counter_map(rows, field_name, key_limit=80, row_limit=500):
+        clean_rows = {}
+        for row_id, counts in list(rows.items())[:row_limit]:
+            row_id = str(row_id or "").strip()
+            if not row_id or len(row_id) > key_limit:
+                continue
+            counts = _safe_object(counts, field_name + ".counts")
+            clean_rows[row_id] = {
+                "landing": _safe_number(counts.get("landing"), field_name + ".landing") or 0,
+                "open_click": _safe_number(counts.get("open_click"), field_name + ".open_click") or 0,
+            }
+        return clean_rows
+
+    clean_sources = {}
+    for source_id, counts in list(by_source.items())[:500]:
+        source_id = str(source_id or "").strip()
+        if not source_id or len(source_id) > 80:
+            continue
+        counts = _safe_object(counts, "entry_signals.by_source.counts")
+        clean_sources[source_id] = {
+            "landing": _safe_number(counts.get("landing"), "entry_signals.by_source.landing") or 0,
+            "open_click": _safe_number(counts.get("open_click"), "entry_signals.by_source.open_click") or 0,
+        }
+    return {
+        "status": "available",
+        "window_days": _safe_number(payload.get("window_days"), "entry_signals.window_days"),
+        "landing_signals": _safe_number(payload.get("landing_signals"), "entry_signals.landing_signals"),
+        "open_click_signals": _safe_number(payload.get("open_click_signals"), "entry_signals.open_click_signals"),
+        "by_source": clean_sources,
+        "by_asset": clean_counter_map(by_asset, "entry_signals.by_asset"),
+        "by_day": clean_counter_map(by_day, "entry_signals.by_day", key_limit=10, row_limit=31),
+        "as_of": str(payload.get("as_of") or "")[:100],
+        "truth": "client_signal_only_not_order_or_consultation",
+    }
 
 
 def snapshot_from_remote(summary):
@@ -256,12 +328,55 @@ def _request_remote(key, timeout=20):
         raise ValueError("无法连接卡嘴子真实经营数据接口") from None
 
 
+def _request_entry_signals(key, timeout=8):
+    request = urllib.request.Request(
+        ENTRY_SIGNAL_ENDPOINT,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "Kazuizhi-AI-Growth-Center/2.0",
+            "X-AI-Readonly-Key": key,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise ValueError("官网入口信号接口返回 HTTP %s" % response.status)
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            raise ValueError("官网入口信号只读密钥验证失败") from None
+        raise ValueError("官网入口信号接口返回 HTTP %s" % error.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        raise ValueError("无法连接官网入口信号接口") from None
+
+
 def refresh_business_source(force=True):
+    # Serialize background and explicit-owner manual refreshes. The HTTP GET
+    # route never calls this function; manual POST retains its old semantics.
+    with _REFRESH_EXECUTION_LOCK:
+        return _refresh_business_source_serial(force=force)
+
+
+def _refresh_business_source_serial(force=True):
     key = _read_key()
     if not key:
         return business_source_status()
     try:
         clean = validate_remote_summary(_request_remote(key))
+        try:
+            clean["entry_signals"] = validate_entry_signals(_request_entry_signals(key))
+        except ValueError as signal_error:
+            # Entry signals are a secondary, non-conversion source. Their outage
+            # must not hide otherwise healthy orders/users aggregates.
+            clean["entry_signals"] = {
+                "status": "unavailable",
+                "landing_signals": None,
+                "open_click_signals": None,
+                "by_source": {},
+                "truth": "client_signal_only_not_order_or_consultation",
+                "error": str(signal_error)[:240],
+            }
         write_json(REMOTE_SUMMARY_PATH, clean)
         from analytics.business_metrics import import_snapshot
         analytics = import_snapshot(snapshot_from_remote(clean))
@@ -287,6 +402,7 @@ def _seconds_since(value):
 
 
 def refresh_if_due():
+    """Background/explicit-worker read-only sync, never called by a GET handler."""
     if not _read_key():
         return business_source_status()
     status = _status_config()
@@ -294,6 +410,34 @@ def refresh_if_due():
     if age is None or age >= REFRESH_SECONDS:
         return refresh_business_source(force=False)
     return business_source_status()
+
+
+def start_background_refresh(*, initial_delay_seconds=12.0, check_interval_seconds=60.0):
+    """Autonomously sync remote aggregates without blocking any dashboard GET.
+
+    The stop event is registered in run.py alongside the other worker stops.
+    One daemon thread sleeps when not due and serializes any explicit owner's
+    POST-triggered refresh with the same lock used for the automatic refresh.
+    No API tokens, URLs or personal data are emitted to application logs.
+    """
+    stop = threading.Event()
+
+    def loop():
+        if stop.wait(max(0.0, float(initial_delay_seconds))):
+            return
+        while not stop.is_set():
+            try:
+                refresh_if_due()
+            except Exception as error:
+                print("Business read-only aggregate sync deferred: "
+                      + type(error).__name__, flush=True)
+            if stop.wait(max(1.0, float(check_interval_seconds))):
+                return
+
+    thread = threading.Thread(target=loop, name="kz-business-readonly-sync",
+                              daemon=True)
+    thread.start()
+    return stop
 
 
 def configure_business_source(payload):
@@ -311,12 +455,111 @@ def test_business_source():
     return refresh_business_source(force=True)
 
 
+def _mini_program_has_aggregate(summary):
+    if not isinstance(summary, dict):
+        return False
+    return any(summary.get(key) is not None for key in ("visit_uv", "visit_pv", "session_cnt", "visit_uv_new"))
+
+
+def _effective_wechat_status(remote, production_connected, direct):
+    """Re-use the already connected production Mini Program source before asking for duplicate secrets.
+
+    The direct WeChat AppID/AppSecret connector is an optional analytics fallback
+    added after the production business connector.  A valid server aggregate must
+    therefore win over a missing local credential file, otherwise an upgrade can
+    incorrectly render an already connected Mini Program as "not configured".
+    """
+    direct = dict(direct or {})
+    if direct.get("status") == "connected":
+        direct.setdefault("source_mode", "direct_wechat_analytics")
+        direct["business_connected"] = bool(production_connected)
+        return direct
+
+    server_mini = dict((remote or {}).get("mini_program") or {})
+    server_status = str(server_mini.get("status") or "").strip().lower()
+    server_has_data = _mini_program_has_aggregate(server_mini)
+    server_error = server_status in {"wechat_error", "error", "unavailable", "failed"}
+
+    if production_connected and server_has_data and not server_error:
+        return {
+            "id": "wechat_mini_program",
+            "configured": True,
+            "has_credentials": False,
+            "business_connected": True,
+            "status": "connected",
+            "status_label": "既有小程序数据已接入",
+            "source_mode": "server_aggregate",
+            "last_refresh": None,
+            "last_error": None,
+            "last_error_code": None,
+            "summary": server_mini,
+            "message": "已复用现有服务器小程序聚合数据，无需重复填写 AppID / AppSecret。",
+            "public_identity": direct.get("public_identity") or {},
+            "entry": direct.get("entry") or {},
+        }
+
+    historical = dict(direct.get("summary") or {})
+    if production_connected and direct.get("status") == "recovered_snapshot" and _mini_program_has_aggregate(historical):
+        direct.update({
+            "business_connected": True,
+            "status_label": "小程序业务已接入·已恢复历史访问快照",
+            "source_mode": "local_verified_snapshot",
+            "message": "小程序业务连接正常；已恢复此前验证的微信访问快照，自动刷新凭据未找到时不会要求重新接入整个小程序。",
+        })
+        return direct
+
+    if production_connected:
+        return {
+            "id": "wechat_mini_program",
+            "configured": True,
+            "has_credentials": bool(direct.get("has_credentials")),
+            "business_connected": True,
+            "status": "business_connected",
+            "status_label": "小程序业务已接入·访问统计待同步",
+            "source_mode": "production_business",
+            "last_refresh": direct.get("last_refresh"),
+            "last_error": direct.get("last_error") or (server_mini.get("message") if isinstance(server_mini, dict) else None),
+            "last_error_code": direct.get("last_error_code"),
+            "summary": server_mini if server_has_data else historical,
+            "message": "现有小程序业务连接仍然有效；这里只缺微信访问趋势聚合数据，不需要重新接入小程序。系统会继续从现有服务器经营接口同步，直连 AppID / AppSecret 仅作为可选恢复通道。",
+            "public_identity": direct.get("public_identity") or {},
+            "entry": direct.get("entry") or {},
+        }
+
+    return direct
+
+
 def business_source_status(analytics=None):
     status = _status_config()
     key_present = bool(_read_key())
     remote = read_json(REMOTE_SUMMARY_PATH, None) or {}
+    # A locally configured official WeChat source can safely fill only the
+    # Mini Program aggregate visit fields.  It never replaces orders, users,
+    # or any other production business aggregate from the server source.
+    try:
+        from integrations.wechat_mini_program import wechat_mini_program_status
+        direct_wechat = wechat_mini_program_status()
+    except (ImportError, OSError, ValueError):
+        direct_wechat = {"status": "not_configured", "summary": {}}
     quality = remote.get("data_quality") if isinstance(remote, dict) else {}
     connected = bool(key_present and status.get("last_ok") and remote.get("source") and remote.get("as_of"))
+    wechat = _effective_wechat_status(remote, connected, direct_wechat)
+    summary = {
+        "users": remote.get("users") or {}, "orders": remote.get("orders") or {},
+        "technicians": remote.get("technicians") or {}, "partners": remote.get("partners") or {},
+        "promotion": remote.get("promotion") or {}, "funnel": dict(remote.get("funnel") or {}),
+        "mini_program": dict(remote.get("mini_program") or {}),
+        "attribution": dict(remote.get("attribution") or {}),
+        # Browser landing/open-click signals are aggregate, read-only evidence.
+        # Keep them separate from verified Mini Program visits, consultations
+        # and orders, but do not drop them while building the dashboard payload.
+        "entry_signals": dict(remote.get("entry_signals") or {}),
+    }
+    mini = dict(wechat.get("summary") or {})
+    if wechat.get("status") in {"connected", "recovered_snapshot", "business_connected"} and _mini_program_has_aggregate(mini):
+        summary["mini_program"] = mini
+        if summary["funnel"].get("mini_program_visits") is None and mini.get("visit_uv") is not None:
+            summary["funnel"]["mini_program_visits"] = mini.get("visit_uv")
     return {
         "id": "business_source",
         "endpoint": ENDPOINT,
@@ -329,15 +572,8 @@ def business_source_status(analytics=None):
         "remote_as_of": remote.get("as_of"),
         "source": remote.get("source"),
         "data_quality": quality or {},
-        "summary": {
-            "users": remote.get("users") or {},
-            "orders": remote.get("orders") or {},
-            "technicians": remote.get("technicians") or {},
-            "partners": remote.get("partners") or {},
-            "promotion": remote.get("promotion") or {},
-            "funnel": remote.get("funnel") or {},
-            "mini_program": remote.get("mini_program") or {},
-        },
+        "summary": summary,
+        "wechat_mini_program": wechat,
         "message": "生产经营数据只读接口已验证；R7 每 5 分钟自动刷新。" if connected else
                    status.get("last_error") or ("密钥已保存，等待连接验证。" if key_present else "服务器接口已部署；粘贴一次只读密钥即可接入。"),
         "analytics_status": (analytics or {}).get("status") if isinstance(analytics, dict) else None,

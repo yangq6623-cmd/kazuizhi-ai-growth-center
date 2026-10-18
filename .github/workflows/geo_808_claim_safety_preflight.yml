@@ -1,0 +1,44 @@
+name: GEO 808 Claim Safety Preflight
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/geo-808-claim-gate-*"
+    paths:
+      - "05_V2.0.0_Source/core/geo_validation.py"
+      - "05_V2.0.0_Source/integrations/geo_browser_agent.py"
+      - "04_Build/v2/test_geo_808_browser_claim_truth.py"
+      - "04_Build/v2/test_geo_legacy_reconciliation_807.py"
+      - ".github/workflows/geo_808_claim_safety_preflight.yml"
+permissions:
+  contents: read
+jobs:
+  safe-execution:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax
+        shell: pwsh
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/geo_validation.py
+          python -m py_compile 05_V2.0.0_Source/integrations/geo_browser_agent.py
+          python -m py_compile 04_Build/v2/test_geo_808_browser_claim_truth.py
+      - name: Legacy historic data safety
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_geo_legacy_reconciliation_807.py
+          if ($LASTEXITCODE -ne 0) { throw 'Legacy audit regression' }
+      - name: One-shot real browser queue isolation
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_geo_808_browser_claim_truth.py
+          if ($LASTEXITCODE -ne 0) { throw '808 platform gate / one-shot canary regression' }
+      - name: Authenticated agent compatibility
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_r8_27_geo_browser_agent.py
+          if ($LASTEXITCODE -ne 0) { throw 'Authenticated browser compatibility regression' }

@@ -26,24 +26,56 @@ from core.r8_growth_ops import (
     create_video_job, dashboard as growth_dashboard, diagnostics as growth_diagnostics,
     ingest_message, ingest_signal, list_collection, record_attribution, record_metrics,
     record_publish_receipt, review_content, route_signal, run_learning_cycle,
-    schedule_publish, update_conversation, update_video_job, upsert_lead,
+    schedule_publish, configure_publication_policy, update_conversation, update_video_job, upsert_lead,
 )
 from memory.memory_store import get_experiments, get_memory, remember
-from integrations.android_device import (
-    device_audit, execute_action as device_execute_action,
-    list_transfer_files as device_list_transfer_files,
-    pull_file_bytes as device_pull_file_bytes,
-    push_file as device_push_file,
-    scan_and_sync as device_scan_and_sync, screenshot_bytes as device_screenshot_bytes,
-    set_takeover as device_set_takeover,
-)
+# Android/ADB is retired from normal product startup.  Keep legacy endpoint
+# compatibility behind a lazy import so normal dashboard, SEO/GEO, and PC QR
+# login flows do not initialise a phone stack or probe USB.
+def _retired_android():
+    raise RuntimeError("真实手机/ADB运行时已取消；请在发布准备中使用 PC 浏览器扫码登录")
+
+
+def _retired_device_status():
+    """Compatibility response for old dashboards without reviving the phone stack.
+
+    Old installations poll this endpoint during first paint.  Returning a truthful
+    terminal state lets those pages finish rendering instead of retrying a 500 and
+    makes it explicit that PC browser QR sessions replaced the device pool.
+    """
+    return {
+        "status": "retired",
+        "mode": "desktop_browser_qr_only",
+        "devices": [],
+        "adb": {"retired": True, "available": False, "message": "真实手机/ADB 已取消"},
+        "message": "真实手机/ADB运行时已取消；请在发布准备中使用 PC 浏览器扫码登录。",
+        "truth_rule": "没有真实手机、USB 或 ADB 队列；PC 扫码会话和真实平台回执是后续发布条件。",
+    }
+
+
+def device_audit(): return {"events": [], **_retired_device_status()}
+def device_execute_action(payload): return _retired_android().execute_action(payload)
+def device_list_transfer_files(device_id): return _retired_android().list_transfer_files(device_id)
+def device_pull_file_bytes(device_id, name): return _retired_android().pull_file_bytes(device_id, name)
+def device_push_file(device_id, temp_path, filename): return _retired_android().push_file(device_id, temp_path, filename)
+def device_scan_and_sync(): return _retired_device_status()
+def device_screenshot_bytes(device_id): return _retired_android().screenshot_bytes(device_id)
+def device_set_takeover(payload): return _retired_android().set_takeover(payload)
 from integrations.bridge import (
     bridge_status, configure_bridge, disable_bridge, export_report,
     list_bridge_commands, self_test as bridge_self_test, sync_once as bridge_sync_once,
 )
 from integrations.business_data import (
     business_source_status, configure_business_source, refresh_business_source,
-    refresh_if_due as refresh_business_if_due, test_business_source,
+    test_business_source,
+)
+from integrations.wechat_mini_program import (
+    configure_wechat_mini_program, refresh_wechat_mini_program,
+    generate_wechat_mini_program_url_link, test_wechat_mini_program,
+    wechat_mini_program_entry_status, wechat_mini_program_status,
+)
+from integrations.ai_gateway import (
+    clear_gateway, configure_gateway, gateway_status, test_gateway,
 )
 from integrations.manager import (
     ask_ai, control_center, integration_status, model_routes, save_ai_config,
@@ -126,11 +158,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "scheduler_and_audit", "bidirectional_operations_bridge",
                 "offline_autonomous_mode", "bridge_command_receipts",
                 "bridge_closed_loop_self_test", "verified_readonly_business_source",
-                "autonomous_decision_center", "r8_single_android_device_center",
-                "r8_adb_truthful_probe", "r8_device_screenshot",
-                "r8_manual_takeover", "r8_device_action_audit",
-                "r8_device_file_transfer", "r8_social_media_center",
-                "r8_platform_device_account_binding", "r8_public_signal_radar",
+                "autonomous_decision_center", "r8_pc_browser_qr_social_login",
+                "r8_desktop_browser_session_binding", "r8_public_signal_radar",
                 "r8_growth_id_traceability", "r8_eight_role_content_committee",
                 "r8_local_3060_video_orchestration", "r8_owner_gated_publish_queue",
                 "r8_truthful_platform_receipts", "r8_unified_conversations_and_leads",
@@ -177,6 +206,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return import_template()
         if path == "/api/business-source/status":
             return business_source_status(build_analytics())
+        if path == "/api/wechat-mini-program/status":
+            return wechat_mini_program_status()
+        if path == "/api/wechat-mini-program/entry":
+            return wechat_mini_program_entry_status()
+        if path == "/api/ai-gateway/status":
+            return gateway_status()
         if path == "/api/promotion/keywords":
             return list_keywords()
         if path == "/api/promotion/history":
@@ -302,11 +337,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         if path.startswith("/api/"):
-            if not path.startswith("/api/r8/"):
-                try:
-                    refresh_business_if_due()
-                except Exception:
-                    pass
+            # Read-only GET requests MUST never trigger the production business
+            # connector's 20-second remote network refresh. The independent
+            # background scheduler refreshes aggregates every five minutes.
+            # This also prevents many concurrent owner-dashboard GETs from
+            # repeatedly refreshing remote data and contending for JSON I/O.
             try:
                 payload = self._api_get_payload(path)
             except KeyError:
@@ -373,6 +408,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/daily-review/generate", "/api/memory", "/api/operation-summary",
             "/api/tomorrow-plan", "/api/business-metrics/import", "/api/promotion/keywords",
             "/api/business-source/configure", "/api/business-source/test", "/api/business-source/refresh",
+            "/api/wechat-mini-program/configure", "/api/wechat-mini-program/test", "/api/wechat-mini-program/refresh",
+            "/api/wechat-mini-program/url-link",
+            "/api/ai-gateway/config", "/api/ai-gateway/test", "/api/ai-gateway/clear",
             "/api/promotion/seo-content", "/api/promotion/geo-plan",
             "/api/promotion/ad-copy", "/api/promotion/video-script",
             "/api/operations/tasks", "/api/operations/tasks/update",
@@ -386,7 +424,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "/api/r8/social/account", "/api/r8/social/account/status", "/api/r8/social/account/remove",
             "/api/r8/growth/signals", "/api/r8/growth/signals/route", "/api/r8/growth/cases",
             "/api/r8/growth/content", "/api/r8/growth/content/review", "/api/r8/growth/video-worker",
-            "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing",
+            "/api/r8/growth/videos", "/api/r8/growth/videos/update", "/api/r8/growth/publishing", "/api/r8/growth/publishing/policy",
             "/api/r8/growth/publishing/receipt", "/api/r8/growth/messages",
             "/api/r8/growth/import-draft",
             "/api/r8/growth/conversations/update", "/api/r8/growth/leads", "/api/r8/growth/attribution",
@@ -414,6 +452,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = test_business_source()
             elif path == "/api/business-source/refresh":
                 result = refresh_business_source(force=True)
+            elif path == "/api/wechat-mini-program/configure":
+                result = configure_wechat_mini_program(payload)
+            elif path == "/api/wechat-mini-program/test":
+                result = test_wechat_mini_program()
+            elif path == "/api/wechat-mini-program/refresh":
+                result = refresh_wechat_mini_program(force=True)
+            elif path == "/api/wechat-mini-program/url-link":
+                result = generate_wechat_mini_program_url_link(payload)
+            elif path == "/api/ai-gateway/config":
+                result = configure_gateway(payload)
+            elif path == "/api/ai-gateway/test":
+                result = test_gateway(payload.get("route"))
+            elif path == "/api/ai-gateway/clear":
+                result = clear_gateway(payload.get("route"))
             elif path == "/api/promotion/keywords":
                 result = add_keyword(payload)
             elif path == "/api/promotion/seo-content":
@@ -513,6 +565,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 result = update_video_job(payload)
             elif path == "/api/r8/growth/publishing":
                 result = schedule_publish(payload)
+            elif path == "/api/r8/growth/publishing/policy":
+                result = configure_publication_policy(payload)
             elif path == "/api/r8/growth/publishing/receipt":
                 result = record_publish_receipt(payload)
             elif path == "/api/r8/growth/messages":
@@ -575,6 +629,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 class DashboardServer(ThreadingHTTPServer):
     allow_reuse_address = False
+    # Chrome opens several owner-shell scripts/iframes/API calls together.
+    # The stdlib default listen backlog is too small for this desktop app and
+    # can make a healthy 127.0.0.1 service look offline during a burst.
+    request_queue_size = 64
+    daemon_threads = True
 
     def server_bind(self):
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):

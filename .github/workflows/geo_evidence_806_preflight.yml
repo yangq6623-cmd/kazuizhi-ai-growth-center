@@ -1,0 +1,46 @@
+name: GEO Evidence 806 No-Release Preflight
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/r8-25-evidence-heartbeat-convergence-*"
+    paths:
+      - "05_V2.0.0_Source/core/phase1_acceptance.py"
+      - "05_V2.0.0_Source/core/runtime_supervisor.py"
+      - "05_V2.0.0_Source/integrations/geo_browser_agent.py"
+      - "05_V2.0.0_Source/browser_extension/kazuizhi_geo/**"
+      - "04_Build/v2/test_r8_29_geo_evidence_lockfree.py"
+      - "04_Build/v2/test_geo_extension_806.js"
+      - "04_Build/v2/test_r8_28_geo_browser_extension.py"
+      - ".github/workflows/geo_evidence_806_preflight.yml"
+permissions:
+  contents: read
+jobs:
+  test-without-installation:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          python -m compileall -q 05_V2.0.0_Source/core/phase1_acceptance.py 05_V2.0.0_Source/core/runtime_supervisor.py 05_V2.0.0_Source/integrations/geo_browser_agent.py
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/content-agent.js
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/service-worker.js
+          node --check 05_V2.0.0_Source/browser_extension/kazuizhi_geo/popup.js
+          if ($LASTEXITCODE -ne 0) { throw "Syntax failed" }
+      - name: Evidence and heartbeat regression
+        shell: pwsh
+        run: |
+          python 04_Build/v2/test_r8_29_geo_evidence_lockfree.py
+          if ($LASTEXITCODE -ne 0) { throw "Lock-free Evidence test failed" }
+          python 04_Build/v2/test_r8_28_geo_browser_extension.py
+          if ($LASTEXITCODE -ne 0) { throw "Existing R8-28 extension release test failed" }
+          node 04_Build/v2/test_geo_extension_806.js
+          if ($LASTEXITCODE -ne 0) { throw "GEO extension messaging/heartbeat test failed" }

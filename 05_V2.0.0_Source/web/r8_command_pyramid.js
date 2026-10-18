@@ -9,7 +9,7 @@
   ];
   const LABELS = {
     ready:'已就绪', pass:'已通过', pending:'待完成', blocked:'被阻塞', not_configured:'未配置',
-    pending_connector:'待授权平台', pending_device:'待连接真机', waiting_first_case:'待首条真实任务',
+    pending_connector:'待授权平台', pending_device:'待 PC 扫码登录', waiting_first_case:'待首条真实任务',
     pending_worker:'待配置视频模型', waiting_first_receipt:'待真实发布回执', waiting_first_message:'待真实消息',
     waiting_metrics:'待效果数据', waiting_learning_cycle:'待首轮复盘', new:'新建', routed:'已路由',
     no_matching_account:'无匹配账号', candidate_needs_authorization:'候选账号待授权', planning:'策划中',
@@ -58,7 +58,7 @@
     card.innerHTML=`<header><div><label>总控制台工作链</label><h3>从老板目标到员工执行，再由真实数据回流分析</h3><p>点击任一层，直接进入对应工作区。</p></div><span id="r8-pyramid-score" class="r8-loop-score">正在体检</span></header><div class="r8-pyramid-layers">
       <button class="r8-pyramid-layer" data-pyramid-page="dashboard"><b>① 老板总控与 AI 决策</b><small>下达目标、确定边界、查看关键阻塞</small></button>
       <button class="r8-pyramid-layer" data-pyramid-page="workflow"><b>② 八名 AI 员工协作</b><small>拆解任务、联合策划、审批与交接</small></button>
-      <button class="r8-pyramid-layer" data-pyramid-page="r8-final-center"><b>③ 内容、视频、社媒执行</b><small>真机、账号、内容审核、视频工厂与发布</small></button>
+      <button class="r8-pyramid-layer" data-pyramid-page="r8-final-center"><b>③ 内容、视频、社媒执行</b><small>PC 扫码账号、内容审核、视频工厂与发布</small></button>
       <button class="r8-pyramid-layer" data-pyramid-page="analytics"><b>④ 真实数据与发布回执</b><small>经营数据、平台 URL、线索、订单与效果指标</small></button>
       <button class="r8-pyramid-layer" data-pyramid-page="review"><b>⑤ 复盘学习回到总控</b><small>24小时 / 72小时 / 7天复盘，形成下一轮调整</small></button>
     </div><div id="r8-loop-return" class="r8-loop-return">真实反馈 → 双向运营桥 → ChatGPT 分析 → 下一轮老板决策</div>`;
@@ -98,7 +98,7 @@
     const root=document.getElementById('r8-final-center');if(!root||root.dataset.commandEnhancements)return;root.dataset.commandEnhancements='1';
     root.addEventListener('click',async event=>{
       const diagnostic=event.target.closest('#r8-diagnostics');if(diagnostic){event.preventDefault();event.stopImmediatePropagation();diagnostic.disabled=true;diagnostic.textContent='正在逐项检查…';try{const result=await request('/api/r8/growth/diagnostics');showDiagnostics(result);refreshPyramid();if(typeof toast==='function')toast(`0→10 闭环体检完成：${result.score}/10`);}catch(error){if(typeof toast==='function')toast(error.message,'error');}finally{diagnostic.disabled=false;diagnostic.textContent='运行 0→10 闭环体检';}return;}
-      const account=event.target.closest('[data-r8-open-accounts]');if(account){if(typeof openPage==='function')openPage('social-center');if(typeof toast==='function')toast('已打开社媒中心，请绑定账号并在真机完成登录');}
+      const account=event.target.closest('[data-r8-open-accounts]');if(account){if(typeof openPage==='function')openPage('social-center');if(typeof toast==='function')toast('已打开发布准备，请在 PC 浏览器完成扫码登录。');}
     },true);
   }
 

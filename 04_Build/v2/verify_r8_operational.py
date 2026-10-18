@@ -30,7 +30,7 @@ def source_checks():
     r7_html = (source / "web/index.html").read_text(encoding="utf-8")
     r7_app = (source / "web/app.js").read_text(encoding="utf-8")
     check(BUILD in html, "Operational UI build identity missing")
-    for label in ("今天让什么结果发生", "增长战役", "内容工厂", "手机与真机", "账号与发布", "咨询与订单", "SEO 与 GEO", "连接与体检"):
+    for label in ("今天让什么结果发生", "增长目标", "AI 内容生产中心", "人工辅助终端", "发布准备", "咨询与订单", "SEO 与 GEO", "连接与体检"):
         check(label in html, f"Operational page missing: {label}")
     check("返回 R7 完整总控制台" in html and "/index.html" in html, "Operational workspace cannot return to R7")
     for label in ("AI 指挥中心", "任务与员工", "今日复盘", "经营分析", "内容增长", "市场洞察", "任务日历", "运营总结", "明日计划", "历史记录", "运营记忆"):
@@ -72,12 +72,59 @@ def http_json(base, path, payload=None):
         return response.status, json.load(response)
 
 
+def seed_verified_desktop_browser_account(temporary):
+    """Seed the same PC-browser QR truth source used by the production runtime.
+
+    CI never simulates a phone.  It creates a durable account identity, records a
+    confirmed Windows-browser QR session, and requires the factory to discover that
+    evidence rather than accepting a writable verified flag.
+    """
+    source = ROOT / "05_V2.0.0_Source"
+    old_local = os.environ.get("LOCALAPPDATA")
+    os.environ["LOCALAPPDATA"] = temporary
+    sys.path.insert(0, str(source))
+    try:
+        from core import account_registry
+        from integrations import desktop_browser_session
+
+        identity = account_registry.register_official_identity(
+            "douyin", "涟水家电维修测试账号", "ci-desktop-browser-subject",
+            method="desktop_browser_qr",
+        )
+        account_id = identity["account_id"]
+        account_registry.set_auth_state(account_id, "connected", method="desktop_browser_qr")
+        state = desktop_browser_session._state()
+        state["sessions"].append({
+            "account_id": account_id, "platform": "douyin", "account_alias": "涟水家电维修测试账号",
+            "browser_url": "https://creator.douyin.com/", "status": "owner_confirmed",
+            "created_at": "2026-10-04T00:00:00+08:00", "confirmed_at": "2026-10-04T00:00:00+08:00",
+        })
+        desktop_browser_session._save(state)
+        return account_id
+    finally:
+        try:
+            sys.path.remove(str(source))
+        except ValueError:
+            pass
+        if old_local is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = old_local
+
+
 def exercise(command):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
-    with tempfile.TemporaryDirectory() as temporary:
-        env = dict(os.environ, LOCALAPPDATA=temporary)
+    # Runtime assertions are the release gate.  A transient Windows
+    # Defender/indexer handle on runtime.log after shutdown is not.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temporary:
+        env = dict(
+            os.environ,
+            LOCALAPPDATA=temporary,
+            PYTHONIOENCODING="utf-8",
+            PYTHONUTF8="1",
+        )
         log_path = Path(temporary) / "runtime.log"
         with log_path.open("w+", encoding="utf-8") as log:
             process = subprocess.Popen(command + ["--no-browser", "--port", str(port)], cwd=temporary, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -155,7 +202,11 @@ def exercise(command):
                         },
                     },
                     "cta": "通过小程序提交需求，等待师傅报价",
-                    "output": {"width": 1080, "height": 1920, "fps": 30, "duration_seconds": 12},
+                    # CI validates the complete automatic render/QC path.  It uses a
+                    # compact vertical fixture because GitHub's CPU-only runner is
+                    # not representative of the user's RTX 3060 and must not make
+                    # an otherwise healthy pipeline intermittently time out.
+                    "output": {"width": 720, "height": 720, "fps": 24, "duration_seconds": 10},
                 }
                 _, planned = http_json(base, "/api/content-factory/chatgpt-plan", {
                     "video_id": video["id"], "campaign_id": campaign["id"], "production_plan": plan,
@@ -171,7 +222,10 @@ def exercise(command):
                 # The independent video worker should pick the job automatically. No
                 # owner click is allowed between ChatGPT plan and FINAL.MP4.
                 qc_video = None
-                for _ in range(120):
+                # The installed package can have a longer first-run encoder warmup
+                # than source mode.  Preserve the same failure state and content-QC
+                # gates, while allowing four minutes before calling it stalled.
+                for _ in range(240):
                     _, factory = http_json(base, "/api/content-factory")
                     current = next(x for x in factory["videos"] if x["id"] == video["id"])
                     if current["status"] in {"等待ChatGPT质检", "等待人工审核"}:
@@ -220,15 +274,33 @@ def exercise(command):
                 check(asset["exists"] and Path(asset["local_path"]).is_file(), "Optional material intake failed")
                 check(asset.get("source_origin") == "manual_upload", "Structured asset origin metadata missing")
 
-                # Final owner gate must remain mandatory before platform rules allow a plan.
+                # Final owner gate remains mandatory. A metadata form is explicitly
+                # unable to self-declare a verified publishing account.
                 _, approved = http_json(base, "/api/content-factory/review", {
                     "video_id": video["id"], "decision": "确认发布", "candidate_id": candidate["id"], "note": "验收通过",
                 })
                 check(approved["status"] == "已授权发布", "Owner approval gate did not authorize publication")
-                _, account = http_json(base, "/api/content-factory/accounts", {
-                    "platform": "抖音", "account_name": "涟水家电维修测试账号", "region": "涟水县",
+                _, manual_account = http_json(base, "/api/content-factory/accounts", {
+                    "platform": "抖音", "account_name": "人工元数据账号", "region": "涟水县",
                     "service": "家电安装维修", "connection_status": "已验证可发布",
                 })
+                check(manual_account.get("connection_status") != "已验证可发布",
+                      "Manual content-factory metadata illegally self-declared verified publish state")
+
+                # CI uses the same durable PC-browser QR source as the installed runtime;
+                # it never fabricates a phone/ADB adapter.
+                social_account_id = seed_verified_desktop_browser_account(temporary)
+                _, factory = http_json(base, "/api/content-factory")
+                account = next(
+                    (x for x in factory.get("accounts", [])
+                     if x.get("social_account_id") == social_account_id),
+                    None,
+                )
+                check(account and account.get("connection_status") == "已验证可发布",
+                      "Verified PC browser account was not synchronized into content factory")
+                check(account.get("verification_source") == "r8_desktop_browser_registry",
+                      "Verified account did not preserve PC browser evidence source")
+
                 _, publish_plan = http_json(base, "/api/content-factory/publish-plans", {
                     "video_id": video["id"], "account_id": account["id"],
                 })
@@ -242,7 +314,10 @@ def exercise(command):
 
                 _, device = http_json(base, "/api/r8/device/status")
                 if "status" in device:
-                    check(device["status"] in {"online", "waiting_device", "adb_error", "missing_adb"}, "Device state is not truthful")
+                    check(device["status"] in {"online", "waiting_device", "adb_error", "missing_adb", "retired"}, "Device state is not truthful")
+                    if device["status"] == "retired":
+                        check(device.get("mode") == "desktop_browser_qr_only" and device.get("devices") == [],
+                              "Retired phone runtime did not expose the PC-browser replacement truthfully")
                 else:
                     check(isinstance(device.get("adb"), dict) and isinstance(device.get("devices"), list) and device.get("message"), "Inherited #238 device state is not truthful")
                 try:
@@ -255,7 +330,11 @@ def exercise(command):
                 migration = json.loads((data_root / "r8/migration_v2_2.json").read_text(encoding="utf-8"))
                 check(migration["result"] == "complete", "R8 data backup did not complete")
                 duplicate = subprocess.run(command + ["--no-browser", "--port", str(port)], cwd=temporary, env=env, capture_output=True, timeout=15)
-                check(duplicate.returncode != 0, "Second runtime accepted occupied port")
+                duplicate_output = (duplicate.stdout + duplicate.stderr).decode("utf-8", errors="replace")
+                check(duplicate.returncode == 0 and "Existing Kazuizhi runtime is healthy" in duplicate_output,
+                      "Second launch did not safely reuse the healthy existing runtime")
+                _, liveness = http_json(base, "/api/r8-24/geo-growth/liveness")
+                check(liveness.get("server_ready") is True, "Existing runtime stopped after duplicate launch")
             finally:
                 process.terminate()
                 process.wait(timeout=15)
@@ -282,7 +361,7 @@ def main():
         exercise([str(exe)])
     else:
         exercise([sys.executable, str(ROOT / "05_V2.0.0_Source/run.py")])
-    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> platform rules")
+    print("PASS: ChatGPT plan -> local execution -> FINAL.MP4 -> ChatGPT QC -> owner gate -> verified PC browser account -> platform rules")
 
 
 if __name__ == "__main__":

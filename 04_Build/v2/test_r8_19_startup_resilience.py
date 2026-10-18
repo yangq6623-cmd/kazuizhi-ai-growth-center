@@ -1,0 +1,116 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "05_V2.0.0_Source" / "web"
+STARTUP = WEB / "r8_12_startup_coordinator.js"
+MANAGER = WEB / "r7_manager_patch.js"
+WORKBENCH = WEB / "r8_10_workbench.js"
+TRUTH = WEB / "r8_10_truth_convergence.js"
+SEO_ROUTE = WEB / "r8_13_route_bootstrap.js"
+INDEX = WEB / "index.html"
+APP = WEB / "app.js"
+
+
+def require(condition, message):
+    if not condition:
+        raise AssertionError(message)
+
+
+def main():
+    startup = STARTUP.read_text(encoding="utf-8")
+    manager = MANAGER.read_text(encoding="utf-8")
+    workbench = WORKBENCH.read_text(encoding="utf-8")
+    truth = TRUTH.read_text(encoding="utf-8")
+    seo_route = SEO_ROUTE.read_text(encoding="utf-8")
+    index = INDEX.read_text(encoding="utf-8")
+    app = APP.read_text(encoding="utf-8")
+
+    require(MANAGER.exists(), "AI employee manager patch is missing from packaged web source")
+    require("Loaded after r7.js" in manager, "manager patch no longer documents the required r7.js ordering")
+    require("'/r7_manager_patch.js'" in startup, "startup coordinator does not load AI employee manager patch")
+    require(
+        startup.index("'/r7_manager_patch.js'") < startup.index("'/r8_10_workbench.js'"),
+        "AI employee manager must load after static r7.js and before the R8 owner-shell workbench",
+    )
+    require("SCRIPT_TIMEOUT_MS" in startup, "startup script loading has no timeout and can hang the UI")
+    require("loadScriptFailSoft" in startup, "owner-shell module loading is still fail-hard")
+    require("failed_modules" in startup and "degraded" in startup, "startup degradation state is not exposed")
+    require("recovered_modules" in startup and "retryFailedModules" in startup, "startup failures cannot self-heal")
+    require("KZStartupDiagnostics" in startup and "KZRetryFailedStartupModules" in startup, "startup diagnostics do not expose exact failed files")
+    require("POST_READY_SEQUENCE" in startup and "loadPostReadyModules" in startup, "non-critical truth patch is not deferred until post-ready")
+    for token in (
+        "['/r8_10_truth_convergence.js', 'r810TruthConvergence']",
+        "['/r8_11_backbone_ui.js', 'r811Backbone']",
+        "['/r8_15_ui_truth_patch.js', 'r815UiTruth']",
+        "POST_READY_DELAY_MS = 5000",
+        "POST_READY_TIMEOUT_MS = 45000",
+        "sourceCache",
+        "sourcePromises",
+        "primeScriptSources",
+        "prefetchWorkspaceDocuments",
+    ):
+        require(token in startup, f"post-ready/startup fast-path contract missing: {token}")
+    require("seo_geo: [" in startup and "['/r8_13_seo_geo_bridge.js', 'r813SeoGeo']" in startup, "SEO/GEO bridge is not on the lazy cached first-click path")
+    critical_block = startup.split("const POST_READY_SEQUENCE", 1)[0]
+    for token in ("/r8_10_truth_convergence.js", "/r8_11_backbone_ui.js"):
+        require(token not in critical_block, f"{token} regressed into the critical cold-start path")
+    require("r812-startup-diagnostics" in startup, "system status page does not show startup module filenames/reasons")
+    require("auto_retry_" in startup and "30000" in startup, "startup failures have no bounded post-boot retry")
+    require("kz:startup-module-failed" in startup, "startup module failures are not surfaced as recoverable events")
+    require("kz:startup-module-recovered" in startup, "startup module recoveries are not auditable")
+    require(
+        "state.phase = state.failed_modules.length ? 'degraded' : 'ready'" in startup,
+        "a single module failure can still prevent the owner shell from reaching a usable state",
+    )
+    require("emit('kz:app-ready'" in startup, "degraded startup no longer emits the app-ready event")
+    require("R8-19" in startup, "startup release fallback regressed to a stale R8 identity")
+
+    # A browser primitive must never be replaced globally during startup. The #58
+    # candidate used a fake MutationObserver while modules loaded; that can leave
+    # modules with inconsistent observer semantics and hide real feedback loops.
+    require("window.MutationObserver =" not in startup, "startup still monkeypatches the native MutationObserver")
+    require("FiniteStartupObserver" not in startup, "finite fake observer policy is still present")
+    require("yieldToBrowser" in startup, "owner-shell modules no longer yield to the browser between loads")
+    require("__KZ_OWNER_HEARTBEAT_TIMER__" in startup, "runtime heartbeat for responsiveness checks is missing")
+
+    # SEO/GEO must claim the first side-nav click before the owner-shell lazy
+    # loader can make it appear inert on a cold local start.
+    require(SEO_ROUTE.exists(), "SEO/GEO first-click route bootstrap is missing")
+    require('defer src="r8_13_route_bootstrap.js"' in index, "SEO/GEO route bootstrap is not shipped as a parallel-deferred primary console script")
+    require("event.stopImmediatePropagation()" in seo_route, "SEO/GEO route does not protect the first click from a delayed lazy handler")
+    require("30000" in seo_route and "SEO/GEO 工作区加载超时" in seo_route, "SEO/GEO route has no bounded loading feedback")
+    require("KZR813SeoGeoBridge?.open" in seo_route, "SEO/GEO route bootstrap cannot verify bridge readiness")
+
+    # A refresh must never leave the user on the base R7 shell merely because
+    # Chromium restored the static coordinator tag without evaluating it.
+    require("kzOwnerShellRecovery" in app, "app shell has no refresh recovery for a skipped owner coordinator")
+    require("__KZ_R812_STARTUP_COORDINATOR__" in app, "owner recovery cannot distinguish a healthy coordinator from a skipped one")
+    require(
+        "if (document.documentElement.dataset.kzStartupPhase || window.__KZ_R812_STARTUP_COORDINATOR__) return;" not in app,
+        "owner recovery still trusts a stale DOM startup marker after refresh",
+    )
+    require("r8_12_startup_coordinator.js" in app and "build_info.js" in app, "owner recovery cannot restore the R8-23 shell identity")
+
+    # The owner workbench itself previously observed the whole body for childList
+    # changes, while its callback rewrote textContent/innerHTML. textContent is a
+    # childList mutation, so the observer could schedule itself forever.
+    require("new MutationObserver" not in workbench, "owner workbench still installs a document-wide mutation feedback observer")
+    require("scheduleMaintenance" in workbench, "owner workbench no longer has bounded event-driven maintenance")
+    require("setText" in workbench, "owner workbench no longer avoids unchanged text writes")
+    require("dataset.r810Built" in workbench, "owner workbench can rebuild large owner pages repeatedly")
+
+    # Truth convergence previously watched the entire document including
+    # characterData while converge() changed textContent itself. That creates a
+    # self-sustaining mutation -> convergence -> mutation loop. Keep it bounded.
+    require("new MutationObserver" not in truth, "truth convergence still installs a mutation feedback observer")
+    require("characterData:true" not in truth.replace(" ", ""), "truth convergence still watches characterData")
+    require("__KZ_R810_TRUTH_CONVERGENCE__" in truth, "truth convergence has no singleton guard")
+    require("if(running)" in truth or "if (running)" in truth, "truth convergence has no reentrancy guard")
+    require("setText" in truth, "truth convergence no longer avoids unchanged text writes")
+    require("setInterval(()=>scheduleConvergence(0),30000)" in truth.replace(" ", ""), "truth convergence safety refresh is not bounded to low frequency")
+
+    print("PASS: owner-shell startup is fail-soft, native-observer safe, and both workbench/truth layers are bounded without DOM mutation feedback loops")
+
+
+if __name__ == "__main__":
+    main()

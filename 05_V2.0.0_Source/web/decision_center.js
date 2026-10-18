@@ -101,10 +101,12 @@
     $('decision-refresh')?.addEventListener('click',async()=>{
       const button=$('decision-refresh');button.disabled=true;const old=button.textContent;button.textContent='正在重新汇总…';
       try{
-        const data=await api('/api/r7/decision-center/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);let data;
+        try{data=await api('/api/r7/decision-center/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:controller.signal})}
+        finally{clearTimeout(timer)}
         renderDecisionCenter(data);toast('AI 自主决策报告已更新');
         button.textContent='已更新';setTimeout(()=>{if(button&&!button.disabled)button.textContent=old},1200);
-      }catch(error){toast(error.message,'error')}finally{button.disabled=false;if(button.textContent==='正在重新汇总…')button.textContent=old}
+      }catch(error){toast(error?.name==='AbortError'?'AI决策重新汇总超时；后台运行未中断':error.message,'error')}finally{button.disabled=false;if(button.textContent==='正在重新汇总…')button.textContent=old}
     });
     bindDecisionStaticControls();
   }
@@ -150,7 +152,14 @@
 
   async function loadDecisionCenter(){
     ensureDecisionPage();
-    try{renderDecisionCenter(await api('/api/r7/decision-center'));return true}catch(error){toast(error.message,'error');return false}
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
+    try{renderDecisionCenter(await api('/api/r7/decision-center',{signal:controller.signal}));return true}
+    catch(error){
+      const message=error?.name==='AbortError'?'AI决策汇总读取超时；后台任务仍在运行，可稍后刷新':error.message;
+      $('decision-headline').textContent='本次决策汇总未完成读取';
+      $('decision-generated').textContent=message;
+      toast(message,'error');return false
+    }finally{clearTimeout(timer)}
   }
   window.loadDecisionCenter=loadDecisionCenter;
   ensureDecisionPage();

@@ -1,0 +1,314 @@
+# 卡嘴子 #817 本机现场验收记录（2026-10-18）
+
+## 本轮结论与升级决定
+
+**已通过本机 Chrome 连接确认；完整现场验收未通过，不允许生成或部署 #818 候选安装包。**
+
+本轮实际操作用户 Google Chrome 扩展连接，读取 Windows 本机 `http://127.0.0.1:8876/` 的两个 #817 工作台，并读取同一 Chrome 中的 Google Search Console、国内五平台页面和官网公开页。没有用 Opera、云端浏览器或 Linux 服务代替 Windows 现场。浏览器可操作不等于已有 Windows 终端、磁盘或原始账本读取能力。
+
+候选源码仍为 `db4e3b7aebf377753bb736f9e50f89655f50142f`；本轮只更新本文档，没有修改源码、安装软件、覆盖 #817、批量重试历史任务、清空冷却或删除 Evidence。当前生产页面版本为 #817 / c7764e59。
+
+验收时段：2026-10-18 13:06—13:14（北京时间）；下述完整表格读取时间为 13:13:13，最新调度为 13:12:30。时间随后仍可能变化。
+
+## 背景、目标、结构与操作边界
+
+目标：按用户七项现场任务核对 C级运营复测、正式 A/B、历史任务、发布、Chrome 队列、SEO及双窗口显示，满足门禁后才考虑 #818。
+
+本文结构：现场结果、可见原始标识、正式矩阵索引、未完成事项、测试与升级门禁、前轮修复记录。步骤：确认 Chrome → 读取交接 → 对照两窗口 → 读取证据和 SEO → 检查 GSC/官网/五平台 → 检查候选 CI → 写回本文件。
+
+允许的现场操作仅为页面读取、切换、诊断读取、一次固定50问核验及一次官网检查；未点击“立即运行一轮”“立即推进”“重试异常”，没有提交新 AI 问题或伪造新回执。页面切换会影响两个工作台所选页签，不代表自治开关变化。
+
+本轮官网访问属于验收访问；如客户端落地计数被触发，应排除在自然获客和本轮增长成果之外。未点击小程序入口、未提交咨询或订单。
+
+## 七项任务验收结果
+
+| 项目 | 实际结果 | 是否完成 |
+| --- | --- | --- |
+| 11条 GEO 24h 的 Task/Signal/Receipt/时间/Before-After | 当前表可见13行，其中5行显示Before/After；此前11条的原始复测Task ID、Signal ID、逐条执行时间和完整回答未在当前界面取得 | 未完成，禁止以UI分数代替证据 |
+| 第12条原因 | 当前样本和分母已变化，不能再把当前第12行当作原先未完成任务；缺原始12个目标及调度账本，未能定位原任务 | 未完成 |
+| 73条历史任务分类 | 页面确实显示73；分类字段全部“未知”，未提供逐条Task ID和原始发送状态 | 未完成，未重试或更改状态 |
+| 2个待发布机会 | 本轮先见1个、后见0个；观察到两个可见作业的状态变化，详见下文；未能确认它们就是原先两条，未取得逐条授权和公网Receipt原文 | 部分核实 |
+| Chrome五平台与新网页Receipt | 实际读取五个外部页面；平台代理显示5/5；queue_empty及global_retest_cooldown仍存在；没有本轮新增网页Receipt | 连接读取完成，新Receipt未验收 |
+| SEO自治、周期、GSC、官网 | 页面显示自动运行，周期1476→1477；GSC官方页面可读；官网元数据检查完成；精确配置字段和覆盖安装后的基线未取得 | 部分核实 |
+| 双窗口11/12与0/0 | 现场复现同一调度时间的一窗5/12、一窗0/0，并读到明细接口5秒超时及概览回退提示；历史11/12→当前5/12原因未取得账本验证 | 显示问题已复现，底层延迟根因未完成 |
+
+## 实际运行快照与两个窗口差异
+
+| 快照/阶段 | 实际读取内容 | 解释边界 |
+| --- | --- | --- |
+| 本任务开始 | Signal761，机会13，24h5/12，72h0/12，7d0/12，待发布1，上次调度13:04:34 | 页面运行数据，不是原先11条的逐条证据 |
+| 同一13:04:34调度的双窗口对照 | 一窗5/12；另一窗0/0，同时保留机会13、闭环5和正式50/50 | 0/0与明细读取失败同时出现，不代表账本清零 |
+| 明细失败时原文 | “运行概览已读取，机会明细暂不可用；不代表任务为零。”；“概览已恢复 · 明细待同步” | 已现场读到回退状态 |
+| 明细失败时错误 | “GEO 数据请求超时（5秒，等待服务器响应）”；接口 `/api/r8-24/geo-growth/fast-ui`；后台快照已就绪但浏览器请求延迟 | 这是实际错误提示；不能据此断定线程锁、数据库或网络的最终根因 |
+| 13:12:30调度，13:13:13读取 | 今日机会7、页面所称公网回执发布7、待发布0、24h5/13、72h0/13、7d0/13 | 待发布转为等待复测使可见分母增加；没有取得原始窗口账本，不宣称全部字段已审计 |
+
+恢复后机会行仍显示“闭环完成”及“复测0/3”，与5个Before/After同时存在。只确认显示矛盾，不能把“闭环完成”解释为三窗口均完成。C级Before/After不是正式A/B提升。
+
+本轮打开显示出的fast-ui地址及SEO sitemap XML地址时，Chrome直接导航均返回 `net::ERR_BLOCKED_BY_CLIENT`；没有关闭扩展、解除浏览器限制或改用容器请求。网页现有界面可以读取，但原始JSON账本没有通过该路径取得。
+
+点击“诊断读取”曾返回：后端缓存就绪，缓存年龄19.2秒，证据大小3637813字节，分区4，读取线程0，后台无记录错误，主GEO快照就绪。它只是诊断摘要，不包含73条逐条任务。一次“核验固定50问”后按钮持续处于禁用状态，未取得可判定成功的新核验结果，未重复点击。
+
+## 当前13行运营记录：保留页面原始标识与状态
+
+以下标识来自“AI员工”列，本文称为**页面作业标识**。未取得复测Task记录，不能把这些标识改名为复测Task ID、Opportunity ID或Signal ID。所有13行都未取得原始Signal ID、复测Task ID、逐条执行时间与运营Receipt原文，未逐条验证API完整回答。表中“SUBMITTED”仅保留原状态，不代表新增发布、收录或曝光。
+
+| 机会 / 问题 | 评分 | 总控决策 | AI员工 | 发布 | 复测 / 结果 |
+| --- | --- | --- | --- | --- | --- |
+| 豆包C级运营信号未出现卡嘴子；涟水管道疏通找哪种本地服务比较方便？ | 98；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县管道疏通本地服务 | 等待复测；66f9bc3d80704bbe921b13a422b13f9f | SUBMITTED；https://kazuizhi.com/seo/919cb9dba488b334/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；涟水水管漏水想尽快上门维修，推荐怎么找？ | 100；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县水管漏水维修本地服务 | 等待复测；ef3234d4de924969b1ea0372a550ef44 | SUBMITTED；https://kazuizhi.com/seo/0d3e2fe0ff24f0d5/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；涟水发布维修需求用什么方式更容易找到附近师傅？ | 100；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县综合维修本地服务 | 等待复测；c8b80b5b3a9d4e4eb0e4728a7e4fd68a | SUBMITTED；https://kazuizhi.com/seo/79a2fbad601aaa64/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；涟水找安装师傅有什么本地平台推荐？ | 97；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县安装服务本地服务 | 等待复测；6459d9d19cca467a9f8451283ab3bc90 | SUBMITTED；https://kazuizhi.com/seo/22e0e824e08a0225/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；涟水家电维修上门服务有哪些平台可以选？ | 100；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县家电维修本地服务 | 等待复测；19afefcf8e33410e9d3de27ea300223f | SUBMITTED；https://kazuizhi.com/seo/bc999910286a647c/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；涟水水电维修有哪些值得考虑的本地平台？ | 100；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县水电安装维修本地服务 | 等待复测；3a0a9392fb1243fdae4663b17c2b14e3 | SUBMITTED；https://kazuizhi.com/seo/6e1e1d73c62a160d/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号中的服务能力匹配不足；卡嘴子能不能发布管道疏通需求？ | 75；A | 补强对应服务能力、区域与问题场景说明；涟水县管道疏通服务范围 | 等待复测；ba941b7c48974cef9f89789fa4768b6e | SUBMITTED；https://kazuizhi.com/seo/fb32b56163289cba/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号中的服务能力匹配不足；卡嘴子能不能发布水电维修需求？ | 75；A | 补强对应服务能力、区域与问题场景说明；涟水县水电安装维修服务范围 | 等待复测；98bca6d20b8348c3b3d0766e335849d6 | SUBMITTED；https://kazuizhi.com/seo/93479fcc67a7d885/ | 等待复测；C级运营复测，不改变正式A/B |
+| 豆包C级运营信号未出现卡嘴子；卡嘴子能不能发布个人小任务？ | 82；A | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县个人任务本地服务 | 闭环完成；838e76cadbe946c491ec1b568e30ea6f | SUBMITTED；https://kazuizhi.com/seo/eacb67cad803e796/ | improved · Δ +65 · 复测 0/3；Before 0 → After 65 |
+| 豆包C级运营信号中的服务能力匹配不足；卡嘴子能不能找家电维修师傅？ | 75；A | 补强对应服务能力、区域与问题场景说明；涟水县家电维修服务范围 | 闭环完成；491f2f554abe410ba21fcabe8ee33548 | SUBMITTED；https://kazuizhi.com/seo/47c421dd464c06d2/ | improved · Δ +20 · 复测 0/3；Before 45 → After 65 |
+| 豆包C级运营信号中的服务能力匹配不足；卡嘴子能不能找安装师傅？ | 67；B | 补强对应服务能力、区域与问题场景说明；涟水县安装服务服务范围 | 闭环完成；f6744ab76b3a4f1cbb5a7a964fab22db | PUBLISHED；https://kazuizhi.com/seo/dd4c10f8a0e9a48b/ | improved · Δ +20 · 复测 0/3；Before 45 → After 65 |
+| 豆包C级运营信号中的服务能力匹配不足；卡嘴子能不能发布个人小任务？ | 67；B | 补强对应服务能力、区域与问题场景说明；涟水县个人任务服务范围 | 闭环完成；ec50ae81038147e6a6c34de5f68110f4 | SUBMITTED；https://kazuizhi.com/seo/fd6b6c8564c2cc3b/ | improved · Δ +20 · 复测 0/3；Before 45 → After 65 |
+| 豆包C级运营信号未出现卡嘴子；卡嘴子是直营维修公司还是本地服务连接平台？ | 90；S | 补强本地服务事实页、FAQ与品牌可发现内容；涟水县品牌本地服务 | 闭环完成；89e65fff8bff46858614028cc6a9efc0 | SUBMITTED；https://kazuizhi.com/seo/51f0420d46825efe/ | improved · Δ +45 · 复测 0/3；Before 20 → After 65 |
+
+当前5个Before/After分别为0→65、45→65、45→65、45→65、20→65，均属页面C级运营判断；三窗口真实完成度仍待原始Task/Signal账本核验。
+
+此前读取中还出现作业标识 `d5913953abaa4aebb8eb5927aea12c0d`，URL为 `https://kazuizhi.com/seo/919cb9dba488b334/`，页面显示0→45、Δ+45、复测0/3；它未出现在13:13:13当前13行表内。该现象不能被解释为历史Evidence已删除；缺完整账本，变化原因未明。
+
+## 待发布、权限与公开页面
+
+本任务开始的待发布数量已是1，不能继续沿用“2”作为现场数。作业 `ef3234d4de924969b1ea0372a550ef44` 在前一轮连接读取时显示等待真实发布，随后显示等待复测，URL `https://kazuizhi.com/seo/0d3e2fe0ff24f0d5/`。本轮 `66f9bc3d80704bbe921b13a422b13f9f` 从等待真实发布转为等待复测，URL `https://kazuizhi.com/seo/919cb9dba488b334/`。没有手动推进它们。
+
+实际打开管道疏通公开页，读到：
+- 页面标题“涟水县管道疏通本地服务｜卡嘴子本地服务”，有正文、FAQ、服务规则和本轮内容补充。
+- Canonical为该页面自身；Open Graph包含type、site_name、title、description、url。
+- JSON-LD含Organization、WebPage、Service、BreadcrumbList、FAQPage，dateModified为2026-10-18。
+- 页面编号 `KZSEO-7A47CA008496`；asset_id `SEO-39333FE29CE0`。
+
+该URL在更早作业中已存在，故本轮只能证明公开页当前可访问和内容当前存在，不能计为新增URL。未取得新版本部署Receipt ID、发布时间和逐条授权记录。页面显示“发布通道已就绪”也不替代具体发布范围批准。SEO界面另外明确显示22个已公开页面因未取得发布范围批准而暂停搜索提交；本文未解除该限制。
+
+## 73条历史任务：目前无法逐条分类
+
+已现场确认总数73，但UI原文为：
+“历史技术失败 未知；登录/授权/风控 未知；未分类 未知。不确定发送记录 未知（可与上述分类重叠）；未重试历史任务。”
+
+| 所需数据 | 本轮状态 |
+| --- | --- |
+| 73条Task ID及原始发送状态 | 未取得 |
+| 技术失败、登录/授权/风控、未分类的互斥数量 | 未取得，不能填写0或凑足73 |
+| 不确定发送的重叠标签 | 未取得，不能与互斥分类相加 |
+| 重试、删除、改写历史Evidence | 本轮均未执行 |
+
+历史/审计页面只有运营摘要与在线率记录，未展示上述73条任务详情。需获得原始任务账本的只读导出或可访问的逐条任务明细后才可完成此项；无需用户重复配置已成功的Chrome连接。
+
+## Chrome五平台、队列与正式A/B
+
+实际读取豆包、抖音搜索、DeepSeek、千问及纳米AI页面。豆包、DeepSeek、千问、纳米AI可见会话入口或历史对话；抖音可见搜索/AI抖音导航。没有实际发送新问题，因此不将页面可读等同于五平台端到端验证通过。
+
+13:13:13读取的代理摘要：国内平台就绪5/5；最近领取2026-10-18 13:12:17，`so360_ai_search`，`queue_empty`，任务“—”；24小时安全复测 `global_retest_cooldown`，最近真实回执“尚无”。另有排队1、执行中0、待核查73，路由明细未显示。不能据此断言全系统没有任务，亦未确认排队1对应的平台与资格。
+
+正式栏UI显示50/50、提及3（6%）、推荐0、引用0，人工11、自动39；正式24h2/50、72h2/50、7d1/12。与上方C级5/13是不同统计，不能混用。以下50行只保留当前UI索引，并未在本轮逐条重开外部会话验证完整回答和签名；GEO50-*为固定问题ID，不是执行Task ID。
+
+最近可见历史Receipt：
+`GEO-RECEIPT-B06C42C2D7E6`，doubao_web/A级，问题“卡嘴子能不能找家电维修师傅？”，时间2026-10-16T19:29:16.770Z（北京时间10月17日03:29:16.770），`browser-session:47279e0cdbd90bf228ed`；页面称提及是、推荐否、引用否。它不是本轮新增Receipt。
+
+| ID | 问题 | 类型 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| GEO50-D01 | 涟水县哪里可以找水电维修师傅？ | 豆包 | succeeded | GEO-RECEIPT-6B4F4EE85586 |
+| GEO50-D02 | 涟水家里跳闸了找谁上门处理？ | 豆包 | succeeded | GEO-RECEIPT-08F460F93A2C |
+| GEO50-D03 | 涟水卫生间漏水哪里能找人维修？ | 豆包 | succeeded | GEO-RECEIPT-97F70EF4D7CB |
+| GEO50-D04 | 涟水县水管爆了有没有上门维修？ | 豆包 | succeeded | GEO-RECEIPT-160FC855F735 |
+| GEO50-D05 | 涟水管道疏通找哪种本地服务比较方便？ | 豆包 | succeeded | GEO-RECEIPT-52AE0FE35F63 |
+| GEO50-D06 | 涟水县马桶堵了哪里找师傅？ | 豆包 | succeeded | GEO-RECEIPT-89C045B28DC1 |
+| GEO50-D07 | 涟水洗衣机不排水哪里可以上门维修？ | 豆包 | succeeded | GEO-RECEIPT-EA3CF4055102 |
+| GEO50-D08 | 涟水县冰箱不制冷找谁维修？ | 豆包 | succeeded | GEO-RECEIPT-5634817C4543 |
+| GEO50-D09 | 涟水空调不制冷哪里有上门维修？ | 豆包 | succeeded | GEO-RECEIPT-3C30AD0D8719 |
+| GEO50-D10 | 涟水哪里可以找安装灯具的师傅？ | 豆包 | succeeded | GEO-RECEIPT-C4E7113EF6A9 |
+| GEO50-D11 | 涟水县哪里找家具安装师傅？ | 抖音 | succeeded | GEO-RECEIPT-37308D8B02DC |
+| GEO50-D12 | 涟水有没有可以发布维修需求的平台？ | 抖音 | succeeded | GEO-RECEIPT-D174ADD2C8D2 |
+| GEO50-D13 | 涟水附近维修师傅怎么找比较可靠？ | 抖音 | succeeded | GEO-RECEIPT-89AC29F649AD |
+| GEO50-D14 | 涟水县本地生活维修服务怎么找？ | 抖音 | succeeded | GEO-RECEIPT-89E292AB5B70 |
+| GEO50-D15 | 涟水晚上水管漏水还能在哪里找维修？ | 抖音 | succeeded | GEO-RECEIPT-AF2DF6B067E2 |
+| GEO50-D16 | 涟水家里没电了应该找哪类师傅？ | 抖音 | succeeded | GEO-RECEIPT-EDB06561D48D |
+| GEO50-D17 | 涟水厨房下水道堵了哪里找人疏通？ | 抖音 | succeeded | GEO-RECEIPT-4F88A21472BF |
+| GEO50-D18 | 涟水热水器坏了哪里可以找上门维修？ | 抖音 | succeeded | GEO-RECEIPT-B0D7476CB304 |
+| GEO50-D19 | 涟水县电视坏了有没有上门维修服务？ | 抖音 | succeeded | GEO-RECEIPT-15B805E08C1E |
+| GEO50-D20 | 涟水装窗帘在哪里找本地安装师傅？ | 抖音 | succeeded | GEO-RECEIPT-ADF5A11FF219 |
+| GEO50-D21 | 涟水安装水龙头哪里可以找人？ | DeepSeek | succeeded | GEO-RECEIPT-563EF534BF0F |
+| GEO50-D22 | 涟水县居民有小任务想找附近的人帮忙怎么办？ | DeepSeek | succeeded | GEO-RECEIPT-C6830656F5D4 |
+| GEO50-D23 | 涟水哪里可以发布社区跑腿小任务？ | DeepSeek | succeeded | GEO-RECEIPT-71688E68216C |
+| GEO50-D24 | 涟水宝妈想接附近的小任务可以去哪里找？ | DeepSeek | succeeded | GEO-RECEIPT-2FBEE09950AF |
+| GEO50-D25 | 涟水附近有没有社区互助任务平台？ | DeepSeek | succeeded | GEO-RECEIPT-EF30432194DA |
+| GEO50-D26 | 涟水县上门维修一般怎么找本地师傅？ | DeepSeek | succeeded | GEO-RECEIPT-F61F68EB4B45 |
+| GEO50-D27 | 涟水水电安装和维修能不能一次找本地师傅解决？ | DeepSeek | succeeded | GEO-RECEIPT-BAAE1B47E3FD |
+| GEO50-D28 | 涟水维修需求怎么发布才能让附近师傅看到？ | DeepSeek | succeeded | GEO-RECEIPT-A46AD0D66E4B |
+| GEO50-D29 | 涟水县找上门服务有什么本地渠道？ | DeepSeek | succeeded | GEO-RECEIPT-4BE39AEF8AB5 |
+| GEO50-D30 | 涟水居民临时需要人帮忙处理社区小事去哪里发布？ | DeepSeek | succeeded | GEO-RECEIPT-D3E3D8ADE58E |
+| GEO50-C01 | 涟水找维修师傅用什么平台比较方便？ | 通义千问 | succeeded | GEO-RECEIPT-6F91AC6A8BB2 |
+| GEO50-C02 | 涟水县本地维修平台哪个好用？ | 通义千问 | succeeded | GEO-RECEIPT-47B66BFC8741 |
+| GEO50-C03 | 涟水水电维修有哪些值得考虑的本地平台？ | 通义千问 | succeeded | GEO-RECEIPT-E81036D49788 |
+| GEO50-C04 | 涟水水管漏水想尽快上门维修，推荐怎么找？ | 通义千问 | succeeded | GEO-RECEIPT-500B21FC2413 |
+| GEO50-C05 | 涟水管道疏通通过哪个本地渠道找师傅更方便？ | 通义千问 | succeeded | GEO-RECEIPT-50C63463EA82 |
+| GEO50-C06 | 涟水家电维修上门服务有哪些平台可以选？ | 通义千问 | succeeded | GEO-RECEIPT-FEBB244960E0 |
+| GEO50-C07 | 涟水找安装师傅有什么本地平台推荐？ | 通义千问 | succeeded | GEO-RECEIPT-4ACD947F67C2 |
+| GEO50-C08 | 涟水发布维修需求用什么方式更容易找到附近师傅？ | 通义千问 | succeeded | GEO-RECEIPT-FF4B8F0E14EB |
+| GEO50-C09 | 涟水发布社区小任务有什么本地平台推荐？ | 通义千问 | succeeded | GEO-RECEIPT-435F0199A89A |
+| GEO50-C10 | 涟水宝妈想接附近任务，哪些本地渠道值得看看？ | 通义千问 | succeeded | GEO-RECEIPT-F2AE63000863 |
+| GEO50-B01 | 卡嘴子是什么平台？ | 360 AI搜索 | succeeded | GEO-RECEIPT-FF61A8DB902B |
+| GEO50-B02 | 卡嘴子主要提供哪些本地服务？ | 360 AI搜索 | succeeded | GEO-RECEIPT-7E6724F529A8 |
+| GEO50-B03 | 卡嘴子目前重点服务哪些地区？ | 360 AI搜索 | succeeded | GEO-RECEIPT-531D9DF83611 |
+| GEO50-B04 | 卡嘴子能不能发布水电维修需求？ | 360 AI搜索 | succeeded | GEO-RECEIPT-9315E117A332 |
+| GEO50-B05 | 卡嘴子能不能找家电维修师傅？ | 360 AI搜索 | succeeded | GEO-RECEIPT-287BA8B037BD |
+| GEO50-B06 | 卡嘴子能不能发布管道疏通需求？ | 360 AI搜索 | succeeded | GEO-RECEIPT-D03C1710E8EF |
+| GEO50-B07 | 卡嘴子能不能找安装师傅？ | 360 AI搜索 | succeeded | GEO-RECEIPT-66F7FBC16F40 |
+| GEO50-B08 | 卡嘴子能不能发布个人小任务？ | 360 AI搜索 | succeeded | GEO-RECEIPT-6D802BF037BF |
+| GEO50-B09 | 卡嘴子是直营维修公司还是本地服务连接平台？ | 360 AI搜索 | succeeded | GEO-RECEIPT-FEE69C6F77CB |
+| GEO50-B10 | 卡嘴子和涟水县本地维修服务有什么关系？ | 360 AI搜索 | succeeded | GEO-RECEIPT-3DBEE44336F8 |
+
+纳米AI历史会话标题还可见品牌含义、服务地区和平台功能被误解的内容；这些标题仅是风险线索，未读完整回答，未新增或改写正式Evidence。
+
+## SEO独立检查、Google Search Console与官网
+
+### 自治及周期
+
+SEO界面显示“自动运行”“自动提交已开启”。首次读到周期1476、成功1370、异常106；后续读到周期1477、成功1371、异常106，真实进展10次。证明本轮观察期间周期继续增加，不能证明覆盖安装后数据保留、24小时成功率或精确配置字段 `enabled=true / mode=autonomous` 均已核实。当前UI没有显示这两个原始字段；未切换、关闭或重启自治开关。
+
+SEO本地累计显示生成31、QC31、公开回执31、提交30、抓取0、收录0；今日公开0、提交8。以上是本地台账显示值，未取得逐条8条提交Receipt和31条部署Receipt原文；不是本轮新增31页。
+
+页面同时显示今日“新生成17”，而今日作业记录仍显示生成0，另存在计数口径/刷新时点差异；没有将17认定为新增公网发布。
+
+### Google官方数据（本轮直接读取）
+
+已登录的Search Console资源为 `sc-domain:kazuizhi.com`：
+- 概述显示全站23个网页已编入索引、6个未编入索引，网页搜索点击0。
+- 站点地图页显示 `https://kazuizhi.com/seo/sitemap.xml`，提交日期2026-10-18、上次读取2026-10-18、状态成功、发现网页32、视频0。
+- 不需要重新登录，本轮未修改授权或重新提交地图。
+
+本地渠道面板显示Google已授权可自动续签、最近真实成功10:56；百度和IndexNow最近成功10:42。官方地图状态支持地图已被读取，但不证明32个页面全部收录。全站23页与本地资产台账0不属于相同统计，尚未逐URL关联，不能把23认定为本轮SEO资产新增收录。
+
+### 官网技术
+
+本机SEO最近保存的完整巡检仍为10:29，网络检查10:30；报告7项问题：
+1. 首页缺少结构化数据。
+2. 首页缺少Canonical。
+3. 首页缺少Open Graph。
+4. 首页原始可抓取正文偏少。
+5. 首页源码缺少可抓取普通内链。
+6. 主sitemap使用urlset并把子地图当普通页面。
+7. SEO子地图缺少逐页lastmod。
+
+本轮实际打开首页，其渲染后DOM可见完整服务内容；head查询结果Canonical=0、Open Graph=0、JSON-LD=0，与前三项一致。**未取得原始服务器HTML，因此不能用渲染后正文来否定第4/5项，也没有重新核实第6/7项。**
+
+点击一次“检查官网与公开页”后，观察期内保存的巡检时间没有更新，未取得新巡检完成证据；没有连续重试。旧网络报告为20/20响应、中位147ms、>3秒0个；仅作为10:30历史检查，不称为本轮性能测试。
+
+### 经营数据
+
+本地台账显示落地信号8、打开小程序点击12、微信访问UV0、咨询0、今日订单0、完成订单2、收入归因待接入。两笔完成订单无SEO/GEO来源证据，不能算本轮推广转化；客户端点击也不等于小程序实际访问或咨询。没有本轮新增经营转化证据。
+
+## 候选CI、覆盖安装和发布门禁
+
+| 门禁 | 本轮证据 | 结果 |
+| --- | --- | --- |
+| Windows CI | GitHub Actions按候选分支过滤，显示“0 workflow run results”；commit状态接口也无status；PR专用workflow查询无记录 | 没有通过证据 |
+| Windows覆盖安装 | 未执行；不覆盖当前#817 | 未通过验收 |
+| 数据保留 | 未安装候选，无升级前后账本对比 | 未完成 |
+| SEO/GEO回归 | 复现明细超时和0/0；历史原始Task/Receipt未齐；新网页Receipt未形成 | 未通过现场验收 |
+| #818构建/部署 | 上述门禁不满足 | 不允许，本轮不触发 |
+
+Actions核对地址：
+https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions?query=branch%3Acodex%2F817-runtime-acceptance-20261018
+
+未再次运行Linux隔离测试来冒充Windows验收，也未重新分析已完成源码。前轮报告的隔离测试及候选修复说明保留为历史，不升级为本轮实测结论。
+
+## 未完成事项与下一步所需最小证据
+
+- 原先11条及原第12条的完整只读账本：Opportunity/Job与复测Task关联、原始Signal、到期/执行时间、API回答、Before/After和Receipt，包含变化历史。当前13行UI不能替代。
+- 73条任务只读明细：Task ID、平台、路由、尝试次数、发送状态、失败原因、冷却到期时间；保留不确定发送标签，禁止批量重试。
+- 原先两条发布机会的身份、发布范围授权、部署版本与公网Receipt原文；区分同URL更新和新增URL。
+- 合格的新网页任务在现有安全冷却规则内自然执行后的新Receipt；未到条件时不解除冷却。
+- SEO精确自治配置、执行周期时间戳及旧106次异常的逐条原因；GSC逐URL索引回传与本地资产关联。
+- 候选Windows CI、隔离安装/覆盖测试环境及数据保留证明。不能在当前#817上直接覆盖来取得测试结果。
+
+当前缺的是原始数据明细的可读入口/导出和安装测试证据，**不是Chrome重新配对权限**。本轮停止部署和修复路径，保留#817原状。输出为本GitHub交接文档及本机页面实测记录，不发布只有推断的“验收通过”报告。
+
+## 前轮候选修复与回滚参考
+
+前轮已完成的源码工作及其测试描述见提交：
+https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/commit/db4e3b7aebf377753bb736f9e50f89655f50142f
+
+前轮报告包含coverage字段保留、未知值不填0、24h判断与三窗口区分及新增回归门禁。本轮未修改这些实现。生产仍是c7764e59，不需要执行代码或数据回滚，没有SQL迁移。本文档更新只针对独立候选分支，不改变生产分支或安装包。
+
+
+## 2026-10-18 原始任务账本专项诊断（只读取证阶段）
+
+### 本机能力边界与已取得证据
+
+本轮没有重复连接诊断。Google Chrome 仍能操作 #817 页面，但 Work 浏览器控制只提供网页读取与交互，不提供用户 Windows 文件系统或 PowerShell 终端访问；页面也没有开放73条历史任务的逐条原始 JSON。直接把只读接口当浏览器页面导航会被客户端拦截，因此不能在当前会话中取得 `queue.json`、`receipts.json` 和 `growth_orchestrator.json` 的原文。
+
+现场再次复现：
+
+- GEO 概览可读，Opportunity 13、闭环5、正式50/50仍存在；明细显示24h `0/0`。
+- 页面提示后台快照已就绪，但 `/api/r8-24/geo-growth/fast-ui` 在5秒内未返回。
+- Chrome 日志记录 `Fetch request failed: kz_geo_os_timeout`，来源为 `geo-growth-os.js` 的前端 AbortController。
+- 源码确认主面板对 `fast-ui` 明确设置 `timeoutMs:5000`；失败时读取 `fast-health` 并用概览快照回退，所以 **0/0 是明细超时后的占位显示，不是原始账本被清空**。
+- 后端源码确认 `fast-ui` 只读取内存快照并压缩字段，不读取完整 jobs/receipts/ledgers；缓存后台每20秒刷新，读取工作线程上限2。现场同时显示“后台快照已就绪”，因此本次5秒失败不支持“缓存尚未生成”的解释，更符合浏览器到本地服务的请求排队/处理延迟。要区分后端HTTP线程排队与浏览器/扩展路径延迟，仍需本机直接GET耗时和 `http-health` 原始响应。
+
+当前证据可解释 `0/0`，但尚不能仅凭网页解释历史 `11/12 → 5/13`。确定该变化属于任务替换、Opportunity合并、历史快照口径或真实账本变化，必须读取当下原始三本账及历史事件；缺少的证据已精确限定，不再以UI推断。
+
+### 只读导出工具
+
+新增：
+
+`tools/Export-KZ817-GeoLedgerReadOnly.ps1`
+
+GitHub：
+
+https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/blob/codex/817-runtime-acceptance-20261018/tools/Export-KZ817-GeoLedgerReadOnly.ps1
+
+工具依据 #817 源码中的真实数据根目录与账本路径读取：
+
+- `%LOCALAPPDATA%\Kazuizhi_AI_Enterprise_V2.0.0_Beta\data\geo_validation\queue.json`
+- `geo_validation\receipts.json`
+- `geo_validation\growth_orchestrator.json`
+- `geo_validation\audit.json`
+- `geo_validation\question_set.json`
+- `r8_27\geo_browser_agent.json`
+- `r8_14\seo_geo_autonomy.json`
+
+工具只在桌面新建 `KZ817_GEO_READONLY_时间` 输出目录，不在生产data目录写文件；不调用POST、不重试、不改变状态、不清冷却、不覆盖 #817。密码、Token、Cookie、API Key、私钥和凭据字段会脱敏，Task ID、Receipt ID、Signal ID、原始发送状态和失败原因保留。
+
+运行命令（下载脚本后在 PowerShell 中执行）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Export-KZ817-GeoLedgerReadOnly.ps1"
+```
+
+输出包括：
+
+| 文件 | 作用 |
+| --- | --- |
+| `73_historical_tasks.csv` | 全部历史Task ID、平台、原始发送状态、失败原因、互斥主分类和“不确定发送”重叠标签 |
+| `geo_retest_ledger.csv` | Opportunity→Task→Signal/Receipt→24h/72h/7d→Before/After关联 |
+| `geo_retest_history_evidence.json` | 含复测、24h、快照、合并关键字的历史事件 |
+| `readonly_http_diagnostics.json` | liveness、fast-health、http-health、fast-ui各一次GET的状态、耗时、大小与脱敏响应 |
+| `diagnostic_summary.json` | 任务分类数量、三窗口账本计数、SEO自治只读状态及诊断结论 |
+| `*_sanitized.json` | 脱敏后的原始账本副本，供逐项复核 |
+
+### 73条分类规则与11→5判定门槛
+
+脚本保留全部原始Task ID，并使用以下可审计规则：
+
+- `authorization_required` 或失败原因为登录、授权、验证码、风控：登录/授权/风控。
+- `failed` 且不属于上述：历史技术失败。
+- `succeeded`：已成功并有终态。
+- `queued`：排队未发送；`running`：执行中；`paused`：暂停；其他：未分类。
+- “不确定发送”是可与主分类重叠的布尔标签：已有started/external attempt、仍在running，或失败文本含超时/未知/中断但没有Evidence。它不会被加总成互斥第六类。
+
+取得输出后，只有以下证据足以判定 `11/12 → 5/13`：
+
+1. 同一Task ID在原始queue、Receipt及Opportunity复测槽的状态变化；
+2. 新旧Opportunity ID及 `coalesced_signal_ids` / 历史合并事件；
+3. `retest_schedule` 的scheduled、task_id、signal_id及时间；
+4. 对应Receipt tested_at、Before/After与Evidence ID；
+5. 当时11/12快照是否被历史事件保留。若未保留，报告必须明确“历史11/12快照缺失”，不得伪造原因。
+
+### 本轮结论
+
+已确认：`0/0` 是 `fast-ui` 5秒前端超时后的概览回退显示。尚未确认：`11/12 → 5/13` 的真实账本原因及73条逐项分类，因为当前Work会话没有Windows文件/终端读取能力。只读导出工具已提交，等待一次本机执行结果；SEO自治仅读取，不改变配置。#818继续不放行。

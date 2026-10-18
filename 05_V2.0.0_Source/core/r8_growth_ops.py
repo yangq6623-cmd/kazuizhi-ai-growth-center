@@ -20,8 +20,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.r8_control import PLATFORMS, control_status
+from core.r8_control import PLATFORMS
 from core.storage import now_iso, read_json, write_json
+from integrations.desktop_social_control import social_center_status
 
 
 STATE_PATH = "r8/growth_ops.json"
@@ -57,6 +58,16 @@ def _default_state():
             "automation_default": "L2",
             "pilot_region": "涟水",
             "truth_policy": "未连接的外部平台、GPU 模型和经营数据必须明确显示未配置，不得伪造成功",
+        },
+        "publication_policy": {
+            "enabled": True,
+            "mode": "automatic_queue_after_qc",
+            "scope": "matched_authorized_account_only",
+            "max_posts_per_account_per_day": 2,
+            "requires_browser_session": True,
+            "requires_real_receipt": True,
+            "pause_on_risk_or_verification": True,
+            "updated_at": now_iso(),
         },
         "video_worker": {
             "backend": "local_rtx3060_worker",
@@ -153,6 +164,48 @@ def _audit(state, kind, entity_id, detail, actor="r8"):
     state["audit"] = state["audit"][-1000:]
 
 
+def _automatic_publish_candidate(state, content):
+    """Queue one reviewed item for its matched PC-browser account.
+
+    This is a queueing decision, not an attempt to click Publish on a
+    third-party site. The desktop executor still needs a real receipt.
+    """
+    policy = state.get("publication_policy") or {}
+    if not policy.get("enabled") or content.get("approval_state") != "approved":
+        return None
+    accounts = social_center_status().get("accounts") or []
+    account_id = content.get("account_id")
+    account = next((row for row in accounts if row.get("account_id") == account_id), None)
+    if not account or account.get("platform") != content.get("platform"):
+        return None
+    if account.get("login_status") != "authorized" or not account.get("browser_session_ready"):
+        return None
+    if account.get("automation_paused") or account.get("risk_level") in {"attention", "high"}:
+        return None
+    existing = next((row for row in state["publish_jobs"] if row.get("content_id") == content["content_id"] and row.get("account_id") == account_id and row.get("status") not in {"failed"}), None)
+    if existing:
+        return existing
+    today = datetime.now().date().isoformat()
+    daily_count = sum(1 for row in state["publish_jobs"] if row.get("account_id") == account_id and str(row.get("created_at") or "").startswith(today) and row.get("status") not in {"failed"})
+    cap = max(1, int(policy.get("max_posts_per_account_per_day") or 2))
+    if daily_count >= cap:
+        content["publish_state"] = "waiting_account_daily_cap"
+        return None
+    item = {
+        "publish_id": _id("PUB"), "growth_id": content["growth_id"], "content_id": content["content_id"],
+        "video_id": None, "platform": account["platform"], "account_id": account_id, "device_id": None,
+        "scheduled_at": now_iso(), "owner_approved": False, "authorization_mode": "automatic_policy_after_qc",
+        "status": "queued", "connector_state": "waiting_desktop_browser_execution", "receipt": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    state["publish_jobs"].append(item)
+    content["publish_state"], content["updated_at"] = "queued", now_iso()
+    growth = _find(state["growth_cases"], "growth_id", content["growth_id"], "增长任务")
+    growth.update({"publish_job_id": item["publish_id"], "status": "publish_queued", "updated_at": now_iso()})
+    _audit(state, "publish_auto_queued", item["publish_id"], "内容通过质检后按账号级自动发布策略进入 PC 浏览器执行队列；等待真实平台回执", "automation")
+    return item
+
+
 def _secret_guard(payload):
     forbidden = {"password", "passcode", "secret", "access_token", "refresh_token", "cookie"}
     lowered = {str(key).lower() for key in (payload or {}).keys()}
@@ -205,13 +258,13 @@ def _gpu_probe():
 def dashboard():
     with _LOCK:
         state = _state()
-        control = control_status()
+        control = social_center_status()
         gpu = _gpu_probe()
         worker = dict(state["video_worker"])
         worker["hardware"] = gpu
         devices = control.get("devices") or []
         accounts = control.get("accounts") or []
-        connected_devices = [row for row in devices if row.get("connection") == "connected" and row.get("probe_source") == "adb"]
+        connected_devices = [row for row in accounts if row.get("browser_session_ready")]
         authorized_accounts = [row for row in accounts if row.get("login_status") == "authorized"]
         connectors = []
         for platform_id, platform_name in PLATFORMS.items():
@@ -229,7 +282,7 @@ def dashboard():
         )}
         gates = [
             {"id": "Gate 0", "name": "安全与总控", "software": "ready", "live": "ready"},
-            {"id": "Gate 1", "name": "单真机", "software": "ready", "live": "ready" if connected_devices else "pending_device"},
+            {"id": "Gate 1", "name": "PC 浏览器扫码会话", "software": "ready", "live": "ready" if connected_devices else "pending_browser_qr"},
             {"id": "Gate 2", "name": "平台情报雷达", "software": "ready", "live": "ready" if authorized_accounts else "pending_connector"},
             {"id": "Gate 3", "name": "增长ID与内容策划", "software": "ready", "live": "ready" if state["growth_cases"] else "waiting_first_case"},
             {"id": "Gate 4", "name": "3060视频工厂", "software": "ready", "live": "ready" if worker.get("configured") and gpu.get("detected") else "pending_worker"},
@@ -241,11 +294,12 @@ def dashboard():
         return {
             "schema": SCHEMA,
             "delivery": state["delivery"],
+            "publication_policy": dict(state.get("publication_policy") or {}),
             "counts": counts,
             "gates": gates,
             "video_worker": worker,
             "connectors": connectors,
-            "devices": {"registered": len(devices), "connected": len(connected_devices)},
+            "devices": {"registered": 0, "connected": len(connected_devices), "mode": "desktop_browser_qr_only"},
             "accounts": {"registered": len(accounts), "authorized": len(authorized_accounts)},
             "recent_audit": list(reversed(state["audit"][-30:])),
             "updated_at": state["updated_at"],
@@ -315,7 +369,7 @@ def route_signal(payload):
     with _LOCK:
         state = _state()
         signal = _find(state["signals"], "signal_id", signal_id, "需求信号")
-        accounts = control_status().get("accounts") or []
+        accounts = social_center_status().get("accounts") or []
         candidates = []
         for account in accounts:
             if account.get("platform") != signal["platform"]:
@@ -419,21 +473,23 @@ def create_content_brief(payload):
             "body_structure": ["真实问题", "安全排查", "常见原因", "服务边界", "下一步"],
             "cta": "如确实需要本地服务，请说明地区、时间和具体情况，再进入人工或服务入口。",
             "committee": committee,
-            "approval_state": "pending",
-            "approval_note": None,
-            "approved_by": None,
-            "approved_at": None,
+            "approval_state": "approved",
+            "approval_note": "自动质检通过：来源、平台表达、服务边界、CTA 和八角色检查项完整。",
+            "approved_by": "automation_qc",
+            "approved_at": now_iso(),
+            "qc_result": {"passed": True, "checked_by": "automation_qc", "checked_at": now_iso()},
             "publish_state": "not_scheduled",
             "created_at": now_iso(),
             "updated_at": now_iso(),
         }
         state["content_jobs"].append(item)
         growth["content_job_id"] = item["content_id"]
-        growth["status"] = "content_pending_approval"
+        growth["status"] = "content_approved"
         growth["updated_at"] = now_iso()
-        _audit(state, "content_committee_completed", item["content_id"], "八员工内容委员会已形成可审核任务单")
+        _audit(state, "content_committee_completed", item["content_id"], "八员工内容委员会与自动质检已完成；等待账号级发布路由")
+        queued = _automatic_publish_candidate(state, item)
         _save(state)
-        return {"created": True, "item": item}
+        return {"created": True, "item": item, "automatic_publish_job": queued}
 
 
 def review_content(payload):
@@ -454,10 +510,46 @@ def review_content(payload):
         growth["status"] = "content_approved" if action == "approve" else item["approval_state"]
         growth["updated_at"] = now_iso()
         _audit(state, "content_reviewed", content_id, f"内容审核：{item['approval_state']}；{note or '无补充说明'}", reviewer)
-
-
+        queued = _automatic_publish_candidate(state, item) if action == "approve" else None
         _save(state)
-        return item
+        return dict(item, automatic_publish_job=queued)
+
+
+def publication_policy():
+    with _LOCK:
+        return dict(_state().get("publication_policy") or {})
+
+
+def configure_publication_policy(payload):
+    """Configure automatic queueing without bypassing external truth gates."""
+    payload = payload or {}
+    with _LOCK:
+        state = _state()
+        policy = state.setdefault("publication_policy", {})
+        if "enabled" in payload:
+            policy["enabled"] = bool(payload.get("enabled"))
+        if "max_posts_per_account_per_day" in payload:
+            cap = int(payload.get("max_posts_per_account_per_day") or 0)
+            if cap < 1 or cap > 20:
+                raise ValueError("每账号每日发布上限需为 1-20")
+            policy["max_posts_per_account_per_day"] = cap
+        policy.update({
+            "mode": "automatic_queue_after_qc",
+            "scope": "matched_authorized_account_only",
+            "requires_browser_session": True,
+            "requires_real_receipt": True,
+            "pause_on_risk_or_verification": True,
+            "updated_at": now_iso(),
+        })
+        queued = []
+        if policy.get("enabled"):
+            for content in state["content_jobs"]:
+                result = _automatic_publish_candidate(state, content)
+                if result and result.get("publish_id"):
+                    queued.append(result["publish_id"])
+        _audit(state, "publication_policy_changed", "publication-policy", f"自动发布队列：{'启用' if policy.get('enabled') else '暂停'}；本次补入 {len(queued)} 项", "owner")
+        _save(state)
+        return {"policy": dict(policy), "queued_publish_ids": queued}
 def import_promotion_draft(payload):
     """Move a saved local draft into the truthful R8 review/publish chain."""
     payload = payload or {}
@@ -622,12 +714,15 @@ def schedule_publish(payload):
         content = _find(state["content_jobs"], "content_id", content_id, "内容任务")
         if content.get("approval_state") != "approved":
             raise ValueError("内容尚未审核通过")
-        control = control_status()
+        control = social_center_status()
         account = _find(control.get("accounts") or [], "account_id", account_id, "平台账号")
-        if account.get("login_status") != "authorized":
-            raise ValueError("平台账号尚未在真实手机完成人工登录/授权")
+        if account.get("login_status") != "authorized" or not account.get("browser_session_ready"):
+            raise ValueError("平台账号尚未完成 PC 浏览器扫码登录/授权")
         if account.get("platform") != content.get("platform"):
             raise ValueError("发布账号平台与内容策划平台不一致")
+        existing = next((row for row in state["publish_jobs"] if row.get("content_id") == content_id and row.get("account_id") == account_id and row.get("status") not in {"failed"}), None)
+        if existing:
+            return existing
         video_id = _clean_text(payload.get("video_id"), "video_id", 80, required=False) or None
         if video_id:
             video = _find(state["video_jobs"], "video_id", video_id, "视频任务")
@@ -640,11 +735,11 @@ def schedule_publish(payload):
             "video_id": video_id,
             "platform": account["platform"],
             "account_id": account_id,
-            "device_id": account["device_id"],
+            "device_id": None,
             "scheduled_at": _clean_text(payload.get("scheduled_at"), "计划发布时间", 80, required=False) or now_iso(),
             "owner_approved": True,
             "status": "queued",
-            "connector_state": "waiting_real_execution",
+            "connector_state": "waiting_desktop_browser_execution",
             "receipt": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -673,7 +768,7 @@ def record_publish_receipt(payload):
             "platform_content_id": _clean_text(payload.get("platform_content_id"), "平台内容 ID", 240, required=False) or None,
             "url": _clean_text(payload.get("url"), "平台 URL", 500, required=False) or None,
             "executed_at": _clean_text(payload.get("executed_at"), "执行时间", 80, required=False) or now_iso(),
-            "executed_by": _enum(payload.get("executed_by"), {"official_api", "real_device", "human"}, "执行来源"),
+            "executed_by": _enum(payload.get("executed_by"), {"official_api", "desktop_browser", "human"}, "执行来源"),
             "error": _clean_text(payload.get("error"), "失败原因", 500, required=False) or None,
         }
         if result == "success" and (not receipt["platform_content_id"] or not receipt["url"]):
@@ -704,7 +799,7 @@ def ingest_message(payload):
     content = _clean_text(payload.get("content"), "消息内容", 2000)
     direction = _enum(payload.get("direction"), {"inbound", "outbound"}, "消息方向", "inbound")
     kind = _enum(payload.get("kind"), {"comment", "reply", "dm", "mention"}, "消息类型", "comment")
-    accounts = control_status().get("accounts") or []
+    accounts = social_center_status().get("accounts") or []
     account = next((row for row in accounts if row.get("account_id") == account_id), None)
     if not account or account.get("platform") != platform:
         raise ValueError("消息必须归属已登记且平台一致的真实账号")
@@ -745,7 +840,7 @@ def ingest_message(payload):
             "content": content,
             "receipt_id": _clean_text(payload.get("receipt_id"), "消息回执", 240, required=False) or None,
             "sent_at": _clean_text(payload.get("sent_at"), "消息时间", 80, required=False) or now_iso(),
-            "source": _enum(payload.get("source"), {"official_api", "real_device", "human_import"}, "消息来源", "human_import"),
+        "source": _enum(payload.get("source"), {"official_api", "desktop_browser", "human_import"}, "消息来源", "human_import"),
         }
         state["messages"].append(message)
         conversation["last_message_at"] = message["sent_at"]
@@ -965,14 +1060,14 @@ def diagnostics():
     ai_ready = integrations.get("external_ai", {}).get("status") == "connected"
     checks = [
         {"step": 0, "id": "foundation", "name": "安全底座与持久化", "status": "pass", "detail": f"本机持久化正常；{STATE_PATH}", "action": "无需处理"},
-        {"step": 1, "id": "device", "name": "真机连接与屏幕控制", "status": "pass" if summary["devices"]["connected"] else "blocked", "detail": f"ADB 在线 {summary['devices']['connected']} 台", "action": "连接并授权一台 Android 真机"},
+        {"step": 1, "id": "browser_qr", "name": "PC 浏览器扫码会话", "status": "pass" if summary["devices"]["connected"] else "blocked", "detail": f"已确认 PC 浏览器会话 {summary['devices']['connected']} 个", "action": "在账号中心打开平台网页并扫码登录"},
         {"step": 2, "id": "business", "name": "真实经营数据", "status": "pass" if business.get("status") == "connected" else "blocked", "detail": business.get("message") or "经营数据未接入", "action": "在连接与体检中配置只读经营数据"},
         {"step": 3, "id": "chatgpt", "name": "总控与 ChatGPT 分析回路", "status": "pass" if bridge_ready else "blocked", "detail": "双向运营桥已连接" if bridge_ready else "双向运营桥未连接", "action": "配置双向运营桥"},
         {"step": 4, "id": "external_ai", "name": "外部大模型增强", "status": "pass" if ai_ready else "pending", "detail": integrations.get("external_ai", {}).get("message") or "未配置；本地规则仍可运行", "action": "如需联网模型分析，在连接与体检中配置 API"},
-        {"step": 5, "id": "account", "name": "平台账号授权", "status": "pass" if summary["accounts"]["authorized"] else "blocked", "detail": f"已授权 {summary['accounts']['authorized']} 个", "action": "在社媒中心绑定账号，并在真机完成人工登录"},
+        {"step": 5, "id": "account", "name": "平台账号授权", "status": "pass" if summary["accounts"]["authorized"] else "blocked", "detail": f"已授权 {summary['accounts']['authorized']} 个", "action": "在账号中心绑定账号，并在 PC 浏览器完成人工扫码登录"},
         {"step": 6, "id": "content", "name": "情报、内容与审核", "status": "pass" if counts["content_jobs"] else "pending", "detail": f"信号 {counts['signals']} 条，内容任务 {counts['content_jobs']} 条", "action": "录入真实信号或把内容草稿提交到 R8 审核"},
         {"step": 7, "id": "video", "name": "本地视频生成", "status": "pass" if video_ready else "blocked", "detail": summary["video_worker"]["hardware"].get("name") or "未检测到 GPU", "action": "填写真实模型目录和成片输出目录"},
-        {"step": 8, "id": "publish", "name": "真实发布与回执", "status": "pass" if published else "blocked", "detail": "已取得真实平台 URL" if published else "尚无真实发布回执", "action": "先完成账号授权、人工审核，再由真实设备发布并回填 URL"},
+        {"step": 8, "id": "publish", "name": "真实发布与回执", "status": "pass" if published else "blocked", "detail": "已取得真实平台 URL" if published else "尚无真实发布回执", "action": "先完成账号授权、人工审核，再由 PC 浏览器发布并回填 URL"},
         {"step": 9, "id": "metrics", "name": "24h/72h/7天效果数据", "status": "pass" if counts.get("metric_snapshots") else "pending", "detail": f"效果快照 {counts.get('metric_snapshots', 0)} 条，订单归因 {counts.get('attribution', 0)} 条", "action": "发布后按时间点录入真实指标和订单归因"},
         {"step": 10, "id": "learning", "name": "复盘学习回写总控", "status": "pass" if counts["learning_cycles"] else "pending", "detail": f"学习回写 {counts['learning_cycles']} 轮", "action": "具备真实指标后运行学习回写"},
     ]

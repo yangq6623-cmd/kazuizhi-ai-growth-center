@@ -1,0 +1,1263 @@
+"""R8-20/R8-21 SEO/GEO growth operating-loop HTTP and scheduler bridge.
+
+R8-24 extends the same scheduler with the GEO Growth OS. C-level Doubao/API
+signals may drive low-risk operating work, while formal A/B truth remains
+unchanged and independently evidence-gated.
+"""
+from __future__ import annotations
+
+import json
+import threading
+import time
+from collections import Counter, deque
+from urllib.parse import parse_qs, urlsplit
+
+from backend import server
+from backend import r8_19_geo_validation_patch as geo_validation_api
+from core import runtime_resilience
+from core import phase1_acceptance, runtime_supervisor
+from core.storage import data_root
+from core import seo_geo_autonomy as seo_core
+from core import seo_geo_source_tracking_patch as _seo_geo_source_tracking_patch  # noqa: F401
+from core import seo_geo_growth_intelligence as growth
+from core import r8_20_growth_truth_patch as _r8_20_growth_truth_patch  # noqa: F401
+from core import geo_growth_orchestrator as geo_growth
+from core import geo_domestic_matrix
+from core import geo_growth_publish_bridge as _geo_growth_publish_bridge  # noqa: F401
+from integrations import seo_geo_connector_router_v2 as connector_router
+
+# Read-only loopback HTTP request timing. It is deliberately lightweight and
+# never queries ledgers or external services; it shows when local API or
+# static JS GETs occupy handler threads while Evidence times out.
+_HTTP_DIAG_LOCK = threading.Lock()
+_HTTP_DIAG_INFLIGHT = {}
+_HTTP_DIAG_RECENT_SLOW = deque(maxlen=24)
+_HTTP_DIAG_COMPLETED = 0
+_HTTP_DIAG_PEAK_INFLIGHT = 0
+_HTTP_DIAG_SLOW_SECONDS = 1.0
+
+
+# Safe, static route names only. Never log raw dynamic paths, query strings,
+# user-entered values, credentials, tokens, IDs, or POST bodies.
+_HTTP_KNOWN_ROUTES = frozenset({
+    "/api/status", "/api/business-source/status", "/api/business-analytics",
+    "/api/operation-summary/today", "/api/system/diagnostics",
+    "/api/integrations", "/api/bridge/status",
+    "/api/r7/jobs", "/api/r7/agents", "/api/r7/engine",
+    "/api/r7/audit", "/api/r7/decision-center", "/api/r7/model-routes",
+    "/api/r8-22/autonomy", "/api/r8-22/autonomy/events",
+    "/api/r8-22/autonomy/receipt",
+    "/api/r8-23/growth-os", "/api/r8-23/growth-os/capabilities",
+    "/api/r8-23/growth-os/utilization", "/api/r8-23/identity",
+    "/api/r8-20/seo-geo", "/api/r8-20/seo-geo/trends",
+    "/api/r8-24/geo-growth/fast", "/api/r8-24/geo-growth/fast-ui",
+    "/api/r8-24/geo-growth/fast-health",
+    "/api/r8-24/geo-growth/evidence-compact",
+    "/api/r8-24/geo-growth/evidence-health",
+    "/api/r8-24/geo-growth/http-health",
+    "/api/r8-24/geo-growth/liveness",
+    "/api/r8-25/phase1-acceptance",
+    "/api/r8-26/geo/domestic-matrix",
+})
+
+
+def _http_request_category(path):
+    if path in _HTTP_KNOWN_ROUTES:
+        return path
+    if path.startswith("/api/r8-24/geo-growth/"):
+        return "api:geo_growth_other"
+    if path.startswith("/api/r8-"):
+        return "api:r8_other"
+    if path.startswith("/api/r7/"):
+        return "api:r7_other"
+    if path.startswith("/api/"):
+        return "api:other"
+    if path.endswith(".js"):
+        return "static_js"
+    if path.endswith(".html"):
+        return "static_html"
+    return "other"
+
+
+def _http_health():
+    now = time.perf_counter()
+    with _HTTP_DIAG_LOCK:
+        active = [
+            {"kind": kind, "elapsed_ms": round((now-start)*1000)}
+            for kind, start in _HTTP_DIAG_INFLIGHT.values()
+        ]
+        return {
+            "source": "local_http_handlers",
+            "ready": True,
+            "inflight_requests": len(active),
+            "peak_inflight_requests": _HTTP_DIAG_PEAK_INFLIGHT,
+            "completed_requests": _HTTP_DIAG_COMPLETED,
+            "active_slow_requests": [x for x in active if x["elapsed_ms"] >= _HTTP_DIAG_SLOW_SECONDS*1000][:12],
+            "recent_slow_requests": list(_HTTP_DIAG_RECENT_SLOW),
+            "slow_threshold_ms": round(_HTTP_DIAG_SLOW_SECONDS*1000),
+            "privacy": "path_categories_only_no_urls_or_query_strings",
+        }
+
+
+_INSTALLED = False
+_ORIGINAL_RUN = seo_core.run_once
+_ORIGINAL_STATUS = seo_core.status
+_GEO_GROWTH_AUTO_START_DELAY_SECONDS = 20
+_GEO_GROWTH_AUTO_START_TIMER = None
+
+# Advanced GEO must never block the dashboard behind worker/file I/O.
+# The first response exposes the immutable 50-question baseline immediately.
+# Source files are read on a bounded worker and have independently truthful
+# health states: "questions ready" does not claim receipts or A/B validation.
+_GEO_EVIDENCE_LOCK = threading.Lock()
+_GEO_EVIDENCE_CACHE = {
+    "payload": None, "updated": 0.0, "started": 0.0, "refreshing": False,
+    "error": "", "attempt": 0, "workers": [],
+    "last_read_duration": None, "payload_bytes": 0,
+}
+_GEO_EVIDENCE_TTL_SECONDS = 20
+_GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS = 12
+_GEO_EVIDENCE_MAX_WORKERS = 2
+_GEO_EVIDENCE_PREWARM_TIMER = None
+_GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS = 30.0
+
+# /geo-growth/fast previously read multiple JSON ledgers under a global RLock
+# on the HTTP request thread. Busy workers could stall both GEO panels for 4-8s.
+# Fast reads now serve a truthfully aged cached snapshot, rebuilt in the background.
+_GEO_FAST_LOCK = threading.Lock()
+_GEO_FAST_CACHE = {
+    "payload": None, "updated": 0.0, "started": 0.0, "refreshing": False,
+    "error": "", "attempt": 0, "workers": [],
+}
+_GEO_FAST_TTL_SECONDS = 20
+_GEO_FAST_WORKER_TIMEOUT_SECONDS = 15
+_GEO_FAST_MAX_WORKERS = 2
+_GEO_FAST_PREWARM_TIMER = None
+
+def _geo_fast_update_cache(token):
+    try:
+        result = geo_growth.fast_status()
+        if not isinstance(result, dict):
+            raise ValueError("fast_status returned a non-dict result")
+        with _GEO_FAST_LOCK:
+            if _GEO_FAST_CACHE["attempt"] == token:
+                _GEO_FAST_CACHE.update(
+                    payload=result, updated=time.monotonic(), refreshing=False, error="",
+                )
+    except Exception as error:
+        with _GEO_FAST_LOCK:
+            if _GEO_FAST_CACHE["attempt"] == token:
+                _GEO_FAST_CACHE.update(
+                    refreshing=False,
+                    error=f"{type(error).__name__}: {str(error)[:150]}",
+                )
+
+
+def _geo_fast_cached():
+    """Never touch disk, cloud status or the global JSON lock on HTTP threads."""
+    now = time.monotonic()
+    with _GEO_FAST_LOCK:
+        state = _GEO_FAST_CACHE
+        state["workers"] = [t for t in state["workers"] if t.is_alive()]
+        if state["refreshing"] and now - state["started"] > _GEO_FAST_WORKER_TIMEOUT_SECONDS:
+            state["refreshing"] = False
+            state["error"] = "GEO 运行状态后台刷新超时，正在保留上次可用快照"
+            state["attempt"] += 1
+        payload = state["payload"]
+        age = max(0, now - state["updated"]) if payload is not None else None
+        cooldown = now - state["started"] < 3
+        if (payload is None or age >= _GEO_FAST_TTL_SECONDS) and not state["refreshing"] and not cooldown and len(state["workers"]) < _GEO_FAST_MAX_WORKERS:
+            state["attempt"] += 1
+            token = state["attempt"]
+            state["refreshing"] = True
+            state["started"] = now
+            worker = threading.Thread(
+                target=_geo_fast_update_cache, args=(token,),
+                name="kz-geo-fast-status-snapshot", daemon=True,
+            )
+            state["workers"].append(worker)
+            worker.start()
+        if payload is not None:
+            return {
+                **payload,
+                "status_ready": True,
+                "snapshot_stale": bool(age >= 90),
+                "snapshot_age_seconds": round(age, 1),
+                "refreshing": bool(state["refreshing"]),
+                "last_refresh_error": str(state["error"] or "")[:200],
+            }
+        return {
+            "status_mode": "pending_snapshot",
+            "status_ready": False,
+            "worker_limit_reached": len(state["workers"]) >= _GEO_FAST_MAX_WORKERS,
+            "pending_reason": "blocked_reader_workers" if len(state["workers"]) >= _GEO_FAST_MAX_WORKERS else "warming",
+            "snapshot_stale": False,
+            "refreshing": bool(state["refreshing"]),
+            "last_refresh_error": str(state["error"] or "")[:200],
+            "state": "unknown",
+            "mission": "正在读取真实 GEO 运行状态，请稍候",
+            "summary": {}, "pipeline": [], "opportunities": [],
+            "technical_blockers": [], "cloud": {}, "policy": {},
+            "formal_ab_completed": None, "formal_ab_target": 50,
+        }
+
+
+def _geo_fast_periodic_refresh():
+    """Rebuild the UI snapshot independently of browser focus or owner polling."""
+    global _GEO_FAST_PREWARM_TIMER
+    try:
+        _geo_fast_cached()
+    finally:
+        timer = threading.Timer(20.0, _geo_fast_periodic_refresh)
+        timer.daemon = True
+        timer.name = "kz-geo-fast-status-auto-refresh"
+        _GEO_FAST_PREWARM_TIMER = timer
+        timer.start()
+
+
+def _schedule_geo_fast_prewarm():
+    global _GEO_FAST_PREWARM_TIMER
+    if _GEO_FAST_PREWARM_TIMER is not None:
+        return
+    timer = threading.Timer(2.0, _geo_fast_periodic_refresh)
+    timer.daemon = True
+    timer.name = "kz-geo-fast-status-prewarm"
+    _GEO_FAST_PREWARM_TIMER = timer
+    timer.start()
+
+
+def _geo_fast_health():
+    """Nonblocking diagnostic data; no secrets, network access, or disk reads."""
+    with _GEO_FAST_LOCK:
+        state = _GEO_FAST_CACHE
+        age = (max(0, time.monotonic() - state["updated"])
+               if state["payload"] is not None else None)
+        return {
+            "status_ready": state["payload"] is not None,
+            "snapshot_age_seconds": round(age, 2) if age is not None else None,
+            "snapshot_stale": bool(age is not None and age >= 90),
+            "refreshing": bool(state["refreshing"]),
+            "worker_count": sum(t.is_alive() for t in state["workers"]),
+            "worker_limit_reached": sum(t.is_alive() for t in state["workers"]) >= _GEO_FAST_MAX_WORKERS,
+            "refresh_age_seconds": round(max(0, time.monotonic()-state["started"]), 2) if state["refreshing"] else 0,
+            "last_error": str(state["error"] or "")[:200],
+        }
+
+
+
+_GEO_UI_OPPORTUNITY_FIELDS = (
+    "id", "gap_label", "service", "question_text", "question_id",
+    "opportunity_score", "priority", "decision", "keyword", "state",
+    "job_state", "asset_stage", "job_id", "public_url", "outcome",
+    "operating_delta", "retest_task_id", "operating_before_score",
+    "operating_after_score", "retest_coverage",
+)
+
+
+def _geo_fast_ui_compact(snapshot=None):
+    """Bounded read-only owner UI payload, without jobs, receipts or full ledgers.
+
+    Health and UI endpoints draw from the SAME verified snapshot. The owner
+    cannot be led to believe a pending/old snapshot is fresh, and only a real
+    formal A/B count can be shown.
+    """
+    data = snapshot if snapshot is not None else _geo_fast_cached()
+    if data.get("status_ready") is False:
+        return data
+    rows = data.get("opportunities") or []
+    summary = data.get("summary") or {}
+    today = data.get("today_activity") or {}
+    return {
+        "status_mode": "fast_ui_compact",
+        "status_ready": bool(data.get("status_ready")),
+        "snapshot_age_seconds": data.get("snapshot_age_seconds"),
+        "snapshot_stale": bool(data.get("snapshot_stale")),
+        "refreshing": bool(data.get("refreshing")),
+        "last_refresh_error": str(data.get("last_refresh_error") or "")[:180],
+        "state": data.get("state") or "unknown",
+        "enabled": bool(data.get("enabled")),
+        "paused": bool(data.get("paused")),
+        "mission": str(data.get("mission") or "")[:300],
+        "policy": {"execution_resources":
+            [str(v)[:50] for v in (data.get("policy") or {}).get("execution_resources", [])[:8]]},
+        "today_activity": {k: today.get(k) for k in (
+            "date", "new_opportunities", "verified_publications", "last_run_at",
+            "last_run_age_minutes", "last_run_error", "scheduler_fresh")},
+        "summary": {str(k): v for k, v in summary.items()
+                    if isinstance(v, (int, float, bool, str)) and len(str(v)) < 160},
+        "cloud": {k: (data.get("cloud") or {}).get(k) for k in (
+            "state", "completed", "target", "provider", "ready")},
+        "publish_connector": {k: (data.get("publish_connector") or {}).get(k)
+                              for k in ("ready", "configured", "reason")},
+        "retest_windows": {
+            label: {key: (data.get("retest_windows") or {}).get(label, {}).get(key)
+                    for key in ("scheduled", "queued", "completed", "blocked")
+                    if key != "blocked" or key in (data.get("retest_windows") or {}).get(label, {})}
+            for label in ("24h", "72h", "7d")
+        },
+        "historical_retests": data.get("historical_retests") or {},
+        "pipeline": [
+            {k: row.get(k) for k in ("id", "label", "count", "state")}
+            for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)
+        ],
+        "opportunities": [
+            {k: (str(row[k])[:260] if isinstance(row.get(k), str) else row.get(k))
+             for k in _GEO_UI_OPPORTUNITY_FIELDS if k in row}
+            for row in rows[:15] if isinstance(row, dict)
+        ],
+        "technical_blockers": [
+            {k: str(row.get(k) or "")[:220] for k in ("code", "detail", "item_id")}
+            for row in (data.get("technical_blockers") or [])[:8]
+            if isinstance(row, dict)
+        ],
+        "formal_ab_completed": data.get("formal_ab_completed"),
+        "formal_ab_target": data.get("formal_ab_target") or 50,
+        "last_run_at": data.get("last_run_at") or "",
+        "last_error": str(data.get("last_error") or "")[:180],
+    }
+
+
+def _geo_fast_health_overview():
+    """Small truthful status fallback for a browser with a congested UI GET."""
+    health = _geo_fast_health()
+    if health.get("status_ready"):
+        with _GEO_FAST_LOCK:
+            payload = _GEO_FAST_CACHE.get("payload") or {}
+            health["owner_overview"] = {
+                "state": payload.get("state") or "unknown",
+                "mission": str(payload.get("mission") or "")[:180],
+                "summary": {k: v for k, v in (payload.get("summary") or {}).items()
+                            if isinstance(v, (int, float, bool))},
+                "cloud": {k: (payload.get("cloud") or {}).get(k)
+                          for k in ("state", "completed", "target", "ready")},
+                "formal_ab_completed": payload.get("formal_ab_completed"),
+                "formal_ab_target": payload.get("formal_ab_target") or 50,
+                # Preserve missing/unknown retest counts rather than converting
+                # a failed main GET to a misleading 0/0.
+                "retest_windows": payload.get("retest_windows") or {},
+                "historical_retests": payload.get("historical_retests") or {},
+                "today_activity": {k: (payload.get("today_activity") or {}).get(k)
+                                   for k in ("last_run_at", "scheduler_fresh", "new_opportunities",
+                                             "verified_publications")},
+            }
+    return health
+
+
+def _geo_evidence_seed(reason="", loading=True):
+    # This deterministic, read-only function never accesses the Windows JSON
+    # ledger or the shared I/O lock; it stays usable during a blocked writer.
+    rows = geo_validation_api.geo_core._fixed_questions()
+    totals = Counter(row.get("question_type") or "unknown" for row in rows)
+    return {
+        "snapshot_mode": "baseline_without_evidence",
+        "snapshot_ready": False,
+        "snapshot_stale": False,
+        "refreshing": loading,
+        "formal_ab_completed": None,
+        "formal_ab_target": len(rows),
+        "available_sections": 1,
+        "total_sections": 4,
+        "questions": rows,
+        "question_set": {"version": geo_validation_api.geo_core.QUESTION_SET_VERSION,
+                         "total": len(rows), "counts": dict(totals)},
+        "queue": [], "receipts": [], "queue_summary": {},
+        "health": {
+            "dashboard": {"ok": False, "error": reason or "snapshot_pending"},
+            "questions": {"ok": True, "error": ""},
+            "queue": {"ok": False, "error": reason or "snapshot_pending"},
+            "receipts": {"ok": False, "error": reason or "snapshot_pending"},
+        },
+        "retry_after_ms": 1300,
+        "last_refresh_error": reason,
+    }
+
+def _geo_evidence_cached():
+    now = time.monotonic()
+    with _GEO_EVIDENCE_LOCK:
+        state = _GEO_EVIDENCE_CACHE
+        # Remove completed references; never launch an unbounded number of
+        # workers when a Windows filesystem driver holds a thread indefinitely.
+        state["workers"] = [t for t in state["workers"] if t.is_alive()]
+        if state["refreshing"] and now - state["started"] > _GEO_EVIDENCE_WORKER_TIMEOUT_SECONDS:
+            state["refreshing"] = False
+            state["error"] = "后台证据文件读取超过12秒；50问基准仍可用，请检查数据文件或稍后重试"
+            state["attempt"] += 1  # fence off any late result from the old worker
+
+        payload = state["payload"]
+        age = now - state["updated"] if payload else None
+        refresh_needed = payload is None or age >= _GEO_EVIDENCE_TTL_SECONDS
+        cooldown = now - state["started"] < 5
+        can_start = len(state["workers"]) < _GEO_EVIDENCE_MAX_WORKERS
+        if refresh_needed and not state["refreshing"] and can_start and not cooldown:
+            state["attempt"] += 1
+            token = state["attempt"]
+            state["refreshing"] = True
+            state["started"] = now
+            worker = threading.Thread(target=_geo_evidence_update_cache, args=(token,),
+                                      name="kz-geo-evidence-snapshot", daemon=True)
+            state["workers"].append(worker)
+            worker.start()
+        if payload is not None:
+            response = dict(payload)
+            response.update(snapshot_ready=True, snapshot_age_seconds=round(age, 1),
+                            snapshot_stale=bool(age >= 60), refreshing=bool(state["refreshing"]),
+                            last_refresh_error=str(state["error"] or "")[:240])
+            return response
+
+        reason = str(state["error"] or "")[:240]
+        if not can_start and not state["refreshing"]:
+            reason = reason or "后台证据读取线程未返回；50问基准可查看，其他证据暂不可用"
+        return _geo_evidence_seed(reason, bool(state["refreshing"]))
+
+def _geo_evidence_compact():
+    """Small evidence view for the owner workbench; no new disk reads.
+
+    The original /evidence endpoint remains available for full diagnostics.
+    Only project fields actually rendered by the 50-question workbench.
+    Never change the formal truth counters or synthesize receipts.
+    """
+    snapshot = _geo_evidence_cached()
+    questions = snapshot.get("questions") if isinstance(snapshot.get("questions"), list) else []
+    queue = snapshot.get("queue") if isinstance(snapshot.get("queue"), list) else []
+    receipts = snapshot.get("receipts") if isinstance(snapshot.get("receipts"), list) else []
+    dashboard = snapshot.get("dashboard") or {}
+    summary = snapshot.get("queue_summary") or {}
+    question_set = snapshot.get("question_set") or {}
+    return {
+        "snapshot_ready": snapshot.get("snapshot_ready") is True,
+        "snapshot_stale": bool(snapshot.get("snapshot_stale")),
+        "snapshot_mode": snapshot.get("snapshot_mode") or "",
+        "snapshot_age_seconds": snapshot.get("snapshot_age_seconds"),
+        "refreshing": bool(snapshot.get("refreshing")),
+        "last_refresh_error": str(snapshot.get("last_refresh_error") or "")[:240],
+        "retry_after_ms": snapshot.get("retry_after_ms", 5000),
+        "formal_ab_completed": snapshot.get("formal_ab_completed"),
+        "formal_ab_target": snapshot.get("formal_ab_target"),
+        "formal_ab_manual": snapshot.get("formal_ab_manual"),
+        "formal_ab_automatic": snapshot.get("formal_ab_automatic"),
+        "formal_scope": snapshot.get("formal_scope"),
+        "legacy_external_ab_completed": snapshot.get("legacy_external_ab_completed"),
+        "domestic_matrix": snapshot.get("domestic_matrix") or {},
+        "dashboard": {
+            "official": (dashboard.get("official") or {}),
+            # The owner page renders these cards from evidence-compact.  Do
+            # not trim them here: an omitted object is coerced to 0 by the
+            # browser and turns fully documented Evidence into a false 0/N.
+            "evidence_completeness": (dashboard.get("evidence_completeness") or {}),
+            "retest_coverage": (dashboard.get("retest_coverage") or {}),
+            "business_effect_tracking": (dashboard.get("business_effect_tracking") or {}),
+            "question_set": (dashboard.get("question_set") or {}),
+            "domestic_matrix": (dashboard.get("domestic_matrix") or {}),
+        },
+        "question_set": {key: question_set.get(key) for key in ("version", "total", "counts")},
+        "questions": [
+            {key: row.get(key) for key in (
+                "question_id", "question_text", "question_type", "state", "evidence",
+                "expected_platform", "expected_platform_label",
+            )}
+            for row in questions[:50] if isinstance(row, dict)
+        ],
+        "queue": [
+            {key: row.get(key) for key in ("question_id", "task_id", "question_text", "state", "test_method", "evidence_id")}
+            for row in queue if isinstance(row, dict)
+        ][:100],
+        "queue_summary": {key: val for key, val in summary.items() if key != "tasks"},
+        "receipts": [
+            # Keep the precise provenance fields used by the workbench.  The
+            # compact route deliberately omits raw answers, but must not make
+            # a real model or session URL appear absent in the owner UI.
+            {key: row.get(key) for key in (
+                "question_id", "question_text", "provider", "model", "model_version",
+                "evidence_level", "evidence_id", "receipt_id", "tested_at", "official_truth",
+                "brand_mentioned", "brand_recommended", "brand_cited",
+                "evidence_ref", "response_id", "session_url", "screenshot_path",
+            )}
+            for row in receipts[:10] if isinstance(row, dict)
+        ],
+        "health": snapshot.get("health") or {},
+        "available_sections": snapshot.get("available_sections", 1),
+        "total_sections": snapshot.get("total_sections", 4),
+    }
+
+
+def _geo_evidence_periodic_refresh():
+    """Refresh Evidence independently of whether the owner's GEO tab is open.
+
+    Never read files on the HTTP request thread. The existing cache limits
+    concurrent workers and fences off late results after a blocked read.
+    """
+    global _GEO_EVIDENCE_PREWARM_TIMER
+    try:
+        _geo_evidence_cached()
+    finally:
+        timer = threading.Timer(
+            _GEO_EVIDENCE_REFRESH_INTERVAL_SECONDS, _geo_evidence_periodic_refresh,
+        )
+        timer.daemon = True
+        timer.name = "kz-geo-evidence-auto-refresh"
+        _GEO_EVIDENCE_PREWARM_TIMER = timer
+        timer.start()
+
+
+def _schedule_geo_evidence_prewarm():
+    """Begin a bounded periodic, asynchronous Evidence refresh after startup."""
+    global _GEO_EVIDENCE_PREWARM_TIMER
+    if _GEO_EVIDENCE_PREWARM_TIMER is not None:
+        return
+    timer = threading.Timer(3.0, _geo_evidence_periodic_refresh)
+    timer.daemon = True
+    timer.name = "kz-geo-evidence-prewarm"
+    _GEO_EVIDENCE_PREWARM_TIMER = timer
+    timer.start()
+
+
+def _geo_evidence_health():
+    """Nonblocking cache diagnostics, without reading GEO data files or API keys.
+
+    read_seconds is the elapsed time of an ACTIVE refresh, not the age of an
+    old worker start time.  A ready cache must never show hundreds of seconds
+    of supposed read time after the worker already completed.
+    """
+    with _GEO_EVIDENCE_LOCK:
+        state = _GEO_EVIDENCE_CACHE
+        now = time.monotonic()
+        active = bool(state.get("refreshing"))
+        ready = state.get("payload") is not None
+        payload = state.get("payload") or {}
+        return {
+            "evidence_ready": ready,
+            "refreshing": active,
+            "read_seconds": round(max(0.0, now - state["started"]), 2)
+                if active and state.get("started") else 0.0,
+            "worker_count": sum(t.is_alive() for t in (state.get("workers") or [])),
+            "last_error": str(state.get("error") or "")[:240],
+            "cache_age_seconds": round(max(0.0, now - state["updated"]), 2)
+                if ready and state.get("updated") else None,
+            "last_read_duration_seconds": state.get("last_read_duration"),
+            "payload_bytes": int(state.get("payload_bytes") or 0),
+            "snapshot_mode": str(payload.get("snapshot_mode") or "") if ready else "",
+            "available_sections": payload.get("available_sections") if ready else None,
+            "total_sections": payload.get("total_sections") if ready else None,
+            "baseline_count": 50,
+            # The compact UI GET may be queued behind other browser fetches.
+            # This tiny diagnostic path supplies the last REAL verified count,
+            # never synthesized "0" or a fabricated A/B completion.
+            "owner_summary": ({
+                "formal_ab_completed": payload.get("formal_ab_completed"),
+                "formal_ab_target": payload.get("formal_ab_target") or 50,
+                "formal_ab_manual": payload.get("formal_ab_manual"),
+                "formal_ab_automatic": payload.get("formal_ab_automatic"),
+                "official_evidence_count": ((payload.get("dashboard") or {}).get("official") or {}).get("evidence_count"),
+                "queue_summary": {
+                    k: (payload.get("queue_summary") or {}).get(k)
+                    for k in ("queued", "running", "authorization_required")
+                },
+            } if ready else None),
+            "external_ai_verification": "requires_independently_authorized_provider",
+            "truth": "离线50问不等于50次正式验证；豆包C级辅助不计正式A/B",
+        }
+
+
+def _geo_evidence_update_cache(token):
+    started = time.monotonic()
+    try:
+        result = _geo_evidence_snapshot()
+        payload_bytes = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        finished = time.monotonic()
+        with _GEO_EVIDENCE_LOCK:
+            state = _GEO_EVIDENCE_CACHE
+            if state["attempt"] == token:
+                state.update(
+                    payload=result, updated=finished, error="", refreshing=False,
+                    last_read_duration=round(finished-started, 3),
+                    payload_bytes=payload_bytes,
+                )
+    except Exception as error:
+        finished = time.monotonic()
+        with _GEO_EVIDENCE_LOCK:
+            state = _GEO_EVIDENCE_CACHE
+            if state["attempt"] == token:
+                state.update(
+                    error=f"{type(error).__name__}: {str(error)[:180]}", refreshing=False,
+                    last_read_duration=round(finished-started, 3),
+                )
+
+
+def _origin_allowed(handler):
+    origin = handler.headers.get("Origin")
+    return not origin or origin in {
+        f"http://127.0.0.1:{handler.server.server_port}",
+        f"http://localhost:{handler.server.server_port}",
+    }
+
+
+def _read_json(handler):
+    length = int(handler.headers.get("Content-Length", "0") or 0)
+    if length < 0 or length > 256 * 1024:
+        raise ValueError("请求内容过大")
+    return json.loads(handler.rfile.read(length) or b"{}") if length else {}
+
+
+def _days(handler):
+    query = parse_qs(urlsplit(handler.path).query)
+    try:
+        value = int((query.get("days") or [30])[0])
+    except (TypeError, ValueError):
+        value = 30
+    return value if value in {7, 30, 90} else 30
+
+
+def _serve_operational_search(handler):
+    web = server.get_web_path()
+    names = [
+        "operational-search.js",
+        "geo-autonomy.js",
+        "geo-phase3.js",
+        "seo-geo-growth-intelligence.js",
+        "seo-geo-connector-matrix.js",
+        "geo-growth-os.js",
+    ]
+    source = "\n;\n".join((web / name).read_text(encoding="utf-8") for name in names)
+    data = source.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+def _combined_status():
+    value = _ORIGINAL_STATUS()
+    result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
+    result["r8_20_growth"] = growth.status(30)
+    result["connector_routes"] = connector_router.snapshot(check_live=False)
+    result["runtime_health"] = runtime_resilience.snapshot()
+    result["geo_growth_os"] = geo_growth.fast_status()
+    result["phase1_acceptance"] = phase1_acceptance.status()
+    result["runtime_supervisor"] = runtime_supervisor.status()
+    return result
+
+
+def _combined_run(force=False):
+    # Refresh connection/capability health first. Existing SEO/GEO loops run
+    # before R8-24 so a newly completed C-level cloud receipt can be converted
+    # into an operating opportunity in the same scheduler pass.
+    connector_routes = connector_router.sync_growth_health(check_live=False)
+    value = _ORIGINAL_RUN(force=force)
+    result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
+    result["r8_20_growth"] = growth.run_once(force=force)
+    result["geo_growth_os"] = geo_growth.run_once(force=force)
+    result["connector_routes"] = connector_routes
+    result["runtime_health"] = runtime_resilience.snapshot()
+    return result
+
+
+def _ensure_geo_growth_auto_running():
+    """#688 arm unattended GEO without doing heavy synchronous work at first open."""
+    current = geo_growth.fast_status()
+
+    # An explicit owner pause is a hard stop. Auto-start never overrides it.
+    if current.get("paused"):
+        return {
+            "started": False,
+            "reason": "owner_paused",
+            "state": current.get("state"),
+        }
+
+    # Only persist the enabled state here. The existing scheduler executes the
+    # real operating pass later; startup must not compete with GEO iframe/API
+    # reads for JSON locks, network routes or AI workers.
+    state = geo_growth.arm_unattended()
+    return {
+        "started": not bool(current.get("enabled")),
+        "reason": "growth_os_armed_scheduler_will_run",
+        "state": state.get("state"),
+        "execution": "deferred_to_scheduler",
+    }
+
+
+def _geo_snapshot_file(relative_path, default):
+    """Read one atomically-replaced JSON file without waiting on the global JSON lock.
+
+    GEO writers already use tempfile + os.replace, so a reader can safely take a
+    point-in-time snapshot.  If Windows briefly denies a read during replacement,
+    retry a few milliseconds instead of blocking the owner UI behind worker I/O.
+    """
+    path = data_root() / relative_path
+    if not path.exists():
+        return default, ""
+    last_error = ""
+    for delay in (0.0, 0.01, 0.03, 0.08):
+        if delay:
+            time.sleep(delay)
+        try:
+            return json.loads(path.read_text(encoding="utf-8")), ""
+        except (OSError, ValueError) as error:
+            last_error = str(error)
+    return default, last_error or "snapshot_unavailable"
+
+
+def _geo_evidence_snapshot():
+    """Fast, lock-free advanced GEO truth snapshot owned by R8-24.
+
+    The normal storage API serializes every JSON read/write under one process-wide
+    RLock. During a busy GEO cycle that is correct for mutation paths but can make
+    an owner GET wait behind retries.  This endpoint is read-only and consumes the
+    same atomically-replaced files directly, so advanced Evidence never blocks the
+    main GEO workbench or sits at "读取中" for 12 seconds.
+    """
+    started = time.perf_counter()
+
+    qset, q_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.QUESTION_SET_PATH,
+        {},
+    )
+    if not isinstance(qset, dict):
+        q_error = "question_set_schema_invalid"
+        qset = {}
+    if not qset.get("questions"):
+        fallback_questions = geo_validation_api.geo_core._fixed_questions()
+        counts = Counter(item.get("question_type") or "unknown" for item in fallback_questions)
+        qset = {
+            "version": geo_validation_api.geo_core.QUESTION_SET_VERSION,
+            "counts": dict(counts),
+            "questions": fallback_questions,
+            "immutable_within_version": True,
+        }
+
+    queue_payload, queue_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.QUEUE_PATH,
+        {"tasks": []},
+    )
+    receipts_payload, receipts_error = _geo_snapshot_file(
+        geo_validation_api.geo_core.RECEIPTS_PATH,
+        {"receipts": []},
+    )
+
+    if not isinstance(qset, dict):
+        q_error = "question_set_schema_invalid"
+        qset = {"questions": geo_validation_api.geo_core._fixed_questions()}
+    if not isinstance(queue_payload, dict):
+        queue_error = "queue_schema_invalid"
+        queue_payload = {"tasks": []}
+    if not isinstance(receipts_payload, dict):
+        receipts_error = "receipts_schema_invalid"
+        receipts_payload = {"receipts": []}
+    raw_questions = qset.get("questions") or []
+    if not isinstance(raw_questions, list) or any(not isinstance(x, dict) for x in raw_questions):
+        q_error = "question_rows_schema_invalid"
+        raw_questions = geo_validation_api.geo_core._fixed_questions()
+    questions = list(raw_questions)
+    raw_tasks = queue_payload.get("tasks") or []
+    if not isinstance(raw_tasks, list):
+        queue_error = "queue_rows_schema_invalid"
+        raw_tasks = []
+    tasks = [row for row in raw_tasks if isinstance(row, dict)]
+    raw_receipts = receipts_payload.get("receipts") or []
+    if not isinstance(raw_receipts, list):
+        receipts_error = "receipt_rows_schema_invalid"
+        raw_receipts = []
+    all_receipts = [row for row in raw_receipts if isinstance(row, dict)]
+    recent_receipts = list(reversed(all_receipts))[:50]
+
+    task_counts = Counter(str(item.get("state") or "unknown") for item in tasks)
+    blocked_diagnostics = geo_validation_api.geo_core.classify_blocked_tasks(tasks)
+    queued_routes = Counter(
+        (str(item.get("provider") or ""), str(item.get("test_method") or ""),
+         str(item.get("expected_platform") or ""))
+        for item in tasks if item.get("state") == "queued"
+    )
+    routing_diagnostics = {
+        "queued_by_route": [
+            {"provider": provider, "method": method, "expected_platform": platform,
+             "count": count}
+            for (provider, method, platform), count in sorted(queued_routes.items())
+        ],
+        "browser_agent_can_claim_unbound_api": False,
+        "mutated": False,
+    }
+    queue_summary = {
+        "total": len(tasks),
+        "queued": task_counts.get("queued", 0),
+        "running": task_counts.get("running", 0),
+        "succeeded": task_counts.get("succeeded", 0),
+        "failed": task_counts.get("failed", 0),
+        "paused": task_counts.get("paused", 0),
+        "authorization_required": task_counts.get("authorization_required", 0),
+        "blockage_diagnostics": blocked_diagnostics,
+        "routing_diagnostics": routing_diagnostics,
+        "tasks": tasks,
+    }
+
+    official = [
+        item for item in all_receipts
+        if item.get("official_truth")
+        and item.get("evidence_level") in geo_validation_api.geo_core.OFFICIAL_EVIDENCE_LEVELS
+    ]
+    complete_evidence = [item for item in official if geo_validation_api.geo_core._evidence_complete(item)]
+    mentioned_ids = {item.get("question_id") for item in official if item.get("brand_mentioned")}
+    cited_ids = {item.get("question_id") for item in official if item.get("brand_cited")}
+    recommended_ids = {item.get("question_id") for item in official if item.get("brand_recommended")}
+    formal_ids = {item.get("question_id") for item in official if item.get("question_id")}
+    # Formal Evidence can be human-captured or truly automated. Distinguish
+    # these without counting Doubao C-level auxiliary answers as external A/B.
+    manual_ids = {
+        item.get("question_id") for item in official
+        if item.get("question_id")
+        and str(item.get("test_method") or "").lower() in {"manual", "browser"}
+        and str(item.get("execution_origin") or "") != "authenticated_browser_agent"
+    }
+    automated_ids = {
+        item.get("question_id") for item in official
+        if item.get("question_id") and (
+            str(item.get("test_method") or "").lower() == "api"
+            or str(item.get("execution_origin") or "") == "authenticated_browser_agent"
+        )
+    }
+    total = len(questions) or 50
+
+    health = {
+        "dashboard": {"ok": True, "error": ""},
+        "questions": {"ok": not bool(q_error), "error": q_error},
+        "queue": {"ok": not bool(queue_error), "error": queue_error},
+        "receipts": {"ok": not bool(receipts_error), "error": receipts_error},
+    }
+    # A missing file is a valid empty state on first run; only a failed direct
+    # parse/read is unhealthy. The fixed 50 baseline is available in-process.
+    if not q_error:
+        health["questions"]["ok"] = True
+    if not queue_error:
+        health["queue"]["ok"] = True
+    if not receipts_error:
+        health["receipts"]["ok"] = True
+
+    dashboard = {
+        "official": {
+            "tested": len(formal_ids),
+            "remaining": max(0, total - len(formal_ids)),
+            "evidence_count": len(official),
+            "manual_tested": len(manual_ids),
+            "automatic_tested": len(automated_ids),
+            "mentioned": len(mentioned_ids),
+            "recommended": len(recommended_ids),
+            "cited": len(cited_ids),
+            "mention_rate": round(len(mentioned_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+            "recommendation_rate": round(len(recommended_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+            "citation_rate": round(len(cited_ids) / len(formal_ids) * 100, 1) if formal_ids else None,
+        },
+        "evidence_completeness": {
+            "complete": len(complete_evidence),
+            "incomplete": max(0, len(official) - len(complete_evidence)),
+            "required_fields": ["原始问题", "原始回答", "模型", "测试时间", "回执/截图/会话引用"],
+        },
+        "retest_coverage": geo_validation_api.geo_core._retest_coverage(official),
+        "business_effect_tracking": {
+            "mention": "measured", "recommendation": "measured", "citation": "measured",
+            "visits": "phase2_not_connected", "consultations": "phase2_not_connected",
+            "orders": "phase2_not_connected", "revenue": "phase2_not_connected",
+        },
+        "question_set": {
+            "version": (qset or {}).get("version") or geo_validation_api.geo_core.QUESTION_SET_VERSION,
+            "total": total,
+            "counts": (qset or {}).get("counts") or {},
+        },
+        "queue": {key: value for key, value in queue_summary.items() if key != "tasks"},
+    }
+
+    domestic = geo_domestic_matrix.snapshot(all_receipts, questions, tasks)
+    if domestic["activated"]:
+        # Put formal domestic receipts first. A later stream of C-level
+        # operating signals must not push every real A/B receipt out of the
+        # compact panel and make it falsely say "暂无正式 Receipt".
+        recent_receipts = list(reversed([
+            row for row in all_receipts
+            if row.get("official_truth")
+            and geo_domestic_matrix.normalize_platform(row.get("provider"))
+        ]))[:50]
+        slot_by_question = {
+            str(row.get("question_id") or ""): row
+            for row in (domestic.get("slots") or [])
+            if isinstance(row, dict) and row.get("question_id")
+        }
+        questions = [
+            {
+                **row,
+                "state": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("state", "unstarted"),
+                "evidence": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("evidence_id", ""),
+                "expected_platform": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("platform", ""),
+                "expected_platform_label": (slot_by_question.get(str(row.get("question_id") or "")) or {}).get("platform_label", ""),
+            }
+            for row in questions
+        ]
+    dashboard["domestic_matrix"] = domestic
+    dashboard["legacy_external"] = dashboard["official"]
+    if domestic["activated"]:
+        dashboard["official"] = {
+        "tested": domestic["completed"],
+        "remaining": domestic["remaining"],
+        "evidence_count": domestic["evidence_complete"],
+        "manual_tested": domestic["manual_completed"],
+        "automatic_tested": domestic["automatic_completed"],
+        "mentioned": domestic["mentioned"],
+        "recommended": domestic["recommended"],
+        "cited": domestic["cited"],
+        "mention_rate": domestic["mention_rate"],
+        "recommendation_rate": domestic["recommendation_rate"],
+        "citation_rate": domestic["citation_rate"],
+        "scope": "china_domestic_primary",
+        }
+        dashboard["evidence_completeness"] = {
+            "complete": domestic["evidence_complete"],
+            "incomplete": domestic["evidence_incomplete"],
+            "required_fields": ["原始问题", "原始回答", "平台/模型", "测试时间", "真实外部URL/回执"],
+        }
+        dashboard["retest_coverage"] = domestic["retest_coverage"]
+
+    available = sum(1 for value in health.values() if value.get("ok"))
+    return {
+        "snapshot_mode": "lock_free_atomic_files",
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+        "formal_ab_completed": domestic["completed"] if domestic["activated"] else len(formal_ids),
+        "formal_ab_target": domestic["target"] if domestic["activated"] else total,
+        "formal_scope": "china_domestic_primary" if domestic["activated"] else "legacy_external_ai",
+        "legacy_external_ab_completed": len(formal_ids),
+        "domestic_matrix": domestic,
+        "formal_ab_manual": domestic["manual_completed"] if domestic["activated"] else len(manual_ids),
+        "formal_ab_automatic": domestic["automatic_completed"] if domestic["activated"] else len(automated_ids),
+        "dashboard": dashboard,
+        "questions": questions,
+        "question_set": qset or {},
+        "queue": tasks,
+        "queue_summary": queue_summary,
+        "receipts": recent_receipts,
+        "health": health,
+        "available_sections": available,
+        "total_sections": 4,
+    }
+
+
+def _schedule_geo_growth_auto_start():
+    """Defer full-loop start so GEO/SEO first-open remains fast and reliable."""
+    global _GEO_GROWTH_AUTO_START_TIMER
+    if _GEO_GROWTH_AUTO_START_TIMER is not None and _GEO_GROWTH_AUTO_START_TIMER.is_alive():
+        return {"scheduled": False, "reason": "already_scheduled"}
+
+    def invoke():
+        try:
+            _ensure_geo_growth_auto_running()
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            # Arming is deliberately lightweight. Startup must remain non-fatal
+            # even if persisted state is temporarily unavailable.
+            pass
+
+    timer = threading.Timer(_GEO_GROWTH_AUTO_START_DELAY_SECONDS, invoke)
+    timer.daemon = True
+    timer.name = "r8-24-geo-growth-auto-start"
+    _GEO_GROWTH_AUTO_START_TIMER = timer
+    timer.start()
+    return {
+        "scheduled": True,
+        "delay_seconds": _GEO_GROWTH_AUTO_START_DELAY_SECONDS,
+        "reason": "protect_first_paint_then_auto_start",
+    }
+
+
+def install():
+    global _INSTALLED
+    if _INSTALLED:
+        return
+
+    seo_core.run_once = _combined_run
+    seo_core.status = _combined_status
+
+    original_get = server.DashboardHandler.do_GET
+    original_post = server.DashboardHandler.do_POST
+
+    def do_get(handler):
+        path = urlsplit(handler.path).path
+        try:
+            if path == "/operational-search.js":
+                _serve_operational_search(handler)
+                return
+            if path in {"/api/r8-24/geo-growth", "/api/r8-24/geo-growth/fast"}:
+                handler._json_ok(_geo_fast_cached())
+                return
+            if path == "/api/r8-24/geo-growth/fast-ui":
+                handler._json_ok(_geo_fast_ui_compact())
+                return
+            if path == "/api/r8-24/geo-growth/evidence":
+                handler._json_ok(_geo_evidence_cached())
+                return
+            if path == "/api/r8-24/geo-growth/evidence-compact":
+                handler._json_ok(_geo_evidence_compact())
+                return
+            if path == "/api/r8-24/geo-growth/questions-baseline":
+                handler._json_ok(_geo_evidence_seed("evidence_reader_not_required", loading=False))
+                return
+            if path == "/api/r8-24/geo-growth/fast-health":
+                handler._json_ok(_geo_fast_health_overview())
+                return
+            if path == "/api/r8-24/geo-growth/http-health":
+                handler._json_ok(_http_health())
+                return
+            if path == "/api/r8-24/geo-growth/liveness":
+                # Keep this endpoint independent of JSON disk I/O, the GEO
+                # snapshot cache lock, remote models and worker state.
+                handler._json_ok({"server_ready": True, "source": "local_http_thread",
+                                  "monotonic_seconds": round(time.monotonic(), 3)})
+                return
+            if path == "/api/r8-24/geo-growth/evidence-health":
+                handler._json_ok(_geo_evidence_health())
+                return
+            if path == "/api/r8-20/runtime-health":
+                handler._json_ok(runtime_resilience.snapshot())
+                return
+            if path == "/api/r8-25/phase1-acceptance":
+                handler._json_ok({
+                    "acceptance": phase1_acceptance.status(),
+                    "supervisor": runtime_supervisor.status(),
+                })
+                return
+            if path == "/api/r8-25/phase1-acceptance/history":
+                handler._json_ok(phase1_acceptance.history())
+                return
+            if path == "/api/r8-26/geo/domestic-matrix":
+                handler._json_ok(_geo_evidence_snapshot().get("domestic_matrix") or {})
+                return
+            if path in {"/api/r8-20/seo-geo/connectors", "/api/r8-21/seo-geo/connectors"}:
+                handler._json_ok(connector_router.snapshot(check_live=False))
+                return
+            if path == "/api/r8-21/seo-geo/controller-routes":
+                handler._json_ok(connector_router.route_summary_for_controller(check_live=False))
+                return
+            if path == "/api/r8-20/seo-geo":
+                payload = growth.status(_days(handler))
+                payload["connector_routes"] = connector_router.snapshot(check_live=False)
+                handler._json_ok(payload)
+                return
+            if path == "/api/r8-20/seo-geo/trends":
+                handler._json_ok(growth.trends(_days(handler)))
+                return
+            if path == "/api/r8-20/seo-geo/governance":
+                handler._json_ok({
+                    "keyword": growth.keyword_governance(),
+                    "internal_links": growth.internal_link_plan(),
+                    "decay": growth.content_decay(),
+                    "technical": growth.technical_seo_status(),
+                    "sources": growth.third_party_source_gaps(),
+                    "connector_routes": connector_router.snapshot(check_live=False),
+                })
+                return
+            if path == "/api/r8-20/seo-geo/features":
+                handler._json_ok({"count": 38, "items": growth.feature_registry(), "r8_21_unified_connector_router": True})
+                return
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            handler._json_error(400, error)
+            return
+        return original_get(handler)
+
+    def do_post(handler):
+        path = urlsplit(handler.path).path
+        if path == "/api/r8-25/phase1-acceptance/start":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                reset = bool(payload.get("reset", False))
+                candidate_id = str(payload.get("candidate_id") or "").strip()
+                if reset and not bool(payload.get("confirm_final_candidate")):
+                    raise ValueError("开启新的七天验收必须确认这是最终候选版本")
+                if reset and not candidate_id:
+                    raise ValueError("开启新的七天验收必须提供 candidate_id")
+                handler._json_ok({
+                    "acceptance": phase1_acceptance.start(
+                        reset=reset,
+                        candidate_id=candidate_id,
+                        start_reason=str(payload.get("reason") or "final_candidate_installed"),
+                    ),
+                    "supervisor": runtime_supervisor.status(),
+                })
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+        if path in {
+            "/api/r8-24/geo-growth/start",
+            "/api/r8-24/geo-growth/pause",
+            "/api/r8-24/geo-growth/resume",
+            "/api/r8-24/geo-growth/run",
+            "/api/r8-24/geo-growth/retry",
+        }:
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                if path.endswith("/start"):
+                    result = geo_growth.start()
+                elif path.endswith("/pause"):
+                    result = geo_growth.pause()
+                elif path.endswith("/resume"):
+                    result = geo_growth.resume()
+                elif path.endswith("/retry"):
+                    result = geo_growth.retry_failed()
+                else:
+                    result = geo_growth.run_once(force=bool(payload.get("force", True)))
+                handler._json_ok({"result": result, "growth": geo_growth.fast_status()})
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
+        if path in {
+            "/api/r8-24/geo-growth/evidence/bootstrap",
+            "/api/r8-24/geo-growth/evidence/prepare",
+            "/api/r8-24/geo-growth/evidence/receipt",
+            "/api/r8-26/geo/domestic-matrix/prepare",
+        }:
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                if path == "/api/r8-26/geo/domestic-matrix/prepare":
+                    current = geo_validation_api._effective_decision()
+                    result = geo_domestic_matrix.prepare_missing(
+                        limit=payload.get("limit") or 50,
+                        platform=payload.get("platform") or "",
+                        mission_id=current.get("mission_id") or "",
+                    )
+                elif path.endswith("/bootstrap"):
+                    result = geo_validation_api.bootstrap_question_set(force=bool(payload.get("force")))
+                elif path.endswith("/prepare"):
+                    result = geo_validation_api._prepare_browser_task(payload)
+                else:
+                    result = geo_validation_api.geo_browser_validation.record_browser_result(payload)
+                    geo_validation_api._refresh_analysis()
+                handler._json_ok({"result": result, "evidence": _geo_evidence_snapshot()})
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
+        # The legacy SEO page still posts this route from its primary
+        # "运行一次增长循环" button. In R8-20/R8-21/R8-24 it invokes the full
+        # autonomous controller, unified connectors, and GEO Growth OS.
+        if path == "/api/r8-13/seo-geo/run":
+            if not _origin_allowed(handler):
+                handler._json_error(403, "Cross-origin changes are not allowed")
+                return
+            try:
+                payload = _read_json(handler)
+                result = seo_core.run_once(force=bool(payload.get("force", True)))
+                handler._json_ok({
+                    "result": result,
+                    "growth": growth.status(int(payload.get("days") or 30)),
+                    "geo_growth_os": geo_growth.fast_status(),
+                    "connector_routes": connector_router.snapshot(check_live=False),
+                    "runtime_health": runtime_resilience.snapshot(),
+                    # Keep the R8-21 compatibility marker visible while R8-24
+                    # adds the GEO operating loop on top of the same route.
+                    "mode": "r8_21_full_autonomous_loop_with_unified_connectors+r8_24_geo_growth_os",
+                })
+            except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+                handler._json_error(400, error)
+            return
+
+        supported = {
+            "/api/r8-20/seo-geo/refresh",
+            "/api/r8-20/seo-geo/search-observation",
+            "/api/r8-20/seo-geo/attribution",
+            "/api/r8-20/seo-geo/dynamic-questions",
+            "/api/r8-20/seo-geo/multi-ai",
+            "/api/r8-20/seo-geo/fixed50-config",
+            "/api/r8-20/seo-geo/fixed50-retest",
+            "/api/r8-20/seo-geo/web-vitals",
+            "/api/r8-20/seo-geo/connector-health",
+            "/api/r8-20/seo-geo/internal-links",
+            "/api/r8-20/seo-geo/refresh-content",
+            "/api/r8-20/seo-geo/backup",
+            "/api/r8-20/seo-geo/restore",
+            "/api/r8-21/seo-geo/connectors/sync",
+        }
+        if path not in supported:
+            return original_post(handler)
+        if not _origin_allowed(handler):
+            handler._json_error(403, "Cross-origin changes are not allowed")
+            return
+        try:
+            payload = _read_json(handler)
+            if path == "/api/r8-20/seo-geo/refresh":
+                connector_router.sync_growth_health(check_live=False)
+                result = seo_core.run_once(force=bool(payload.get("force", True)))
+            elif path == "/api/r8-21/seo-geo/connectors/sync":
+                result = connector_router.sync_growth_health(check_live=bool(payload.get("check_live", False)))
+            elif path == "/api/r8-20/seo-geo/search-observation":
+                result = growth.record_search_observation(payload)
+            elif path == "/api/r8-20/seo-geo/attribution":
+                result = growth.record_attribution(payload)
+            elif path == "/api/r8-20/seo-geo/dynamic-questions":
+                result = growth.discover_dynamic_questions(payload.get("candidates") or [], source=payload.get("source") or "owner_or_controller", evidence=payload.get("evidence") or "")
+            elif path == "/api/r8-20/seo-geo/multi-ai":
+                result = growth.schedule_multi_provider_validation(payload.get("providers") or [], limit=payload.get("limit") or 3, include_dynamic=bool(payload.get("include_dynamic", True)))
+            elif path == "/api/r8-20/seo-geo/fixed50-config":
+                result = growth.configure_fixed50_schedule(bool(payload.get("enabled")))
+            elif path == "/api/r8-20/seo-geo/fixed50-retest":
+                result = growth.schedule_fixed50_retest(provider=payload.get("provider") or "browser_external_ai", limit=payload.get("limit") or 50)
+            elif path == "/api/r8-20/seo-geo/web-vitals":
+                result = growth.ingest_web_vitals(payload)
+            elif path == "/api/r8-20/seo-geo/connector-health":
+                result = growth.record_connector_health(payload.get("name"), bool(payload.get("ok")), payload.get("detail") or "")
+            elif path == "/api/r8-20/seo-geo/internal-links":
+                result = growth.apply_internal_links(limit=payload.get("limit") or 20)
+            elif path == "/api/r8-20/seo-geo/refresh-content":
+                result = growth.queue_refresh_jobs(limit=payload.get("limit") or 10)
+            elif path == "/api/r8-20/seo-geo/backup":
+                result = growth.create_backup(payload.get("label") or "owner")
+            else:
+                result = growth.restore_backup(payload.get("backup_id"), confirm=bool(payload.get("confirm")))
+            handler._json_ok({
+                "result": result,
+                "growth": growth.status(int(payload.get("days") or 30)),
+                "geo_growth_os": geo_growth.fast_status(),
+                "connector_routes": connector_router.snapshot(check_live=False),
+                "runtime_health": runtime_resilience.snapshot(),
+            })
+        except (OSError, ValueError, RuntimeError, PermissionError, TypeError, KeyError, json.JSONDecodeError) as error:
+            handler._json_error(400, error)
+
+    def monitored_get(handler):
+        global _HTTP_DIAG_COMPLETED, _HTTP_DIAG_PEAK_INFLIGHT
+        started = time.perf_counter()
+        token = id(handler)
+        category = _http_request_category(urlsplit(handler.path).path)
+        with _HTTP_DIAG_LOCK:
+            _HTTP_DIAG_INFLIGHT[token] = (category, started)
+            _HTTP_DIAG_PEAK_INFLIGHT = max(_HTTP_DIAG_PEAK_INFLIGHT, len(_HTTP_DIAG_INFLIGHT))
+        try:
+            return do_get(handler)
+        finally:
+            elapsed = round((time.perf_counter()-started)*1000)
+            with _HTTP_DIAG_LOCK:
+                _HTTP_DIAG_INFLIGHT.pop(token, None)
+                _HTTP_DIAG_COMPLETED += 1
+                if elapsed >= _HTTP_DIAG_SLOW_SECONDS*1000:
+                    _HTTP_DIAG_RECENT_SLOW.append({
+                        "kind": category, "duration_ms": elapsed,
+                    })
+
+    server.DashboardHandler.do_GET = monitored_get
+    server.DashboardHandler.do_POST = do_post
+    server.DashboardHandler._kz_r8_20_seo_geo_growth = True
+    server.DashboardHandler._kz_r8_21_unified_connectors = True
+    server.DashboardHandler._kz_r8_24_geo_growth_os = True
+
+    # #687: #683 already protects the first paint and starts the Doubao scan.
+    # Start the top-level GEO Growth OS a few seconds later as well, so the
+    # owner never has to press "启动 GEO 自动运营" in normal operation.
+    _schedule_geo_evidence_prewarm()
+    _schedule_geo_fast_prewarm()
+    _schedule_geo_growth_auto_start()
+    _INSTALLED = True
+
+
+install()
