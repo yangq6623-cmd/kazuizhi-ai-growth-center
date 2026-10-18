@@ -3,10 +3,12 @@ import sys
 from pathlib import Path
 from unittest import TestCase, main
 from unittest.mock import patch
+from copy import deepcopy
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / '05_V2.0.0_Source'))
 from core import geo_autonomy as auto, geo_validation as geo
 from integrations import geo_cloud_executor as cloud
+from core import geo_growth_orchestrator as growth
 from backend.r8_20_seo_geo_growth_patch import _geo_fast_ui_compact
 
 
@@ -66,6 +68,121 @@ class OperatingRetest(TestCase):
         self.assertEqual(result['opportunities'][0]['retest_coverage'], coverage)
         self.assertNotIn('retest_coverage', result['opportunities'][1])
         self.assertIsNone(result['retest_windows']['24h']['completed'])
+
+
+class FieldLedgerTruth(TestCase):
+    def test_legacy_timeout_classification_is_readonly_not_login(self):
+        tasks = [
+            dict(task_id=f"legacy-{i}", state="authorization_required",
+                 authorization_reason=("capture_failed:agent_response_timeout" if i < 71
+                                       else "capture_failed:signal timed out"),
+                 started_at="2026-10-17T01:00:00+08:00")
+            for i in range(73)
+        ]
+        tasks.append(dict(task_id="true-login", state="authorization_required",
+                          authorization_reason="login_required"))
+        prior = deepcopy(tasks)
+        report = geo.classify_blocked_tasks(tasks)
+        self.assertEqual(report["legacy_technical_requires_review"], 73)
+        self.assertEqual(report["real_authorization_or_risk_control"], 1)
+        self.assertEqual(report["blocked_total"], 74)
+        self.assertEqual(report["uncertain_external_submission"], 73)
+        self.assertFalse(report["mutated"])
+        self.assertEqual(tasks, prior)
+
+    def test_superseded_retest_is_retained_once_and_failed_receipt_rejected(self):
+        receipt = lambda task, signal: dict(task_id=task, evidence_id=signal,
+                                             evidence_level="C", official_truth=False,
+                                             provider="cloud_auto")
+        slot = lambda task, signal: dict(window="24h", task_id=task, signal_id=signal)
+        rows = [
+            dict(id="a", state="completed", retest_schedule=[slot("t1", "r1")]),
+            dict(id="a-copy", state="superseded", retest_schedule=[slot("t1", "r1")]),
+            dict(id="b", state="superseded", retest_schedule=[slot("t2", "r2")]),
+        ]
+        tasks = [dict(task_id="t1", state="succeeded"),
+                 dict(task_id="t2", state="failed")]
+        receipts = [receipt("t1", "r1"), receipt("t2", "r2")]
+        saved = deepcopy((rows, tasks, receipts))
+        result = growth._historical_retest_truth(rows, tasks, receipts)["windows"]["24h"]
+        self.assertEqual(result["unique_task_refs"], 2)
+        self.assertEqual(result["duplicated_opportunity_refs"], 1)
+        self.assertEqual(result["superseded_refs"], 2)
+        self.assertEqual(result["valid_c_receipts"], 1)
+        self.assertEqual(result["failed_with_receipt"], 1)
+        current = growth._retest_summary(rows, tasks=tasks, receipts=receipts)["24h"]
+        self.assertEqual((current["scheduled"], current["completed"]), (1, 1))
+        self.assertEqual((rows, tasks, receipts), saved)
+
+    def test_scoped_window_task_never_claims_another_opportunity(self):
+        row = lambda label: {"id": label, "question_id": "GEO50-D01",
+                             "published_at": "2026-10-18T12:00:00+08:00"}
+        def fake_create(**kwargs):
+            return {"tasks": [{"task_id": "new-"+kwargs["mission_id"]}]}
+        with patch.object(geo, "queue_summary", return_value={"tasks": []}), \
+             patch.object(geo, "create_and_enqueue_plan", side_effect=fake_create) as create:
+            a = growth._ensure_retest_task(row("opp-a"), {"window": "24h"})
+            b = growth._ensure_retest_task(row("opp-b"), {"window": "24h"})
+        self.assertNotEqual(a, b)
+        self.assertIn("opp-a", a)
+        self.assertIn("opp-b", b)
+        self.assertEqual(create.call_count, 2)
+
+    def test_unscoped_queued_legacy_followup_is_not_resent(self):
+        row = {"id": "opp-new", "question_id": "GEO50-D01",
+               "published_at": "2026-10-18T12:00:00+08:00"}
+        legacy = {"provider": "cloud_auto", "question_id": "GEO50-D01",
+                  "mission_id": "GEO-GROWTH-OPERATING-RETEST-24H",
+                  "state": "queued", "created_at": "2026-10-18T12:01:00+08:00"}
+        with patch.object(geo, "queue_summary", return_value={"tasks": [legacy]}), \
+             patch.object(geo, "create_and_enqueue_plan") as create:
+            with self.assertRaisesRegex(ValueError, "legacy_unscoped"):
+                growth._ensure_retest_task(row, {"window": "24h"})
+            create.assert_not_called()
+
+    def test_failed_task_does_not_complete_operating_window(self):
+        item = {"id": "opp", "state": "waiting_retest", "asset_stage": "PUBLISHED",
+                "created_at": "2026-10-16T12:00:00+08:00",
+                "published_at": "2026-10-17T12:00:00+08:00",
+                "question_id": "GEO50-D01",
+                "retest_schedule": [
+                    {"window": "24h", "task_id": "failed-t", "due_at_epoch": 9999999999,
+                     "signal_id": ""},
+                    {"window": "72h", "task_id": "", "due_at_epoch": 9999999999,
+                     "signal_id": ""},
+                    {"window": "7d", "task_id": "", "due_at_epoch": 9999999999,
+                     "signal_id": ""},
+                ]}
+        with patch.object(growth, "_latest_aux_for_task") as fresh, \
+             patch.object(growth, "_clear_blocker"):
+            growth._sync_item({"technical_blockers": []}, item, {}, {}, {},
+                              task_by_id={"failed-t": {"state": "failed"}})
+            fresh.assert_not_called()
+        self.assertFalse(item.get("after_signal_id"))
+        self.assertEqual(item["retest_coverage"]["windows"]["24h"], "blocked")
+
+    def test_72h_and_7d_are_due_after_24h_operating_decision(self):
+        item = {"id": "opp", "state": "completed", "asset_stage": "PUBLISHED",
+                "created_at": "2026-10-10T12:00:00+08:00",
+                "published_at": "2026-10-11T12:00:00+08:00",
+                "question_id": "GEO50-D01", "after_signal_id": "r1",
+                "retest_schedule": [
+                    {"window": "24h", "task_id": "t1", "due_at_epoch": 1,
+                     "signal_id": "r1", "completed_at": "2026-10-12T12:00:00+08:00"},
+                    {"window": "72h", "task_id": "", "due_at_epoch": 1, "signal_id": ""},
+                    {"window": "7d", "task_id": "", "due_at_epoch": 1, "signal_id": ""},
+                ]}
+        called = []
+        def enqueue(_item, slot):
+            called.append(slot["window"])
+            slot["task_id"] = "t-"+slot["window"]
+        with patch.object(growth, "_ensure_retest_task", side_effect=enqueue), \
+             patch.object(growth, "_clear_blocker"), \
+             patch.object(growth, "_record_history"):
+            growth._sync_item({"technical_blockers": []}, item, {}, {}, {},
+                              task_by_id={"t1": {"state": "succeeded"}})
+        self.assertEqual(called, ["72h", "7d"])
+        self.assertEqual(item["state"], "completed")
 
 
 if __name__ == '__main__':
