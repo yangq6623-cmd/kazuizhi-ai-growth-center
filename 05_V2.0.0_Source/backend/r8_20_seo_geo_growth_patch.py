@@ -756,6 +756,21 @@ def _geo_evidence_snapshot():
     recent_receipts = list(reversed(all_receipts))[:50]
 
     task_counts = Counter(str(item.get("state") or "unknown") for item in tasks)
+    blocked_diagnostics = geo_validation_api.geo_core.classify_blocked_tasks(tasks)
+    queued_routes = Counter(
+        (str(item.get("provider") or ""), str(item.get("test_method") or ""),
+         str(item.get("expected_platform") or ""))
+        for item in tasks if item.get("state") == "queued"
+    )
+    routing_diagnostics = {
+        "queued_by_route": [
+            {"provider": provider, "method": method, "expected_platform": platform,
+             "count": count}
+            for (provider, method, platform), count in sorted(queued_routes.items())
+        ],
+        "browser_agent_can_claim_unbound_api": False,
+        "mutated": False,
+    }
     queue_summary = {
         "total": len(tasks),
         "queued": task_counts.get("queued", 0),
@@ -764,6 +779,8 @@ def _geo_evidence_snapshot():
         "failed": task_counts.get("failed", 0),
         "paused": task_counts.get("paused", 0),
         "authorization_required": task_counts.get("authorization_required", 0),
+        "blockage_diagnostics": blocked_diagnostics,
+        "routing_diagnostics": routing_diagnostics,
         "tasks": tasks,
     }
 
