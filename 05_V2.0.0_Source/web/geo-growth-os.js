@@ -143,6 +143,7 @@
           <article><span>成本与资源策略</span><b>OpenAI API：禁用 · 新增付费依赖：0</b><small id="geo-os-resources">执行资源：豆包 API / 本地模型 / RTX 3060 / 平台现有功能</small></article>
         </div>
         <div id="geo-os-today" class="geo-os-message" role="status">今日数据核验中：仅实际取得公网回执才计为发布成功。</div>
+      <div id="geo-os-audit" class="geo-os-message" role="status">历史复测与超时任务分类正在核查。</div>
         <div id="geo-os-kpis" class="geo-os-kpis"></div>
         <div id="geo-os-pipeline" class="geo-os-pipeline"></div>
         <div class="geo-os-grid">
@@ -263,6 +264,26 @@
         `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 运营复测 ${retestText} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
       daily.style.color=fresh?'#49667e':'#986000';
     }
+    const archive=data.historical_retest||{};
+    const blockage=data.task_blockage||{};
+    const archive24=archive['24h']||{};
+    const audit=byId('geo-os-audit');
+    if(audit){
+      const distinct=Number.isFinite(archive24.linked_distinct)?archive24.linked_distinct:'待同步';
+      const confirmed=Number.isFinite(archive24.confirmed_c_receipts)?archive24.confirmed_c_receipts:'待同步';
+      const duplicates=Number.isFinite(archive24.duplicate_links)?archive24.duplicate_links:'待同步';
+      const blocked=Number.isFinite(blockage.blocked_total)?blockage.blocked_total:'待同步';
+      const technical=Number.isFinite(blockage.legacy_technical_requires_review)?blockage.legacy_technical_requires_review:'待同步';
+      const auth=Number.isFinite(blockage.real_authorization_or_risk_control)?blockage.real_authorization_or_risk_control:'待同步';
+      audit.textContent=snapshotPending?
+        '历史账本待同步：不得将缺失值显示为 0，也不能将旧复测计入新增正式 Evidence。':
+        '历史 24h C级关联：去重 '+distinct+' · 已核对成功 Task + C级 Receipt '+confirmed+
+        ' · 重复关联 '+duplicates+'；历史待核查 '+blocked+
+        '（技术超时 '+technical+'、真实登录/风控 '+auth+
+        '）。这些数字不等于新增正式A/B、引用或获客。'+
+        (transportDegraded?' 目前是缓存概览，机会明细待同步。':'');
+      audit.style.color=transportDegraded||snapshotStale?'#986000':'#49667e';
+    }
 
     const unknownAware=value=>snapshotPending||value==null?'—':Number(value);
     const kpis=[
@@ -376,10 +397,10 @@
       // The owner pane only needs bounded fields, not full opportunity ledgers.
       let data;
       try {
-        data=await json('/api/r8-24/geo-growth/fast-ui',{timeoutMs:5000});
+        data=await json('/api/r8-24/geo-growth/fast-ui',{timeoutMs:8000});
       } catch(error) {
         if(String(error.message||'').includes('404'))
-          data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:5000});
+          data=await json('/api/r8-24/geo-growth/fast',{timeoutMs:8000});
         else throw error;
       }
       statusFailures=0;
