@@ -190,9 +190,21 @@
 
   function stateLabel(value){ return ({running:'自动运营中',paused:'已暂停',stopped:'未启动',unknown:'读取中'}[value]||value||'未知'); }
   function itemState(value){ return ({
-    opportunity_created:'机会已建立',ai_employee_queued:'AI员工排队',ai_employee_running:'AI员工执行中',content_ready:'内容已完成',waiting_publish:'等待真实发布',waiting_retest:'等待复测',retest_queued:'复测已排队',completed:'闭环完成',failed:'执行失败',deferred:'子任务延后'
+    opportunity_created:'机会已建立',ai_employee_queued:'AI员工排队',ai_employee_running:'AI员工执行中',content_ready:'内容已完成',waiting_publish:'等待真实发布',waiting_retest:'等待复测',retest_queued:'复测已排队',completed:'24h运营判断已完成',failed:'执行失败',deferred:'子任务延后'
   }[value]||value||'等待'); }
   function stateClass(value){ return value==='completed'?'ok':value==='failed'?'bad':value==='waiting_publish'||value==='waiting_retest'||value==='retest_queued'||value==='deferred'?'wait':''; }
+
+  function retestWindowText(row){
+    return row && Number.isFinite(row.completed) && Number.isFinite(row.scheduled)
+      ? `${row.completed}/${row.scheduled}` : '待同步';
+  }
+  function opportunityRetestText(coverage){
+    if(!coverage || !Number.isFinite(coverage.completed) || !Number.isFinite(coverage.target)) return '复测进度待同步';
+    const windows=coverage.windows||{};
+    const all=['24h','72h','7d'].every(key=>windows[key]==='completed');
+    return `${all?'三窗口复测完成':'三窗口复测未完成'} ${coverage.completed}/${coverage.target} · `+
+      ['24h','72h','7d'].map(key=>`${key} ${windows[key]==='completed'?'已完成':windows[key]?'未完成':'待同步'}`).join(' · ');
+  }
 
   function render(data){
     cache=data||{};
@@ -242,7 +254,7 @@
       const waiting=Number(summary.waiting_publish||0);
       const retestText=['24h','72h','7d'].map(label=>{
         const row=retestWindows[label]||{};
-        return `${label} ${Number(row.completed||0)}/${Number(row.scheduled||0)}`;
+        return `${label} ${retestWindowText(row)}`;
       }).join(' · ');
       daily.textContent=snapshotPending?
         '今日真实工作：后台快照尚未完成；不会把尚未核验的数据填写为0。':
@@ -252,15 +264,15 @@
       daily.style.color=fresh?'#49667e':'#986000';
     }
 
-    const unknownAware=value=>snapshotPending?'—':Number(value||0);
+    const unknownAware=value=>snapshotPending||value==null?'—':Number(value);
     const kpis=[
       ['运营 Signal',unknownAware(summary.signals),'豆包 C级辅助','signal'],
       ['机会池',unknownAware(summary.total),'自动识别缺口','all'],
       ['正在优化',unknownAware(summary.optimizing),'AI员工执行','optimizing'],
       ['等待发布',unknownAware(summary.waiting_publish),'等待真实公网回执','waiting_publish'],
       ['等待复测',unknownAware(summary.published_or_waiting_retest),'发布后自动复测','retest'],
-      ['24h复盘',snapshotPending?'—':`${Number((retestWindows['24h']||{}).completed||0)} / ${Number((retestWindows['24h']||{}).scheduled||0)}`,'完成后允许下一轮','retest'],
-      ['闭环完成',unknownAware(summary.completed),'Before / After','completed'],
+      ['24h复盘',snapshotPending?'—':retestWindowText(retestWindows['24h']),'完成后允许下一轮','retest'],
+      ['24h判断完成',unknownAware(summary.completed),'C级 Before / After；三窗口另计','completed'],
       ['正式 A/B',data.formal_ab_completed==null?'待同步 / 50':`${Number(data.formal_ab_completed)} / ${Number(data.formal_ab_target||50)}`,'独立正式真值','formal_ab'],
     ];
     byId('geo-os-kpis').innerHTML=kpis.map(x=>`<button type="button" class="geo-os-kpi ${activeFilter===x[3]?'active':''}" data-geo-filter="${esc(x[3])}"><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong><small>${esc(x[2])}</small></button>`).join('');
@@ -270,8 +282,8 @@
     const rows=data.opportunities||[];
     byId('geo-os-rows').innerHTML=rows.length?rows.map(item=>{
       const delta=item.operating_delta==null?'—':`${Number(item.operating_delta)>=0?'+':''}${Number(item.operating_delta)}`;
-      const coverage=item.retest_coverage||{};
-      const result=item.state==='completed'?`${item.outcome||'完成'} · Δ ${delta} · 复测 ${Number(coverage.completed||0)}/${Number(coverage.target||3)}`:(item.retest_task_id?'复测排队':item.public_url?'等待复测':'等待');
+      const coverage=item.retest_coverage;
+      const result=item.state==='completed'?`24h运营判断已完成 · ${item.outcome||'完成'} · Δ ${delta} · ${opportunityRetestText(coverage)}`:(item.retest_task_id?'复测排队':item.public_url?'等待复测':'等待');
       return `<tr data-geo-row-state="${esc(item.state||'')}" data-geo-row-stage="${esc(item.asset_stage||'')}">
         <td><b>${esc(item.gap_label||item.service||'GEO机会')}</b><small>${esc(item.question_text||item.question_id||'')}</small></td>
         <td><span class="geo-os-score">${Number(item.opportunity_score||0)}</span><small>${esc(item.priority||'')}</small></td>

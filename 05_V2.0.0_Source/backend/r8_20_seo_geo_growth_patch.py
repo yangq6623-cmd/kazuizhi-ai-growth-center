@@ -250,7 +250,7 @@ _GEO_UI_OPPORTUNITY_FIELDS = (
     "opportunity_score", "priority", "decision", "keyword", "state",
     "job_state", "asset_stage", "job_id", "public_url", "outcome",
     "operating_delta", "retest_task_id", "operating_before_score",
-    "operating_after_score",
+    "operating_after_score", "retest_coverage",
 )
 
 
@@ -290,7 +290,7 @@ def _geo_fast_ui_compact(snapshot=None):
         "publish_connector": {k: (data.get("publish_connector") or {}).get(k)
                               for k in ("ready", "configured", "reason")},
         "retest_windows": {
-            label: {key: int((data.get("retest_windows") or {}).get(label, {}).get(key) or 0)
+            label: {key: (data.get("retest_windows") or {}).get(label, {}).get(key)
                     for key in ("scheduled", "queued", "completed")}
             for label in ("24h", "72h", "7d")
         },

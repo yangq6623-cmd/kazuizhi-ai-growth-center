@@ -58,6 +58,15 @@ class OperatingRetest(TestCase):
         self.assertEqual(_geo_fast_ui_compact({'status_ready': True,
             'retest_windows': windows})['retest_windows'], windows)
 
+    def test_compact_preserves_per_opportunity_coverage_and_missing_values(self):
+        coverage = {'completed': 1, 'target': 3, 'windows': {
+            '24h': 'completed', '72h': 'scheduled', '7d': 'scheduled'}}
+        result = _geo_fast_ui_compact({'status_ready': True, 'opportunities': [
+            {'id': 'one', 'retest_coverage': coverage}, {'id': 'unknown'}]})
+        self.assertEqual(result['opportunities'][0]['retest_coverage'], coverage)
+        self.assertNotIn('retest_coverage', result['opportunities'][1])
+        self.assertIsNone(result['retest_windows']['24h']['completed'])
+
 
 if __name__ == '__main__':
     main()

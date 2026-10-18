@@ -61,6 +61,8 @@ jobs:
       - name: GEO operating retest independent schedule regression
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          node 04_Build/v2/test_geo_817_retest_ui.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Retest UI regression failed' }
           python 04_Build/v2/test_geo_816_operating_retest.py
           if ($LASTEXITCODE -ne 0) { throw 'Operating retest regression failed' }
       - name: Verify #809 GEO browser agent lightweight response
