@@ -499,7 +499,11 @@ def _claim_next_task_locked(executor=None):
     strict = bool(executor.get("strict_provider"))
     fresh_only = bool(executor.get("fresh_only"))
     priority_id = str(executor.get("priority_task_id") or "")
+    allowed_ids = executor.get("allowed_task_ids")
+    allowed_ids = None if allowed_ids is None else set(allowed_ids)
     def eligible(item):
+        if allowed_ids is not None and item.get("task_id") not in allowed_ids:
+            return False
         if item.get("state") != "queued" or item.get("expected_platform") != requested_platform:
             return False
         if strict and (str(item.get("provider") or "") not in {requested_platform, "browser_external_ai"}
@@ -519,6 +523,7 @@ def _claim_next_task_locked(executor=None):
             None if strict else next((
                 item for item in queue["tasks"]
                 if item.get("state") == "queued" and not item.get("expected_platform")
+                and (allowed_ids is None or item.get("task_id") in allowed_ids)
             ), None))
     if task is None:
         return {"ok": True, "skipped": True, "reason": "queue_empty"}
@@ -1105,6 +1110,11 @@ def queue_summary():
             "legacy_technical_requires_review": blocked_classes.get("legacy_technical_requires_review", 0),
             "real_authorization_or_risk_control": blocked_classes.get("real_authorization_or_risk_control", 0),
             "unclassified_requires_review": blocked_classes.get("unclassified_requires_review", 0),
+            "uncertain_external_submission": sum(
+                1 for item in blocked if item.get("uncertain_external_submission")
+                or "timeout" in str(item.get("authorization_reason") or "").lower()
+                or "timed out" in str(item.get("authorization_reason") or "").lower()
+            ),
             "auto_requeued": 0,
             "note": "诊断不改状态；旧技术失败、登录/验证码和未知阻塞必须分别处理，禁止批量重试。",
         },

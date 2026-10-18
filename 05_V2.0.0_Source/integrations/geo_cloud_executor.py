@@ -444,13 +444,15 @@ def _recover_stale_running_tasks():
     return recovered
 
 
-def _promote_next_cloud_task():
+def _promote_next_cloud_task(task_ids=None):
     """Move the next eligible cloud task ahead of unrelated queued browser work."""
     payload = geo._load_queue()
     tasks = payload.get("tasks") or []
     now_epoch = time.time()
 
     def eligible(item):
+        if task_ids is not None and item.get("task_id") not in task_ids:
+            return False
         if item.get("state") != "queued" or item.get("provider") != PROVIDER:
             return False
         return float(item.get("next_retry_at_epoch") or 0) <= now_epoch
@@ -481,10 +483,10 @@ def _promote_next_cloud_task():
     return cloud_task
 
 
-def run_once(transport=None):
+def run_once(transport=None, *, task_ids=None):
     stale_recovered = _recover_stale_running_tasks()
     current = status()
-    cloud_task = _promote_next_cloud_task()
+    cloud_task = _promote_next_cloud_task(task_ids=task_ids)
     if cloud_task is None:
         return {
             "ok": True,
@@ -502,6 +504,7 @@ def run_once(transport=None):
             "provider": PROVIDER,
             "test_method": "api",
             "executor_id": EXECUTOR_ID,
+            "allowed_task_ids": [cloud_task["task_id"]],
             "reason": current.get("reason") or "",
         }
     )

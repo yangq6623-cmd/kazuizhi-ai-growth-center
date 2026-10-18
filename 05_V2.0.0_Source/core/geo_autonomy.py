@@ -328,6 +328,35 @@ def run_once(transport=None):
         if data.get("paused"):
             return {"ok": True, "skipped": True, "reason": "geo_autonomy_paused"}
 
+        # Operating follow-ups have their own 24h/72h/7d schedule. A finished
+        # baseline cycle must not starve them during its daily cooldown.
+        # Only already queued, explicit cloud API follow-ups are eligible;
+        # never retry failed/blocked work or consume unrelated browser tasks.
+        operating_ids = [
+            task.get("task_id") for task in geo._load_queue().get("tasks", [])
+            if task.get("task_id") and task.get("state") == "queued"
+            and task.get("provider") == geo_cloud_executor.PROVIDER
+            and task.get("test_method") == "api"
+            and not task.get("expected_platform")
+            and task.get("mission_id") in {
+                "GEO-GROWTH-OPERATING-RETEST-24H",
+                "GEO-GROWTH-OPERATING-RETEST-72H",
+                "GEO-GROWTH-OPERATING-RETEST-7D",
+            }
+            and float(task.get("next_retry_at_epoch") or 0) <= time.time()
+        ]
+        if operating_ids:
+            result = geo_cloud_executor.run_once(transport=transport, task_ids=operating_ids)
+            data["last_run_at"] = now_iso()
+            data["last_result"] = deepcopy(result)
+            if result.get("ok") and result.get("receipt"):
+                data["last_error"] = ""
+                geo_analysis.refresh(geo.receipts(1000))
+            elif not result.get("ok"):
+                data["last_error"] = str(result.get("error") or "operating_retest_failed")[:800]
+            _save(data)
+            return result
+
         target = int(data.get("target") or 1)
         cycle_started_at = str(data.get("cycle_started_at") or "")
         if not cycle_started_at:

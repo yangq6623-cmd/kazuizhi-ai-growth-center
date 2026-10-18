@@ -289,6 +289,11 @@ def _geo_fast_ui_compact(snapshot=None):
             "state", "completed", "target", "provider", "ready")},
         "publish_connector": {k: (data.get("publish_connector") or {}).get(k)
                               for k in ("ready", "configured", "reason")},
+        "retest_windows": {
+            label: {key: int((data.get("retest_windows") or {}).get(label, {}).get(key) or 0)
+                    for key in ("scheduled", "queued", "completed")}
+            for label in ("24h", "72h", "7d")
+        },
         "pipeline": [
             {k: row.get(k) for k in ("id", "label", "count", "state")}
             for row in (data.get("pipeline") or [])[:8] if isinstance(row, dict)

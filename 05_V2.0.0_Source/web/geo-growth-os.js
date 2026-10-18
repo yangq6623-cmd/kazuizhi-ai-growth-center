@@ -668,10 +668,24 @@
         ['自动正式验证',Number(snapshot.formal_ab_automatic??official.automatic_tested??0),'仅独立外部AI的A级/B级API证据'],
         ['排队',Number(qsum.queued||0),'等待执行'],
         ['执行中',Number(qsum.running||0),'真实验证任务'],
-        ['待授权',Number(qsum.authorization_required||0),'仅真实阻塞'],
+        ['待授权 / 待核查',Number(qsum.authorization_required||0),'包含历史失败，禁止批量重试'],
       ];
       const kpiBox=byId('geo-adv-kpis');
       if(kpiBox)kpiBox.innerHTML=kpis.map(x=>`<article><span>${esc(x[0])}</span><b>${esc(x[1])}</b><small>${esc(x[2])}</small></article>`).join('');
+      const route=qsum.routing_diagnostics||{};
+      const blocked=qsum.blockage_diagnostics||{};
+      let diagnosticBox=byId('geo-adv-queue-diagnostics');
+      if(!diagnosticBox&&kpiBox){
+        diagnosticBox=document.createElement('p');
+        diagnosticBox.id='geo-adv-queue-diagnostics';
+        kpiBox.insertAdjacentElement('afterend',diagnosticBox);
+      }
+      if(diagnosticBox)diagnosticBox.textContent=
+        '队列路由：'+(route.queued_by_route||[]).map(x=>`${x.provider}/${x.method}/${x.expected_platform||'未绑定网页'} ${x.count}条`).join('；')+
+        '。待核查分类：历史技术失败 '+(blocked.legacy_technical_requires_review??'未知')+
+        '；登录/授权/风控 '+(blocked.real_authorization_or_risk_control??'未知')+
+        '；未分类 '+(blocked.unclassified_requires_review??'未知')+
+        '。不确定发送记录 '+(blocked.uncertain_external_submission??'未知')+'（可与上述分类重叠）；未重试历史任务。';
       const domesticBox=byId('geo-adv-domestic');
       if(domesticBox){
         const platforms=domestic.platforms||[];

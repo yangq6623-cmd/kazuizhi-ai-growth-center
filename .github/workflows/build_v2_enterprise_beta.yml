@@ -58,6 +58,11 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -r 05_V2.0.0_Source/requirements.txt -r 04_Build/v2/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: GEO operating retest independent schedule regression
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_geo_816_operating_retest.py
+          if ($LASTEXITCODE -ne 0) { throw 'Operating retest regression failed' }
       - name: Verify #809 GEO browser agent lightweight response
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
