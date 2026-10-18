@@ -531,6 +531,11 @@ def _signal_score(signal):
 
 
 def _sync_item(data, item, jobs, seo_opportunities, assets, task_by_id=None):
+    if task_by_id is None:
+        # Direct callers (existing release gates) must also verify task state.
+        # The main _sync_all supplies this map once to avoid repeated I/O.
+        task_by_id = {str(row.get("task_id") or ""): row
+                      for row in geo._load_queue().get("tasks", []) if isinstance(row, dict)}
     item_id = str(item.get("id") or "")
     if str(item.get("state") or "") == "superseded":
         return item
