@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -131,12 +132,21 @@ def main():
             assert item["retest_due_at_epoch"] > 0, item
             assert [slot["window"] for slot in item["retest_schedule"]] == ["24h", "72h", "7d"], item
 
-            # When 24h becomes due, only a real external task is queued.  Its
-            # receipt closes the review and makes the next round eligible.
+            # A fresh verified publication must not be tested early, even if a
+            # stale caller tries to push the old slot into the past.
             item["retest_schedule"][0]["due_at_epoch"] = 0
-            item["retest_schedule"][1]["due_at_epoch"] = 4102444800
-            item["retest_schedule"][2]["due_at_epoch"] = 4102444800
             geo.bootstrap_question_set(force=True)
+            orchestrator._sync_item(data, item, {}, {opportunity["id"]: opportunity}, assets)
+            first_slot = item["retest_schedule"][0]
+            assert not first_slot["task_id"], item
+            assert first_slot["due_at_epoch"] >= orchestrator._iso_epoch(item["published_at"]) + 86400, item
+
+            # Once the verified publication really is older than 24h, only a
+            # real external task is queued. Its receipt closes the review and
+            # makes the next round eligible.
+            elapsed_at = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+            published["content_refresh_events"][-1]["at"] = elapsed_at
+            item["retest_schedule"] = []
             orchestrator._sync_item(data, item, {}, {opportunity["id"]: opportunity}, assets)
             first_slot = item["retest_schedule"][0]
             assert first_slot["task_id"], item
