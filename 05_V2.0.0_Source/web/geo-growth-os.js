@@ -22,6 +22,8 @@
   const byId = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
   let cache = null;
+  let lastVerifiedSnapshot = null;
+  let lastVerifiedAt = 0;
   let busy = false;
   let attempts = 0;
   let activeFilter = "all";
@@ -206,6 +208,27 @@
       ['24h','72h','7d'].map(key=>`${key} ${windows[key]==='completed'?'已完成':windows[key]?'未完成':'待同步'}`).join(' · ');
   }
 
+  function degradedStatus(last, health, ageMs=0) {
+    // Preserve a complete previously verified snapshot when the browser GET
+    // times out. Never replace unknown retest metrics with synthetic zeros.
+    if(last && last.status_ready === true) {
+      return {...last, transport_degraded:true,
+        snapshot_age_seconds: Number(last.snapshot_age_seconds||0) + Math.round(ageMs/1000),
+        snapshot_stale: Boolean(last.snapshot_stale) || ageMs >= 90000};
+    }
+    if(health?.status_ready===true && health.owner_overview) {
+      const overview=health.owner_overview;
+      return {...overview, status_ready:true, transport_degraded:true,
+        snapshot_age_seconds:health.snapshot_age_seconds,
+        snapshot_stale:health.snapshot_stale,
+        retest_windows:overview.retest_windows || undefined,
+        historical_retests:overview.historical_retests || undefined,
+        opportunities:[],pipeline:[],technical_blockers:[],
+        publish_connector:{},policy:{}};
+    }
+    return null;
+  }
+
   function render(data){
     cache=data||{};
     if(!ensureStructure()) return;
@@ -261,6 +284,13 @@
         snapshotStale?
         '今日真实工作：历史快照 '+(data.snapshot_age_seconds??'未知')+' 秒前；待后台恢复后核实执行、发布与回执。':
         `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 运营复测 ${retestText} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
+      // Stored history includes superseded opportunities, but counts a C-level
+      // Receipt only once per window/Task. Never label it as formal A/B.
+      const lifetime=data.historical_retests?.windows?.['24h'];
+      if(lifetime && Number.isFinite(lifetime.valid_c_receipts)){
+        daily.textContent += ' · 历史账本独立24h C级回执 '+lifetime.valid_c_receipts+
+          '（已按Task/Receipt去重，含被替换机会；非正式AI推荐成绩）';
+      }
       daily.style.color=fresh?'#49667e':'#986000';
     }
 
@@ -383,6 +413,10 @@
         else throw error;
       }
       statusFailures=0;
+      if(data?.status_ready===true && !data.snapshot_stale) {
+        lastVerifiedSnapshot=data;
+        lastVerifiedAt=Date.now();
+      }
       if(statusRetryTimer){clearTimeout(statusRetryTimer);statusRetryTimer=null;}
       render(data);
       if (data?.status_ready === false) {
@@ -405,21 +439,9 @@
       let health=null;
       try { health=await json('/api/r8-24/geo-growth/fast-health',{timeoutMs:2500}); }
       catch(_) {};
-      if(health?.status_ready===true && health.owner_overview){
-        const overview=health.owner_overview;
-        // Never fabricate an opportunity list or official result when the
-        // health probe is our only readable source.
-        render({
-          ...overview,
-          status_ready:true,
-          transport_degraded:true,
-          snapshot_age_seconds:health.snapshot_age_seconds,
-          snapshot_stale:health.snapshot_stale,
-          refreshing:health.refreshing,
-          opportunities:[],pipeline:[],technical_blockers:[],
-          publish_connector:{},policy:{}
-        });
-      }
+      const fallback=degradedStatus(lastVerifiedSnapshot,health,
+        lastVerifiedAt?Math.max(0,Date.now()-lastVerifiedAt):0);
+      if(fallback) render(fallback);
       const note=health?.status_ready===true?
         `后台快照已就绪（${Math.round(Number(health.snapshot_age_seconds||0))}秒前），但浏览器请求延迟。保留真实旧数据并重试；不重置任务成绩。`:
         health?.status_ready===false?'后台仍在生成真实快照，稍后继续读取。':
