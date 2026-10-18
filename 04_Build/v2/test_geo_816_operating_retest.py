@@ -145,6 +145,7 @@ class FieldLedgerTruth(TestCase):
                 "created_at": "2026-10-16T12:00:00+08:00",
                 "published_at": "2026-10-17T12:00:00+08:00",
                 "question_id": "GEO50-D01",
+                "public_url": "https://example.org/seo/fixture/",
                 "retest_schedule": [
                     {"window": "24h", "task_id": "failed-t", "due_at_epoch": 9999999999,
                      "signal_id": ""},
@@ -166,6 +167,7 @@ class FieldLedgerTruth(TestCase):
                 "created_at": "2026-10-10T12:00:00+08:00",
                 "published_at": "2026-10-11T12:00:00+08:00",
                 "question_id": "GEO50-D01", "after_signal_id": "r1",
+                "public_url": "https://example.org/seo/fixture/",
                 "retest_schedule": [
                     {"window": "24h", "task_id": "t1", "due_at_epoch": 1,
                      "signal_id": "r1", "completed_at": "2026-10-12T12:00:00+08:00"},
