@@ -796,23 +796,57 @@ def _state_counts(items):
     return counts
 
 
-def _retest_summary(items):
-    summary = {
-        label: {"scheduled": 0, "queued": 0, "completed": 0}
-        for label, _seconds in DEFAULT_RETEST_WINDOWS
-    }
+def _retest_summary(items, *, tasks=None, receipts=None):
+    """Current (not historical) opportunity windows. Only unique succeeded
+    C-level Task/Receipt pairs count as completed when ledgers are available.
+    Missing ledgers remain unknown; they never become an invented 0/0.
+    """
+    summary = {label: {"scheduled": 0, "queued": 0, "completed": 0, "blocked": 0}
+               for label, _ in DEFAULT_RETEST_WINDOWS}
+    verified = tasks is not None and receipts is not None
+    task_index = {str(t.get("task_id") or ""): t for t in tasks if isinstance(t, dict)} if verified else {}
+    receipt_index = {str(r.get("task_id") or ""): r for r in receipts
+                     if isinstance(r, dict) and r.get("task_id")} if verified else {}
+    seen = {label: set() for label in summary}
     for item in items:
         if str(item.get("state") or "") == "superseded":
             continue
         for slot in item.get("retest_schedule") or []:
-            row = summary.get(str(slot.get("window") or ""))
-            if not row:
+            label = str(slot.get("window") or "")
+            if label not in summary:
                 continue
-            row["scheduled"] += 1
-            row["queued"] += int(bool(slot.get("task_id")) and not bool(slot.get("signal_id")))
-            row["completed"] += int(bool(slot.get("signal_id")))
+            counter = summary[label]
+            counter["scheduled"] += 1
+            task_id = str(slot.get("task_id") or "")
+            if not task_id or task_id in seen[label]:
+                continue
+            seen[label].add(task_id)
+            if not verified:
+                counter["queued"] += int(not bool(slot.get("signal_id")))
+                counter["completed"] += int(bool(slot.get("signal_id")))
+                continue
+            task = task_index.get(task_id) or {}
+            receipt = receipt_index.get(task_id) or {}
+            receipt_id = str(receipt.get("evidence_id") or receipt.get("receipt_id") or "")
+            valid = (task.get("state") == "succeeded" and bool(receipt_id)
+                     and receipt.get("evidence_level") == "C"
+                     and not receipt.get("official_truth")
+                     and receipt.get("provider") == geo_cloud_executor.PROVIDER
+                     and str(slot.get("signal_id") or "") == receipt_id)
+            if valid:
+                counter["completed"] += 1
+            elif task.get("state") in {"failed", "authorization_required", "paused"}:
+                counter["blocked"] += 1
+            elif task.get("state") in {"queued", "running"}:
+                counter["queued"] += 1
+            elif slot.get("signal_id"):
+                counter["blocked"] += 1
+    if not verified:
+        # Legacy direct unit calls retain slot-level behavior; production
+        # snapshots must always supply ledgers or show "unknown".
+        for counter in summary.values():
+            counter["verification"] = "unverified_slots"
     return summary
-
 
 
 def _historical_retest_truth(items, tasks, receipts):
@@ -989,6 +1023,7 @@ def fast_status():
     except (OSError, ValueError, RuntimeError, TypeError):
         tasks_for_truth = []
     historical_retests = _historical_retest_truth(items, tasks_for_truth, receipts)
+    current_retests = _retest_summary(visible_items, tasks=tasks_for_truth, receipts=receipts)
 
     return {
         "schema": SCHEMA,
@@ -1026,7 +1061,7 @@ def fast_status():
             "technical_blockers": len(data.get("technical_blockers") or []),
         },
         "pipeline": _pipeline_fast(visible_items, len(auxiliary)),
-        "retest_windows": _retest_summary(visible_items),
+        "retest_windows": current_retests,
         "historical_retests": historical_retests,
         "opportunities": visible_items[:30],
         "technical_blockers": list(reversed(data.get("technical_blockers") or []))[:12],
@@ -1047,6 +1082,7 @@ def status():
     tasks = geo._load_queue().get("tasks") or []
     receipts = geo._load_receipts().get("receipts") or []
     historical_retests = _historical_retest_truth(items, tasks, receipts)
+    current_retests = _retest_summary(visible_items, tasks=tasks, receipts=receipts)
     return {
         "schema": SCHEMA,
         "state": "paused" if data.get("paused") else "running" if data.get("enabled") else "stopped",
