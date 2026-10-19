@@ -667,13 +667,28 @@ def ensure_owner_seo_incremental_task(mission, plan):
     key = "r8_22_owner_seo_incremental:" + command_id
     with r7_engine.LOCK:
         data = r7_engine._store()
-        for job in data.get("items", []):
-            if isinstance(job, dict) and job.get("idempotency_key") == key:
-                return {"id": job.get("id"), "state": job.get("state"), "existing": True}
+        old = next((row for row in data.get("items", [])
+                    if isinstance(row, dict) and row.get("idempotency_key") == key), None)
+        if old:
+            # #839 has already completed a generic draft without creating an
+            # SEO Asset. Materialize ONE continuation under the accepted
+            # Command; never mutate or replay the original job/receipt.
+            result = old.get("result") if isinstance(old.get("result"), dict) else {}
+            if old.get("state") != "completed" or result.get("seo_asset_id"):
+                return {"id": old.get("id"), "state": old.get("state"), "existing": True}
+            key += ":asset_continuation"
+            existing = next((row for row in data.get("items", [])
+                             if isinstance(row, dict) and row.get("idempotency_key") == key), None)
+            if existing:
+                return {"id": existing.get("id"), "state": existing.get("state"), "existing": True}
 
-        # R7 provides the audit-integrity check and durable job-created event.
+        # The owner explicitly selected one target keyword. The downstream
+        # SEO task must never silently fall back to a generic local template.
         keyword_match = _SEO_KEYWORD_RE.search(objective)
-        keyword = keyword_match.group(1) if keyword_match else "涟水县本地维修"
+        if not keyword_match:
+            return {"state": "waiting_keyword", "reason": "explicit_target_keyword_required"}
+        keyword = keyword_match.group(1)
+        # R7 provides the audit-integrity check and durable job-created event.
         job = r7_engine.create_job({
             "kind": "manual_task",
             "title": ("SEO增量内容验证 · " + keyword)[:160],
@@ -686,6 +701,12 @@ def ensure_owner_seo_incremental_task(mission, plan):
             agent="SEO/GEO 增长员", task_type="seo", execution="autonomous",
             command_id=command_id, mission_id=mission_id,
             controller_plan_id=plan.get("plan_id"),
+            seo_keyword=keyword, seo_region="涟水县",
+            seo_service=("家电维修" if any(word in keyword for word in ("空调", "洗衣机", "冰箱", "热水器"))
+                         else "管道疏通" if any(word in keyword for word in ("疏通", "堵塞", "马桶"))
+                         else "水电安装维修" if any(word in keyword for word in ("跳闸", "水电", "漏水"))
+                         else "安装服务" if "安装" in keyword else ""),
+            owner_requested_publication=("官网发布" in objective and "搜索提交" in objective),
             idempotency_key=key, schedule_source="owner_seo_incremental",
             authorization_state="authorized",
             authorization_note="已授权本地 SEO 草稿验证；公网发布与搜索提交须真实 QC/回执。",
