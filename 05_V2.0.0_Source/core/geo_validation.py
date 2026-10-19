@@ -21,6 +21,7 @@ CONTROLLER = "chatgpt"
 BRAND_NAME = "卡嘴子"
 OFFICIAL_DOMAIN = "kazuizhi.com"
 MAX_RETRIES = 2
+TASK_LEASE_SECONDS = 180
 
 QUEUE_PATH = "geo_validation/queue.json"
 RECEIPTS_PATH = "geo_validation/receipts.json"
@@ -51,6 +52,59 @@ _URL_RE = re.compile(r"https?://[^\s<>'\"\]\)）}，。；;]+", re.I)
 
 def _new_id(prefix: str, length: int = 12) -> str:
     return prefix + uuid.uuid4().hex[:length].upper()
+
+
+def _legacy_state_map(task):
+    """Expose one normalized state without replacing any persisted legacy state."""
+    state = str((task or {}).get("state") or "")
+    if (task or {}).get("uncertain_external_submission"):
+        return "UNCERTAIN"
+    return {
+        "queued": "READY",
+        "running": "RUNNING",
+        "succeeded": "SUCCEEDED",
+        "failed": "FAILED",
+        "paused": "PAUSED",
+        "authorization_required": "BLOCKED",
+    }.get(state, "CREATED")
+
+
+def _stable_key(*parts):
+    raw = "|".join(str(part or "") for part in parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _lease_deadline(seconds=TASK_LEASE_SECONDS):
+    return (datetime.now().astimezone() + timedelta(seconds=int(seconds))).isoformat(timespec="seconds")
+
+
+def _lease_expired(lease):
+    try:
+        expires = datetime.fromisoformat(str((lease or {}).get("expires_at") or "").replace("Z", "+00:00"))
+        now = datetime.now().astimezone()
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=now.tzinfo)
+        return expires <= now
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def _correlation_for(task, values=None):
+    """Build an additive lineage view while keeping every historical flat field."""
+    merged = dict(task or {})
+    merged.update(dict(values or {}))
+    return {
+        "mission_id": str(merged.get("mission_id") or ""),
+        "opportunity_id": str(merged.get("opportunity_id") or ""),
+        "action_id": str(merged.get("action_id") or merged.get("seo_action_id") or ""),
+        "task_id": str(merged.get("task_id") or ""),
+        "attempt_id": str(merged.get("attempt_id") or ""),
+        "content_revision_id": str(merged.get("content_revision_id") or ""),
+        "publication_event_id": str(merged.get("publication_event_id") or ""),
+        "publication_receipt_id": str(merged.get("publication_receipt_id") or ""),
+        "schedule_id": str(merged.get("schedule_id") or ""),
+        "receipt_id": str(merged.get("receipt_id") or merged.get("evidence_id") or ""),
+    }
 
 
 def _qid(prefix: str, index: int) -> str:
@@ -289,7 +343,7 @@ def decision():
 
 
 def create_plan(limit=10, provider="external_ai", test_method="browser", mission_id="", question_ids=None,
-                expected_platform=""):
+                expected_platform="", correlation=None):
     if test_method not in TEST_METHODS:
         raise ValueError("unsupported_test_method")
     if _is_local_provider(provider) and test_method != "local_simulation":
@@ -324,7 +378,7 @@ def create_plan(limit=10, provider="external_ai", test_method="browser", mission
         selected = candidates[:limit]
 
     plan_id = _new_id("GEO-PLAN-", 10)
-    return {
+    result = {
         "plan_id": plan_id,
         "controller": CONTROLLER,
         "decision_id": current_decision["decision_id"],
@@ -339,12 +393,35 @@ def create_plan(limit=10, provider="external_ai", test_method="browser", mission
         "count": len(selected),
         "max_retries": MAX_RETRIES,
     }
+    if isinstance(correlation, dict):
+        result["correlation"] = {
+            key: str(correlation.get(key) or "")[:160]
+            for key in (
+                "opportunity_id", "action_id", "content_revision_id",
+                "publication_event_id", "publication_receipt_id", "schedule_id",
+            )
+            if correlation.get(key)
+        }
+    return result
 
 
 def enqueue_plan(plan):
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        return _enqueue_plan_locked(plan)
+
+
+def _enqueue_plan_locked(plan):
     queue = _load_queue()
     created = []
+    duplicate_ids = []
+    existing_keys = {
+        str(row.get("idempotency_key") or ""): row
+        for row in queue.get("tasks") or []
+        if isinstance(row, dict) and row.get("idempotency_key")
+    }
     for question in plan.get("questions") or []:
+        correlation = dict(plan.get("correlation") or {})
         task = {
             "task_id": _new_id("GEO-TASK-", 12),
             "plan_id": plan.get("plan_id"),
@@ -380,9 +457,28 @@ def enqueue_plan(plan):
             "scheduled_retest_at": "",
             "gap_task_id": "",
             "seo_action_id": "",
+            "opportunity_id": str(correlation.get("opportunity_id") or ""),
+            "action_id": str(correlation.get("action_id") or ""),
+            "content_revision_id": str(correlation.get("content_revision_id") or ""),
+            "publication_event_id": str(correlation.get("publication_event_id") or ""),
+            "publication_receipt_id": str(correlation.get("publication_receipt_id") or ""),
+            "schedule_id": str(correlation.get("schedule_id") or ""),
+            "attempt_id": "",
+            "attempts": [],
+            "lease": {},
         }
+        task["idempotency_key"] = _stable_key(
+            task.get("mission_id"), task.get("question_id"), task.get("provider"),
+            task.get("schedule_id") or task.get("retest_parent_receipt") or task.get("plan_id"),
+        )
+        if task["idempotency_key"] in existing_keys:
+            duplicate_ids.append(existing_keys[task["idempotency_key"]].get("task_id"))
+            continue
+        task["normalized_state"] = _legacy_state_map(task)
+        task["correlation"] = _correlation_for(task)
         queue["tasks"].append(task)
         created.append(task)
+        existing_keys[task["idempotency_key"]] = task
     _save_queue(queue)
     _audit(
         "geo_plan_enqueued",
@@ -392,9 +488,14 @@ def enqueue_plan(plan):
             "command_id": plan.get("command_id"),
             "mission_id": plan.get("mission_id"),
             "created": len(created),
+            "idempotent_reused": len(duplicate_ids),
         },
     )
-    return {"ok": True, "created": len(created), "tasks": created, "plan_id": plan.get("plan_id")}
+    return {
+        "ok": True, "created": len(created), "tasks": created,
+        "plan_id": plan.get("plan_id"), "idempotent": bool(duplicate_ids and not created),
+        "reused_task_ids": [item for item in duplicate_ids if item],
+    }
 
 
 def create_and_enqueue_plan(**kwargs):
@@ -421,8 +522,24 @@ def _transition(task_id, target, reason=""):
     if target == "failed":
         task["failure_reason"] = str(reason or "execution_failed")
         task["failure_code"] = str(reason or "execution_failed")
+        reason_text = str(reason or "").lower()
+        if any(marker in reason_text for marker in (
+            "timeout", "timed out", "question_not_submitted", "capture_failed",
+            "unconfirmed", "connection reset", "empty_agent_response",
+        )):
+            task["uncertain_external_submission"] = True
+            task["replay_blocked"] = True
     elif target == "authorization_required":
         task["authorization_reason"] = str(reason or "external_authorization_required")
+    if target in {"failed", "authorization_required"}:
+        task["lease"] = {}
+        attempts = task.get("attempts") if isinstance(task.get("attempts"), list) else []
+        if attempts and not attempts[-1].get("finished_at"):
+            attempts[-1]["finished_at"] = now_iso()
+            attempts[-1]["result"] = "UNCERTAIN" if task.get("uncertain_external_submission") else "BLOCKED" if target == "authorization_required" else "FAILED"
+            attempts[-1]["reason"] = str(reason or "")[:300]
+    task["normalized_state"] = _legacy_state_map(task)
+    task["correlation"] = _correlation_for(task)
     _save_queue(queue)
     _audit("geo_task_transition", {"task_id": task_id, "state": target, "reason": str(reason or "")})
     return task
@@ -433,6 +550,7 @@ def pause_task(task_id):
     if task["state"] not in {"queued", "running", "authorization_required"}:
         raise ValueError("geo_task_cannot_pause")
     task["state"] = "paused"
+    task["normalized_state"] = _legacy_state_map(task)
     task["updated_at"] = now_iso()
     _save_queue(queue)
     _audit("geo_task_paused", {"task_id": task_id})
@@ -444,6 +562,7 @@ def resume_task(task_id):
     if task["state"] != "paused":
         raise ValueError("geo_task_not_paused")
     task["state"] = "queued"
+    task["normalized_state"] = _legacy_state_map(task)
     task["updated_at"] = now_iso()
     _save_queue(queue)
     _audit("geo_task_resumed", {"task_id": task_id})
@@ -456,6 +575,8 @@ def retry_task(task_id, approved_by="chatgpt"):
         raise ValueError("geo_task_not_retryable")
     if approved_by != CONTROLLER:
         raise ValueError("geo_retry_requires_chatgpt_approval")
+    if task.get("uncertain_external_submission") or task.get("replay_blocked"):
+        raise ValueError("geo_uncertain_external_result_must_be_reconciled_not_retried")
     if task.get("retest_origin") == "automatic_24h":
         raise ValueError("automatic_browser_retest_must_never_replay_after_attempt")
     retry_count = int(task.get("retry_count") or 0)
@@ -470,6 +591,10 @@ def retry_task(task_id, approved_by="chatgpt"):
     task["failure_reason"] = ""
     task["failure_code"] = ""
     task["authorization_reason"] = ""
+    task["lease"] = {}
+    task["attempt_id"] = ""
+    task["normalized_state"] = _legacy_state_map(task)
+    task["correlation"] = _correlation_for(task)
     task["updated_at"] = now_iso()
     _save_queue(queue)
     _audit("geo_task_retried", {"task_id": task_id, "retry_count": task["retry_count"]})
@@ -483,6 +608,73 @@ def claim_next_task(executor=None):
         return _claim_next_task_locked(executor)
 
 
+def _quarantine_expired_leases(queue):
+    """Never replay an external action whose claimed attempt lost its lease."""
+    changed = []
+    receipts_by_task = {
+        str(row.get("task_id") or ""): row
+        for row in (_load_receipts().get("receipts") or [])
+        if isinstance(row, dict) and row.get("task_id")
+    }
+    for task in queue.get("tasks") or []:
+        if not isinstance(task, dict) or task.get("state") != "running":
+            continue
+        lease = task.get("lease") if isinstance(task.get("lease"), dict) else {}
+        if not lease or not _lease_expired(lease):
+            continue
+        receipt = receipts_by_task.get(str(task.get("task_id") or ""))
+        if receipt:
+            task["state"] = "succeeded"
+            task["evidence_id"] = receipt.get("evidence_id") or receipt.get("receipt_id") or ""
+            task["normalized_state"] = "SUCCEEDED"
+            task["lease"] = {}
+            task["updated_at"] = now_iso()
+            changed.append((task, "receipt_reconciled"))
+            continue
+        task["state"] = "authorization_required"
+        task["authorization_reason"] = "task_lease_expired_external_result_unknown"
+        task["uncertain_external_submission"] = True
+        task["replay_blocked"] = True
+        task["normalized_state"] = "UNCERTAIN"
+        task["lease"] = {}
+        task["updated_at"] = now_iso()
+        attempts = task.get("attempts") if isinstance(task.get("attempts"), list) else []
+        if attempts and not attempts[-1].get("finished_at"):
+            attempts[-1]["finished_at"] = now_iso()
+            attempts[-1]["result"] = "UNCERTAIN"
+            attempts[-1]["reason"] = "lease_expired_without_receipt"
+        changed.append((task, "quarantined_uncertain"))
+    return changed
+
+
+def renew_task_lease(task_id, executor_id, run_id="", attempt_id=""):
+    """Renew only the exact running attempt; stale workers cannot steal a task."""
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        queue, task = _find_task(str(task_id or ""))
+        if task.get("state") != "running":
+            return {"renewed": False, "reason": "task_not_running"}
+        if str(task.get("executor_id") or "") != str(executor_id or ""):
+            return {"renewed": False, "reason": "wrong_executor"}
+        if run_id and str(task.get("run_id") or "") != str(run_id):
+            return {"renewed": False, "reason": "stale_run"}
+        if attempt_id and str(task.get("attempt_id") or "") != str(attempt_id):
+            return {"renewed": False, "reason": "stale_attempt"}
+        lease = task.get("lease") if isinstance(task.get("lease"), dict) else {}
+        if lease and _lease_expired(lease):
+            return {"renewed": False, "reason": "lease_already_expired"}
+        stamp = now_iso()
+        task["lease"] = {
+            "owner": str(executor_id or ""),
+            "acquired_at": str(lease.get("acquired_at") or stamp),
+            "heartbeat_at": stamp,
+            "expires_at": _lease_deadline(),
+        }
+        task["updated_at"] = stamp
+        _save_queue(queue)
+        return {"renewed": True, "task_id": task.get("task_id"), "lease": task["lease"]}
+
+
 def _claim_next_task_locked(executor=None):
     """Claim one task only when a real external executor is explicitly ready.
 
@@ -492,6 +684,14 @@ def _claim_next_task_locked(executor=None):
     """
     executor = dict(executor or {})
     queue = _load_queue()
+    expired = _quarantine_expired_leases(queue)
+    if expired:
+        _save_queue(queue)
+        for task, outcome in expired:
+            _audit("geo_task_lease_reconciled", {
+                "task_id": task.get("task_id"), "attempt_id": task.get("attempt_id"),
+                "outcome": outcome, "replay_blocked": bool(task.get("replay_blocked")),
+            })
     requested_platform = str(executor.get("provider") or "").strip()
     # A platform-specific Chrome worker must never inherit an unspecified
     # historical task or retry an ambiguous external prompt. Legacy non-browser
@@ -552,9 +752,25 @@ def _claim_next_task_locked(executor=None):
         task["test_method"] = method
         task["executor_id"] = str(executor.get("executor_id") or "")
         task["run_id"] = _new_id("GEO-RUN-", 12)
+        task["attempt_id"] = _new_id("GEO-ATTEMPT-", 12)
         task["started_at"] = now_iso()
+        task["lease"] = {
+            "owner": task["executor_id"],
+            "acquired_at": task["started_at"],
+            "heartbeat_at": task["started_at"],
+            "expires_at": _lease_deadline(),
+        }
+        attempts = task.get("attempts") if isinstance(task.get("attempts"), list) else []
+        attempts.append({
+            "attempt_id": task["attempt_id"], "run_id": task["run_id"],
+            "executor_id": task["executor_id"], "started_at": task["started_at"],
+            "finished_at": "", "result": "RUNNING",
+        })
+        task["attempts"] = attempts[-20:]
 
     task["updated_at"] = now_iso()
+    task["normalized_state"] = _legacy_state_map(task)
+    task["correlation"] = _correlation_for(task)
     _save_queue(queue)
     _audit(
         "geo_task_claimed",
@@ -747,6 +963,9 @@ def record_result(payload):
                 task["evidence_id"] = previous.get("evidence_id")
                 task["evidence_level"] = previous.get("evidence_level")
                 task["official_truth"] = bool(previous.get("official_truth"))
+                task["lease"] = {}
+                task["normalized_state"] = "SUCCEEDED"
+                task["correlation"] = _correlation_for(task, previous)
                 task["updated_at"] = now_iso()
                 _save_queue(queue)
             return dict(previous, already_recorded=True)
@@ -766,6 +985,13 @@ def _record_result_once(payload):
     )
     if task.get("state") not in {"running", "queued", "authorization_required"} and not manual_current_page_recovery:
         raise ValueError("geo_task_not_accepting_receipt")
+
+    supplied_run = str(payload.get("run_id") or "")
+    supplied_attempt = str(payload.get("attempt_id") or "")
+    if supplied_run and str(task.get("run_id") or "") != supplied_run:
+        raise ValueError("geo_receipt_stale_run")
+    if supplied_attempt and str(task.get("attempt_id") or "") != supplied_attempt:
+        raise ValueError("geo_receipt_stale_attempt")
 
     merged = dict(task)
     merged.update(payload)
@@ -833,10 +1059,19 @@ def _record_result_once(payload):
         "state": "succeeded",
         "failure_reason": "",
         "retry_count": int(task.get("retry_count") or 0),
+        "attempt_id": str(task.get("attempt_id") or merged.get("attempt_id") or ""),
+        "idempotency_key": str(task.get("idempotency_key") or ""),
+        "opportunity_id": str(task.get("opportunity_id") or ""),
+        "action_id": str(task.get("action_id") or task.get("seo_action_id") or ""),
+        "content_revision_id": str(task.get("content_revision_id") or ""),
+        "publication_event_id": str(task.get("publication_event_id") or ""),
+        "publication_receipt_id": str(task.get("publication_receipt_id") or ""),
+        "schedule_id": str(task.get("schedule_id") or ""),
         "analysis": merged.get("analysis") or {},
         "gap_task_id": str(merged.get("gap_task_id") or ""),
         "seo_action_id": str(merged.get("seo_action_id") or ""),
     }
+    receipt["correlation"] = _correlation_for(task, receipt)
 
     receipts_payload = _load_receipts()
     receipts_payload["receipts"].append(receipt)
@@ -847,6 +1082,14 @@ def _record_result_once(payload):
     task["evidence_id"] = receipt["evidence_id"]
     task["evidence_level"] = evidence_level
     task["official_truth"] = official_truth
+    task["lease"] = {}
+    task["normalized_state"] = "SUCCEEDED"
+    attempts = task.get("attempts") if isinstance(task.get("attempts"), list) else []
+    if attempts and str(attempts[-1].get("attempt_id") or "") == str(task.get("attempt_id") or ""):
+        attempts[-1]["finished_at"] = receipt["finished_at"]
+        attempts[-1]["result"] = "SUCCEEDED"
+        attempts[-1]["receipt_id"] = evidence_id
+    task["correlation"] = _correlation_for(task, receipt)
     _save_queue(queue)
     _audit(
         "geo_receipt_recorded",

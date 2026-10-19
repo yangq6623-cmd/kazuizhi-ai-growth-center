@@ -13,6 +13,7 @@ GitHub token or platform secret is stored here.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import html
 import os
@@ -554,6 +555,9 @@ def deploy_pending(limit: int = 10) -> dict:
                 "http_verification": verification,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "publication_event_id": "PUBLICATION-" + hashlib.sha256(
+                    str(receipt["receipt_id"]).encode("utf-8")
+                ).hexdigest()[:16].upper(),
             }
             if asset.get("republish_pending"):
                 record_asset_republished(asset_id, evidence)

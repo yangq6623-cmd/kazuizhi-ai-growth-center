@@ -12,6 +12,7 @@ HTTP/content/canonical/Schema/robots evidence.
 """
 from __future__ import annotations
 
+import hashlib
 import urllib.parse
 from pathlib import Path
 
@@ -146,6 +147,9 @@ def deploy_pending(limit: int = 10) -> dict:
                 "public_url_strategy": "direct_html_file",
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "publication_event_id": "PUBLICATION-" + hashlib.sha256(
+                    str(receipt["receipt_id"]).encode("utf-8")
+                ).hexdigest()[:16].upper(),
             }
             if asset.get("republish_pending"):
                 deployer.record_asset_republished(asset_id, evidence)

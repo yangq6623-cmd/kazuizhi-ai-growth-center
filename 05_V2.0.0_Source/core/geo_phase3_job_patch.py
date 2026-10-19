@@ -8,6 +8,7 @@ that source grade. Existing job types continue through the original executor.
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 
 from core import r7_engine
 from core.storage import now_iso, write_json
@@ -38,8 +39,10 @@ def create_job(payload):
     source_ref = str(payload.get("source_ref") or "").strip()[:160]
     mission_id = str(payload.get("mission_id") or "").strip()[:160]
     command_id = str(payload.get("command_id") or "").strip()[:160]
+    action_id = str(payload.get("action_id") or source_ref).strip()[:160]
+    opportunity_id = str(payload.get("opportunity_id") or "").strip()[:160]
     job = _ORIGINAL_CREATE_JOB(payload)
-    if not any((context, schedule_source, source_ref, mission_id, command_id)):
+    if not any((context, schedule_source, source_ref, mission_id, command_id, action_id, opportunity_id)):
         return job
     with r7_engine.LOCK:
         data = r7_engine._store()
@@ -56,6 +59,28 @@ def create_job(payload):
             stored["command_id"] = command_id
             stored["authorization_state"] = "authorized"
             stored["authorization_note"] = "GEO任务已绑定已验证 ChatGPT Command。"
+        if action_id:
+            stored["action_id"] = action_id
+        if opportunity_id:
+            stored["opportunity_id"] = opportunity_id
+        stored.setdefault("attempts", [])
+        stored["idempotency_key"] = stored.get("idempotency_key") or hashlib.sha256(
+            "|".join((
+                str(stored.get("mission_id") or ""), str(opportunity_id or ""),
+                str(action_id or ""), str(stored.get("task_type") or ""),
+            )).encode("utf-8")
+        ).hexdigest()
+        stored["correlation"] = {
+            "mission_id": str(stored.get("mission_id") or ""),
+            "opportunity_id": opportunity_id,
+            "action_id": action_id,
+            "task_id": str(stored.get("id") or ""),
+            "attempt_id": "",
+            "content_revision_id": "",
+            "publication_event_id": "",
+            "receipt_id": "",
+            "schedule_id": "",
+        }
         stored["updated_at"] = now_iso()
         write_json(r7_engine.JOBS, data)
         r7_engine._audit("job_context_bound", job["id"], "geo_growth", {

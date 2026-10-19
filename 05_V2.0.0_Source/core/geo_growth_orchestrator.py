@@ -250,6 +250,11 @@ def _opportunity_id(signal_id, question_id, gap_code):
     return "GEO-GROWTH-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12].upper()
 
 
+def _stable_id(prefix, *parts):
+    raw = "|".join(str(part or "") for part in parts)
+    return str(prefix) + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16].upper()
+
+
 def _action_context(item):
     return {
         "region": item.get("region") or "涟水县",
@@ -372,6 +377,7 @@ def _create_from_signal(data, receipt):
         "last_error": "",
         "coalesced_signal_ids": [],
         "publication_receipt_id": "",
+        "publication_event_id": "",
         "content_revision_id": "",
     }
 
@@ -411,6 +417,8 @@ def _create_from_signal(data, receipt):
         "context": _action_context(item),
         "schedule_source": "geo_growth_orchestrator",
         "source_ref": item["id"],
+        "action_id": item["id"],
+        "opportunity_id": item["id"],
     })
     item["job_id"] = str(job.get("id") or "")
     item["job_state"] = str(job.get("state") or "queued")
@@ -440,6 +448,42 @@ def _iso_epoch(value):
 
 def _ensure_retest_schedule(item):
     schedule = item.get("retest_schedule")
+    current_revision = str(item.get("content_revision_id") or "")
+    current_event = str(item.get("publication_event_id") or "")
+    current_receipt = str(item.get("publication_receipt_id") or "")
+    existing_basis_revision = next((
+        str(slot.get("schedule_basis_content_revision_id") or "")
+        for slot in (schedule or []) if isinstance(slot, dict)
+        and slot.get("schedule_basis_content_revision_id")
+    ), "")
+    if current_revision and existing_basis_revision and current_revision != existing_basis_revision:
+        archive = {
+            "archived_at": now_iso(),
+            "reason": "new_verified_content_revision",
+            "content_revision_id": existing_basis_revision,
+            "publication_event_id": next((
+                str(slot.get("schedule_basis_publication_event_id") or "")
+                for slot in schedule if isinstance(slot, dict)
+                and slot.get("schedule_basis_publication_event_id")
+            ), ""),
+            "publication_receipt_id": next((
+                str(slot.get("schedule_basis_publication_receipt_id") or "")
+                for slot in schedule if isinstance(slot, dict)
+                and slot.get("schedule_basis_publication_receipt_id")
+            ), ""),
+            "schedule": deepcopy(schedule),
+        }
+        history = item.setdefault("retest_schedule_history", [])
+        archive_key = tuple(
+            str(slot.get("schedule_id") or "") for slot in archive["schedule"] if isinstance(slot, dict)
+        )
+        if archive_key and not any(
+            tuple(str(slot.get("schedule_id") or "") for slot in row.get("schedule", []) if isinstance(slot, dict)) == archive_key
+            for row in history if isinstance(row, dict)
+        ):
+            history.append(archive)
+            item["retest_schedule_history"] = history[-20:]
+        schedule = []
     base = _iso_epoch(item.get("published_at")) or time.time()
     policy = (_load().get("policy") or {})
     configured = policy.get("retest_windows_seconds") or {}
@@ -458,13 +502,27 @@ def _ensure_retest_schedule(item):
         if slot is None:
             slot = {
                 "window": label,
+                "schedule_id": _stable_id(
+                    "GEO-SCHEDULE-", item.get("id"), item.get("content_revision_id"),
+                    item.get("publication_event_id"), item.get("publication_receipt_id"), label,
+                ),
                 "due_at_epoch": required_due,
                 "task_id": item.get("retest_task_id") if label == "24h" else "",
                 "signal_id": "",
                 "completed_at": "",
                 "schedule_basis_published_at": item.get("published_at") or "",
+                "schedule_basis_content_revision_id": current_revision,
+                "schedule_basis_publication_event_id": current_event,
+                "schedule_basis_publication_receipt_id": current_receipt,
             }
         else:
+            slot.setdefault("schedule_id", _stable_id(
+                "GEO-SCHEDULE-", item.get("id"), item.get("content_revision_id"),
+                item.get("publication_event_id"), item.get("publication_receipt_id"), label,
+            ))
+            slot.setdefault("schedule_basis_content_revision_id", current_revision)
+            slot.setdefault("schedule_basis_publication_event_id", current_event)
+            slot.setdefault("schedule_basis_publication_receipt_id", current_receipt)
             # A verified content refresh may move published_at after the first
             # schedule was created. Only untouched future windows may move:
             # never rewrite an existing Task, Receipt or completed history.
@@ -531,9 +589,18 @@ def _ensure_retest_task(item, slot=None):
         test_method="api",
         mission_id=mission_id,
         question_ids=[item["question_id"]],
+        correlation={
+            "opportunity_id": item.get("id") or "",
+            "action_id": item.get("id") or "",
+            "content_revision_id": item.get("content_revision_id") or "",
+            "publication_event_id": item.get("publication_event_id") or "",
+            "publication_receipt_id": item.get("publication_receipt_id") or "",
+            "schedule_id": slot.get("schedule_id") or "",
+        },
     )
     task = (result.get("tasks") or [{}])[0]
-    slot["task_id"] = task.get("task_id") or ""
+    reused_ids = result.get("reused_task_ids") or []
+    slot["task_id"] = task.get("task_id") or (str(reused_ids[0]) if reused_ids else "")
     slot["queued_at"] = now_iso()
     if window == "24h":
         item["retest_task_id"] = slot["task_id"]
@@ -554,6 +621,15 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
     item_id = str(item.get("id") or "")
     if str(item.get("state") or "") == "superseded":
         return item
+    # Capture the durable Opportunity anchor before reading the mutable SEO
+    # asset.  A later HTTP verification of the same content revision is an
+    # audit receipt, not a new exposure event.  Without these values a restart
+    # or template refresh can replace the first public time and postpone every
+    # 24h/72h/7d window again (the #830 field regression).
+    previous_revision = str(item.get("content_revision_id") or "")
+    previous_published_at = str(item.get("published_at") or "")
+    previous_publication_receipt = str(item.get("publication_receipt_id") or "")
+    previous_publication_event = str(item.get("publication_event_id") or "")
     job = jobs.get(str(item.get("job_id") or ""), {})
     if job:
         item["job_state"] = job.get("state") or item.get("job_state")
@@ -621,10 +697,14 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
 
     if item.get("asset_stage") in {"PUBLISHED", "SUBMITTED", "CRAWLED", "INDEXED", "RANKED", "MENTIONED", "CITED", "CONVERTED"}:
         published_asset = assets.get(str(item.get("asset_id") or ""), {})
+        current_revision = str(item.get("content_revision_id") or "")
         refresh_events = [
             row for row in (published_asset.get("content_refresh_events") or [])
             if isinstance(row, dict)
-            and str(row.get("growth_action_id") or row.get("content_revision_id") or "") == item_id
+            and (
+                (current_revision and str(row.get("content_revision_id") or "") == current_revision)
+                or (not current_revision and str(row.get("growth_action_id") or "") == item_id)
+            )
             and bool(row.get("deploy_receipt"))
             and str(row.get("public_url") or "").startswith(("https://", "http://"))
         ]
@@ -638,8 +718,43 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         )
         verified_at = str(refresh.get("at") or "")
         if verified_at:
-            item["published_at"] = verified_at
-            item["publication_receipt_id"] = str(refresh.get("deploy_receipt") or "")
+            schedule_basis_revision = next((
+                str(slot.get("schedule_basis_content_revision_id") or "")
+                for slot in (item.get("retest_schedule") or [])
+                if isinstance(slot, dict) and slot.get("schedule_basis_content_revision_id")
+            ), "")
+            current_revision = str(item.get("content_revision_id") or "")
+            refresh_revision = str(
+                refresh.get("content_revision_id")
+                or refresh.get("growth_action_id")
+                or ""
+            )
+            same_revision = bool(
+                current_revision
+                and (
+                    current_revision == previous_revision
+                    or current_revision == schedule_basis_revision
+                )
+                and (not refresh_revision or refresh_revision == current_revision)
+            )
+            keep_first_publication = bool(
+                same_revision
+                and _iso_epoch(previous_published_at)
+                and _iso_epoch(previous_published_at) <= _iso_epoch(verified_at)
+            )
+            if keep_first_publication:
+                item["published_at"] = previous_published_at
+                if previous_publication_receipt:
+                    item["publication_receipt_id"] = previous_publication_receipt
+                if previous_publication_event:
+                    item["publication_event_id"] = previous_publication_event
+            else:
+                item["published_at"] = verified_at
+                item["publication_receipt_id"] = str(refresh.get("deploy_receipt") or "")
+                item["publication_event_id"] = str(refresh.get("publication_event_id") or _stable_id(
+                    "PUBLICATION-", item_id, item.get("content_revision_id"),
+                    item.get("publication_receipt_id"), verified_at,
+                ))
         elif not item.get("published_at"):
             item["published_at"] = published_asset.get("published_at") or ""
 

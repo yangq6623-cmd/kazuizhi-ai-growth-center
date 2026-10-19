@@ -29,7 +29,7 @@ def main():
     assert "[HEARTBEAT_ALARM, 1]" in worker  # independent heartbeat
     assert "chrome.alarms.get(name)" in worker  # never reset an existing cycle
     assert "HEARTBEAT_ALARM" in worker and "heartbeatOnly" in worker
-    assert manifest["version"] == "2.2.2.814"
+    assert manifest["version"] == "2.2.2.828"
     assert "raw_answer" in worker and "session_url" in worker and "citation_urls" in worker
     assert "external_https_session_required" in worker
     assert "answer_capture_timeout" in content

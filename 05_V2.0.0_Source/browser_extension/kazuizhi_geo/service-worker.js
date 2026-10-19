@@ -14,7 +14,7 @@ let currentStage = "空闲";
 function stage(name) { currentStage = name; }
 
 async function stored() {
-  return chrome.storage.local.get(["agentId", "token", "sessions", "lastVerified", "lastRetryAt", "lastCycle", "lastError", "lastOutcome", "lastHeartbeatAt", "lastHeartbeatError"]);
+  return chrome.storage.local.get(["agentId", "token", "sessions", "activeTask", "lastVerified", "lastRetryAt", "lastCycle", "lastError", "lastOutcome", "lastHeartbeatAt", "lastHeartbeatError"]);
 }
 
 async function call(path, payload) {
@@ -58,7 +58,10 @@ async function heartbeatOnly() {
       agent_id: state.agentId,
       agent_token: state.token,
       sessions: Array.isArray(state.sessions) ? state.sessions : [],
-      version: chrome.runtime.getManifest().version
+      version: chrome.runtime.getManifest().version,
+      active_task_id: state.activeTask?.task_id || "",
+      run_id: state.activeTask?.run_id || "",
+      attempt_id: state.activeTask?.attempt_id || ""
     });
     await chrome.storage.local.set({lastHeartbeatAt: new Date().toISOString(), lastHeartbeatError: ""});
     return {ok: true};
@@ -282,7 +285,7 @@ async function executeTask(task, auth) {
       : await ask(opened.tab.id, {type: "kz-execute", platform, question}, 150000);
     if (result.state === "auth_required" || result.state === "captcha") {
       await chrome.tabs.update(opened.tab.id, {active: true}).catch(() => {});
-      await call("block", {...auth, task_id: task.task_id, platform, kind: result.state === "captcha" ? "captcha" : "authorization", reason: result.state, session_url: result.url || opened.tab.url});
+      await call("block", {...auth, task_id: task.task_id, run_id: task.run_id || "", attempt_id: task.attempt_id || "", platform, kind: result.state === "captcha" ? "captcha" : "authorization", reason: result.state, session_url: result.url || opened.tab.url});
       return {blocked: true, reason: result.state};
     }
     if (!result.ok || !result.raw_answer || String(result.raw_answer).trim().length < 20) throw new Error(result.error || "real_answer_not_captured");
@@ -291,6 +294,8 @@ async function executeTask(task, auth) {
     await call("receipt", {
       ...auth,
       task_id: task.task_id,
+      run_id: task.run_id || "",
+      attempt_id: task.attempt_id || "",
       platform,
       session_url: sessionUrl,
       raw_answer: String(result.raw_answer).trim(),
@@ -301,7 +306,7 @@ async function executeTask(task, auth) {
     if (opened.created) await chrome.tabs.remove(opened.tab.id).catch(() => {});
     return {completed: true};
   } catch (error) {
-    await call("block", {...auth, task_id: task.task_id, platform, kind: "execution_error", reason: `capture_failed:${String(error.message || error)}`}).catch(() => {});
+    await call("block", {...auth, task_id: task.task_id, run_id: task.run_id || "", attempt_id: task.attempt_id || "", platform, kind: "execution_error", reason: `capture_failed:${String(error.message || error)}`}).catch(() => {});
     if (opened.created) await chrome.tabs.remove(opened.tab.id).catch(() => {});
     throw error;
   }
@@ -376,7 +381,10 @@ async function cycle(options = {}) {
       if (claimedTask?.task_id) {
         const task = {...claimedTask, platform: claimed.contract?.platform || claimedTask.expected_platform, question_text: claimed.contract?.question_text || claimedTask.question_text};
         stage("采集正式回答：" + platform);
-        outcome = await executeTask(task, auth); break;
+        await chrome.storage.local.set({activeTask: {task_id: task.task_id, run_id: task.run_id || "", attempt_id: task.attempt_id || ""}});
+        try { outcome = await executeTask(task, auth); }
+        finally { await chrome.storage.local.remove("activeTask"); }
+        break;
       }
     }
     await chrome.storage.local.set({lastCycle: new Date().toISOString(), lastError: "", lastOutcome: outcome});

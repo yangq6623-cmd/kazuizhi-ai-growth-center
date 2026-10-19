@@ -273,6 +273,8 @@ def dispatch(owner_approved=False):
             "source_ref": current.get("plan_id"),
             "mission_id": mission_id,
             "command_id": command_id,
+            "action_id": action.get("action_id") or "",
+            "opportunity_id": opportunity.get("id") or "",
         })
         action["job_id"] = job.get("id") or ""
         action["opportunity_id"] = opportunity.get("id") or ""
