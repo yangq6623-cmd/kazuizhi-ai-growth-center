@@ -195,11 +195,10 @@ def _mission_for_command(data, command_id):
 
 
 _EXISTING_MISSION_RE = re.compile(
-    r"(?:继续(?:现有|原有|原)?|沿用(?:现有|原有|原)?|复用(?:现有|原有|原)?|继续使用(?:现有|原有|原)?)\\s*"
-    r"(?:Mission|MISSION)\\s*(MISSION-[A-Za-z0-9-]+)", re.IGNORECASE
+    r"(?:继续(?:现有|原有|原)?|沿用(?:现有|原有|原)?|复用(?:现有|原有|原)?|继续使用(?:现有|原有|原)?)\s*"
+    r"(?:Mission|MISSION)\s*(MISSION-[A-Za-z0-9-]+)", re.IGNORECASE
 )
-_SEO_KEYWORD_RE = re.compile(r"关键词(?:优先)?选择[“\\\"]([^”\\\"]{3,80})[”\\\"]")
-
+_SEO_KEYWORD_RE = re.compile(r"关键词(?:优先)?选择“([^”]{3,80})”")
 
 def _referenced_existing_mission_id(link):
     """Use an explicitly requested existing Mission before an auto-created one.
