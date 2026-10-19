@@ -128,7 +128,21 @@ def test_route_categories_hide_dynamic_identifiers():
     print("PASS: background worker registered and route categories do not leak secrets")
 
 
+def test_refresh_response_updates_business_header_without_waiting_for_other_panels():
+    analytics = (SRC / "web" / "analytics.js").read_text(encoding="utf-8")
+    start = analytics.index("async function refreshBusinessSource()")
+    end = analytics.index("async function loadAnalytics()", start)
+    refresh = analytics[start:end]
+    assert "renderBusinessSource(data);" in refresh
+    assert "renderAnalyticsFromSource(data);" in refresh
+    assert refresh.index("renderAnalyticsFromSource(data);") < refresh.index("Promise.allSettled")
+    assert "await Promise.all" not in refresh, "refresh button still waits on unrelated owner panels"
+    assert "finally { button.disabled = false; button.textContent = '立即刷新真实数据'; }" in refresh
+    print("PASS: verified refresh response updates both detail/header and always releases the button")
+
+
 if __name__ == "__main__":
     test_20_second_remote_refresh_never_blocks_regular_api()
     test_explicit_and_background_refresh_share_one_execution_lock()
     test_route_categories_hide_dynamic_identifiers()
+    test_refresh_response_updates_business_header_without_waiting_for_other_panels()
