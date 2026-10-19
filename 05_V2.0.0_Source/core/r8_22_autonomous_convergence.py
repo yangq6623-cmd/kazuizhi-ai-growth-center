@@ -14,6 +14,7 @@ Truth boundaries remain strict:
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from uuid import uuid4
 
 from core.storage import now_iso, read_json, write_json
@@ -193,6 +194,25 @@ def _mission_for_command(data, command_id):
     return None
 
 
+_EXISTING_MISSION_RE = re.compile(
+    r"(?:继续(?:现有|原有|原)?|沿用(?:现有|原有|原)?|复用(?:现有|原有|原)?|继续使用(?:现有|原有|原)?)\s*"
+    r"(?:Mission|MISSION)\s*(MISSION-[A-Za-z0-9-]+)", re.IGNORECASE
+)
+_SEO_KEYWORD_RE = re.compile(r"关键词(?:优先)?选择“([^”]{3,80})”")
+
+def _referenced_existing_mission_id(link):
+    """Use an explicitly requested existing Mission before an auto-created one.
+
+    Do not infer a Mission from incidental ID mentions or unrelated history.
+    The caller must check that the requested ID really exists.
+    """
+    objective = str((link or {}).get("objective") or "")
+    match = _EXISTING_MISSION_RE.search(objective)
+    if match:
+        return match.group(1)
+    return str((link or {}).get("mission_id") or "").strip() or None
+
+
 def ensure_command_mission():
     """Promote the newest verified owner Command into the active Mission.
 
@@ -210,10 +230,20 @@ def ensure_command_mission():
         return None
 
     data = autonomous_ops._load()
-    mission = _mission_for_command(data, command_id)
-    created = False
+    requested_id = _referenced_existing_mission_id(link)
+    # An accepted Command may already have been attached to an accidental
+    # empty Mission by an older runtime. An explicit "continue existing" ID
+    # takes precedence, even when the old Command association exists.
+    mission = autonomous_ops._find_mission(data, mission_id=requested_id) if requested_id else None
+    if requested_id and mission is None:
+        # Never silently invent another Mission if the owner named an
+        # unavailable existing ID. Leave the ledgers intact for diagnosis.
+        return None
     if mission is None:
-        objective = str(link.get("objective") or "").strip()
+        mission = _mission_for_command(data, command_id)
+    created = False
+    objective = str(link.get("objective") or "").strip()
+    if mission is None:
         mission = {
             "mission_id": autonomous_ops._mission_id(),
             "growth_id": None,
@@ -251,12 +281,17 @@ def ensure_command_mission():
             other["state"] = "superseded"
             other["priority"] = BACKLOG_PRIORITY
             other["updated_at"] = now_iso()
+    previous_command_id = str(mission.get("command_id") or "")
     mission.update(
         priority=CURRENT_PRIORITY,
         state="active",
         user_state="自动处理中",
+        command_id=command_id,
         command_status=link.get("status"),
         command_receipt_id=link.get("control_receipt_id"),
+        command_transport=link.get("transport"),
+        command_objective=objective,
+        command_bound_at=(mission.get("command_bound_at") if previous_command_id == command_id else now_iso()),
         updated_at=now_iso(),
     )
     data["active_mission_id"] = mission["mission_id"]
@@ -276,14 +311,22 @@ def ensure_command_mission():
             "command_id": command_id,
             "transport": link.get("transport"),
         })
-    elif previous_active != mission["mission_id"]:
+    elif previous_active != mission["mission_id"] and mission.get("last_reactivated_command_id") != command_id:
         autonomous_ops._event(data, mission, "mission_reactivated", "最新老板 Command 已恢复为当前 Mission", {
             "command_id": command_id,
         })
+        mission["last_reactivated_command_id"] = command_id
     autonomous_ops._save(data)
 
+    # Keep the original owner Command ledger linked without pretending that
+    # a draft, Task or acceptance is a completed external execution receipt.
+    if str(link.get("transport") or "") == "kz_local_control":
+        from integrations.chatgpt_control import bind_owner_command_mission
+        bind_owner_command_mission(command_id, mission["mission_id"])
+
     state = _load_state()
-    if state.get("active_command_id") != command_id:
+    if (state.get("active_command_id") != command_id or
+            state.get("active_mission_id") != mission["mission_id"]):
         state["active_command_id"] = command_id
         state["active_mission_id"] = mission["mission_id"]
         state["plan"] = None
@@ -603,9 +646,65 @@ def snapshot():
     }
 
 
+def ensure_owner_seo_incremental_task(mission, plan):
+    """Materialize one *local draft* R7 task for an explicit SEO increment.
+
+    Descriptive employee work packages are not executable tasks. This does not
+    publish a page, submit a search URL, or create formal GEO Evidence.
+    """
+    if not isinstance(mission, dict) or not isinstance(plan, dict):
+        return None
+    command_id = str(mission.get("command_id") or "").strip()
+    mission_id = str(mission.get("mission_id") or "").strip()
+    objective = str(mission.get("command_objective") or plan.get("objective") or "")
+    if not (command_id and mission_id and "seo" in objective.lower() and
+            ("增量" in objective or "新资产" in objective or "新 Asset" in objective)):
+        return None
+    if not any(lane.get("id") == "seo" for lane in plan.get("lanes", []) if isinstance(lane, dict)):
+        return None
+
+    from core import r7_engine
+    key = "r8_22_owner_seo_incremental:" + command_id
+    with r7_engine.LOCK:
+        data = r7_engine._store()
+        for job in data.get("items", []):
+            if isinstance(job, dict) and job.get("idempotency_key") == key:
+                return {"id": job.get("id"), "state": job.get("state"), "existing": True}
+
+        # R7 provides the audit-integrity check and durable job-created event.
+        keyword_match = _SEO_KEYWORD_RE.search(objective)
+        keyword = keyword_match.group(1) if keyword_match else "涟水县本地维修"
+        job = r7_engine.create_job({
+            "kind": "manual_task",
+            "title": ("SEO增量内容验证 · " + keyword)[:160],
+        })
+        data = r7_engine._store()
+        live = next((item for item in data.get("items", []) if item.get("id") == job["id"]), None)
+        if live is None:
+            raise ValueError("SEO Task 创建后无法从 R7 持久账本读取")
+        live.update(
+            agent="SEO/GEO 增长员", task_type="seo", execution="autonomous",
+            command_id=command_id, mission_id=mission_id,
+            controller_plan_id=plan.get("plan_id"),
+            idempotency_key=key, schedule_source="owner_seo_incremental",
+            authorization_state="authorized",
+            authorization_note="已授权本地 SEO 草稿验证；公网发布与搜索提交须真实 QC/回执。",
+            priority_class=CURRENT_PRIORITY,
+            output_scope="local_seo_draft_only",
+            updated_at=now_iso(),
+        )
+        write_json(r7_engine.JOBS, data)
+        r7_engine._audit("owner_seo_task_bound", live["id"], "r8_22_controller", {
+            "command_id": command_id, "mission_id": mission_id,
+            "plan_id": plan.get("plan_id"), "output_scope": "local_seo_draft_only",
+        })
+        return {"id": live["id"], "state": live["state"], "existing": False}
+
+
 def controller_tick():
     mission = ensure_command_mission()
     plan = ensure_controller_plan(mission) if mission else None
+    seo_task = ensure_owner_seo_incremental_task(mission, plan) if mission and plan else None
     binding = bind_current_jobs() if mission else {"jobs_bound": 0, "jobs_backlog": 0}
     receipt = maybe_phase_receipt(force=False) if mission else None
-    return {"mission_id": (mission or {}).get("mission_id"), "plan_id": (plan or {}).get("plan_id"), "binding": binding, "phase_receipt": receipt}
+    return {"mission_id": (mission or {}).get("mission_id"), "plan_id": (plan or {}).get("plan_id"), "seo_task": seo_task, "binding": binding, "phase_receipt": receipt}

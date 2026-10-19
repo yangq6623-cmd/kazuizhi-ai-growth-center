@@ -54,8 +54,10 @@ def _ensure_command_mission():
     state = convergence._load_state()
     data = autonomous_ops._load()
     mission = autonomous_ops._find_mission(data, mission_id=state.get("active_mission_id"))
+    requested_mission_id = convergence._referenced_existing_mission_id(link)
     if (
         mission
+        and (not requested_mission_id or requested_mission_id == mission.get("mission_id"))
         and data.get("active_mission_id") == mission.get("mission_id")
         and str(mission.get("command_id") or "") == command_id
         and str(mission.get("command_status") or "") == str(link.get("status") or "")

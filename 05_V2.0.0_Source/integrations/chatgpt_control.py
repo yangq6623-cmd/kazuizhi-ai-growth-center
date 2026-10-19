@@ -387,6 +387,27 @@ def acknowledge_command(command_id: str, *, mission_id: str | None = None) -> di
     return dict(item)
 
 
+
+def bind_owner_command_mission(command_id: str, mission_id: str) -> dict | None:
+    """Durably attach an accepted owner Command to an existing Mission.
+
+    This is a control-plane association only. It does not complete the
+    Command, assert a successful public action, or alter verification proof.
+    """
+    command_id = str(command_id or "").strip()
+    mission_id = str(mission_id or "").strip()
+    if not command_id or not mission_id:
+        raise ValueError("Command 和 Mission ID 不得为空")
+    commands = _load_list(COMMANDS_FILE)
+    item = _find(commands, "command_id", command_id)
+    if not item or item.get("kind") != "owner_objective":
+        return None
+    if str(item.get("mission_id") or "") != mission_id:
+        item["mission_id"] = mission_id
+        _save_list(COMMANDS_FILE, commands)
+    return dict(item)
+
+
 def record_command_receipt(command_id: str, result, *, mission_id: str | None = None,
                            receipt_status: str = "completed") -> dict:
     status = control_status()
