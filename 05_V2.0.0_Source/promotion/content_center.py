@@ -123,7 +123,9 @@ def _save(kind, payload, output):
 def generate_seo(payload):
     region, service, keyword, audience, evidence = _context(payload)
     output = {
-        "title": f"{region}{service}怎么找？服务信息与下单前检查清单",
+        "title": (f"{keyword}｜卡嘴子本地服务与需求发布指南"
+                  if payload.get("source_task_id") else
+                  f"{region}{service}怎么找？服务信息与下单前检查清单"),
         "meta_description": f"围绕“{keyword}”整理服务范围、需求描述和下单前核对事项。{SAFE_POSITIONING}。",
         "outline": ["先说明具体需求与服务区域", "核对服务范围、时间与平台审核状态", "发布需求并等待符合条件的服务者响应", "完成后保留真实评价与服务记录"],
         "draft": f"面向{audience}，查找{region}{service}时，建议先写清地点、问题现象和期望时间。平台用于连接本地需求与服务信息，接单能力以平台实际开放、账号审核和任务状态为准。{('可引用的已核验证据：' + evidence) if evidence else '当前没有可核验经营证据，因此不写订单量、排名或效果承诺。'}",
