@@ -140,6 +140,24 @@ def execute_autonomous(job):
             "audience": "涟水县有维修与生活服务需求的本地用户",
             "evidence": "",
         }
+        owner_seo = task_type == "seo" and job.get("schedule_source") == "owner_seo_incremental"
+        if owner_seo:
+            # Only the exact accepted owner's target is eligible. Never fall
+            # back to the old generic keyword for an owner Command.
+            keyword = str(job.get("seo_keyword") or "").strip()
+            command_id = str(job.get("command_id") or "").strip()
+            mission_id = str(job.get("mission_id") or "").strip()
+            if not keyword or not command_id or not mission_id:
+                raise ValueError("老板SEO任务缺少关键词或指令关联，停止生成通用草稿")
+            from core.seo_geo_growth import _owner_seo_service
+            service = _owner_seo_service(keyword)
+            if not service:
+                raise ValueError("老板SEO任务服务范围未验证，不能生成通用维修草稿")
+            payload.update({
+                "region": "涟水县", "service": service,
+                "keyword": keyword, "source_task_id": job["id"],
+                "owner_command_id": command_id,
+            })
         if task_type == "seo":
             record = generate_seo(payload)
         elif task_type == "geo":
@@ -148,13 +166,34 @@ def execute_autonomous(job):
             record = generate_video(payload)
         else:
             record = generate_ad(payload)
+        seo_asset = None
+        if owner_seo:
+            from core.seo_geo_growth import plan_owner_seo_incremental_asset
+            seo_asset = plan_owner_seo_incremental_asset(
+                command_id=command_id, mission_id=mission_id,
+                keyword=keyword, draft_id=record["id"],
+                publish_requested=bool(job.get("owner_requested_publication")),
+            )
         return {
             "task_type": task_type,
-            "summary": f"{record.get('kind', '内容草稿')}已自动生成并保存。",
+            "summary": (f"{record.get('kind', '内容草稿')}已保存；"
+                        + ("新SEO资产已进入PLANNED，等待独立QC/发布/搜索回执。"
+                           if seo_asset and seo_asset.get("created") else
+                           "未新建SEO资产，原因：" + str(seo_asset.get("reason"))
+                           if seo_asset else "仅生成本地草稿。")),
             "draft_id": record.get("id"),
             "kind": record.get("kind"),
-            "next_actions": ["进入对应内容工作台查看草稿", "按后续运营计划继续生成和复盘"],
-            "source_note": "仅生成运营草稿，不执行资金操作。",
+            "seo_asset_id": seo_asset.get("asset_id") if seo_asset else None,
+            "seo_asset_stage": seo_asset.get("stage") if seo_asset else None,
+            "seo_keyword": seo_asset.get("keyword") if seo_asset else payload.get("keyword"),
+            "seo_asset_reason": seo_asset.get("reason") if seo_asset else None,
+            "next_actions": (["等待既有SEO自治流水线生成页面并执行QC",
+                               "仅在现有发布授权与公网HTTP验证成功后计入发布",
+                               "取得真实搜索提交回执后才计入SUBMITTED"]
+                              if seo_asset and seo_asset.get("asset_id")
+                              else ["核实关键词重复或品牌服务范围后再规划资产"]
+                              if owner_seo else ["进入对应内容工作台查看草稿", "按后续运营计划继续生成和复盘"]),
+            "source_note": "PLANNED/草稿不等于公网发布或搜索收录；无资金操作。",
         }
 
     if task_type in {"local", "conversion", "general"}:
