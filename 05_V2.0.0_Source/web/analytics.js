@@ -331,34 +331,48 @@ async function refreshBusinessSource() {
   try {
     const data = await api('/api/business-source/refresh', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
     renderBusinessSource(data);
-    await Promise.all([loadAnalytics(), window.loadIntegrations ? window.loadIntegrations() : Promise.resolve(), loadSummary()]);
+    // The refresh response already is the verified source of truth. Update
+    // the top summary immediately instead of waiting for unrelated owner
+    // panels: one slow /api/business-analytics or integration request used to
+    // leave the header stale and the button at “刷新中…” even after the new
+    // remote_as_of had been rendered in the detail card.
+    renderAnalyticsFromSource(data);
+    void Promise.allSettled([
+      window.loadIntegrations ? window.loadIntegrations() : Promise.resolve(),
+      loadSummary(),
+    ]);
     toast('生产经营数据已刷新');
   } catch (error) { toast(error.message,'error'); }
   finally { button.disabled = false; button.textContent = '立即刷新真实数据'; }
 }
 
-async function loadAnalytics() {
-  applyCoreAnalyticsLayout();
-  const [data, source] = await Promise.all([api('/api/business-analytics'), api('/api/business-source/status')]);
-  const connected = source?.status === 'connected' || data.status === 'verified';
-  const core = source?.status === 'connected' ? coreCompleteness(source) : {present:0,total:CORE_BUSINESS_FIELDS.length,ratio_pct:0,missing_fields:[...CORE_BUSINESS_FIELDS]};
+function renderAnalyticsFromSource(source, analyticsData={}) {
+  const connected = source?.status === 'connected' || analyticsData.status === 'verified';
+  const core = source?.status === 'connected'
+    ? coreCompleteness(source)
+    : {present:0,total:CORE_BUSINESS_FIELDS.length,ratio_pct:0,missing_fields:[...CORE_BUSINESS_FIELDS]};
   $('analytics-status').textContent = connected
     ? (core.present === core.total
       ? '真实经营数据已验证接入 · 7/7 核心指标齐全'
       : `真实经营数据已验证接入 · 核心经营数据完整度 ${core.present}/${core.total}`)
     : '真实经营数据尚未接入';
   $('analytics-source').textContent = connected
-    ? `来源：${source?.source || data.source} · 截止：${source?.remote_as_of || data.as_of} · 核心完整度：${core.ratio_pct}%`
-    : `${data.message} 核心分析只关注用户增长和订单转化；缺失项保持“未接入”。`;
+    ? `来源：${source?.source || analyticsData.source} · 截止：${source?.remote_as_of || analyticsData.as_of} · 核心完整度：${core.ratio_pct}%`
+    : `${analyticsData.message || source?.message || '经营数据尚未接入'} 核心分析只关注用户增长和订单转化；缺失项保持“未接入”。`;
   $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
   $('analytics-truth').textContent = connected && core.missing_fields.length
     ? `只显示已验证真实数据；当前待接入：${coreMissingLabels(core)}。不会用 0、估算值或公开市场信号代替。`
     : '7 个核心指标均有真实来源；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合，0 表示真实统计为 0。';
+  if (source?.status === 'connected') renderCoreBusinessMetrics(source);
+}
 
-  if (source?.status === 'connected') {
-    renderCoreBusinessMetrics(source);
-  } else {
+async function loadAnalytics() {
+  applyCoreAnalyticsLayout();
+  const [data, source] = await Promise.all([api('/api/business-analytics'), api('/api/business-source/status')]);
+  renderAnalyticsFromSource(source, data);
+
+  if (source?.status !== 'connected') {
     renderModule('user-growth', data.modules.user_growth);
     renderModule('order-conversion', data.modules.order_conversion);
   }
