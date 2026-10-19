@@ -402,6 +402,138 @@ def plan_today(limit=None):
     return {"created": created, "count": len(created)}
 
 
+
+_OWNER_SEO_ALTERNATES = (
+    ("涟水县空调不制冷上门维修", "家电维修"),
+    ("涟水县洗衣机不排水上门维修", "家电维修"),
+    ("涟水县热水器不加热上门维修", "家电维修"),
+    ("涟水县厨房下水管堵塞疏通", "管道疏通"),
+    ("涟水县家里跳闸上门检修", "水电安装维修"),
+)
+
+
+def _owner_seo_service(keyword):
+    keyword = str(keyword or "")
+    if any(x in keyword for x in ("空调", "洗衣机", "冰箱", "热水器", "家电")):
+        return "家电维修"
+    if any(x in keyword for x in ("下水", "疏通", "马桶", "堵塞")):
+        return "管道疏通"
+    if any(x in keyword for x in ("跳闸", "水电", "漏水", "插座")):
+        return "水电安装维修"
+    if any(x in keyword for x in ("安装", "灯具", "家具")):
+        return "安装服务"
+    return ""
+
+
+
+def select_owner_seo_incremental_keyword(keyword):
+    """Select an uncovered owner keyword before creating the matching draft.
+
+    Exact and common same-fault paraphrases share one search intent. This
+    routine is read-only; a later asset write rechecks the ledger.
+    """
+    keyword = str(keyword or "").strip()
+    service = _owner_seo_service(keyword)
+    data = _load()
+    brand_services = (data.get("brand_facts") or {}).get("services", [])
+    if not keyword or len(keyword) > 100 or service not in brand_services:
+        return {"keyword": keyword, "service": service, "reason": "service_not_in_verified_brand_scope"}
+    existing = [
+        str(item.get("keyword") or "").replace(" ", "").strip().lower()
+        for collection in ("assets", "opportunities")
+        for item in data.get(collection, []) if isinstance(item, dict)
+    ]
+    def covered(candidate):
+        target = candidate.replace(" ", "").lower()
+        if target in existing:
+            return True
+        # Avoid the obvious near-duplicate landing page for the same failure.
+        if "空调" in target and "不制冷" in target:
+            return any("空调" in item and "不制冷" in item for item in existing)
+        if "洗衣机" in target and "不排水" in target:
+            return any("洗衣机" in item and "不排水" in item for item in existing)
+        return False
+    choices = [(keyword, service)] + [row for row in _OWNER_SEO_ALTERNATES if row[0] != keyword]
+    for candidate, candidate_service in choices:
+        if candidate_service in brand_services and not covered(candidate):
+            return {"keyword": candidate, "service": candidate_service, "reason": "selected"}
+    return {"keyword": keyword, "service": service, "reason": "all_candidate_keywords_already_covered"}
+
+
+
+def plan_owner_seo_incremental_asset(*, command_id, mission_id, keyword, draft_id, publish_requested=False):
+    """Create at most one new eligible SEO asset per owner Command.
+
+    This only records a PLANNED asset. Existing autonomous staging, QC,
+    scope-controlled public deployment and verified search submission remain
+    the sole route to external results. Never count a planned item as public.
+    """
+    command_id = str(command_id or "").strip()
+    mission_id = str(mission_id or "").strip()
+    keyword = str(keyword or "").strip()
+    draft_id = str(draft_id or "").strip()
+    if not all((command_id, mission_id, keyword, draft_id)) or len(keyword) > 100:
+        raise ValueError("老板 SEO 增量任务缺少有效来源、目标关键词或草稿ID")
+    data = _load()
+    # A restart or a retired R7 job must not create a second content asset
+    # for the same Command, even if its original keyword has changed.
+    for asset in data.get("assets", []):
+        if isinstance(asset, dict) and asset.get("owner_command_id") == command_id:
+            return {"created": False, "asset_id": asset["id"], "keyword": asset["keyword"], "reason": "existing_owner_asset"}
+
+    region = DEFAULT_REGION
+    service = _owner_seo_service(keyword)
+    if not service or service not in (data.get("brand_facts") or {}).get("services", []):
+        return {"created": False, "asset_id": "", "keyword": keyword, "reason": "service_not_in_verified_brand_scope"}
+    selection = select_owner_seo_incremental_keyword(keyword)
+    if selection["reason"] != "selected":
+        return {"created": False, "asset_id": "", "keyword": keyword, "reason": selection["reason"]}
+    target_keyword, service = selection["keyword"], selection["service"]
+    # A draft and the planned asset must be about the same selected intent.
+    if target_keyword != keyword:
+        return {"created": False, "asset_id": "", "keyword": target_keyword,
+                "reason": "selected_keyword_mismatch_with_draft"}
+    opportunity_id = _stable_id("KW", region, service, target_keyword)
+    asset_id = _stable_id("SEO", region, service, target_keyword)
+    if any(str(item.get("id")) == asset_id for item in data.get("assets", [])):
+        return {"created": False, "asset_id": "", "keyword": target_keyword, "reason": "asset_id_already_exists"}
+    opportunity = {
+        "id": opportunity_id,
+        "region": region, "service": service, "keyword": target_keyword,
+        "intent": "交易", "priority": "S", "status": "PLANNED",
+        "source": "owner_authorized_r7_seo_incremental", "owner_command_id": command_id,
+        "mission_id": mission_id, "discovered_at": now_iso(), "asset_id": asset_id,
+    }
+    asset = {
+        "id": asset_id, "opportunity_id": opportunity_id,
+        "region": region, "service": service, "keyword": target_keyword,
+        "intent": "交易", "priority": "S", "page_type": "地区×服务页",
+        "slug": _slug(f"{region}-{service}-{target_keyword}"),
+        "stage": "PLANNED", "created_at": now_iso(), "updated_at": now_iso(),
+        "owner_command_id": command_id, "mission_id": mission_id,
+        "owner_draft_id": draft_id, "owner_requested_keyword": keyword,
+        # Only explicit owner's request to publish a page in an existing,
+        # verified service scope can unlock the existing deployment gate.
+        "publish_approved": bool(publish_requested),
+        "publish_approval_source": ("owner_command_known_brand_scope" if publish_requested else ""),
+        "public_url": "", "canonical": "", "submission_receipts": [],
+        "crawl_evidence": [], "index_evidence": [], "rankings": [],
+        "geo_mentions": [], "conversions": [],
+    }
+    data["opportunities"].append(opportunity)
+    data["assets"].append(asset)
+    _audit_event(data, "owner_seo_incremental_asset_planned", {
+        "asset_id": asset_id, "opportunity_id": opportunity_id,
+        "command_id": command_id, "mission_id": mission_id, "draft_id": draft_id,
+        "keyword": target_keyword, "publish_approved": bool(publish_requested),
+        "truth": "PLANNED 不等于 GENERATED、QC、PUBLISHED 或 SUBMITTED",
+    })
+    _save(data)
+    return {"created": True, "asset_id": asset_id, "keyword": target_keyword,
+            "opportunity_id": opportunity_id, "stage": "PLANNED", "publish_approved": bool(publish_requested)}
+
+
+
 def _source_tracking_id(asset):
     """Stable public attribution id that contains no customer information."""
     raw = str(asset.get("id") or asset.get("slug") or asset.get("keyword") or "kazuizhi")

@@ -100,9 +100,17 @@ def _context(payload):
 
 
 def _save(kind, payload, output):
+    history = read_json("promotion/history.json", {"items": []})
+    # Owner-command R7 retries must return the original draft instead of
+    # creating a second item and inflating SEO production counters.
+    source_task_id = str((payload or {}).get("source_task_id") or "").strip()
+    if source_task_id:
+        for existing in history.get("items", []):
+            if (isinstance(existing, dict) and existing.get("kind") == kind
+                    and str((existing.get("input") or {}).get("source_task_id") or "") == source_task_id):
+                return existing
     record = {"id": now_iso(), "created_at": now_iso(), "kind": kind, "input": payload,
               "execution": "proposal_only", "review_status": "待人工审核", "output": output}
-    history = read_json("promotion/history.json", {"items": []})
     history.setdefault("items", []).insert(0, record)
     # Keep enough history for daily/weekly owner comparisons.  The previous
     # 100-row cap was exhausted within hours by GEO proposals and erased the
@@ -115,7 +123,9 @@ def _save(kind, payload, output):
 def generate_seo(payload):
     region, service, keyword, audience, evidence = _context(payload)
     output = {
-        "title": f"{region}{service}怎么找？服务信息与下单前检查清单",
+        "title": (f"{keyword}｜卡嘴子本地服务与需求发布指南"
+                  if payload.get("source_task_id") else
+                  f"{region}{service}怎么找？服务信息与下单前检查清单"),
         "meta_description": f"围绕“{keyword}”整理服务范围、需求描述和下单前核对事项。{SAFE_POSITIONING}。",
         "outline": ["先说明具体需求与服务区域", "核对服务范围、时间与平台审核状态", "发布需求并等待符合条件的服务者响应", "完成后保留真实评价与服务记录"],
         "draft": f"面向{audience}，查找{region}{service}时，建议先写清地点、问题现象和期望时间。平台用于连接本地需求与服务信息，接单能力以平台实际开放、账号审核和任务状态为准。{('可引用的已核验证据：' + evidence) if evidence else '当前没有可核验经营证据，因此不写订单量、排名或效果承诺。'}",
