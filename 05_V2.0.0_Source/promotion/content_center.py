@@ -100,9 +100,17 @@ def _context(payload):
 
 
 def _save(kind, payload, output):
+    history = read_json("promotion/history.json", {"items": []})
+    # Owner-command R7 retries must return the original draft instead of
+    # creating a second item and inflating SEO production counters.
+    source_task_id = str((payload or {}).get("source_task_id") or "").strip()
+    if source_task_id:
+        for existing in history.get("items", []):
+            if (isinstance(existing, dict) and existing.get("kind") == kind
+                    and str((existing.get("input") or {}).get("source_task_id") or "") == source_task_id):
+                return existing
     record = {"id": now_iso(), "created_at": now_iso(), "kind": kind, "input": payload,
               "execution": "proposal_only", "review_status": "待人工审核", "output": output}
-    history = read_json("promotion/history.json", {"items": []})
     history.setdefault("items", []).insert(0, record)
     # Keep enough history for daily/weekly owner comparisons.  The previous
     # 100-row cap was exhausted within hours by GEO proposals and erased the
