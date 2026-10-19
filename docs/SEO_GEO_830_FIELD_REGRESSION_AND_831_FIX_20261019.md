@@ -55,6 +55,8 @@ AI 员工 Job：`ef3234d4de924969b1ea0372a550ef44`
 
 ## #831 代码和自动化验证
 
+远端代码提交：`6c61734a54b7aa15751d41a9fb00620d2c6c49ca`（PR #26 原分支，非强推）。
+
 变更范围：
 
 - `core/geo_growth_orchestrator.py`：同 Revision 的后续核验事件不再覆盖首次有效发布时间和现有复测 Schedule；真实新 Revision 仍创建新 Schedule，并保留旧计划历史。
