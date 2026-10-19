@@ -621,6 +621,15 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
     item_id = str(item.get("id") or "")
     if str(item.get("state") or "") == "superseded":
         return item
+    # Capture the durable Opportunity anchor before reading the mutable SEO
+    # asset.  A later HTTP verification of the same content revision is an
+    # audit receipt, not a new exposure event.  Without these values a restart
+    # or template refresh can replace the first public time and postpone every
+    # 24h/72h/7d window again (the #830 field regression).
+    previous_revision = str(item.get("content_revision_id") or "")
+    previous_published_at = str(item.get("published_at") or "")
+    previous_publication_receipt = str(item.get("publication_receipt_id") or "")
+    previous_publication_event = str(item.get("publication_event_id") or "")
     job = jobs.get(str(item.get("job_id") or ""), {})
     if job:
         item["job_state"] = job.get("state") or item.get("job_state")
@@ -709,12 +718,43 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
         )
         verified_at = str(refresh.get("at") or "")
         if verified_at:
-            item["published_at"] = verified_at
-            item["publication_receipt_id"] = str(refresh.get("deploy_receipt") or "")
-            item["publication_event_id"] = str(refresh.get("publication_event_id") or _stable_id(
-                "PUBLICATION-", item_id, item.get("content_revision_id"),
-                item.get("publication_receipt_id"), verified_at,
-            ))
+            schedule_basis_revision = next((
+                str(slot.get("schedule_basis_content_revision_id") or "")
+                for slot in (item.get("retest_schedule") or [])
+                if isinstance(slot, dict) and slot.get("schedule_basis_content_revision_id")
+            ), "")
+            current_revision = str(item.get("content_revision_id") or "")
+            refresh_revision = str(
+                refresh.get("content_revision_id")
+                or refresh.get("growth_action_id")
+                or ""
+            )
+            same_revision = bool(
+                current_revision
+                and (
+                    current_revision == previous_revision
+                    or current_revision == schedule_basis_revision
+                )
+                and (not refresh_revision or refresh_revision == current_revision)
+            )
+            keep_first_publication = bool(
+                same_revision
+                and _iso_epoch(previous_published_at)
+                and _iso_epoch(previous_published_at) <= _iso_epoch(verified_at)
+            )
+            if keep_first_publication:
+                item["published_at"] = previous_published_at
+                if previous_publication_receipt:
+                    item["publication_receipt_id"] = previous_publication_receipt
+                if previous_publication_event:
+                    item["publication_event_id"] = previous_publication_event
+            else:
+                item["published_at"] = verified_at
+                item["publication_receipt_id"] = str(refresh.get("deploy_receipt") or "")
+                item["publication_event_id"] = str(refresh.get("publication_event_id") or _stable_id(
+                    "PUBLICATION-", item_id, item.get("content_revision_id"),
+                    item.get("publication_receipt_id"), verified_at,
+                ))
         elif not item.get("published_at"):
             item["published_at"] = published_asset.get("published_at") or ""
 

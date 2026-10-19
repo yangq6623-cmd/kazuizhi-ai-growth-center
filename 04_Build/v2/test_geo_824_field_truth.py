@@ -59,6 +59,88 @@ class FieldTruth(TestCase):
         self.assertEqual(slots[1]["task_id"], "existing-task")
         self.assertEqual(slots[1]["due_at_epoch"], geo_growth._iso_epoch(duplicate) + 259200)
 
+    def test_same_revision_restart_receipt_cannot_replace_first_publication(self):
+        first = "2026-10-18T17:04:07+08:00"
+        duplicate = "2026-10-19T08:16:33+08:00"
+        revision = "GEO-GROWTH-1F0329CF1616"
+        item = {
+            "id": revision,
+            "created_at": "2026-10-18T12:00:00+08:00",
+            "asset_id": "SEO-TARGET",
+            "content_revision_id": revision,
+            "public_url": "https://kazuizhi.com/seo/0d3e2fe0ff24f0d5/",
+            "published_at": first,
+            "publication_receipt_id": "DEPLOY-FIRST",
+            "publication_event_id": "PUBLICATION-FIRST",
+            "state": "waiting_retest",
+            "retest_schedule": [{
+                "window": "24h",
+                "due_at_epoch": geo_growth._iso_epoch(first) + 86400,
+                "task_id": "", "signal_id": "", "completed_at": "",
+                "schedule_basis_content_revision_id": revision,
+                "schedule_basis_published_at": first,
+            }],
+        }
+        asset = {
+            "id": "SEO-TARGET", "stage": "SUBMITTED",
+            "public_url": item["public_url"], "content_revision_id": revision,
+            "growth_action_id": revision, "republish_pending": False,
+            "content_refresh_events": [{
+                "at": duplicate, "content_revision_id": revision,
+                "growth_action_id": revision, "deploy_receipt": "DEPLOY-DUPLICATE",
+                "publication_event_id": "PUBLICATION-DUPLICATE",
+                "public_url": item["public_url"],
+            }],
+        }
+        data = {"opportunities": [item], "policy": {}, "technical_blockers": []}
+        with patch.object(geo_growth, "_load", return_value={"policy": {}}), \
+             patch.object(geo_growth, "_save"), \
+             patch.object(geo_growth.geo, "receipts", return_value=[]):
+            geo_growth._sync_item(data, item, {}, {}, {"SEO-TARGET": asset})
+        self.assertEqual(item["published_at"], first)
+        self.assertEqual(item["publication_receipt_id"], "DEPLOY-FIRST")
+        self.assertEqual(item["publication_event_id"], "PUBLICATION-FIRST")
+        self.assertEqual(item["retest_schedule"][0]["due_at_epoch"], geo_growth._iso_epoch(first) + 86400)
+
+    def test_new_revision_receipt_starts_new_schedule_without_deleting_history(self):
+        first = "2026-10-18T17:04:07+08:00"
+        revised = "2026-10-19T08:16:33+08:00"
+        item = {
+            "id": "GEO-GROWTH-1F0329CF1616",
+            "created_at": "2026-10-18T12:00:00+08:00",
+            "asset_id": "SEO-TARGET", "content_revision_id": "REV-1",
+            "public_url": "https://kazuizhi.com/seo/0d3e2fe0ff24f0d5/",
+            "published_at": first, "publication_receipt_id": "DEPLOY-FIRST",
+            "publication_event_id": "PUBLICATION-FIRST", "state": "waiting_retest",
+            "retest_schedule": [{
+                "window": "24h", "schedule_id": "SCHEDULE-OLD",
+                "due_at_epoch": geo_growth._iso_epoch(first) + 86400,
+                "task_id": "", "signal_id": "", "completed_at": "",
+                "schedule_basis_content_revision_id": "REV-1",
+                "schedule_basis_published_at": first,
+            }],
+        }
+        asset = {
+            "id": "SEO-TARGET", "stage": "SUBMITTED",
+            "public_url": item["public_url"], "content_revision_id": "REV-2",
+            "growth_action_id": item["id"], "republish_pending": False,
+            "content_refresh_events": [{
+                "at": revised, "content_revision_id": "REV-2",
+                "growth_action_id": item["id"], "deploy_receipt": "DEPLOY-REV-2",
+                "publication_event_id": "PUBLICATION-REV-2",
+                "public_url": item["public_url"],
+            }],
+        }
+        data = {"opportunities": [item], "policy": {}, "technical_blockers": []}
+        with patch.object(geo_growth, "_load", return_value={"policy": {}}), \
+             patch.object(geo_growth, "_save"), \
+             patch.object(geo_growth.geo, "receipts", return_value=[]):
+            geo_growth._sync_item(data, item, {}, {}, {"SEO-TARGET": asset})
+        self.assertEqual(item["published_at"], revised)
+        self.assertEqual(item["publication_receipt_id"], "DEPLOY-REV-2")
+        self.assertEqual(item["retest_schedule"][0]["due_at_epoch"], geo_growth._iso_epoch(revised) + 86400)
+        self.assertEqual(item["retest_schedule_history"][0]["schedule"][0]["schedule_id"], "SCHEDULE-OLD")
+
     def test_fast_ui_exposes_bounded_schedule_provenance(self):
         item = {
             "id": "opp", "published_at": "2026-10-18T17:04:07+08:00",
@@ -107,6 +189,7 @@ class FieldTruth(TestCase):
         self.assertIn("有效公网时间", geo)
         self.assertIn("发布回执", geo)
         self.assertIn("已到期待调度", geo)
+        self.assertIn("function setGeoText(id,value)", (web / "operational-search.js").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
