@@ -149,10 +149,18 @@ def execute_autonomous(job):
             mission_id = str(job.get("mission_id") or "").strip()
             if not keyword or not command_id or not mission_id:
                 raise ValueError("老板SEO任务缺少关键词或指令关联，停止生成通用草稿")
-            from core.seo_geo_growth import _owner_seo_service
-            service = _owner_seo_service(keyword)
-            if not service:
-                raise ValueError("老板SEO任务服务范围未验证，不能生成通用维修草稿")
+            from core.seo_geo_growth import select_owner_seo_incremental_keyword
+            selected = select_owner_seo_incremental_keyword(keyword)
+            if selected["reason"] != "selected":
+                return {
+                    "task_type": "seo", "summary": "未生成SEO草稿或新资产：" + selected["reason"],
+                    "seo_keyword": keyword, "seo_asset_id": None,
+                    "seo_asset_reason": selected["reason"],
+                    "next_actions": ["只读核对重复关键词或服务范围，不重复发布"],
+                    "source_note": "没有新Asset、QC、发布、搜索提交或收入回执。",
+                }
+            keyword = selected["keyword"]
+            service = selected["service"]
             payload.update({
                 "region": "涟水县", "service": service,
                 "keyword": keyword, "source_task_id": job["id"],
