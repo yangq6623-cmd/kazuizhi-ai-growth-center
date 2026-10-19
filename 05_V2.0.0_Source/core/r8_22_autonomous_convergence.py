@@ -683,6 +683,7 @@ def ensure_owner_seo_incremental_task(mission, plan):
         if live is None:
             raise ValueError("SEO Task 创建后无法从 R7 持久账本读取")
         live.update(
+            agent="SEO/GEO 增长员", task_type="seo", execution="autonomous",
             command_id=command_id, mission_id=mission_id,
             controller_plan_id=plan.get("plan_id"),
             idempotency_key=key, schedule_source="owner_seo_incremental",
