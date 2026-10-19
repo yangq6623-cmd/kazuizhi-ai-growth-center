@@ -57,13 +57,13 @@ def click_route(driver, target, action="", timeout=12):
 
 
 def assert_content_studio(driver):
+    # The content iframe may be attached before the owner route finishes its
+    # visibility transition. Wait for actual display, not mere DOM existence.
+    # Keep the in-frame content check below: this is not a skipped smoke test.
     frame = WebDriverWait(driver, 15).until(
-        lambda d: d.find_element(By.ID, "content-studio-frame")
-        if d.find_elements(By.ID, "content-studio-frame")
-        else None
+        lambda d: next((node for node in d.find_elements(By.ID, "content-studio-frame")
+                        if node.is_displayed()), None)
     )
-    if not frame.is_displayed():
-        raise AssertionError("内容创导 iframe 已创建但不可见")
     driver.switch_to.frame(frame)
     try:
         WebDriverWait(driver, 12).until(lambda d: d.find_elements(By.ID, "studio-root"))
