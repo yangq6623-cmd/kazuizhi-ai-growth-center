@@ -425,6 +425,42 @@ def _owner_seo_service(keyword):
     return ""
 
 
+
+def select_owner_seo_incremental_keyword(keyword):
+    """Select an uncovered owner keyword before creating the matching draft.
+
+    Exact and common same-fault paraphrases share one search intent. This
+    routine is read-only; a later asset write rechecks the ledger.
+    """
+    keyword = str(keyword or "").strip()
+    service = _owner_seo_service(keyword)
+    data = _load()
+    brand_services = (data.get("brand_facts") or {}).get("services", [])
+    if not keyword or len(keyword) > 100 or service not in brand_services:
+        return {"keyword": keyword, "service": service, "reason": "service_not_in_verified_brand_scope"}
+    existing = [
+        str(item.get("keyword") or "").replace(" ", "").strip().lower()
+        for collection in ("assets", "opportunities")
+        for item in data.get(collection, []) if isinstance(item, dict)
+    ]
+    def covered(candidate):
+        target = candidate.replace(" ", "").lower()
+        if target in existing:
+            return True
+        # Avoid the obvious near-duplicate landing page for the same failure.
+        if "空调" in target and "不制冷" in target:
+            return any("空调" in item and "不制冷" in item for item in existing)
+        if "洗衣机" in target and "不排水" in target:
+            return any("洗衣机" in item and "不排水" in item for item in existing)
+        return False
+    choices = [(keyword, service)] + [row for row in _OWNER_SEO_ALTERNATES if row[0] != keyword]
+    for candidate, candidate_service in choices:
+        if candidate_service in brand_services and not covered(candidate):
+            return {"keyword": candidate, "service": candidate_service, "reason": "selected"}
+    return {"keyword": keyword, "service": service, "reason": "all_candidate_keywords_already_covered"}
+
+
+
 def plan_owner_seo_incremental_asset(*, command_id, mission_id, keyword, draft_id, publish_requested=False):
     """Create at most one new eligible SEO asset per owner Command.
 
@@ -449,17 +485,14 @@ def plan_owner_seo_incremental_asset(*, command_id, mission_id, keyword, draft_i
     service = _owner_seo_service(keyword)
     if not service or service not in (data.get("brand_facts") or {}).get("services", []):
         return {"created": False, "asset_id": "", "keyword": keyword, "reason": "service_not_in_verified_brand_scope"}
-    candidates = [(keyword, service)] + [row for row in _OWNER_SEO_ALTERNATES if row[0] != keyword]
-    existing = {
-        (str(item.get("keyword") or "").replace(" ", "").strip().lower())
-        for collection in ("assets", "opportunities")
-        for item in data.get(collection, []) if isinstance(item, dict)
-    }
-    chosen = next(((k, svc) for k, svc in candidates if k.replace(" ", "").lower() not in existing
-                   and svc in (data.get("brand_facts") or {}).get("services", [])), None)
-    if chosen is None:
-        return {"created": False, "asset_id": "", "keyword": keyword, "reason": "all_candidate_keywords_already_covered"}
-    target_keyword, service = chosen
+    selection = select_owner_seo_incremental_keyword(keyword)
+    if selection["reason"] != "selected":
+        return {"created": False, "asset_id": "", "keyword": keyword, "reason": selection["reason"]}
+    target_keyword, service = selection["keyword"], selection["service"]
+    # A draft and the planned asset must be about the same selected intent.
+    if target_keyword != keyword:
+        return {"created": False, "asset_id": "", "keyword": target_keyword,
+                "reason": "selected_keyword_mismatch_with_draft"}
     opportunity_id = _stable_id("KW", region, service, target_keyword)
     asset_id = _stable_id("SEO", region, service, target_keyword)
     if any(str(item.get("id")) == asset_id for item in data.get("assets", [])):
