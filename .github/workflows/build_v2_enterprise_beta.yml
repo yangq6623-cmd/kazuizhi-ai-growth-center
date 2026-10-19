@@ -2,13 +2,14 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
       - 'docs/R8_OPERATIONAL_*'
       - 'docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md'
+      - 'docs/*827*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - '04_Build/**'
       - 'docs/R8_OPERATIONAL_*'
       - 'docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md'
+      - 'docs/*827*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -76,6 +78,12 @@ jobs:
           Write-Host '#824 synthetic/read-only tests: no production task retry or external send'
           python 04_Build/v2/test_geo_824_field_truth.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO #824 field truth regression failed' }
+      - name: "#827 additive lineage, lease and uncertain-result protection"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#827 synthetic temporary ledgers only; no external send or production mutation'
+          python 04_Build/v2/test_r8_37_compatibility_hardening.py
+          if ($LASTEXITCODE -ne 0) { throw '#827 compatibility hardening regression failed' }
       - name: Verify #809 GEO browser agent lightweight response
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -255,26 +263,29 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'retired Android/ADB runtime', 'Windows browser QR session routing', 'truthful publication planning', 'receipt-gated publication truth', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'Google OAuth automatic refresh', 'user scheduled-task runtime supervisor', 'seven-day durable acceptance ledger', 'GEO mention/recommendation/citation split', '24h/72h/7d GEO retest coverage', 'formal 50-question queue gate', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'retired Android/ADB runtime', 'Windows browser QR session routing', 'truthful publication planning', 'receipt-gated publication truth', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'Google OAuth automatic refresh', 'user scheduled-task runtime supervisor', 'seven-day durable acceptance ledger', 'GEO mention/recommendation/citation split', '24h/72h/7d GEO retest coverage', 'formal 50-question queue gate', '#827 additive Mission/Opportunity/Action/Task/Attempt/Revision/Publication/Receipt/Schedule lineage', '#827 exact-attempt lease heartbeat', '#827 uncertain external result quarantine and no blind replay', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
             acceptance = 'Automated release gates passed and the candidate can start the seven-day field ledger. Seven elapsed days and formal GEO 50/50 are not claimed by CI. Real OAuth/login/captcha, Douyin publish scope, RTX3060 field stability, live platform publication and independent external-AI Evidence remain field acceptance; PUBLISHED and SUBMITTED still require their own real receipts.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
           Copy-Item docs/PHASE1_STABILITY_CHANNELS_GEO_ACCEPTANCE.md installer_output_v2/PHASE1_ACCEPTANCE.md
           Copy-Item docs/SEO_GEO_824_FIELD_REPAIR_ACCEPTANCE_20261018.md installer_output_v2/SEO_GEO_824_REPAIR_REPORT.md
-      - name: Package GEO Chrome extension 2.2.2.814
+          Copy-Item docs/SEO_GEO_827_FIELD_ACCEPTANCE_20261019.md installer_output_v2/SEO_GEO_827_FIELD_ACCEPTANCE.md
+          Copy-Item docs/R7_R8_ARCHITECTURE_PROTECTION_AND_827_HARDENING_20261019.md installer_output_v2/R7_R8_827_ARCHITECTURE_PROTECTION.md
+          Copy-Item docs/SEO_GEO_827_INCREMENTAL_HARDENING_TEST_REPORT_20261019.md installer_output_v2/SEO_GEO_827_TEST_REPORT.md
+      - name: Package GEO Chrome extension 2.2.2.828
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
-          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip'
+          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip'
           Compress-Archive -Path "$source/*" -DestinationPath $bundle -CompressionLevel Optimal -Force
           $sum = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash
-          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
+          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
           Copy-Item docs/GEO_808_ALARM_BLOCKAGE_HANDOFF_20261017.md installer_output_v2/GEO_808_HANDOFF.md
       - name: Upload standalone GEO Chrome extension
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.814
-          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.814.zip
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.828
+          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip
           if-no-files-found: error
           retention-days: 90
       - name: Upload final Windows installer

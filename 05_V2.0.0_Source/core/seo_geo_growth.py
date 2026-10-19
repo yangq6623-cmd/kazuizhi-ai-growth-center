@@ -234,6 +234,9 @@ def rehydrate_verified_publications(receipts):
         slug = path.rsplit("/", 1)[-1].removesuffix(".html") or asset_id.lower()
         published_at = str(receipt.get("created_at") or verification.get("checked_at") or now_iso())
         keyword = str(opportunity.get("keyword") or slug)
+        publication_event_id = "PUBLICATION-" + hashlib.sha256(
+            str(receipt.get("receipt_id") or "").encode("utf-8")
+        ).hexdigest()[:16].upper()
         data["assets"].append({
             "id": asset_id,
             "opportunity_id": opportunity.get("id") or "",
@@ -265,6 +268,7 @@ def rehydrate_verified_publications(receipts):
                 "payload": {
                     "public_url": public_url,
                     "deploy_receipt": receipt.get("receipt_id") or "",
+                    "publication_event_id": publication_event_id,
                     "recovered_from_verified_receipt": True,
                 },
             }],
@@ -697,6 +701,12 @@ def record_asset_republished(asset_id, payload=None):
     if not _stage_at_least(asset, "PUBLISHED"):
         raise ValueError("尚未正式发布的资产不能登记重新发布")
     event = {"at": now_iso(), "template_version": PUBLIC_TEMPLATE_VERSION, **deepcopy(payload)}
+    event.setdefault("publication_event_id", "PUBLICATION-" + hashlib.sha256(
+        "|".join((
+            str(asset_id or ""), str(event.get("content_revision_id") or ""),
+            str(event.get("deploy_receipt") or ""), str(event.get("at") or ""),
+        )).encode("utf-8")
+    ).hexdigest()[:16].upper())
     asset.setdefault("content_refresh_events", []).append(event)
     asset["content_refresh_events"] = asset["content_refresh_events"][-20:]
     asset["public_url"] = public_url

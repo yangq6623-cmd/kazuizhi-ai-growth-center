@@ -206,8 +206,21 @@ def heartbeat(payload):
     # a real Receipt succeeds or an explicit new error value is supplied.
     if "last_error" in values:
         state["last_error"] = str(values.get("last_error") or "")
+    lease = None
+    active_task_id = str(values.get("active_task_id") or "")
+    if active_task_id:
+        if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+            str(values.get(key) or "") for key in ("run_id", "attempt_id")
+        ):
+            raise ValueError("geo_browser_828_heartbeat_requires_exact_attempt")
+        lease = geo.renew_task_lease(
+            active_task_id,
+            str(state.get("agent_id") or ""),
+            run_id=str(values.get("run_id") or ""),
+            attempt_id=str(values.get("attempt_id") or ""),
+        )
     write_json(STATE_PATH, state)
-    return {"ok": True, "status": status()}
+    return {"ok": True, "status": status(), "task_lease": lease}
 
 
 def claim(payload):
@@ -241,7 +254,7 @@ def claim(payload):
         # #815: this limited one-shot is supported by the original 808 and
         # the regression-tested 814 executor. Future extension revisions must
         # be explicitly verified before enabling external canary sends.
-        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814"}:
+        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814", "2.2.2.828"}:
             canary_reason = "extension_version_not_supported"
         elif not str(state.get("agent_id") or "").startswith("kz-r8-28-"):
             canary_reason = "agent_not_r8_28"
@@ -302,6 +315,14 @@ def receipt(payload):
             raise ValueError("geo_browser_receipt_requires_claimed_task")
         if not legacy_current_page and str(task.get("executor_id") or "") != str(state.get("agent_id") or ""):
             raise PermissionError("geo_browser_receipt_wrong_executor")
+        if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+            str(values.get(key) or "") for key in ("run_id", "attempt_id")
+        ):
+            raise ValueError("geo_browser_828_receipt_requires_exact_attempt")
+        if values.get("run_id") and str(task.get("run_id") or "") != str(values.get("run_id") or ""):
+            raise ValueError("geo_browser_receipt_stale_run")
+        if values.get("attempt_id") and str(task.get("attempt_id") or "") != str(values.get("attempt_id") or ""):
+            raise ValueError("geo_browser_receipt_stale_attempt")
         assigned = str(task.get("expected_platform") or "")
         if assigned and assigned != str(values.get("platform") or ""):
             raise ValueError("geo_browser_receipt_platform_mismatch")
@@ -341,8 +362,17 @@ def block(payload):
         from core.storage import _JSON_IO_LOCK
         with _JSON_IO_LOCK:
             _queue, previous = geo._find_task(task_id)
+            if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+                str(values.get(key) or "") for key in ("run_id", "attempt_id")
+            ):
+                raise ValueError("geo_browser_828_block_requires_exact_attempt")
+            same_attempt = (
+                (not values.get("run_id") or str(previous.get("run_id") or "") == str(values.get("run_id") or ""))
+                and (not values.get("attempt_id") or str(previous.get("attempt_id") or "") == str(values.get("attempt_id") or ""))
+            )
             if (previous.get("state") == "running"
-                    and str(previous.get("executor_id") or "") == str(state.get("agent_id") or "")):
+                    and str(previous.get("executor_id") or "") == str(state.get("agent_id") or "")
+                    and same_attempt):
                 task = geo._transition(task_id, target, reason)
             else:
                 # A late timeout must never undo a successfully persisted Receipt.
