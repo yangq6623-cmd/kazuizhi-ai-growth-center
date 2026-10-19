@@ -87,10 +87,21 @@ SEO 下午实时页面：
 - GEO 按钮：暂停、立即运行、刷新可用；恢复隐藏；重试异常禁用。只读核验，未点击任何状态改变按钮。
 - 自进化与经营结果页面可读取；创建开发任务保持禁用。
 
-## 8. 仍需完成的门禁
+## 8. Windows CI、安装包与剩余门禁
 
-- Windows Actions 全量构建、Defender、静默安装、覆盖升级、持久数据保留、回滚/卸载尚待远端运行记录。
-- 新候选安装到用户 Windows 后，需现场确认目标 Opportunity 显示 17:04:07 及正确三窗口，并用只读导出器补齐两个 15:25 复测的精确 Task ID / Signal Receipt ID。
+源码修复验证运行：
+
+- GitHub Actions：[`#835`](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions/runs/39220182696)，结论 `success`。
+- 源分支 Head：`8d98acce812ecc946170a332ccab70f249ca95c0`；PR Runner 构建记录中的合并候选 Commit：`8e932c23596a258c3c056051d27f63e035e87149`。
+- Windows 门禁通过：全量 R7/R8 与 #811–#833 回归、全部浏览器脚本检查、安装包构建、Microsoft Defender 自定义扫描、静默安装、启动、覆盖升级、持久数据保留与卸载。
+- Defender：`passed`，检测数 0。Azure Artifact Signing 未配置，因此 CI 明确记录 `authenticode_status: NotSigned`，不冒充已签名。
+- Installer Artifact ID：`12171228845`；Artifact ZIP SHA256：`509ff3f99fcc0f179d9a30227cef5dba495337e426c2d04d673eb7b17abd662a`。
+- EXE：`Kazuizhi_AI_Enterprise_V2.2.2_R8-23_Final_Complete_Workbench.exe`；SHA256：`f7db1c288dcf932d9c2ba2fd804d3703adcf618fd16c7a1d74e3b75a35913285`。下载后再次执行包内 `SHA256SUMS.txt`，EXE 与扩展包均为 `OK`。
+
+CI 证明的是隔离 Windows Runner 上的安装生命周期与回归通过，不等同于用户本机安装后的现场验收。仍需：
+
+- 将新候选安装到用户 Windows 后，确认目标 Opportunity 恢复为 17:04:07 及正确三窗口，并运行只读导出器补齐两个 15:25 复测的精确 Task ID / Signal Receipt ID。
 - 72h 和 7d 尚未自然到期，不得宣称通过；不得提前补造。
+- 安装包未做 Authenticode 签名，交付时必须同时核对上述 SHA256。
 
 未完成项在取得实际证据前不标记为通过。
