@@ -49,15 +49,27 @@
 | 24h/72h/7d 未到期 | 不建立提前复测结果 | 通过 |
 | 已有 Task/Signal/Receipt | 不移动窗口、不覆盖历史 | 通过 |
 
-## 尚待 GitHub/Windows 门禁
+## GitHub/Windows 门禁结果
 
-以下结果必须等待本分支 GitHub Actions 实际运行后填写，未运行前不得写成通过：
+GitHub Actions run `39181862596`（Build `#828`）在 commit `11b96ef742751cc680fb4a6d1e33d0caba0579d3` 上完成，结论为 `success`。
 
-- Windows PyInstaller/Inno Setup 构建。
-- Microsoft Defender 扫描。
-- Windows 静默安装、启动、覆盖升级、持久数据保留、卸载。
-- 最终安装包和扩展 SHA256。
-- 安装到用户本机后的版本、原始数据、目标 Opportunity/Job、首次发布时间和 24h/72h/7d 调度复核。
+| Windows 门禁 | 结果 |
+|---|---|
+| PyInstaller/Inno Setup 构建 | 通过 |
+| Selenium 真 Chrome 冷启动与 GEO 独立加载 | 通过 |
+| #827 关联、Lease、73+81 防重放门禁 | 通过 |
+| Microsoft Defender | 通过；检测数 0 |
+| Authenticode | `NotSigned`；Azure 签名未启用，未冒充已签名 |
+| 静默安装与启动 | 通过 |
+| 覆盖升级与持久数据保留 | 通过 |
+| 卸载 | 通过 |
+| 安装包 EXE SHA256 | `1EAC8A5D692A8A108FD8B04A2101799EB8843DB3F8DEBE0FA5E95B89C20244F3` |
+| Artifact ZIP SHA256 | `5e16918060b97b4301a4fe71d0d7b3e55ba1fc63827d36d7e15b0a289d48f7d1` |
+| Chrome 扩展 2.2.2.828 ZIP SHA256 | `AD18D9DB6A5D219BF7333AD3949C14B431D9219A7EB0EF3ED4360284CE29B8CC` |
+
+尚未完成的是用户本机安装后的版本、原始数据、目标 Opportunity/Job、首次发布时间和 24h/72h/7d 调度复核。
+
+PR 同时触发的部分旧版独立工作流仍含已经过期的历史断言，例如要求已退役的 ADB 执行器、旧 R8-15 页面版本和早期 GEO 页面路由。这些失败不是本次变更造成，当前主 Windows 发布工作流已通过对应现代回归；旧工作流清理列为独立 CI 维护项，不在本次范围内伪装修复。
 
 ## 自然运行验收
 

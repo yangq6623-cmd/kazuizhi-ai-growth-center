@@ -16,6 +16,22 @@
 | 本机覆盖安装 #827 | **未完成** | 当前连接的本机页面标题仍显示 `#826`，运行 commit 为 `2a7e943b` |
 | 本机 #827 数据保留验收 | **待安装后验证** | 由于本机仍运行 #826，不能宣称 #827 已完成现场升级验收 |
 
+## 增量加固候选构建结果
+
+在上述 #827 源码基线上完成的增量加固候选已通过 GitHub Windows Actions：
+
+- Commit：`11b96ef742751cc680fb4a6d1e33d0caba0579d3`
+- Pull Request：`#26`
+- Actions run：`39181862596`（Build `#828`，结论 `success`）
+- 安装包 EXE SHA256：`1EAC8A5D692A8A108FD8B04A2101799EB8843DB3F8DEBE0FA5E95B89C20244F3`
+- 安装包 Artifact ZIP SHA256：`5e16918060b97b4301a4fe71d0d7b3e55ba1fc63827d36d7e15b0a289d48f7d1`
+- Chrome 扩展 2.2.2.828 ZIP SHA256：`AD18D9DB6A5D219BF7333AD3949C14B431D9219A7EB0EF3ED4360284CE29B8CC`
+- Microsoft Defender：通过，检测数 `0`。
+- Authenticode：`NotSigned`；Azure 签名步骤未启用。
+- Windows 静默安装、启动、覆盖升级、持久数据保留及卸载：通过。
+
+以上只证明构建与隔离 Windows 验收通过；用户本机仍需安装后再完成 Chrome 现场复核。
+
 ## Chrome 现场原始事实
 
 连接页面：`http://127.0.0.1:8876/`。未重复进行浏览器连接诊断。
