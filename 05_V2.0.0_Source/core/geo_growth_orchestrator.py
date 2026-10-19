@@ -21,6 +21,7 @@ from core import seo_geo_growth
 from core import geo_phase3_seo_bridge
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
 from integrations import geo_cloud_executor
+from integrations import seo_public_deployer
 
 STORE = "geo_validation/growth_orchestrator.json"
 SCHEMA = "kz.geo-growth-os.v1"
@@ -617,7 +618,7 @@ def _signal_score(signal):
     )
 
 
-def _sync_item(data, item, jobs, seo_opportunities, assets):
+def _sync_item(data, item, jobs, seo_opportunities, assets, publication_receipts=None):
     item_id = str(item.get("id") or "")
     if str(item.get("state") or "") == "superseded":
         return item
@@ -708,6 +709,52 @@ def _sync_item(data, item, jobs, seo_opportunities, assets):
             and bool(row.get("deploy_receipt"))
             and str(row.get("public_url") or "").startswith(("https://", "http://"))
         ]
+        # content_refresh_events is intentionally bounded.  A field install
+        # that repeatedly verifies the same revision can therefore age the
+        # real first-publication event out of the asset row even though the
+        # independent deploy-receipt ledger still retains it.  Reconcile from
+        # that immutable ledger using the exact asset + revision/action key;
+        # never borrow a receipt from another revision or merely from the same
+        # public URL.
+        for receipt in (publication_receipts or []):
+            if not isinstance(receipt, dict):
+                continue
+            if not bool((receipt.get("verification") or {}).get("ok")):
+                continue
+            receipt_revision = str(
+                receipt.get("content_revision_id")
+                or receipt.get("growth_action_id")
+                or ""
+            )
+            if str(receipt.get("asset_id") or "") != str(item.get("asset_id") or ""):
+                continue
+            if current_revision:
+                if receipt_revision != current_revision:
+                    continue
+            elif receipt_revision and receipt_revision != item_id:
+                continue
+            receipt_url = str(receipt.get("public_url") or "")
+            if not receipt_url.startswith(("https://", "http://")):
+                continue
+            verified_at = str(
+                receipt.get("created_at")
+                or (receipt.get("verification") or {}).get("checked_at")
+                or ""
+            )
+            if not _iso_epoch(verified_at):
+                continue
+            receipt_id = str(receipt.get("receipt_id") or "")
+            refresh_events.append({
+                "at": verified_at,
+                "content_revision_id": receipt_revision,
+                "growth_action_id": str(receipt.get("growth_action_id") or ""),
+                "deploy_receipt": receipt_id,
+                "publication_event_id": str(receipt.get("publication_event_id") or _stable_id(
+                    "PUBLICATION-", item_id, current_revision, receipt_id, verified_at,
+                )),
+                "public_url": receipt_url,
+                "source": "verified_publication_receipt_ledger",
+            })
         # A content revision becomes public at its first verified receipt.
         # Re-copying the same revision later is audit history, not a new
         # exposure event and must not postpone 24h/72h/7d indefinitely.
@@ -855,9 +902,18 @@ def _sync_all(data):
     _coalesce_active_opportunities(data)
     jobs = _jobs()
     _, seo_opportunities, assets = _growth_assets()
+    try:
+        publication_receipts = seo_public_deployer.verified_publication_receipts()
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        # Asset-local verified events remain the safe fallback.  Failure to
+        # read the independent ledger must not stop unrelated GEO work.
+        publication_receipts = []
     for item in data.get("opportunities") or []:
         try:
-            _sync_item(data, item, jobs, seo_opportunities, assets)
+            _sync_item(
+                data, item, jobs, seo_opportunities, assets,
+                publication_receipts=publication_receipts,
+            )
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             item["last_error"] = str(error)[:500]
             if item.get("state") not in {"completed", "failed"}:

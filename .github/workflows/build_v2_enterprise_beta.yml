@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -12,6 +12,7 @@ on:
       - 'docs/*827*'
       - 'docs/*830*'
       - 'docs/*831*'
+      - 'docs/*833*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     branches: [main]
@@ -23,6 +24,7 @@ on:
       - 'docs/*827*'
       - 'docs/*830*'
       - 'docs/*831*'
+      - 'docs/*833*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -88,6 +90,18 @@ jobs:
           Write-Host '#827 synthetic temporary ledgers only; no external send or production mutation'
           python 04_Build/v2/test_r8_37_compatibility_hardening.py
           if ($LASTEXITCODE -ne 0) { throw '#827 compatibility hardening regression failed' }
+      - name: "#833 read-only ledger export safety"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python 04_Build/v2/test_833_diagnostic_export_contract.py
+          if ($LASTEXITCODE -ne 0) { throw '#833 diagnostic exporter safety regression failed' }
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '04_Build/v2/Export-Kazuizhi833Diagnostics.ps1'),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw "#833 PowerShell parser failed: $($errors -join '; ')" }
       - name: Verify #809 GEO browser agent lightweight response
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -278,6 +292,8 @@ jobs:
           Copy-Item docs/R7_R8_ARCHITECTURE_PROTECTION_AND_827_HARDENING_20261019.md installer_output_v2/R7_R8_827_ARCHITECTURE_PROTECTION.md
           Copy-Item docs/SEO_GEO_827_INCREMENTAL_HARDENING_TEST_REPORT_20261019.md installer_output_v2/SEO_GEO_827_TEST_REPORT.md
           Copy-Item docs/SEO_GEO_830_FIELD_REGRESSION_AND_831_FIX_20261019.md installer_output_v2/SEO_GEO_830_831_FIELD_REPORT.md
+          Copy-Item docs/SEO_GEO_833_AFTERNOON_RECONCILIATION_AND_FIX_20261019.md installer_output_v2/SEO_GEO_833_AFTERNOON_REPORT.md
+          Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
       - name: Package GEO Chrome extension 2.2.2.828
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'

@@ -70,6 +70,11 @@ def contract(executor="agent-compat"):
 
 
 def main():
+    r7_ui = (ROOT / "05_V2.0.0_Source" / "web" / "r7.js").read_text(encoding="utf-8")
+    assert "feedback.classList.contains('error')" in r7_ui
+    assert r"/读取\/api\/r7\/[^\s]*超时/" in r7_ui
+    assert "feedback.hidden=true" in r7_ui
+
     schedule_item = {
         "id": "GEO-GROWTH-1F0329CF1616",
         "content_revision_id": "REV-COMPAT",

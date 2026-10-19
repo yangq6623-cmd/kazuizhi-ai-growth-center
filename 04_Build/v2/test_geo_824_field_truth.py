@@ -102,6 +102,89 @@ class FieldTruth(TestCase):
         self.assertEqual(item["publication_event_id"], "PUBLICATION-FIRST")
         self.assertEqual(item["retest_schedule"][0]["due_at_epoch"], geo_growth._iso_epoch(first) + 86400)
 
+    def test_immutable_receipt_ledger_recovers_first_event_aged_out_of_asset(self):
+        first = "2026-10-18T17:04:07+08:00"
+        duplicate = "2026-10-19T08:54:29+08:00"
+        revision = "GEO-GROWTH-1F0329CF1616"
+        item = {
+            "id": revision,
+            "created_at": "2026-10-18T12:00:00+08:00",
+            "asset_id": "SEO-0A6FBE492759",
+            "content_revision_id": revision,
+            "public_url": "https://kazuizhi.com/seo/0d3e2fe0ff24f0d5/",
+            "published_at": duplicate,
+            "publication_receipt_id": "DEPLOY-DUPLICATE",
+            "publication_event_id": "PUBLICATION-DUPLICATE",
+            "state": "waiting_retest",
+            "retest_schedule": [{
+                "window": "24h",
+                "due_at_epoch": geo_growth._iso_epoch(duplicate) + 86400,
+                "task_id": "", "signal_id": "", "completed_at": "",
+                "schedule_basis_content_revision_id": revision,
+                "schedule_basis_published_at": duplicate,
+            }],
+        }
+        asset = {
+            "id": item["asset_id"], "stage": "SUBMITTED",
+            "public_url": item["public_url"], "content_revision_id": revision,
+            "growth_action_id": revision, "republish_pending": False,
+            # The bounded asset history no longer contains the 17:04 event.
+            "content_refresh_events": [{
+                "at": duplicate, "content_revision_id": revision,
+                "growth_action_id": revision, "deploy_receipt": "DEPLOY-DUPLICATE",
+                "publication_event_id": "PUBLICATION-DUPLICATE",
+                "public_url": item["public_url"],
+            }],
+        }
+        receipts = [{
+            "receipt_id": "DEPLOY-FIRST",
+            "asset_id": item["asset_id"],
+            "growth_action_id": revision,
+            "content_revision_id": revision,
+            "public_url": item["public_url"],
+            "created_at": first,
+            "verification": {"ok": True, "checked_at": first},
+        }]
+        data = {"opportunities": [item], "policy": {}, "technical_blockers": []}
+        with patch.object(geo_growth, "_load", return_value={"policy": {}}), \
+             patch.object(geo_growth, "_save"), \
+             patch.object(geo_growth.geo, "receipts", return_value=[]):
+            geo_growth._sync_item(
+                data, item, {}, {}, {item["asset_id"]: asset},
+                publication_receipts=receipts,
+            )
+        self.assertEqual(item["published_at"], first)
+        self.assertEqual(item["publication_receipt_id"], "DEPLOY-FIRST")
+        self.assertEqual(
+            item["retest_schedule"][0]["due_at_epoch"],
+            geo_growth._iso_epoch(first) + 86400,
+        )
+
+    def test_receipt_from_other_revision_cannot_rebase_schedule(self):
+        current = "2026-10-19T08:54:29+08:00"
+        item = {
+            "id": "GEO-GROWTH-TARGET", "created_at": "2026-10-18T12:00:00+08:00",
+            "asset_id": "SEO-TARGET", "content_revision_id": "REV-2",
+            "public_url": "https://kazuizhi.com/seo/target/", "published_at": current,
+            "publication_receipt_id": "DEPLOY-REV-2", "state": "waiting_retest",
+            "retest_schedule": [{"window": "24h", "due_at_epoch": geo_growth._iso_epoch(current)+86400,
+                                  "task_id": "", "signal_id": "", "completed_at": "",
+                                  "schedule_basis_content_revision_id": "REV-2"}],
+        }
+        asset = {"id": "SEO-TARGET", "stage": "SUBMITTED", "public_url": item["public_url"],
+                 "content_revision_id": "REV-2", "growth_action_id": item["id"],
+                 "content_refresh_events": [{"at": current, "content_revision_id": "REV-2",
+                                             "deploy_receipt": "DEPLOY-REV-2", "public_url": item["public_url"]}]}
+        old_receipt = [{"receipt_id": "DEPLOY-REV-1", "asset_id": "SEO-TARGET",
+                        "content_revision_id": "REV-1", "created_at": "2026-10-18T17:04:07+08:00",
+                        "public_url": item["public_url"], "verification": {"ok": True}}]
+        data = {"opportunities": [item], "policy": {}, "technical_blockers": []}
+        with patch.object(geo_growth, "_load", return_value={"policy": {}}), \
+             patch.object(geo_growth.geo, "receipts", return_value=[]):
+            geo_growth._sync_item(data, item, {}, {}, {"SEO-TARGET": asset}, old_receipt)
+        self.assertEqual(item["published_at"], current)
+        self.assertEqual(item["publication_receipt_id"], "DEPLOY-REV-2")
+
     def test_new_revision_receipt_starts_new_schedule_without_deleting_history(self):
         first = "2026-10-18T17:04:07+08:00"
         revised = "2026-10-19T08:16:33+08:00"

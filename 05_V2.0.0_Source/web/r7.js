@@ -325,6 +325,8 @@ async function loadR7(){
     renderHumanInterventions(engine.human_interventions||[]);
     $('r7-audit-integrity').textContent=audit.integrity==='verified'?'自动运行正常 · 审计链已验证':'审计链异常，请停止执行并检查';
     $('r7-audit-list').innerHTML=audit.events.length?audit.events.slice(-20).reverse().map(event=>`<div class="r7-audit-row"><b>${esc(event.kind)}</b><span>${esc(event.actor)} · ${formatTime(event.at)}</span><small>${esc(event.job_id.slice(0,8))}</small></div>`).join(''):'尚无审计记录';
+    const feedback=$('action-feedback');
+    if(feedback&&!feedback.hidden&&feedback.classList.contains('error')&&/读取\/api\/r7\/[^\s]*超时/.test(feedback.textContent||''))feedback.hidden=true;
     bindR7OverviewActions();
     return true;
   }catch(error){
