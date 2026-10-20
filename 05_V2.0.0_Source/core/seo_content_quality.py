@@ -44,13 +44,14 @@ def page_copy(service: str, keyword: str, region: str, brand: str) -> dict:
     kind = category(service, keyword)
     entry = f"请通过{brand}实际开放的正式入口发布需求，服务是否可约以小程序当前可用状态为准。"
     shared = {
-        "action": "官网发布需求",
+        "action": "官网在线报修",
         "price": "先确认服务范围、报价组成和可能的附加费用，再决定是否下单",
         "faq_question": "提交需求前需要准备哪些信息？",
         "faq_answer": "说明区域、现场情况、希望服务的时间和验收要求；隐私信息只在正式沟通中提供。",
     }
     variants = {
         "cleaning": {
+            "action": "官网发布需求",
             "answer": f"寻找{region}家政保洁服务时，建议先明确房屋面积、保洁范围、重点区域和上门时间。{entry}预约前应核对服务是否开放、清洁工具和耗材由谁提供。",
             "fit": "适合家庭日常保洁、厨房卫生间重点清洁和搬家前后的清洁需求；具体项目需与提供服务者逐项确认。",
             "first": "列出需要清洁的房间、面积和重点区域，说明是否有玻璃清洁、高处作业或特殊污渍；有安全风险的工作需提前确认限制。",
