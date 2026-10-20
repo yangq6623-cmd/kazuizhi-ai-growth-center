@@ -618,7 +618,7 @@ def _render_page(asset, facts, canonical="", related=None):
     service = asset.get("service") or "本地服务"
     keyword = _human_keyword(asset)
     title = f"{keyword}｜{brand}本地服务"
-    description = f"{brand}是面向{region}的本地需求发布与服务连接平台。本页说明{service}的适用场景、发布步骤、报价确认和正式入口。"
+    description = f"{brand}是面向{region}的本地需求发布与服务连接平台。关于“{keyword}”，本页说明{service}的适用场景、准备事项、费用确认和正式入口。"
     page_copy = seo_content_quality.page_copy(service, keyword, region, brand)
     canonical = str(canonical or "{{CANONICAL}}")
     site_url = str(facts.get("official_site") or DEFAULT_SITE).rstrip("/") + "/"
