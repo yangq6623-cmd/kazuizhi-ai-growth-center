@@ -29,6 +29,7 @@ from urllib.parse import urljoin, urlsplit
 
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
 from core.seo_geo_growth import dashboard, record_asset_stage, record_asset_republished
+from core import seo_content_quality
 
 STORE = "r8_15/seo_public_deploy.json"
 RECEIPTS = "r8_15/seo_public_deploy_receipts.json"
@@ -472,6 +473,16 @@ def _write_managed_sitemap(target: Path) -> str:
     return str(path)
 
 
+def validate_public_content(asset: dict, source: Path) -> dict:
+    """Same content QA for local IIS and Remote Agent, before any upload."""
+    try:
+        return seo_content_quality.validate_staged_content(
+            asset, source.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError) as error:
+        return {"ok": False, "reasons": ["staging_read_failed:" + type(error).__name__]}
+
+
 def deploy_pending(limit: int = 10) -> dict:
     data = _load()
     state = status()
@@ -505,6 +516,10 @@ def deploy_pending(limit: int = 10) -> dict:
         source = Path(str(asset.get("staging_path") or ""))
         if not asset_id or not slug or "/" in slug or "\\" in slug or not source.is_file():
             failed.append({"asset_id": asset_id, "reason": "invalid_asset_or_staging_file"})
+            continue
+        quality = validate_public_content(asset, source)
+        if not quality["ok"]:
+            failed.append({"asset_id": asset_id, "reason": "seo_content_qc_failed", "details": quality["reasons"]})
             continue
         destination = target / slug / "index.html"
         try:
