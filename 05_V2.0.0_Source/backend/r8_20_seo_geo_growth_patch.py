@@ -657,16 +657,33 @@ def _combined_status():
 
 
 def _combined_run(force=False):
-    # Refresh connection/capability health first. Existing SEO/GEO loops run
-    # before R8-24 so a newly completed C-level cloud receipt can be converted
-    # into an operating opportunity in the same scheduler pass.
-    connector_routes = connector_router.sync_growth_health(check_live=False)
-    value = _ORIGINAL_RUN(force=force)
+    """Keep independent SEO, GEO and connector passes moving on partial failure.
+
+    A broken connector or content worker must not starve GEO operating retests.
+    Failures remain explicit in per-step receipts.  We never retry or force
+    an external AI send, bypass a cooldown, or erase historical evidence.
+    """
+    def guarded(name, action):
+        try:
+            return action()
+        except Exception as error:
+            return {
+                "ok": False,
+                "degraded": True,
+                "reason": name + "_step_failed",
+                "error_type": type(error).__name__,
+                "error": str(error)[:500],
+            }
+
+    connector_routes = guarded(
+        "connector_routes", lambda: connector_router.sync_growth_health(check_live=False)
+    )
+    value = guarded("seo_geo", lambda: _ORIGINAL_RUN(force=force))
     result = dict(value) if isinstance(value, dict) else {"seo_geo": value}
-    result["r8_20_growth"] = growth.run_once(force=force)
-    result["geo_growth_os"] = geo_growth.run_once(force=force)
+    result["r8_20_growth"] = guarded("r8_20_growth", lambda: growth.run_once(force=force))
+    result["geo_growth_os"] = guarded("geo_growth_os", lambda: geo_growth.run_once(force=force))
     result["connector_routes"] = connector_routes
-    result["runtime_health"] = runtime_resilience.snapshot()
+    result["runtime_health"] = guarded("runtime_health", runtime_resilience.snapshot)
     return result
 
 

@@ -349,6 +349,10 @@ def deploy_pending(limit: int = 10) -> dict:
         if not asset_id or not slug or "/" in slug or "\\" in slug or not source.is_file():
             failed.append({"asset_id": asset_id, "reason": "invalid_asset_or_staging_file"})
             continue
+        quality = deployer.validate_public_content(asset, source)
+        if not quality["ok"]:
+            failed.append({"asset_id": asset_id, "reason": "seo_content_qc_failed", "details": quality["reasons"]})
+            continue
         relative = f"seo/{slug}/index.html"
         public_url = urllib.parse.urljoin(base, f"seo/{slug}/")
         try:

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 
-from core import seo_geo_growth
+from core import seo_geo_growth, seo_content_quality
 from core.storage import now_iso, read_json, write_json
 from core.seo_geo_growth import (
     dashboard,
@@ -152,6 +153,12 @@ def _local_qc_generated_assets(limit=20):
             reasons.append("canonical无效")
         if not asset.get("staging_path"):
             reasons.append("缺少staging_path")
+        else:
+            try:
+                staged_page = Path(str(asset["staging_path"])).read_text(encoding="utf-8")
+                reasons.extend(seo_content_quality.validate_staged_content(asset, staged_page)["reasons"])
+            except (OSError, UnicodeError) as error:
+                reasons.append("无法读取staging内容: " + type(error).__name__)
         if reasons:
             failed.append({"asset_id": asset.get("id"), "reasons": reasons})
             continue
