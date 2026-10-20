@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import quote, urljoin, urlsplit
 
 from core.storage import data_root, now_iso, read_json, write_json
+from core import seo_content_quality
 
 STORE = "r8_13/seo_geo_growth.json"
 SCHEMA = "kz.seo-geo-growth.v1"
@@ -618,6 +619,7 @@ def _render_page(asset, facts, canonical="", related=None):
     keyword = _human_keyword(asset)
     title = f"{keyword}｜{brand}本地服务"
     description = f"{brand}是面向{region}的本地需求发布与服务连接平台。本页说明{service}的适用场景、发布步骤、报价确认和正式入口。"
+    page_copy = seo_content_quality.page_copy(service, keyword, region, brand)
     canonical = str(canonical or "{{CANONICAL}}")
     site_url = str(facts.get("official_site") or DEFAULT_SITE).rstrip("/") + "/"
     source_id = _source_tracking_id(asset)
@@ -631,11 +633,11 @@ def _render_page(asset, facts, canonical="", related=None):
     repair_url = f"{site_url}?kz_source={quote(source_id, safe='')}#/repair"
     mini_code_url = urljoin(site_url, "seo/assets/kazuizhi-mini-program-code.jpg")
     hero_image_url = _public_hero_image(asset, site_url)
-    guidance = _service_guidance(service)
     growth_question = str(asset.get("growth_question") or "").strip()[:240]
     growth_focus = str(asset.get("growth_focus") or "").strip()[:240]
     updated = datetime.now().date().isoformat()
     faq = [
+        (page_copy["faq_question"], page_copy["faq_answer"]),
         (f"{region}{service}需求怎么发布？", f"可先说明所在区域、具体问题、期望服务时间和可联系信息，再通过{brand}的真实服务入口发布需求。"),
         ("如何提高需求匹配效率？", "尽量描述故障现象、位置、是否紧急以及现场限制；涉及价格与到场时间，以实际沟通和用户确认为准。"),
         (f"{brand}会不会保证固定价格？", "不会。现场服务价格与到场安排需要结合真实情况确认，平台页面不应虚构固定报价、案例或服务承诺。"),
@@ -681,7 +683,7 @@ def _render_page(asset, facts, canonical="", related=None):
         revision_html = (
             '<section data-kz-role="growth-revision"><h2>本轮内容补充</h2>'
             f"{question_html}{focus_html}"
-            '<p>以上内容用于帮助用户更准确地了解适用场景和正式需求入口；实际服务仍以真实沟通、检测、报价和订单记录为准。</p></section>'
+            '<p>以上内容用于帮助用户更准确地了解适用场景和正式需求入口；实际服务仍以真实开放范围、沟通、报价和订单记录为准。</p></section>'
         )
     related_html = "".join(
         f'<li><a href="{esc(row.get("url"))}">{esc(row.get("label"))}</a></li>'
@@ -690,7 +692,7 @@ def _render_page(asset, facts, canonical="", related=None):
     if not related_html:
         related_html = f'<li><a href="{esc(site_url)}">返回{esc(brand)}官网</a></li>'
     schema_json = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
-    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.fit{{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:12px;padding:14px 16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.secondary{{display:inline-block;margin:12px 0 0 12px}}.entry{{display:grid;grid-template-columns:1fr 190px;gap:18px;align-items:center;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:16px;padding:18px;margin-top:18px}}.entry img{{width:180px;height:180px;object-fit:contain;background:#fff;border-radius:12px}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}.entry{{grid-template-columns:1fr;text-align:center}}.entry img{{margin:auto}}.secondary{{display:block;margin-left:0}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>直接答案</h2><p class="answer">{esc(brand)}可以作为{esc(region)}发布{esc(service)}需求的正式入口。用户先说明区域、具体问题和期望时间，平台再连接合适的本地服务人员；维修类项目应先检测、提供明细报价，经用户确认后施工，并保留订单和售后记录。</p><a class="cta" href="{esc(action_url)}" data-kz-entry="mini-program">打开卡嘴子小程序</a><a class="secondary" href="{esc(repair_url)}" data-kz-entry="online-repair">官网在线报修</a><p class="proof">来源编号：{esc(source_id)}</p><div class="entry" data-kz-role="hero"><div><h2>进入微信小程序</h2><p>用微信扫描右侧小程序码，或在微信中搜索“{esc(mini_program)}”。小程序码属于卡嘴子正式品牌素材。</p><p><strong>电脑端：</strong>微信扫码进入；<strong>手机端：</strong>点击上方按钮进入打开页，或保存图片后用微信识别。</p></div><img src="{esc(mini_code_url)}" alt="{esc(mini_program)}微信小程序码" width="180" height="180" loading="lazy" data-kz-role="mini-program-code"></div></section>{revision_html}<section><h2>适合什么情况</h2><p class="fit">{esc(guidance['fit'])}</p><h2>处理前先做什么</h2><p class="fit">{esc(guidance['first'])}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>现场检测后明细报价，用户确认后施工</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>故障现象、发生时间、设备型号或需要完成的事项。</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>提交需求后，由平台核对服务范围并连接合适的本地服务人员。涉及维修时，检测结果、报价、增项和完工确认应通过正式订单留痕；实际响应与到场时间以双方确认为准。</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
+    body = f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow,max-image-preview:large"><meta name="kazuizhi-source-id" content="{esc(source_id)}"><meta name="kazuizhi-template-version" content="{PUBLIC_TEMPLATE_VERSION}"><title>{esc(title)}</title><meta name="description" content="{esc(description)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:type" content="article"><meta property="og:site_name" content="{esc(brand)}本地服务"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(description)}"><meta property="og:url" content="{esc(canonical)}"><script type="application/ld+json">{schema_json}</script><style>body{{margin:0;font:16px/1.75 system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#172033;background:#f5f8fc}}main{{max-width:880px;margin:auto;padding:28px}}article{{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:28px;box-shadow:0 10px 30px rgba(33,76,130,.06)}}h1{{font-size:32px;line-height:1.3}}h2{{margin-top:28px;font-size:21px}}a{{color:#175cd3}}.answer{{font-size:18px;background:#eef6ff;border-left:4px solid #2878ff;padding:16px}}.fit{{background:#f7f9fc;border:1px solid #e3e9f2;border-radius:12px;padding:14px 16px}}.facts{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;list-style:none}}.facts li{{background:#f7f9fc;padding:12px;border-radius:10px}}.cta{{display:inline-block;margin-top:12px;background:#2878ff;color:white;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}}.secondary{{display:inline-block;margin:12px 0 0 12px}}.entry{{display:grid;grid-template-columns:1fr 190px;gap:18px;align-items:center;background:#f5f8ff;border:1px solid #dbe7ff;border-radius:16px;padding:18px;margin-top:18px}}.entry img{{width:180px;height:180px;object-fit:contain;background:#fff;border-radius:12px}}.proof{{color:#52657d;font-size:14px}}@media(max-width:640px){{main{{padding:12px}}article{{padding:20px}}h1{{font-size:27px}}.facts{{grid-template-columns:1fr}}.entry{{grid-template-columns:1fr;text-align:center}}.entry img{{margin:auto}}.secondary{{display:block;margin-left:0}}}}</style></head><body><main><article data-kz-source="{esc(source_id)}"><nav aria-label="面包屑"><a href="{esc(site_url)}">{esc(brand)}</a> / {esc(region)} / {esc(service)}</nav><h1>{esc(keyword)}</h1><p>{esc(description)}</p><section><h2>直接答案</h2><p class="answer">{esc(page_copy["answer"])}</p><a class="cta" href="{esc(action_url)}" data-kz-entry="mini-program">打开卡嘴子小程序</a><a class="secondary" href="{esc(repair_url)}" data-kz-entry="online-repair">{esc(page_copy["action"])}</a><p class="proof">来源编号：{esc(source_id)}</p><div class="entry" data-kz-role="hero"><div><h2>进入微信小程序</h2><p>用微信扫描右侧小程序码，或在微信中搜索“{esc(mini_program)}”。小程序码属于卡嘴子正式品牌素材。</p><p><strong>电脑端：</strong>微信扫码进入；<strong>手机端：</strong>点击上方按钮进入打开页，或保存图片后用微信识别。</p></div><img src="{esc(mini_code_url)}" alt="{esc(mini_program)}微信小程序码" width="180" height="180" loading="lazy" data-kz-role="mini-program-code"></div></section>{revision_html}<section><h2>适合什么情况</h2><p class="fit">{esc(page_copy['fit'])}</p><h2>处理前先做什么</h2><p class="fit">{esc(page_copy['first'])}</p></section><section><h2>服务信息</h2><ul class="facts"><li><strong>服务区域</strong><br>{esc(region)}</li><li><strong>服务类别</strong><br>{esc(service)}</li><li><strong>价格原则</strong><br>{esc(page_copy["price"])}</li></ul></section><section><h2>建议准备的信息</h2><ol><li>所在小区或服务区域，不在公开页面填写门牌等隐私信息。</li><li>{esc(page_copy["prepare"])}</li><li>可安全拍摄的现场照片，以及方便沟通和上门的时间。</li></ol></section><section><h2>服务与售后流程</h2><p>{esc(page_copy["process"])}</p></section>{faq_html}<section><h2>相关页面</h2><ul>{related_html}</ul></section><footer><p>更新时间：<time datetime="{updated}">{updated}</time> · 内容来源：{esc(brand)}公开服务规则 · 页面编号：{esc(source_id)}</p><p>本页不虚构固定价格、案例、排名、收录或AI推荐；最终服务范围和费用以真实订单确认为准。</p></footer></article></main></body></html>"""
     body = body.replace('data-kz-role="hero"', 'data-kz-role="mini-program-entry"', 1)
     if hero_image_url:
         body = body.replace(
@@ -744,6 +746,7 @@ def generate_staging(limit=6):
             "generated_at": now_iso(),
             "updated_at": now_iso(),
             "public_template_version": PUBLIC_TEMPLATE_VERSION,
+            "content_quality_revision": seo_content_quality.CONTENT_QUALITY_REVISION,
         })
         generated.append(asset["id"])
     _write_staging_infrastructure(data, staging, site)
@@ -773,7 +776,11 @@ def refresh_legacy_staging(limit=10):
         if not asset.get("slug") or not _stage_at_least(asset, "GENERATED"):
             continue
         current_template = str(asset.get("public_template_version") or "")
-        if current_template == PUBLIC_TEMPLATE_VERSION:
+        targeted_quality_refresh = (
+            str(asset.get("slug") or "") in seo_content_quality.TARGETED_QUALITY_REFRESH_SLUGS
+            and asset.get("content_quality_revision") != seo_content_quality.CONTENT_QUALITY_REVISION
+        )
+        if current_template == PUBLIC_TEMPLATE_VERSION and not targeted_quality_refresh:
             continue
         # Downgrade protection: a stale executable must not rebuild a page
         # whose durable ledger already records a newer R8 template revision.
@@ -804,8 +811,13 @@ def refresh_legacy_staging(limit=10):
             "generated_at": now_iso(),
             "updated_at": now_iso(),
             "public_template_version": PUBLIC_TEMPLATE_VERSION,
+            "content_quality_revision": seo_content_quality.CONTENT_QUALITY_REVISION,
             "republish_pending": _stage_at_least(asset, "PUBLISHED"),
         })
+        if targeted_quality_refresh:
+            asset["content_revision_id"] = "QUALITY-" + hashlib.sha256(
+                (str(asset.get("id") or "") + "|" + seo_content_quality.CONTENT_QUALITY_REVISION).encode("utf-8")
+            ).hexdigest()[:16].upper()
         if asset.get("stage") in {"GENERATED", "QC_PASSED"}:
             asset["stage"] = "GENERATED"
         refreshed.append(str(asset.get("id") or ""))
