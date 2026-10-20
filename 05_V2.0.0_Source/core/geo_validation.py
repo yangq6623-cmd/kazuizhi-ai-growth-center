@@ -785,7 +785,7 @@ def _claim_next_task_locked(executor=None):
 
 
 def enqueue_safe_browser_retest(platform, *, now=None):
-    """At most one genuine, new browser retest task per rolling 24 hours.
+    """At most one genuine, new browser retest per platform per rolling 24h.
 
     A finished A/B slot may be rechecked only after 24h, if its history has
     no ambiguous/in-flight submission. Never promote cloud_auto/api work or
@@ -814,10 +814,42 @@ def enqueue_safe_browser_retest(platform, *, now=None):
     with _JSON_IO_LOCK:
         queue = _load_queue()
         tasks = list(queue.get("tasks") or [])
-        if any(t.get("retest_origin") == "automatic_24h" and
-               (age_seconds(t.get("created_at")) < 86400)
-               for t in tasks if isinstance(t, dict)):
-            return {"created": 0, "reason": "global_retest_cooldown"}
+        recent_platform_retests = []
+        for task in tasks:
+            if not isinstance(task, dict) or task.get("retest_origin") != "automatic_24h":
+                continue
+            assigned = str(task.get("expected_platform") or task.get("provider") or "")
+            if assigned != platform:
+                continue
+            age = age_seconds(task.get("created_at"))
+            # Keep a malformed timestamp fail-closed. It cannot provide a safe
+            # next time, so expose the exact blocking task for manual review.
+            if age < 0 or age < 86400:
+                recent_platform_retests.append((age, task))
+        if recent_platform_retests:
+            valid = [row for row in recent_platform_retests if row[0] >= 0]
+            _age, blocking = min(valid or recent_platform_retests,
+                                 key=lambda row: row[0] if row[0] >= 0 else -1)
+            created_at = str(blocking.get("created_at") or "")
+            next_at = ""
+            remaining = None
+            try:
+                stamp = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                next_at = (stamp.astimezone(timezone.utc) + timedelta(hours=24)).isoformat()
+                remaining = max(0, int(86400 - max(0, _age)))
+            except (ValueError, TypeError):
+                pass
+            return {
+                "created": 0,
+                "reason": "platform_retest_cooldown",
+                "platform": platform,
+                "blocking_task_id": str(blocking.get("task_id") or ""),
+                "blocking_task_created_at": created_at,
+                "next_eligible_at": next_at,
+                "remaining_seconds": remaining,
+            }
         question_rows = question_set().get("questions") or []
         matrix = domestic.assignments(question_rows)
         allowed = set(matrix.get(platform) or [])
@@ -879,8 +911,15 @@ def enqueue_safe_browser_retest(platform, *, now=None):
                 "question_id": qid, "parent_receipt": previous.get("evidence_id"),
                 "max_external_prompts": 1,
             })
-            return {"created": 1, "reason": "safe_retest_queued",
-                    "task_id": new_task["task_id"], "question_id": qid}
+            return {
+                "created": 1,
+                "reason": "safe_retest_queued",
+                "task_id": new_task["task_id"],
+                "question_id": qid,
+                "platform": platform,
+                "next_eligible_at": (instant + timedelta(hours=24)).isoformat(),
+                "remaining_seconds": 86400,
+            }
         return {"created": 0, "reason": "no_safe_retest_question"}
 
 

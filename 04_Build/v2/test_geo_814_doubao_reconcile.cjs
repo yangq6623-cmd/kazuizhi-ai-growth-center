@@ -7,10 +7,11 @@ let composer={value:"",isConnected:true,disabled:false,
   getAttribute:()=>null,closest:()=>null,
   getBoundingClientRect:()=>({left:0,right:600,top:100,bottom:140,width:600,height:40})};
 let text="Older generated message";
+let sendButton=null;
 const store=new Map();let tick=()=>{};
 const document={
   body:{get innerText(){return text}},querySelectorAll(selector){
-    if(selector==="button")return [];
+    if(selector==="button")return sendButton?[sendButton]:[];
     if(selector==="*")return [];
     return selector==="textarea"?[composer]:[];
   }
@@ -43,6 +44,14 @@ vm.runInContext(js.replace(marker,
     "No false confirmation if composer is still filled");
   assert.equal(await t.submit(composer,"doubao_web"),false,
     "Never submit by synthetic Enter when there is no real Send button");
+  let waited=0,clicked=0;
+  sendButton={disabled:true,innerText:"发送",getAttribute:name=>name==="aria-disabled"?(sendButton.disabled?"true":"false"):null,
+    getBoundingClientRect:()=>({left:530,right:590,top:100,bottom:140,width:60,height:40}),click:()=>{clicked+=1}};
+  tick=()=>{waited+=1;if(waited===3)sendButton.disabled=false;};
+  assert.equal(await t.submit(composer,"doubao_web"),true,
+    "Wait for React to enable the explicit composer Send control");
+  assert.equal(clicked,1,"Click the named Send control exactly once");
+  sendButton=null;tick=()=>{};
 
   // Reconciliation must never send. The state is persisted by the same tab.
   store.set("kz_geo_execution_v2",JSON.stringify({
@@ -88,5 +97,5 @@ vm.runInContext(js.replace(marker,
   assert.equal(uncertain.state,"uncertain");
   assert.equal(stages.filter(x=>x==="kz-start").length,1);
   assert.equal(stages.filter(x=>x==="kz-capture").length,0);
-  console.log("PASS #814: whitespace-safe echo, no synthetic submission, single non-replaying reconciliation, no false Receipt");
+  console.log("PASS #814: delayed explicit Send, whitespace-safe echo, single non-replaying reconciliation, no false Receipt");
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -24,6 +24,7 @@
     // the GEO UI independently serializes and rate-limits both reads.
     if(method==='GET'&&(
       url.pathname==='/api/r8-24/geo-growth/evidence-compact'||
+      url.pathname==='/api/r8-24/geo-growth/fast-ui'||
       url.pathname==='/api/r8-25/phase1-acceptance'||
       url.pathname==='/api/r8-24/geo-growth/evidence-health'||
       url.pathname==='/api/r8-24/geo-growth/fast-health'||

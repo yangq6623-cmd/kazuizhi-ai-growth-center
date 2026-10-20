@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -310,20 +310,21 @@ jobs:
           Copy-Item docs/SEO_GEO_827_INCREMENTAL_HARDENING_TEST_REPORT_20261019.md installer_output_v2/SEO_GEO_827_TEST_REPORT.md
           Copy-Item docs/SEO_GEO_830_FIELD_REGRESSION_AND_831_FIX_20261019.md installer_output_v2/SEO_GEO_830_831_FIELD_REPORT.md
           Copy-Item docs/SEO_GEO_833_AFTERNOON_RECONCILIATION_AND_FIX_20261019.md installer_output_v2/SEO_GEO_833_AFTERNOON_REPORT.md
+          Copy-Item docs/SEO_GEO_853_SPECIAL_REPAIR_AND_ACCEPTANCE_20261020.md installer_output_v2/SEO_GEO_853_REPAIR_REPORT.md
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
-      - name: Package GEO Chrome extension 2.2.2.828
+      - name: Package GEO Chrome extension 2.2.2.854
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
-          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip'
+          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip'
           Compress-Archive -Path "$source/*" -DestinationPath $bundle -CompressionLevel Optimal -Force
           $sum = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash
-          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
+          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
           Copy-Item docs/GEO_808_ALARM_BLOCKAGE_HANDOFF_20261017.md installer_output_v2/GEO_808_HANDOFF.md
       - name: Upload standalone GEO Chrome extension
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.828
-          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.828.zip
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.854
+          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip
           if-no-files-found: error
           retention-days: 90
       - name: Upload final Windows installer

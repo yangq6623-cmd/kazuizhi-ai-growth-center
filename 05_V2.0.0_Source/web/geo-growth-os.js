@@ -743,7 +743,7 @@
         const agentLine=browserAgentFetchError
           ? `<br><small>浏览器代理：状态暂不可核实（${esc(browserAgentFetchError)}）。本次查询失败不等于代理离线；请以独立状态接口的最新心跳为准。</small>`
           : agentOnline
-          ? `<br><small>浏览器代理：在线 · 国内平台就绪 ${readyPlatforms}/5 · 心跳 ${Number(browserAgent?.heartbeat_age_seconds||0)} 秒前。只有有合格任务时才自动领取，空队列不代表连接故障。<br>最近领取：${esc(browserAgent?.last_claim_at||"尚未领取")} · ${esc(browserAgent?.last_claim_platform||"未指定平台")} · ${esc(browserAgent?.last_claim_reason||"尚未返回")} · 任务 ${esc(browserAgent?.last_claim_task_id||"—")}<br>24小时安全复测：${esc(browserAgent?.last_retest_reason||"尚未安排")} · 最近真实回执：${esc(browserAgent?.last_result_at||"尚无")} · 最近异常：${esc(browserAgent?.last_error||"无记录")}</small>`
+          ? `<br><small>浏览器代理：在线 · 国内平台就绪 ${readyPlatforms}/5 · 心跳 ${Number(browserAgent?.heartbeat_age_seconds||0)} 秒前。只有有合格任务时才自动领取，空队列不代表连接故障。<br>最近领取：${esc(browserAgent?.last_claim_at||"尚未领取")} · ${esc(browserAgent?.last_claim_platform||"未指定平台")} · ${esc(browserAgent?.last_claim_reason||"尚未返回")} · 任务 ${esc(browserAgent?.last_claim_task_id||"—")}<br>24小时安全复测：${esc(browserAgent?.last_retest_reason||"尚未安排")}${browserAgent?.last_retest_next_eligible_at?` · 下次允许 ${esc(browserAgent.last_retest_next_eligible_at)}`:''}${browserAgent?.last_retest_blocking_task_id?` · 阻塞任务 ${esc(browserAgent.last_retest_blocking_task_id)}`:''} · 最近真实回执：${esc(browserAgent?.last_result_at||"尚无")} · 最近异常：${esc(browserAgent?.last_error||"无记录")}</small>`
           : `<br><small>浏览器代理：未连接或心跳过期。需安装并启动 #788 Chrome 常驻执行器；请检查 Chrome 扩展实际心跳和本地服务状态，保持电脑唤醒。</small>`;
         domesticBox.innerHTML=platforms.length
           ? `<b>国内 GEO 正式矩阵 ${Number(domestic.completed||0)} / ${Number(domestic.target||50)}</b> · `+

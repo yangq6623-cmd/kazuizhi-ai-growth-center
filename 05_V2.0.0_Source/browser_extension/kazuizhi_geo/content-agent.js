@@ -209,20 +209,28 @@
     // Doubao's composer can have adjacent microphone/tool buttons. Never
     // treat an arbitrary nearby button as a confirmed Send control.
     if (platform === "doubao_web") {
-      const buttons = [...document.querySelectorAll("button")]
-        .filter(item => {
-          if (!visible(item) || item.disabled || item.getAttribute("aria-disabled") === "true") return false;
+      // React enables the explicit Send control asynchronously after the
+      // input event. Wait briefly for that exact control instead of failing
+      // immediately or falling back to an unsafe nearby icon/Enter key.
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const buttons = [...document.querySelectorAll("button")]
+          .filter(item => {
+          if (!visible(item)) return false;
           const box = item.getBoundingClientRect();
           // Only consider controls physically attached to the current composer.
           return box.left >= rect.left - 70 && box.right <= rect.right + 170 &&
             box.top >= rect.top - 100 && box.bottom <= rect.bottom + 130;
         });
-      const named = buttons.find(item => /发送(消息)?|(^|[_\s-])(send|submit)([_\s-]|$)/i.test(
-        [item.innerText, item.getAttribute("aria-label"), item.getAttribute("title"),
-         item.getAttribute("data-testid")].filter(Boolean).join(" ")
-      ));
-      if (named) { named.click(); return true; }
-      if (form?.requestSubmit) { form.requestSubmit(); return true; }
+        const named = buttons.find(item => /发送(消息)?|(^|[_\s-])(send|submit)([_\s-]|$)/i.test(
+          [item.innerText, item.getAttribute("aria-label"), item.getAttribute("title"),
+           item.getAttribute("data-testid")].filter(Boolean).join(" ")
+        ));
+        if (named && !named.disabled && named.getAttribute("aria-disabled") !== "true") {
+          named.click();
+          return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       // Synthetic keyboard events are untrusted on browser-app editors.
       // Never pretend a submission happened without a real Send control.
       return false;

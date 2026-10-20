@@ -51,6 +51,8 @@ def _default_state():
         "last_claim_task_id": "",
         "last_canary_reason": "",
         "last_retest_reason": "",
+        "last_retest_blocking_task_id": "",
+        "last_retest_next_eligible_at": "",
         "extension_version": "",
     }
 
@@ -161,6 +163,8 @@ def status():
         "last_claim_task_id": str(state.get("last_claim_task_id") or ""),
         "last_canary_reason": str(state.get("last_canary_reason") or ""),
         "last_retest_reason": str(state.get("last_retest_reason") or ""),
+        "last_retest_blocking_task_id": str(state.get("last_retest_blocking_task_id") or ""),
+        "last_retest_next_eligible_at": str(state.get("last_retest_next_eligible_at") or ""),
         "extension_version": str(state.get("extension_version") or ""),
         "platforms": platforms,
         "requires_pc_awake": True,
@@ -209,7 +213,7 @@ def heartbeat(payload):
     lease = None
     active_task_id = str(values.get("active_task_id") or "")
     if active_task_id:
-        if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
             str(values.get(key) or "") for key in ("run_id", "attempt_id")
         ):
             raise ValueError("geo_browser_828_heartbeat_requires_exact_attempt")
@@ -254,7 +258,7 @@ def claim(payload):
         # #815: this limited one-shot is supported by the original 808 and
         # the regression-tested 814 executor. Future extension revisions must
         # be explicitly verified before enabling external canary sends.
-        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814", "2.2.2.828"}:
+        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854"}:
             canary_reason = "extension_version_not_supported"
         elif not str(state.get("agent_id") or "").startswith("kz-r8-28-"):
             canary_reason = "agent_not_r8_28"
@@ -269,6 +273,7 @@ def claim(payload):
                 contract["priority_task_id"] = str(canary["task_id"])
     result = geo.claim_next_task(contract)
     retest_reason = "ordinary_queued_task"
+    retest = {}
     if result.get("skipped"):
         # Browser baseline 50/50 is not an infinite source of fresh questions.
         # Schedule at most one authentic 24h follow-up from an already verified
@@ -280,6 +285,8 @@ def claim(payload):
             result = geo.claim_next_task(contract)
     task = result.get("task") or {}
     state["last_retest_reason"] = retest_reason
+    state["last_retest_blocking_task_id"] = str(retest.get("blocking_task_id") or "")
+    state["last_retest_next_eligible_at"] = str(retest.get("next_eligible_at") or "")
     state["last_claim_at"] = now_iso()
     state["last_claim_platform"] = platform
     state["last_claim_reason"] = ("claimed" if task else str(result.get("reason") or "queue_empty"))
@@ -315,7 +322,7 @@ def receipt(payload):
             raise ValueError("geo_browser_receipt_requires_claimed_task")
         if not legacy_current_page and str(task.get("executor_id") or "") != str(state.get("agent_id") or ""):
             raise PermissionError("geo_browser_receipt_wrong_executor")
-        if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
             str(values.get(key) or "") for key in ("run_id", "attempt_id")
         ):
             raise ValueError("geo_browser_828_receipt_requires_exact_attempt")
@@ -362,7 +369,7 @@ def block(payload):
         from core.storage import _JSON_IO_LOCK
         with _JSON_IO_LOCK:
             _queue, previous = geo._find_task(task_id)
-            if str(state.get("extension_version") or "") == "2.2.2.828" and not all(
+            if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
                 str(values.get(key) or "") for key in ("run_id", "attempt_id")
             ):
                 raise ValueError("geo_browser_828_block_requires_exact_attempt")

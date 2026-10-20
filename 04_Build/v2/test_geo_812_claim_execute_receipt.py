@@ -86,13 +86,22 @@ def main():
     assert current[0] == before[0] and current[1] == before[1], "legacy queue modified"
     assert len(current) == 3
 
-    # After the one daily retest is reserved, five concurrent polls must
-    # not create or claim more new external submissions.
+    # A platform's daily retest blocks only that platform. Concurrent polls
+    # on another platform may reserve exactly one independent safe retest.
     with ThreadPoolExecutor(max_workers=5) as pool:
         outcomes = list(pool.map(
             lambda _: agent.claim({**auth, "platform": "deepseek_web"}), range(5)))
-    assert all(x["claim"].get("skipped") for x in outcomes)
-    assert len(geo._load_queue()["tasks"]) == 3
+    assert sum(bool(x["claim"].get("task")) for x in outcomes) == 1, outcomes
+    assert len(geo._load_queue()["tasks"]) == 4
+    assert agent.status()["last_retest_reason"] in {
+        "safe_retest_queued", "platform_retest_cooldown"
+    }
+
+    blocked = geo.enqueue_safe_browser_retest("doubao_web")
+    assert blocked["reason"] == "platform_retest_cooldown", blocked
+    assert blocked["blocking_task_id"] == task["task_id"], blocked
+    assert blocked["next_eligible_at"], blocked
+    assert 0 <= blocked["remaining_seconds"] <= 86400, blocked
 
     receipt_args = {
         **auth, "task_id": task["task_id"], "platform": "doubao_web",

@@ -39,6 +39,10 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
  const a=window.fetch("/api/slow-A"),b=window.fetch("/api/slow-B");await tick();
  assert.equal(window.KZFetchBudget.snapshot().active,2);
+ const fast=window.fetch("/api/r8-24/geo-growth/fast-ui");await tick();
+ assert.equal(calls.filter(x=>x.includes("geo-growth/fast-ui")).length,1,
+   "Fast owner snapshot must reach native fetch even when both global slots are busy");
+ await fast;
  const first=c.window.__GEO811_TEST__.loadAdvanced(true);await tick();
  assert.equal(calls.filter(x=>x.includes("evidence-compact")).length,1,
    "Evidence GET must reach native fetch even when both global slots are busy");
@@ -55,5 +59,5 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  assert.equal(window.KZFetchBudget.snapshot().active,2);
  blocked.forEach(fn=>fn());await Promise.all([a,b]);await tick();
  assert.equal(window.KZFetchBudget.snapshot().active,0);
- console.log("PASS #811: 100 GEO reads bypass saturated global slots, no duplicate phase1 reads");
+ console.log("PASS #811: fast UI and 100 GEO evidence reads bypass saturated global slots, no duplicate phase1 reads");
 })().catch(error=>{console.error(error);process.exitCode=1});
