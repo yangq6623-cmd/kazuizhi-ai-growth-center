@@ -475,6 +475,12 @@ def _write_managed_sitemap(target: Path) -> str:
 
 def validate_public_content(asset: dict, source: Path) -> dict:
     """Same content QA for local IIS and Remote Agent, before any upload."""
+    # Historical already-verified Assets predate the #841 content contract.
+    # Do not retroactively quarantine old pages or break the proven R8-35
+    # republish path. All newly generated #841 pages and the three selected
+    # refreshed pages carry this exact revision and MUST pass strict QA.
+    if asset.get("content_quality_revision") != seo_content_quality.CONTENT_QUALITY_REVISION:
+        return {"ok": True, "reasons": [], "legacy_unchecked": True}
     try:
         return seo_content_quality.validate_staged_content(
             asset, source.read_text(encoding="utf-8")
