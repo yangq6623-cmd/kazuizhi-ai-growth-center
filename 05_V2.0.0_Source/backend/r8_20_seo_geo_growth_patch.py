@@ -796,6 +796,7 @@ def _geo_evidence_snapshot():
     recent_receipts = list(reversed(all_receipts))[:50]
 
     task_counts = Counter(str(item.get("state") or "unknown") for item in tasks)
+    queue_diagnostics = geo_validation_api.geo_core._queue_diagnostics(tasks)
     queue_summary = {
         "total": len(tasks),
         "queued": task_counts.get("queued", 0),
@@ -804,6 +805,7 @@ def _geo_evidence_snapshot():
         "failed": task_counts.get("failed", 0),
         "paused": task_counts.get("paused", 0),
         "authorization_required": task_counts.get("authorization_required", 0),
+        **queue_diagnostics,
         "tasks": tasks,
     }
 

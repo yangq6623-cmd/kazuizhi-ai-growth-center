@@ -76,6 +76,7 @@
     const mission = data.mission || {};
     const plan = data.plan || {};
     const progress = data.progress || {};
+    const workforce = data.workforce || {};
     const pct = Math.max(0, Math.min(100, Number(progress.percent || 0)));
     const lanes = Array.isArray(plan.lanes) ? plan.lanes : [];
     panel.innerHTML = `
@@ -86,15 +87,15 @@
       <div class="kz22-grid">
         <div class="kz22-metric"><span>当前 Mission</span><b>${command.command_id ? '已接管' : '等待'}</b><small>${esc(mission.priority || '—')}</small></div>
         <div class="kz22-metric"><span>Controller Plan</span><b>${plan.plan_id ? '已自动生成' : '等待'}</b><small>${lanes.length} 条执行泳道</small></div>
-        <div class="kz22-metric"><span>任务进度</span><b>${Number(progress.completed||0)} / ${Number(progress.total||0)}</b><small>${pct}%</small></div>
+        <div class="kz22-metric"><span>任务进度</span><b>${Number(progress.completed||0)} / ${Number(progress.total||0)}</b><small>${pct}% · 完整账本统计，200仅为列表窗口</small></div>
         <div class="kz22-metric"><span>正在执行</span><b>${Number(progress.running||0)}</b><small>${esc(data.current_action || '')}</small></div>
-        <div class="kz22-metric"><span>队列</span><b>${Number(progress.queued||0)}</b><small>当前 Mission 优先</small></div>
+        <div class="kz22-metric"><span>队列</span><b>${Number(progress.queued||0)}</b><small>${esc(workforce.active_batch_id || '当前 Mission 优先')}</small></div>
         <div class="kz22-metric"><span>失败</span><b>${Number(progress.failed||0)}</b><small>真实记录</small></div>
       </div>
       <div class="kz22-progress"><i style="width:${pct}%"></i></div>
       <div class="kz22-body">
         <div class="kz22-card"><h4>实时工作动态 · 最近真实事件</h4><div class="kz22-events">${eventRows(data.events)}</div></div>
-        <div class="kz22-card"><h4>老板介入 / 延后渠道</h4>${alerts(data)}<h4 style="margin-top:11px">下一步</h4><div class="kz22-empty">${esc(data.next_action || '系统根据真实 Receipt 自动推进下一轮。')}</div></div>
+        <div class="kz22-card"><h4>老板介入 / 延后渠道</h4>${alerts(data)}<h4 style="margin-top:11px">下一步</h4><div class="kz22-empty">${esc(data.next_action || '系统根据真实 Receipt 自动推进下一轮。')}${workforce.next_eligible_wake_at?`<br>下一次到期唤醒：${esc(workforce.next_eligible_wake_at)}`:''}</div></div>
       </div>
       <div class="kz22-truth">${esc(data.truth_rule || '只认真实 Receipt / Evidence；本地执行不冒充公网发布、搜索收录、排名或正式 GEO 成绩。')}</div>`;
     markLegacy();

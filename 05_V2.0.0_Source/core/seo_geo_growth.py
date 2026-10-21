@@ -955,6 +955,9 @@ def record_asset_stage(asset_id, stage, payload=None):
     asset["updated_at"] = now_iso()
     if stage == "QC_PASSED":
         asset["qc_passed_at"] = now_iso()
+        asset["qc_status"] = "passed"
+        asset["qc_reasons"] = []
+        asset["qc_last_checked_at"] = asset["qc_passed_at"]
     if stage == "PUBLISHED":
         asset["public_url"] = str(payload["public_url"]).strip()
         asset["published_at"] = now_iso()
@@ -977,6 +980,24 @@ def record_asset_stage(asset_id, stage, payload=None):
     # captured before the external workers ran.
     data["daily_runs"] = _reconciled_daily_runs(data)
     _audit_event(data, "asset_stage_recorded", {"asset_id": asset_id, "from": current, "to": stage})
+    _save(data)
+    return deepcopy(asset)
+
+
+def record_asset_qc_failure(asset_id, reasons):
+    """Persist a truthful QC wait reason without advancing or deleting Asset."""
+    data = _load()
+    asset = next((x for x in data["assets"] if str(x.get("id")) == str(asset_id)), None)
+    if not asset:
+        raise ValueError("SEO/GEO 资产不存在")
+    clean = [str(reason or "").strip()[:300] for reason in (reasons or []) if str(reason or "").strip()]
+    asset["qc_status"] = "failed"
+    asset["qc_reasons"] = clean[:20]
+    asset["qc_last_checked_at"] = now_iso()
+    asset["qc_attempts"] = int(asset.get("qc_attempts") or 0) + 1
+    # Stage intentionally stays GENERATED. A failure is not approval and must
+    # not remove the original staged file or historical events.
+    _audit_event(data, "asset_qc_failed", {"asset_id": asset_id, "reasons": clean[:20]})
     _save(data)
     return deepcopy(asset)
 

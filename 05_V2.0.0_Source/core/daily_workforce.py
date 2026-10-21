@@ -10,6 +10,9 @@ cities and 5% Zhejiang/Shanghai strategic reserve. These are AI non-financial
 work shares, not ad budgets, market share or proof that a reserve region is open.
 """
 
+import hashlib
+import json
+import time as time_module
 import uuid
 from datetime import datetime, time
 
@@ -17,6 +20,8 @@ from core.storage import now_iso, read_json, write_json
 
 
 SCHEDULE_STATE = "r7/workforce_schedule.json"
+BASE_BATCH_NUMBER = 1
+TERMINAL_STATES = {"completed", "failed", "cancelled", "human_required"}
 
 # Exactly 20 base jobs makes the strategic 50/30/15/5 work-share visible in the
 # execution layer: S=10, A=6, B=3, C=1. Existing schedule keys are preserved
@@ -120,6 +125,174 @@ def _apply_region_metadata(job, region):
     })
 
 
+def _fingerprint(prefix, rows):
+    canonical = json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"{prefix}:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:20]
+
+
+def _continuation_candidates(today_key):
+    """Return only existing, evidence-backed work that can actually advance.
+
+    This is deliberately not another fixed task template.  It observes the
+    current SEO asset ledger and GEO Opportunity schedules and materializes a
+    small continuation batch only when those ledgers contain actionable work.
+    Repeating the same unchanged condition yields the same idempotency key and
+    therefore cannot create an endless stream of cosmetic tasks.
+    """
+    candidates = []
+    next_wake_epoch = None
+
+    seo = read_json("r8_13/seo_geo_growth.json", {})
+    seo_assets = seo.get("assets") if isinstance(seo, dict) else []
+    if not isinstance(seo_assets, list):
+        seo_assets = []
+    pending_seo = [
+        {
+            "asset_id": str(row.get("id") or ""),
+            "stage": str(row.get("stage") or ""),
+            "revision": str(row.get("content_revision_id") or row.get("revision_id")
+                            or row.get("generated_at") or row.get("created_at") or ""),
+        }
+        for row in seo_assets if isinstance(row, dict)
+        and str(row.get("stage") or "") in {"PLANNED", "GENERATED", "QC_PASSED", "PUBLISHED"}
+        and row.get("id")
+    ]
+    if pending_seo:
+        pending_seo.sort(key=lambda row: (row["asset_id"], row["stage"], row["revision"]))
+        key = _fingerprint("seo_existing_assets", pending_seo)
+        candidates.append({
+            "key": key,
+            "agent": "SEO/GEO 增长员",
+            "task_type": "seo_pipeline",
+            "title": f"推进 {len(pending_seo)} 条既有 SEO Asset 的生成、QC、发布或提交闭环",
+            "evidence_refs": [row["asset_id"] for row in pending_seo[:20]],
+            "reason": "existing_seo_assets_pending_next_stage",
+        })
+
+    geo = read_json("geo_validation/growth_orchestrator.json", {})
+    opportunities = geo.get("opportunities") if isinstance(geo, dict) else []
+    if not isinstance(opportunities, list):
+        opportunities = []
+    now_epoch = time_module.time()
+    due_slots = []
+    for opportunity in opportunities:
+        if not isinstance(opportunity, dict) or str(opportunity.get("state") or "") == "superseded":
+            continue
+        for slot in opportunity.get("retest_schedule") or []:
+            if not isinstance(slot, dict) or slot.get("signal_id"):
+                continue
+            try:
+                due_epoch = float(slot.get("due_at_epoch") or 0)
+            except (TypeError, ValueError, OverflowError):
+                due_epoch = 0.0
+            if due_epoch > now_epoch:
+                next_wake_epoch = due_epoch if next_wake_epoch is None else min(next_wake_epoch, due_epoch)
+                continue
+            if due_epoch:
+                due_slots.append({
+                    "opportunity_id": str(opportunity.get("id") or ""),
+                    "schedule_id": str(slot.get("schedule_id") or ""),
+                    "window": str(slot.get("window") or ""),
+                    "task_id": str(slot.get("task_id") or ""),
+                    "due_at_epoch": int(due_epoch),
+                })
+    if due_slots:
+        due_slots.sort(key=lambda row: (row["due_at_epoch"], row["schedule_id"], row["opportunity_id"]))
+        key = _fingerprint("geo_due_retests", due_slots)
+        candidates.append({
+            "key": key,
+            "agent": "SEO/GEO 增长员",
+            "task_type": "geo_growth_cycle",
+            "title": f"推进 {len(due_slots)} 条已到期 GEO 复测的原队列执行与回执核查",
+            "evidence_refs": [row["schedule_id"] or row["opportunity_id"] for row in due_slots[:20]],
+            "reason": "geo_retest_schedule_due",
+        })
+
+    return candidates, next_wake_epoch
+
+
+def _continuation_batch(data, today_key, now):
+    """Create one idempotent in-day batch after the preceding batch finishes."""
+    jobs = [row for row in data.get("items", []) if isinstance(row, dict)]
+    todays = [row for row in jobs if row.get("schedule_date") == today_key]
+    base = [row for row in todays if row.get("schedule_source") == "daily_workforce"]
+    if not base or any(row.get("state") not in TERMINAL_STATES for row in base):
+        return {"created": [], "reason": "base_batch_incomplete", "next_wake_epoch": None}
+
+    continuation = [row for row in todays if row.get("schedule_source") == "daily_workforce_continuation"]
+    batch_numbers = [BASE_BATCH_NUMBER]
+    batch_numbers.extend(int(row.get("batch_number") or 0) for row in continuation)
+    latest_number = max(batch_numbers)
+    latest_rows = [row for row in continuation if int(row.get("batch_number") or 0) == latest_number]
+    if latest_rows and any(row.get("state") not in TERMINAL_STATES for row in latest_rows):
+        return {"created": [], "reason": "continuation_batch_incomplete", "next_wake_epoch": None}
+
+    candidates, next_wake_epoch = _continuation_candidates(today_key)
+    used = {
+        str(row.get("idempotency_key") or "") for row in jobs
+        if row.get("idempotency_key")
+    }
+    candidates = [row for row in candidates if f"daily_continuation:{today_key}:{row['key']}" not in used]
+    if not candidates:
+        return {"created": [], "reason": "no_new_eligible_work", "next_wake_epoch": next_wake_epoch}
+
+    batch_number = latest_number + 1
+    batch_id = f"R7-{today_key.replace('-', '')}-B{batch_number:02d}"
+    authority = next((row for row in jobs if row.get("mission_id") and row.get("command_id")), {})
+    created = []
+    for candidate in candidates[:4]:
+        stamp = now_iso()
+        job = {
+            "id": uuid.uuid4().hex,
+            "kind": "manual_task",
+            "title": candidate["title"][:160],
+            "mode": "local",
+            "agent": candidate["agent"],
+            "task_type": candidate["task_type"],
+            "risk": "non_financial",
+            "execution": "autonomous",
+            "state": "queued",
+            "progress": 0,
+            "completed_steps": 0,
+            "total_steps": 1,
+            "due_at": now.isoformat(timespec="seconds"),
+            "created_at": stamp,
+            "updated_at": stamp,
+            "approved_by": "autonomy_policy",
+            "result": None,
+            "error": None,
+            "retry_count": 0,
+            "schedule_key": candidate["key"],
+            "schedule_date": today_key,
+            "schedule_time": now.strftime("%H:%M"),
+            "schedule_source": "daily_workforce_continuation",
+            "batch_id": batch_id,
+            "batch_number": batch_number,
+            "batch_kind": "eligible_continuation",
+            "idempotency_key": f"daily_continuation:{today_key}:{candidate['key']}",
+            "continuation_reason": candidate["reason"],
+            "evidence_refs": list(candidate.get("evidence_refs") or []),
+            "mission_id": authority.get("mission_id"),
+            "command_id": authority.get("command_id"),
+            "command_receipt_id": authority.get("command_receipt_id"),
+            "authorization_state": "authorized" if authority.get("command_id") else "waiting_for_chatgpt",
+            "authorization_note": (
+                "沿用当前 Mission/Command 的非资金自治授权。"
+                if authority.get("command_id") else "等待现有 ChatGPT Command 自动绑定。"
+            ),
+            "priority_class": authority.get("priority_class") or "P1_closed_loop",
+        }
+        data["items"].insert(0, job)
+        created.append(job)
+    return {
+        "created": created,
+        "reason": "eligible_work_materialized",
+        "batch_id": batch_id,
+        "batch_number": batch_number,
+        "next_wake_epoch": next_wake_epoch,
+    }
+
+
 def ensure_daily_workforce():
     """Ensure today's complete, regional, time-spread workforce plan exists once.
 
@@ -152,6 +325,7 @@ def ensure_daily_workforce():
         }
         created = []
         reconciled = []
+        continuation_result = {"created": [], "reason": "not_evaluated", "next_wake_epoch": None}
 
         for hhmm, key, agent, task_type, title, region_id in template:
             region = dict(regions.get(region_id) or REGION_FALLBACK[region_id], id=region_id)
@@ -167,6 +341,9 @@ def ensure_daily_workforce():
                         "task_type": task_type,
                         "due_at": _due_at(today, hhmm),
                         "schedule_time": hhmm,
+                        "batch_id": f"R7-{today_key.replace('-', '')}-B01",
+                        "batch_number": BASE_BATCH_NUMBER,
+                        "batch_kind": "daily_base",
                     }
                     for field, value in updates.items():
                         if existing.get(field) != value:
@@ -204,13 +381,23 @@ def ensure_daily_workforce():
                 "schedule_date": today_key,
                 "schedule_time": hhmm,
                 "schedule_source": "daily_workforce",
+                "batch_id": f"R7-{today_key.replace('-', '')}-B01",
+                "batch_number": BASE_BATCH_NUMBER,
+                "batch_kind": "daily_base",
             }
             _apply_region_metadata(job, region)
             data["items"].insert(0, job)
             created.append(job)
             existing_by_key[key] = job
 
-        if created or reconciled:
+        # Evaluate continuation against the same point-in-time task ledger.
+        # Newly created base jobs keep this at base_batch_incomplete. Once the
+        # base (or prior continuation) is terminal, only evidence-backed work
+        # can produce the next batch.
+        continuation_result = _continuation_batch(data, today_key, now)
+        continuation_created = continuation_result.get("created") or []
+
+        if created or reconciled or continuation_created:
             write_json(r7_engine.JOBS, data)
             for job in created:
                 r7_engine._audit(
@@ -232,6 +419,19 @@ def ensure_daily_workforce():
                         "schedule_time": job.get("schedule_time"),
                     },
                 )
+            for job in continuation_created:
+                r7_engine._audit(
+                    "job_continuation_scheduled",
+                    job["id"],
+                    "daily_workforce",
+                    {
+                        "batch_id": job.get("batch_id"),
+                        "batch_number": job.get("batch_number"),
+                        "task_type": job.get("task_type"),
+                        "reason": job.get("continuation_reason"),
+                        "idempotency_key": job.get("idempotency_key"),
+                    },
+                )
 
     base_counts = {}
     for *_, region_id in base_template:
@@ -249,6 +449,15 @@ def ensure_daily_workforce():
         region_job_counts=base_counts,
         region_work_share_pct={key: int(value.get("work_share_pct", 0)) for key, value in REGION_FALLBACK.items()},
         updated_at=now_iso(),
+        active_batch_id=(continuation_result.get("batch_id")
+                         or f"R7-{today_key.replace('-', '')}-B01"),
+        latest_batch_number=int(continuation_result.get("batch_number") or BASE_BATCH_NUMBER),
+        continuation_created=len(continuation_result.get("created") or []),
+        continuation_reason=continuation_result.get("reason"),
+        next_eligible_wake_at=(
+            datetime.fromtimestamp(continuation_result["next_wake_epoch"], tz=now.tzinfo).isoformat(timespec="seconds")
+            if continuation_result.get("next_wake_epoch") else ""
+        ),
         policy="全天分时执行；基础任务按50/30/15/5区域作战分配；非资金自动执行；资金事项不进入自动排班",
         truth_rule="区域比例是AI非资金工作量，不是广告预算、市场份额或区域已开放证明",
     )
@@ -259,5 +468,9 @@ def ensure_daily_workforce():
         "base_planned": len(base_template),
         "created": len(created),
         "reconciled": len(reconciled),
+        "continuation_created": len(continuation_result.get("created") or []),
+        "continuation_reason": continuation_result.get("reason"),
+        "batch_id": continuation_result.get("batch_id") or f"R7-{today_key.replace('-', '')}-B01",
+        "batch_number": int(continuation_result.get("batch_number") or BASE_BATCH_NUMBER),
         "region_job_counts": base_counts,
     }

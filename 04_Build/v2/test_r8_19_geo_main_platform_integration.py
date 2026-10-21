@@ -36,12 +36,18 @@ def main():
     ):
         require(marker in seo, f"original SEO section missing from source: {marker}")
 
-    # Field-stability contract: split frames, lazy GEO, one owner-shell page scroller,
-    # no ResizeObserver/MutationObserver feedback loop in the bridge.
-    require("r813-seo-frame" in bridge and "r813-geo-frame" in bridge, "split SEO/GEO frames missing")
+    # Field-stability contract: SEO remains isolated; later builds may mount
+    # GEO directly in the owner shell to remove the blank nested-frame race.
+    # Both supported layouts keep one owner-shell page scroller and avoid DOM
+    # observer feedback loops.
+    inline_geo = "r813-geo-core-host" in bridge and "geo-growth-pane" in bridge
+    require("r813-seo-frame" in bridge and ("r813-geo-frame" in bridge or inline_geo), "SEO isolation / GEO workspace missing")
     require("data-r813-workspace=\"seo\"" in bridge, "SEO workspace tab missing")
     require("data-r813-workspace=\"geo\"" in bridge, "GEO workspace tab missing")
-    require("src=\"about:blank\"" in bridge and "data-src=\"/geo.html?embed=1\"" in bridge, "GEO iframe is not lazy-loaded")
+    require(
+        ("src=\"about:blank\"" in bridge and "data-src=\"/geo.html?embed=1\"" in bridge) or inline_geo,
+        "GEO workspace is neither lazy-loaded nor mounted through the direct core host",
+    )
     require("scrolling=\"no\"" in bridge, "integrated workspaces must use owner-shell single-scroll mode")
     require("seo-geo-phase1-final.css" in bridge and "seo-geo-phase1-final.js" in bridge, "final SEO/GEO UX is not injected into both workspaces")
     require("ResizeObserver" not in bridge, "main SEO/GEO bridge must not auto-resize iframe via ResizeObserver")
@@ -72,7 +78,7 @@ def main():
     require("operational-search.js" in geo, "GEO embedded route no longer loads operational-search.js")
     require("geo-direct-embed" in geo, "GEO embedded layout mode missing")
 
-    print("PASS: SEO/GEO main route preserves full SEO, uses single-scroll split frames, human progress flow, and lazy GEO without observer feedback loops")
+    print("PASS: SEO/GEO main route preserves full SEO, single-scroll isolation, human progress flow, and GEO loading without observer feedback loops")
 
 
 if __name__ == "__main__":

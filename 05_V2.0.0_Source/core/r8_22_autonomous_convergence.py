@@ -492,18 +492,49 @@ def _human_and_deferred():
 def _metrics(command_id=None, mission_id=None):
     try:
         from core import r7_engine
-        jobs = r7_engine.list_jobs().get("items", [])
+        # Never use the 200-row presentation window as Mission capacity.
+        with r7_engine.LOCK:
+            jobs = list(r7_engine._store().get("items", []))
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
         jobs = []
     current = [x for x in jobs if isinstance(x, dict) and (
         (command_id and str(x.get("command_id") or "") == str(command_id))
         or (mission_id and str(x.get("mission_id") or "") == str(mission_id))
     )]
+    completed = [x for x in current if x.get("state") == "completed"]
+    local_drafts = [
+        x for x in completed if isinstance(x.get("result"), dict)
+        and x["result"].get("draft_id") and not x["result"].get("seo_asset_id")
+    ]
+    seo_asset_tasks = [
+        x for x in completed if isinstance(x.get("result"), dict)
+        and x["result"].get("seo_asset_id")
+    ]
     try:
         from core import seo_geo_autonomy
         seo_geo = seo_geo_autonomy.status()
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
         seo_geo = {}
+    try:
+        from core import seo_geo_growth, geo_validation
+        from core.storage import read_json_snapshot
+        seo_snapshot = read_json_snapshot(seo_geo_growth.STORE, {"assets": []})
+        assets = seo_snapshot.get("assets") if isinstance(seo_snapshot, dict) else []
+        assets = [row for row in (assets or []) if isinstance(row, dict)]
+        seo_truth = {
+            "public_pages": sum(seo_geo_growth._stage_at_least(row, "PUBLISHED") for row in assets),
+            "submitted_urls": sum(seo_geo_growth._stage_at_least(row, "SUBMITTED") for row in assets),
+            "crawled_urls": sum(seo_geo_growth._stage_at_least(row, "CRAWLED") for row in assets),
+            "indexed_urls": sum(seo_geo_growth._stage_at_least(row, "INDEXED") for row in assets),
+        }
+        geo_snapshot = read_json_snapshot(geo_validation.RECEIPTS_PATH, {"receipts": []})
+        geo_truth = [
+            row for row in (geo_snapshot.get("receipts") or [])
+            if isinstance(row, dict) and row.get("official_truth")
+            and row.get("evidence_level") in {"A", "B"}
+        ]
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        seo_truth, geo_truth = {}, []
     return {
         "tasks": {
             "total": len(current),
@@ -512,6 +543,21 @@ def _metrics(command_id=None, mission_id=None):
             "completed": sum(x.get("state") == "completed" for x in current),
             "failed": sum(x.get("state") == "failed" for x in current),
             "receipts": sum(isinstance(x.get("execution_receipt"), dict) for x in current),
+            "count_scope": "full_r7_ledger",
+            "display_window_limit": 200,
+        },
+        "outcomes": {
+            "scope": "current_mission_tasks_plus_platform_truth_ledgers",
+            "completed_local_tasks": len(completed),
+            "local_drafts_without_asset": len(local_drafts),
+            "tasks_that_created_seo_asset": len(seo_asset_tasks),
+            "analysis_or_other_local_tasks": max(0, len(completed) - len(local_drafts) - len(seo_asset_tasks)),
+            "seo_public_urls_cumulative": int(seo_truth.get("public_pages") or 0),
+            "seo_submitted_urls_cumulative": int(seo_truth.get("submitted_urls") or 0),
+            "seo_crawled_urls_cumulative": int(seo_truth.get("crawled_urls") or 0),
+            "seo_indexed_urls_cumulative": int(seo_truth.get("indexed_urls") or 0),
+            "formal_geo_evidence_cumulative": len(geo_truth),
+            "truth": "本地任务完成、Asset、公网URL、SUBMITTED、抓取/收录和正式GEO Evidence分别计数。",
         },
         "seo_geo": _compact_seo_geo(seo_geo),
     }
@@ -620,6 +666,7 @@ def snapshot():
     human, deferred = _human_and_deferred()
     metrics = _metrics(state.get("active_command_id"), state.get("active_mission_id"))
     tasks = metrics.get("tasks") or {}
+    workforce = read_json("r7/workforce_schedule.json", {})
     total = int(tasks.get("total") or 0)
     done = int(tasks.get("completed") or 0)
     progress = round(done * 100 / total) if total else 0
@@ -628,6 +675,8 @@ def snapshot():
         current_action = "当前 Mission 有任务正在执行"
     elif tasks.get("queued"):
         current_action = "当前 Mission 队列等待调度"
+    elif workforce.get("continuation_reason") == "no_new_eligible_work":
+        current_action = "本轮已完成；当前无新的合格工作，等待真实结果或到期时间自动唤醒"
     return {
         "schema": "kazuizhi.r8_22.autonomy.v1",
         "generated_at": now_iso(),
@@ -635,6 +684,15 @@ def snapshot():
         "mission": mission,
         "plan": plan,
         "progress": {"percent": progress, **tasks},
+        "outcomes": metrics.get("outcomes") or {},
+        "workforce": {
+            "date": workforce.get("date"),
+            "active_batch_id": workforce.get("active_batch_id"),
+            "latest_batch_number": workforce.get("latest_batch_number"),
+            "continuation_created": workforce.get("continuation_created"),
+            "continuation_reason": workforce.get("continuation_reason"),
+            "next_eligible_wake_at": workforce.get("next_eligible_wake_at"),
+        },
         "current_action": current_action,
         "next_action": "由 Controller Plan 与真实 Receipt 自动决定下一步",
         "human_blockers": human,
