@@ -420,26 +420,32 @@ def run_once(transport=None):
 
 
 def _worker_loop(stop):
+    def wait_or_queue_wake(seconds):
+        if stop.is_set():
+            return
+        geo.QUEUE_WAKE_EVENT.wait(float(seconds))
+        geo.QUEUE_WAKE_EVENT.clear()
+
     while not stop.is_set():
         try:
             data = _load()
             if data.get("enabled") and not data.get("paused"):
                 result = run_once()
                 if result.get("receipt"):
-                    stop.wait(2.0)
+                    wait_or_queue_wake(2.0)
                     continue
                 if result.get("reason") in {"geo_autonomy_already_running"}:
-                    stop.wait(1.0)
+                    wait_or_queue_wake(1.0)
                     continue
-                stop.wait(5.0)
+                wait_or_queue_wake(5.0)
             else:
-                stop.wait(2.0)
+                wait_or_queue_wake(2.0)
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             data = _load()
             data["last_error"] = str(error)[:800]
             data["last_run_at"] = now_iso()
             _save(data)
-            stop.wait(8.0)
+            wait_or_queue_wake(8.0)
 
 
 def start_worker():

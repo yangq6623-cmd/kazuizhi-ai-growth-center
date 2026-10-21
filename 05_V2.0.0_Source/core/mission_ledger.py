@@ -77,14 +77,18 @@ def _safe_channels() -> dict:
 def _safe_execution(mission_id: str) -> dict:
     """Summarize local task evidence without confusing it with external proof."""
     try:
-        from core.r7_engine import list_jobs
-        jobs = [x for x in list_jobs().get("items", []) if x.get("mission_id") == mission_id]
+        from core import r7_engine
+        # Mission totals must span the complete durable ledger. list_jobs() is
+        # intentionally a bounded UI/pagination API.
+        with r7_engine.LOCK:
+            jobs = [x for x in r7_engine._store().get("items", []) if x.get("mission_id") == mission_id]
     except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
         jobs = []
     receipts = [x.get("execution_receipt") for x in jobs if isinstance(x.get("execution_receipt"), dict)]
     states = {name: sum(x.get("state") == name for x in jobs) for name in ("queued", "running", "completed", "failed", "cancelled")}
     return {
         "task_count": len(jobs),
+        "count_scope": "full_r7_ledger",
         "states": states,
         "local_execution_receipts": len(receipts),
         "latest_local_receipt": receipts[0] if receipts else None,

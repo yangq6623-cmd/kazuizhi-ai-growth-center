@@ -105,10 +105,29 @@ def migrate_r6():
         return marker
 
 
-def list_jobs():
+def list_jobs(limit=200, offset=0):
+    """Return a bounded display window without treating it as the ledger.
+
+    R7 stores newest-first and historically exposed only ``items[:200]``.  A
+    number of Mission summaries then counted that display window as if it were
+    the complete task ledger, which made a busy Mission appear permanently
+    capped at 200/200.  ``count`` and ``ledger_count`` now always describe the
+    durable ledger while callers may page the presentation window explicitly.
+    Existing callers keep the same 200-row default response.
+    """
     with LOCK:
         items = _store()["items"]
-        return {"items": items[:200], "count": len(items),
+        try:
+            limit = max(1, min(int(limit or 200), 1000))
+        except (TypeError, ValueError):
+            limit = 200
+        try:
+            offset = max(0, int(offset or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        window = items[offset:offset + limit]
+        return {"items": window, "count": len(items), "ledger_count": len(items),
+                "window": {"offset": offset, "limit": limit, "returned": len(window)},
                 "execution": "non_financial_autonomous_financial_platform_manual"}
 
 
@@ -350,10 +369,14 @@ def agent_registry():
 
 
 def engine_status():
-    jobs = list_jobs()["items"]
+    # Status counts are ledger truth, not the newest 200-row UI page.
+    with LOCK:
+        jobs = list(_store()["items"])
     states = ("awaiting_approval", "human_required", "queued", "running", "completed", "failed", "cancelled")
     return {
         "jobs": {state: sum(x.get("state") == state for x in jobs) for state in states},
+        "ledger_total": len(jobs),
+        "display_window_limit": 200,
         "next_local_job": next((x["title"] for x in jobs if x.get("state") == "queued" and x.get("mode") == "local"), None),
         "migration": read_json(MIGRATION, {"result": "pending"}),
         "audit_integrity": audit_history()["integrity"],

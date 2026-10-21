@@ -727,10 +727,15 @@
       if(!diagnosticBox&&kpiBox){
         diagnosticBox=document.createElement('p');
         diagnosticBox.id='geo-adv-queue-diagnostics';
+        diagnosticBox.style.whiteSpace='pre-line';
         kpiBox.insertAdjacentElement('afterend',diagnosticBox);
       }
+      const queuedTaskText=(route.queued_tasks||[]).map(x=>
+        `${x.task_id||'—'} · ${x.provider||'未指定'}/${x.method||'未指定'}/${x.expected_platform||'无网页平台'} · ${x.executor||'无执行器'} · ${x.route_state||'未知'} · ${x.wait_reason||'未说明'}`
+      ).join('\n');
       if(diagnosticBox)diagnosticBox.textContent=
         '队列路由：'+(route.queued_by_route||[]).map(x=>`${x.provider}/${x.method}/${x.expected_platform||'未绑定网页'} ${x.count}条`).join('；')+
+        (queuedTaskText?'\n排队任务：\n'+queuedTaskText:'\n排队任务：无')+
         '。待核查分类：历史技术失败 '+(blocked.legacy_technical_requires_review??'未知')+
         '；登录/授权/风控 '+(blocked.real_authorization_or_risk_control??'未知')+
         '；未分类 '+(blocked.unclassified_requires_review??'未知')+

@@ -160,6 +160,7 @@ def _local_qc_generated_assets(limit=20):
             except (OSError, UnicodeError) as error:
                 reasons.append("无法读取staging内容: " + type(error).__name__)
         if reasons:
+            seo_geo_growth.record_asset_qc_failure(asset.get("id"), reasons)
             failed.append({"asset_id": asset.get("id"), "reasons": reasons})
             continue
         record_asset_stage(asset.get("id"), "QC_PASSED", {"local_qc": "R8 deterministic SEO page QC", "checked_at": now_iso()})

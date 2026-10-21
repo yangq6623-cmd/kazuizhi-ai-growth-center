@@ -87,6 +87,36 @@ def execute_autonomous(job):
     task_type = job.get("task_type") or classify(job.get("title"))["task_type"]
     title = job.get("title", "")
 
+    if task_type == "seo_pipeline":
+        # Continuation work advances existing Asset IDs only. The SEO worker
+        # retains its QC, deployment authorization and real Receipt gates.
+        from core import seo_geo_autonomy
+        result = seo_geo_autonomy.run_once(force=False)
+        counts = result.get("counts") if isinstance(result, dict) else {}
+        return {
+            "task_type": task_type,
+            "summary": "既有SEO资产闭环已执行一次；各阶段仍按真实回执分别计数。",
+            "counts": counts or {},
+            "qc_passed": len((result.get("local_qc") or {}).get("passed") or []) if isinstance(result, dict) else 0,
+            "qc_failed": len((result.get("local_qc") or {}).get("failed") or []) if isinstance(result, dict) else 0,
+            "published": len((result.get("public_deploy") or {}).get("published") or []) if isinstance(result, dict) else 0,
+            "submitted": int((result.get("search_submit") or {}).get("submitted_count") or 0) if isinstance(result, dict) else 0,
+            "source_note": "只推进既有Asset；GENERATED、QC、PUBLISHED、SUBMITTED、CRAWLED、INDEXED互不冒充。",
+        }
+
+    if task_type == "geo_growth_cycle":
+        # This never performs a browser send. It materializes/synchronizes due
+        # operating retests through the existing GEO queue; API/browser workers
+        # keep their own authorization, cooldown and Evidence rules.
+        from core import geo_growth_orchestrator
+        result = geo_growth_orchestrator.run_once(force=False)
+        return {
+            "task_type": task_type,
+            "summary": "已检查到期GEO运营复测并推进原队列；未绕过冷却或重发不确定任务。",
+            "geo_result": result if isinstance(result, dict) else {},
+            "source_note": "本地调度完成不等于正式外部AI Evidence；正式结果只认真实Receipt。",
+        }
+
     if task_type == "diagnostics":
         from integrations.manager import system_diagnostics
         diagnostic = system_diagnostics()
@@ -141,6 +171,34 @@ def execute_autonomous(job):
             "evidence": "",
         }
         owner_seo = task_type == "seo" and job.get("schedule_source") == "owner_seo_incremental"
+        if task_type in {"seo", "geo"} and job.get("schedule_source") == "daily_workforce":
+            # The fixed 20-job workforce is an operating cadence, not a quota
+            # for twenty new pages. Generic R7 SEO/GEO rows previously emitted
+            # the same "涟水本地维修服务" draft again and again while the real
+            # Asset/QC/publish workers ran independently. Keep the scheduled
+            # review truthful and let only discovered, de-duplicated Assets or
+            # due GEO schedules enter their existing execution chains.
+            from core import seo_geo_growth
+            snapshot = seo_geo_growth.dashboard()
+            summary = snapshot.get("summary") or {}
+            pending = [
+                row.get("id") for row in snapshot.get("assets") or []
+                if row.get("stage") in {"PLANNED", "GENERATED", "QC_PASSED", "PUBLISHED"}
+            ]
+            return {
+                "task_type": task_type,
+                "summary": (
+                    f"已核对真实增长账本；现有待推进Asset {len(pending)} 条。"
+                    if pending else "已核对真实增长账本；当前没有新的合格SEO/GEO内容，不重复生成通用草稿。"
+                ),
+                "eligible_asset_ids": pending[:20],
+                "seo_public_urls": int(summary.get("public_pages") or 0),
+                "seo_submitted_urls": int(summary.get("submitted_urls") or 0),
+                "draft_id": None,
+                "seo_asset_id": None,
+                "no_work_reason": "existing_pipeline_or_no_deduplicated_opportunity",
+                "source_note": "排班完成不等于生成、发布、SUBMITTED、收录或正式GEO Evidence。",
+            }
         if owner_seo:
             # Only the exact accepted owner's target is eligible. Never fall
             # back to the old generic keyword for an owner Command.

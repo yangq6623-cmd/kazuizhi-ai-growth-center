@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -13,6 +13,7 @@ on:
       - 'docs/*830*'
       - 'docs/*831*'
       - 'docs/*833*'
+      - 'docs/*854*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - 'docs/*830*'
       - 'docs/*831*'
       - 'docs/*833*'
+      - 'docs/*854*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -114,6 +116,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '#841 SEO quality and safe republish regression failed' }
           python 04_Build/v2/test_841_scheduler_isolation.py
           if ($LASTEXITCODE -ne 0) { throw '#841 SEO quality and safe republish regression failed' }
+      - name: "#854 full-ledger progress, in-day continuation, exact GEO routing and QC truth"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#854 isolated temporary ledgers only; no production publish, external AI send or historical replay'
+          python 04_Build/v2/test_854_closed_loop_concentration.py
+          if ($LASTEXITCODE -ne 0) { throw '#854 concentrated SEO/GEO closed-loop regression failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -311,6 +319,7 @@ jobs:
           Copy-Item docs/SEO_GEO_830_FIELD_REGRESSION_AND_831_FIX_20261019.md installer_output_v2/SEO_GEO_830_831_FIELD_REPORT.md
           Copy-Item docs/SEO_GEO_833_AFTERNOON_RECONCILIATION_AND_FIX_20261019.md installer_output_v2/SEO_GEO_833_AFTERNOON_REPORT.md
           Copy-Item docs/SEO_GEO_853_SPECIAL_REPAIR_AND_ACCEPTANCE_20261020.md installer_output_v2/SEO_GEO_853_REPAIR_REPORT.md
+          Copy-Item docs/SEO_GEO_854_CLOSED_LOOP_FIX_AND_ACCEPTANCE_20261021.md installer_output_v2/SEO_GEO_854_CLOSED_LOOP_REPORT.md
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
       - name: Package GEO Chrome extension 2.2.2.854
         run: |

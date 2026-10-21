@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,7 @@ BRAND_NAME = "卡嘴子"
 OFFICIAL_DOMAIN = "kazuizhi.com"
 MAX_RETRIES = 2
 TASK_LEASE_SECONDS = 180
+QUEUE_WAKE_EVENT = threading.Event()
 
 QUEUE_PATH = "geo_validation/queue.json"
 RECEIPTS_PATH = "geo_validation/receipts.json"
@@ -480,6 +482,11 @@ def _enqueue_plan_locked(plan):
         created.append(task)
         existing_keys[task["idempotency_key"]] = task
     _save_queue(queue)
+    if created:
+        # Wake the existing executor loop immediately. Its own provider,
+        # authorization, cooldown and idempotency gates still decide whether
+        # a task is claimable; the periodic poll remains the fallback.
+        QUEUE_WAKE_EVENT.set()
     _audit(
         "geo_plan_enqueued",
         {
@@ -1342,23 +1349,66 @@ def _blocked_reason_class(reason):
     return "unclassified_requires_review"
 
 
-def queue_summary():
-    tasks = _load_queue()["tasks"]
-    counts = Counter(item.get("state") or "unknown" for item in tasks)
-    blocked = [item for item in tasks if item.get("state") == "authorization_required"]
-    blocked_classes = Counter(
-        _blocked_reason_class(item.get("authorization_reason")) for item in blocked
-    )
-    # Expose route truth without changing or re-claiming any previously
-    # attempted external question. The Chrome worker cannot execute queued
-    # cloud_auto/api work, and historical timeouts must never be resent just
-    # because a login now looks healthy.
-    queued_tasks = [item for item in tasks if item.get("state") == "queued"]
+def _queue_diagnostics(tasks):
+    """Pure read-only queue routing diagnostics shared by normal/fast APIs."""
+    rows = [item for item in (tasks or []) if isinstance(item, dict)]
+    queued_tasks = [item for item in rows if item.get("state") == "queued"]
     queued_routes = Counter(
         (str(item.get("provider") or "unspecified"),
          str(item.get("test_method") or "unspecified"),
          str(item.get("expected_platform") or ""))
         for item in queued_tasks
+    )
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    task_details = []
+    for item in queued_tasks:
+        provider = str(item.get("provider") or "")
+        method = str(item.get("test_method") or "")
+        platform = str(item.get("expected_platform") or "")
+        try:
+            retry_at = float(item.get("next_retry_at_epoch") or 0)
+        except (TypeError, ValueError, OverflowError):
+            retry_at = 0.0
+        if method == "api" and provider == "cloud_auto" and not platform:
+            executor = "doubao_cloud_api"
+            route_state = "retry_backoff" if retry_at > now_epoch else "claimable_by_cloud_executor"
+            reason = "等待豆包API退避到期" if retry_at > now_epoch else "由豆包API执行器领取；Chrome不会代领"
+        elif method == "browser" and platform:
+            executor = f"chrome_geo_extension:{platform}"
+            route_state = "claimable_by_matching_browser"
+            reason = f"仅由已登录的 {platform} 浏览器会话领取"
+        elif method == "browser":
+            executor = "unassigned_browser_platform"
+            route_state = "routing_error"
+            reason = "浏览器任务缺少expected_platform，安全策略禁止跨平台猜测领取"
+        elif method == "api":
+            executor = f"api:{provider or 'unassigned'}"
+            route_state = "claimable_by_named_api" if provider else "routing_error"
+            reason = "等待对应API执行器" if provider else "API任务缺少provider"
+        else:
+            executor = "unassigned"
+            route_state = "routing_error"
+            reason = "任务缺少可验证的执行方法或执行器"
+        task_details.append({
+            "task_id": str(item.get("task_id") or ""),
+            "question_id": str(item.get("question_id") or ""),
+            "provider": provider or "unspecified",
+            "method": method or "unspecified",
+            "expected_platform": platform,
+            "executor": executor,
+            "route_state": route_state,
+            "wait_reason": reason,
+            "created_at": str(item.get("created_at") or ""),
+            "next_retry_at_epoch": retry_at or None,
+            "mission_id": str(item.get("mission_id") or ""),
+            "schedule_id": str(item.get("schedule_id") or ""),
+            "uncertain_external_submission": bool(item.get("uncertain_external_submission")),
+        })
+
+    blocked = [item for item in rows if item.get("state") == "authorization_required"]
+    blocked_classes = Counter(
+        _blocked_reason_class(item.get("authorization_reason") or item.get("failure_reason"))
+        for item in blocked
     )
     unbound_api = [
         item for item in queued_tasks
@@ -1367,25 +1417,17 @@ def queue_summary():
         and not item.get("expected_platform")
     ]
     return {
-        "total": len(tasks),
-        "queued": counts.get("queued", 0),
-        "running": counts.get("running", 0),
-        "succeeded": counts.get("succeeded", 0),
-        "failed": counts.get("failed", 0),
-        "paused": counts.get("paused", 0),
-        "authorization_required": counts.get("authorization_required", 0),
         "routing_diagnostics": {
             "queued_by_route": [
                 {"provider": provider, "method": method,
                  "expected_platform": platform, "count": count}
                 for (provider, method, platform), count in sorted(queued_routes.items())
             ],
+            "queued_tasks": task_details,
             "unbound_cloud_auto_api": len(unbound_api),
-            "unbound_cloud_auto_task_ids": [
-                item.get("task_id") for item in unbound_api[:20]
-            ],
+            "unbound_cloud_auto_task_ids": [item.get("task_id") for item in unbound_api[:20]],
             "browser_agent_can_claim_unbound_api": False,
-            "reason": "cloud_auto/api 队列没有明确外部 API 执行器；Chrome 网页代理不能代领，需核实真实 API 路由与授权。",
+            "reason": "cloud_auto/api 由豆包API执行器处理；Chrome 网页代理严格按expected_platform领取，不能跨路由代领。",
             "mutated": False,
         },
         "blockage_diagnostics": {
@@ -1400,6 +1442,22 @@ def queue_summary():
             "auto_requeued": 0,
             "note": "诊断不改状态；旧技术失败、登录/验证码和未知阻塞必须分别处理，禁止批量重试。",
         },
+    }
+
+
+def queue_summary():
+    tasks = _load_queue()["tasks"]
+    counts = Counter(item.get("state") or "unknown" for item in tasks)
+    diagnostics = _queue_diagnostics(tasks)
+    return {
+        "total": len(tasks),
+        "queued": counts.get("queued", 0),
+        "running": counts.get("running", 0),
+        "succeeded": counts.get("succeeded", 0),
+        "failed": counts.get("failed", 0),
+        "paused": counts.get("paused", 0),
+        "authorization_required": counts.get("authorization_required", 0),
+        **diagnostics,
         "tasks": tasks,
     }
 
