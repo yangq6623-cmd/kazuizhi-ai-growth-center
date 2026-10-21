@@ -289,7 +289,14 @@ def claim(payload):
     state["last_retest_next_eligible_at"] = str(retest.get("next_eligible_at") or "")
     state["last_claim_at"] = now_iso()
     state["last_claim_platform"] = platform
-    state["last_claim_reason"] = ("claimed" if task else str(result.get("reason") or "queue_empty"))
+    if task:
+        claim_reason = "claimed"
+    else:
+        claim_reason = str(result.get("reason") or "queue_empty")
+        blocked = result.get("blocked") if isinstance(result.get("blocked"), list) else []
+        if blocked:
+            claim_reason += ":" + str(blocked[0].get("reason") or "safety_gate")
+    state["last_claim_reason"] = claim_reason
     state["last_claim_task_id"] = str(task.get("task_id") or "")
     if platform == "doubao_web":
         state["last_canary_reason"] = canary_reason

@@ -217,15 +217,28 @@ def _continuation_batch(data, today_key, now):
     todays = [row for row in jobs if row.get("schedule_date") == today_key]
     base = [row for row in todays if row.get("schedule_source") == "daily_workforce"]
     if not base or any(row.get("state") not in TERMINAL_STATES for row in base):
-        return {"created": [], "reason": "base_batch_incomplete", "next_wake_epoch": None}
+        return {
+            "created": [], "reason": "base_batch_incomplete", "next_wake_epoch": None,
+            "batch_id": f"R7-{today_key.replace('-', '')}-B01",
+            "batch_number": BASE_BATCH_NUMBER,
+            "batch_state": "running_or_waiting_due",
+        }
 
     continuation = [row for row in todays if row.get("schedule_source") == "daily_workforce_continuation"]
     batch_numbers = [BASE_BATCH_NUMBER]
     batch_numbers.extend(int(row.get("batch_number") or 0) for row in continuation)
     latest_number = max(batch_numbers)
     latest_rows = [row for row in continuation if int(row.get("batch_number") or 0) == latest_number]
+    latest_batch_id = (
+        str((latest_rows[0] if latest_rows else {}).get("batch_id") or "")
+        or f"R7-{today_key.replace('-', '')}-B{latest_number:02d}"
+    )
     if latest_rows and any(row.get("state") not in TERMINAL_STATES for row in latest_rows):
-        return {"created": [], "reason": "continuation_batch_incomplete", "next_wake_epoch": None}
+        return {
+            "created": [], "reason": "continuation_batch_incomplete", "next_wake_epoch": None,
+            "batch_id": latest_batch_id, "batch_number": latest_number,
+            "batch_state": "running_or_waiting_due",
+        }
 
     candidates, next_wake_epoch = _continuation_candidates(today_key)
     used = {
@@ -234,7 +247,14 @@ def _continuation_batch(data, today_key, now):
     }
     candidates = [row for row in candidates if f"daily_continuation:{today_key}:{row['key']}" not in used]
     if not candidates:
-        return {"created": [], "reason": "no_new_eligible_work", "next_wake_epoch": next_wake_epoch}
+        # Never fall back to B01 after B02/B03 has already completed.  The old
+        # fallback made a healthy waiting state look as if continuation had
+        # never happened, even though the immutable jobs/receipts proved it.
+        return {
+            "created": [], "reason": "no_new_eligible_work", "next_wake_epoch": next_wake_epoch,
+            "batch_id": latest_batch_id, "batch_number": latest_number,
+            "batch_state": "completed_waiting_eligibility",
+        }
 
     batch_number = latest_number + 1
     batch_id = f"R7-{today_key.replace('-', '')}-B{batch_number:02d}"
@@ -289,6 +309,7 @@ def _continuation_batch(data, today_key, now):
         "reason": "eligible_work_materialized",
         "batch_id": batch_id,
         "batch_number": batch_number,
+        "batch_state": "queued",
         "next_wake_epoch": next_wake_epoch,
     }
 
@@ -452,6 +473,7 @@ def ensure_daily_workforce():
         active_batch_id=(continuation_result.get("batch_id")
                          or f"R7-{today_key.replace('-', '')}-B01"),
         latest_batch_number=int(continuation_result.get("batch_number") or BASE_BATCH_NUMBER),
+        active_batch_state=str(continuation_result.get("batch_state") or "unknown"),
         continuation_created=len(continuation_result.get("created") or []),
         continuation_reason=continuation_result.get("reason"),
         next_eligible_wake_at=(
@@ -472,5 +494,6 @@ def ensure_daily_workforce():
         "continuation_reason": continuation_result.get("reason"),
         "batch_id": continuation_result.get("batch_id") or f"R7-{today_key.replace('-', '')}-B01",
         "batch_number": int(continuation_result.get("batch_number") or BASE_BATCH_NUMBER),
+        "batch_state": str(continuation_result.get("batch_state") or "unknown"),
         "region_job_counts": base_counts,
     }

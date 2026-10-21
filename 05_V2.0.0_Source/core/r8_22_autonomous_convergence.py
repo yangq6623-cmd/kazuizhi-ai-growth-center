@@ -689,6 +689,7 @@ def snapshot():
             "date": workforce.get("date"),
             "active_batch_id": workforce.get("active_batch_id"),
             "latest_batch_number": workforce.get("latest_batch_number"),
+            "active_batch_state": workforce.get("active_batch_state"),
             "continuation_created": workforce.get("continuation_created"),
             "continuation_reason": workforce.get("continuation_reason"),
             "next_eligible_wake_at": workforce.get("next_eligible_wake_at"),

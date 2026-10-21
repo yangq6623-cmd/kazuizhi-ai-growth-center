@@ -333,7 +333,9 @@ def _staging_evidence(payload):
     """Derive owner-facing local evidence without claiming public success."""
     assets = list(payload.get("assets") or [])
     today = datetime.now().astimezone().date().isoformat()
-    generated_today = 0
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    generated_today = int(summary.get("today_generated_new") or 0)
+    updated_today = int(summary.get("today_assets_updated") or 0)
     qc_today = 0
     published_today = 0
     staged_files = 0
@@ -343,8 +345,6 @@ def _staging_evidence(payload):
     description_files = 0
 
     for asset in assets:
-        if str(asset.get("generated_at") or "").startswith(today):
-            generated_today += 1
         if str(asset.get("qc_passed_at") or "").startswith(today):
             qc_today += 1
         if str(asset.get("published_at") or "").startswith(today):
@@ -372,6 +372,7 @@ def _staging_evidence(payload):
     })
     return {
         "today_generated": generated_today,
+        "today_updated_assets": updated_today,
         "today_qc_passed": qc_today,
         "today_published": published_today,
         "asset_total": len(assets),
@@ -381,7 +382,7 @@ def _staging_evidence(payload):
         "schema_files": schema_files,
         "title_files": title_files,
         "description_files": description_files,
-        "truth": "本地文件、Title、Description、Canonical、Schema 只代表本地证据；公网状态仍必须由真实URL验证。",
+        "truth": "新Asset生成与旧Asset修订分开统计；本地文件、Title、Description、Canonical、Schema 只代表本地证据，公网状态仍必须由真实URL验证。",
     }
 
 

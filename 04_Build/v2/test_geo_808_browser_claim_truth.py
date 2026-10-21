@@ -74,7 +74,11 @@ def main():
     assert second["claim"]["task"]["task_id"] == "NEW-DOUBAO"
     third = agent.claim({"agent_token": token, "platform": "doubao_web"})
     assert third["claim"].get("skipped") is True
-    assert agent.status()["last_claim_reason"] == "queue_empty"
+    assert third["claim"]["reason"] == "queue_blocked", third
+    blockers = {row["task_id"]: row["reason"] for row in third["claim"]["blocked"]}
+    assert blockers["OLD-RETRY"] == "retry_approval_missing", blockers
+    assert blockers["OLD-SENT"] == "prior_external_attempt_requires_reconciliation", blockers
+    assert agent.status()["last_claim_reason"].startswith("queue_blocked:"), agent.status()
     assert agent.status()["last_canary_reason"] == "already_reserved"
     assert len(geo._load_queue()["tasks"]) == len(original) + 1
     assert geo._load_receipts()["receipts"] == []
