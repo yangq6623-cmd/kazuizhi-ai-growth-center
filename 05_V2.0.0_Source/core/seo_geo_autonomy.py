@@ -220,6 +220,10 @@ def validation_status(data=None):
     raw["elapsed_hours"] = elapsed_hours
     raw["target_hours"] = 24
     raw["state"] = state
+    raw["acceptance_scope"] = "historical_process_lifetime"
+    raw["window_mode"] = "since_first_recorded_cycle"
+    raw["independent_candidate_qualified"] = False
+    raw["candidate_build_id"] = ""
     raw["truth"] = "24小时验收只统计自治调度真实周期与账本进展；未满24小时显示采集中，抓取/收录/排名仍必须等待外部证据。"
     return raw
 

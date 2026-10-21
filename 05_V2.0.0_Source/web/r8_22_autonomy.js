@@ -89,7 +89,7 @@
         <div class="kz22-metric"><span>Controller Plan</span><b>${plan.plan_id ? '已自动生成' : '等待'}</b><small>${lanes.length} 条执行泳道</small></div>
         <div class="kz22-metric"><span>任务进度</span><b>${Number(progress.completed||0)} / ${Number(progress.total||0)}</b><small>${pct}% · 完整账本统计，200仅为列表窗口</small></div>
         <div class="kz22-metric"><span>正在执行</span><b>${Number(progress.running||0)}</b><small>${esc(data.current_action || '')}</small></div>
-        <div class="kz22-metric"><span>队列</span><b>${Number(progress.queued||0)}</b><small>${esc(workforce.active_batch_id || '当前 Mission 优先')}</small></div>
+        <div class="kz22-metric"><span>队列</span><b>${Number(progress.queued||0)}</b><small>${esc(workforce.active_batch_id || '当前 Mission 优先')}${workforce.active_batch_state==='completed_waiting_eligibility'?' · 上批已完成，等待新资格':''}</small></div>
         <div class="kz22-metric"><span>失败</span><b>${Number(progress.failed||0)}</b><small>真实记录</small></div>
       </div>
       <div class="kz22-progress"><i style="width:${pct}%"></i></div>

@@ -600,12 +600,62 @@ def retry_task(task_id, approved_by="chatgpt"):
     task["authorization_reason"] = ""
     task["lease"] = {}
     task["attempt_id"] = ""
+    task["retry_approved_by"] = approved_by
+    task["retry_approved_at"] = now_iso()
     task["normalized_state"] = _legacy_state_map(task)
     task["correlation"] = _correlation_for(task)
     task["updated_at"] = now_iso()
     _save_queue(queue)
     _audit("geo_task_retried", {"task_id": task_id, "retry_count": task["retry_count"]})
     return task
+
+
+def _browser_claim_blocker(item, requested_platform="", *, strict=True, fresh_only=True,
+                           now_epoch=None):
+    """Return the exact fail-closed reason a browser worker cannot claim a row.
+
+    The owner snapshot and the atomic claim path must use the same rules.  #856
+    described every routed browser row as claimable, while the real worker also
+    applied fresh-only/uncertain-attempt gates and could therefore answer
+    ``queue_empty``.  That contradiction hid the actionable task ID and invited
+    unsafe manual retries.
+    """
+    if not isinstance(item, dict) or item.get("state") != "queued":
+        return "not_queued"
+    platform = str(item.get("expected_platform") or "")
+    provider = str(item.get("provider") or "")
+    method = str(item.get("test_method") or "")
+    requested_platform = str(requested_platform or "")
+    if not platform:
+        return "missing_expected_platform"
+    if requested_platform and platform != requested_platform:
+        return "platform_mismatch"
+    if strict and (provider not in {platform, "browser_external_ai"} or method != "browser"):
+        return "strict_route_mismatch"
+    instant = datetime.now(timezone.utc).timestamp() if now_epoch is None else float(now_epoch)
+    try:
+        retry_at = float(item.get("next_retry_at_epoch") or 0)
+    except (TypeError, ValueError, OverflowError):
+        retry_at = 0.0
+    if retry_at > instant:
+        return "retry_backoff"
+    if item.get("uncertain_external_submission") or item.get("replay_blocked"):
+        return "uncertain_external_result_requires_reconciliation"
+    if not fresh_only:
+        return ""
+    approved_retry = (
+        int(item.get("retry_count") or 0) > 0
+        and str(item.get("retry_approved_by") or "") == CONTROLLER
+    )
+    prior_attempt = bool(
+        item.get("run_id") or item.get("attempt_id") or item.get("started_at")
+        or (item.get("attempts") if isinstance(item.get("attempts"), list) else [])
+    )
+    if prior_attempt and not approved_retry:
+        return "prior_external_attempt_requires_reconciliation"
+    if int(item.get("retry_count") or 0) > 0 and not approved_retry:
+        return "retry_approval_missing"
+    return ""
 
 
 def claim_next_task(executor=None):
@@ -711,17 +761,9 @@ def _claim_next_task_locked(executor=None):
     def eligible(item):
         if allowed_ids is not None and item.get("task_id") not in allowed_ids:
             return False
-        if item.get("state") != "queued" or item.get("expected_platform") != requested_platform:
-            return False
-        if strict and (str(item.get("provider") or "") not in {requested_platform, "browser_external_ai"}
-                       or str(item.get("test_method") or "") != "browser"):
-            return False
-        if fresh_only and (int(item.get("retry_count") or 0) > 0
-                           or bool(item.get("run_id"))
-                           or bool(item.get("started_at"))
-                           or bool(item.get("uncertain_external_submission"))):
-            return False
-        return True
+        return not _browser_claim_blocker(
+            item, requested_platform, strict=strict, fresh_only=fresh_only,
+        )
     matching = [item for item in queue["tasks"] if eligible(item)] if requested_platform else []
     task = (next((item for item in matching if item.get("task_id") == priority_id), None)
             if priority_id else None)
@@ -733,7 +775,25 @@ def _claim_next_task_locked(executor=None):
                 and (allowed_ids is None or item.get("task_id") in allowed_ids)
             ), None))
     if task is None:
-        return {"ok": True, "skipped": True, "reason": "queue_empty"}
+        blocked = []
+        if requested_platform:
+            for item in queue["tasks"]:
+                if not isinstance(item, dict) or item.get("state") != "queued":
+                    continue
+                if str(item.get("expected_platform") or "") != requested_platform:
+                    continue
+                if allowed_ids is not None and item.get("task_id") not in allowed_ids:
+                    continue
+                reason = _browser_claim_blocker(
+                    item, requested_platform, strict=strict, fresh_only=fresh_only,
+                )
+                if reason:
+                    blocked.append({"task_id": item.get("task_id"), "reason": reason})
+        return {
+            "ok": True, "skipped": True,
+            "reason": "queue_blocked" if blocked else "queue_empty",
+            "blocked": blocked[:20],
+        }
 
     if not executor.get("real_external"):
         task["state"] = "authorization_required"
@@ -1375,8 +1435,21 @@ def _queue_diagnostics(tasks):
             reason = "等待豆包API退避到期" if retry_at > now_epoch else "由豆包API执行器领取；Chrome不会代领"
         elif method == "browser" and platform:
             executor = f"chrome_geo_extension:{platform}"
-            route_state = "claimable_by_matching_browser"
-            reason = f"仅由已登录的 {platform} 浏览器会话领取"
+            claim_blocker = _browser_claim_blocker(
+                item, platform, strict=True, fresh_only=True, now_epoch=now_epoch,
+            )
+            if claim_blocker:
+                route_state = "blocked_by_safety_gate"
+                reason = {
+                    "retry_backoff": "等待本任务退避时间到期",
+                    "uncertain_external_result_requires_reconciliation": "外部发送结果不确定，必须先核查原回执",
+                    "prior_external_attempt_requires_reconciliation": "检测到既有执行尝试，必须先核查原回执",
+                    "retry_approval_missing": "历史重试缺少可追溯的总控批准",
+                    "strict_route_mismatch": "任务路由与浏览器执行器不一致",
+                }.get(claim_blocker, f"浏览器领取安全门禁：{claim_blocker}")
+            else:
+                route_state = "claimable_by_matching_browser"
+                reason = f"仅由已登录的 {platform} 浏览器会话领取"
         elif method == "browser":
             executor = "unassigned_browser_platform"
             route_state = "routing_error"
@@ -1403,6 +1476,11 @@ def _queue_diagnostics(tasks):
             "mission_id": str(item.get("mission_id") or ""),
             "schedule_id": str(item.get("schedule_id") or ""),
             "uncertain_external_submission": bool(item.get("uncertain_external_submission")),
+            "claim_blocker": claim_blocker if method == "browser" and platform else "",
+            "retry_count": int(item.get("retry_count") or 0),
+            "started_at": str(item.get("started_at") or ""),
+            "run_id": str(item.get("run_id") or ""),
+            "attempt_id": str(item.get("attempt_id") or ""),
         })
 
     blocked = [item for item in rows if item.get("state") == "authorization_required"]

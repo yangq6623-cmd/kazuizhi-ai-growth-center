@@ -142,6 +142,54 @@ def _audit_event(data, kind, detail):
     data["audit"] = data["audit"][:500]
 
 
+def _daily_generation_breakdown(data, date):
+    """Separate first generation from revisions of an existing Asset.
+
+    Before #857, ``refresh_legacy_staging`` overwrote ``generated_at``.  Eight
+    existing public Assets refreshed on #856 were consequently shown as eight
+    brand-new generations.  The audit ledger still preserves the refresh event,
+    so old rows can be classified truthfully without rewriting history.
+    """
+    date = str(date or "")
+    refreshed = set()
+    for event in data.get("audit") or []:
+        if not isinstance(event, dict) or event.get("kind") != "legacy_public_pages_rebuilt":
+            continue
+        if not str(event.get("at") or "").startswith(date):
+            continue
+        detail = event.get("detail") if isinstance(event.get("detail"), dict) else {}
+        refreshed.update(str(value) for value in (detail.get("asset_ids") or []) if value)
+    generated_ids = []
+    updated_ids = []
+    new_count = 0
+    updated_count = 0
+    for asset in data.get("assets") or []:
+        if not isinstance(asset, dict):
+            continue
+        asset_id = str(asset.get("id") or "")
+        updated_today = (
+            str(asset.get("last_staging_refresh_at") or "").startswith(date)
+            or bool(asset_id and asset_id in refreshed)
+        )
+        if updated_today:
+            updated_count += 1
+            if asset_id:
+                updated_ids.append(asset_id)
+        elif str(asset.get("generated_at") or "").startswith(date):
+            # Legacy/import fixtures may not have an Asset ID yet.  They still
+            # count as generated rows, while the inspectable ID list omits the
+            # missing identifier instead of inventing one.
+            new_count += 1
+            if asset_id:
+                generated_ids.append(asset_id)
+    return {
+        "new_asset_ids": sorted(set(generated_ids)),
+        "updated_asset_ids": sorted(set(updated_ids)),
+        "new_count": new_count,
+        "updated_count": updated_count,
+    }
+
+
 def _reconciled_daily_runs(data):
     """Derive each day's publish/submit figures from the immutable asset ledger.
 
@@ -158,16 +206,20 @@ def _reconciled_daily_runs(data):
             rows.append(row)
             continue
         planned = sum(1 for asset in assets if str(asset.get("created_at") or "").startswith(date))
-        generated = sum(1 for asset in assets if str(asset.get("generated_at") or "").startswith(date))
+        generation = _daily_generation_breakdown(data, date)
+        generated = generation["new_count"]
+        updated = generation["updated_count"]
         published = sum(1 for asset in assets if str(asset.get("published_at") or "").startswith(date))
         submitted = sum(
             1 for asset in assets
             if any(str(receipt.get("at") or "").startswith(date) for receipt in (asset.get("submission_receipts") or []))
         )
         if (row.get("planned") != planned or row.get("generated") != generated
+                or row.get("updated") != updated
                 or row.get("published") != published or row.get("submitted") != submitted):
             row["planned"] = planned
             row["generated"] = generated
+            row["updated"] = updated
             row["published"] = published
             row["submitted"] = submitted
             row["receipt_reconciled"] = True
@@ -737,14 +789,18 @@ def generate_staging(limit=6):
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "index.html"
         path.write_text(html, encoding="utf-8")
+        generated_at = now_iso()
         asset.update({
             "stage": "GENERATED",
             "title": title,
             "description": description,
             "canonical": canonical,
             "staging_path": str(path),
-            "generated_at": now_iso(),
-            "updated_at": now_iso(),
+            "generated_at": generated_at,
+            "updated_at": generated_at,
+            "content_revision_id": _stable_id(
+                "SEO-REV", asset.get("id"), PUBLIC_TEMPLATE_VERSION, generated_at,
+            ),
             "public_template_version": PUBLIC_TEMPLATE_VERSION,
             "content_quality_revision": seo_content_quality.CONTENT_QUALITY_REVISION,
         })
@@ -803,21 +859,36 @@ def refresh_legacy_staging(limit=10):
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "index.html"
         path.write_text(page, encoding="utf-8")
+        refresh_at = now_iso()
+        revision_id = _stable_id(
+            "SEO-REV", asset.get("id"), PUBLIC_TEMPLATE_VERSION,
+            seo_content_quality.CONTENT_QUALITY_REVISION,
+        )
         asset.update({
             "title": title,
             "description": description,
             "canonical": canonical,
             "staging_path": str(path),
-            "generated_at": now_iso(),
-            "updated_at": now_iso(),
+            # Preserve the first generation timestamp.  A template rebuild is
+            # a content revision of the same Asset/canonical URL, not a new
+            # Asset and not a fresh-generation event.
+            "generated_at": asset.get("generated_at") or asset.get("created_at") or refresh_at,
+            "last_staging_refresh_at": refresh_at,
+            "updated_at": refresh_at,
+            "content_revision_id": revision_id,
             "public_template_version": PUBLIC_TEMPLATE_VERSION,
             "content_quality_revision": seo_content_quality.CONTENT_QUALITY_REVISION,
             "republish_pending": _stage_at_least(asset, "PUBLISHED"),
         })
         if targeted_quality_refresh:
-            asset["content_revision_id"] = "QUALITY-" + hashlib.sha256(
+            quality_revision_id = "QUALITY-" + hashlib.sha256(
                 (str(asset.get("id") or "") + "|" + seo_content_quality.CONTENT_QUALITY_REVISION).encode("utf-8")
             ).hexdigest()[:16].upper()
+            # Keep the established #841 Receipt/deployer contract: targeted
+            # quality repairs use the QUALITY id as the externally visible
+            # content revision.  The dedicated field is additive for #857.
+            asset["content_revision_id"] = quality_revision_id
+            asset["quality_revision_id"] = quality_revision_id
         if asset.get("stage") in {"GENERATED", "QC_PASSED"}:
             asset["stage"] = "GENERATED"
         refreshed.append(str(asset.get("id") or ""))
@@ -1111,6 +1182,7 @@ def dashboard():
             for receipt in (x.get("submission_receipts") or []) if isinstance(receipt, dict)
         )
     ]
+    generation_today = _daily_generation_breakdown(data, today)
     published = counts["published"]
     submitted = counts["submitted"]
     crawled = counts["crawled"]
@@ -1125,6 +1197,8 @@ def dashboard():
             "today_opportunities": discovered_today,
             "keyword_total": len(opportunities),
             "today_planned": planned_today,
+            "today_generated_new": generation_today["new_count"],
+            "today_assets_updated": generation_today["updated_count"],
             "today_published_verified": len(published_today),
             "today_submitted_receipted": len(submitted_today),
             "public_pages": published,
