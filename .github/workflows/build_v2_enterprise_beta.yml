@@ -17,7 +17,9 @@ on:
       - 'docs/*857*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
-    branches: [main]
+    # #857 is intentionally reviewed against the exact #856 source branch;
+    # do not force a large, unrelated old-main diff merely to exercise CI.
+    branches: [main, 'codex/854-seo-geo-closed-loop-fix']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
