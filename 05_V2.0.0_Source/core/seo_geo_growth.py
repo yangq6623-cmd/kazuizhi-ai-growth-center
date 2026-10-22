@@ -414,45 +414,52 @@ def _page_type_for(opportunity):
 
 
 def plan_today(limit=None):
-    data = _load()
-    ensure_baseline()
-    data = _load()
-    configured = int(limit or data["config"].get("daily_page_limit") or 6)
-    candidates = [x for x in data["opportunities"] if isinstance(x, dict) and not x.get("asset_id")]
-    candidates.sort(key=lambda x: (_priority_score(x.get("priority")), x.get("discovered_at") or ""))
-    created = []
-    for opportunity in candidates[: max(0, configured)]:
-        asset_id = _stable_id("SEO", opportunity["region"], opportunity["service"], opportunity["keyword"])
-        asset = {
-            "id": asset_id,
-            "opportunity_id": opportunity["id"],
-            "region": opportunity["region"],
-            "service": opportunity["service"],
-            "keyword": opportunity["keyword"],
-            "intent": opportunity["intent"],
-            "priority": opportunity["priority"],
-            "page_type": _page_type_for(opportunity),
-            "slug": _slug(f"{opportunity['region']}-{opportunity['service']}-{opportunity['keyword']}"),
-            "stage": "PLANNED",
-            "created_at": now_iso(),
-            "updated_at": now_iso(),
-            "public_url": "",
-            "canonical": "",
-            "submission_receipts": [],
-            "crawl_evidence": [],
-            "index_evidence": [],
-            "rankings": [],
-            "geo_mentions": [],
-            "conversions": [],
-        }
-        data["assets"].append(asset)
-        opportunity["asset_id"] = asset_id
-        opportunity["status"] = "PLANNED"
-        created.append(asset_id)
-    if created:
-        _audit_event(data, "daily_assets_planned", {"asset_ids": created})
-    _save(data)
-    return {"created": created, "count": len(created)}
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        data = _load()
+        ensure_baseline()
+        data = _load()
+        configured = int(limit or data["config"].get("daily_page_limit") or 6)
+        candidates = [x for x in data["opportunities"] if isinstance(x, dict) and not x.get("asset_id")]
+        discovery = {"created": False, "reason": "existing_unbound_opportunity"}
+        if not candidates:
+            discovery = discover_verified_incremental_opportunity()
+            data = _load()
+            candidates = [x for x in data["opportunities"] if isinstance(x, dict) and not x.get("asset_id")]
+        candidates.sort(key=lambda x: (_priority_score(x.get("priority")), x.get("discovered_at") or ""))
+        created = []
+        for opportunity in candidates[: max(0, configured)]:
+            asset_id = _stable_id("SEO", opportunity["region"], opportunity["service"], opportunity["keyword"])
+            asset = {
+                "id": asset_id,
+                "opportunity_id": opportunity["id"],
+                "region": opportunity["region"],
+                "service": opportunity["service"],
+                "keyword": opportunity["keyword"],
+                "intent": opportunity["intent"],
+                "priority": opportunity["priority"],
+                "page_type": _page_type_for(opportunity),
+                "slug": _slug(f"{opportunity['region']}-{opportunity['service']}-{opportunity['keyword']}"),
+                "stage": "PLANNED",
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+                "public_url": "",
+                "canonical": "",
+                "submission_receipts": [],
+                "crawl_evidence": [],
+                "index_evidence": [],
+                "rankings": [],
+                "geo_mentions": [],
+                "conversions": [],
+            }
+            data["assets"].append(asset)
+            opportunity["asset_id"] = asset_id
+            opportunity["status"] = "PLANNED"
+            created.append(asset_id)
+        if created:
+            _audit_event(data, "daily_assets_planned", {"asset_ids": created})
+        _save(data)
+        return {"created": created, "count": len(created), "discovery": discovery}
 
 
 
@@ -463,6 +470,11 @@ _OWNER_SEO_ALTERNATES = (
     ("涟水县厨房下水管堵塞疏通", "管道疏通"),
     ("涟水县家里跳闸上门检修", "水电安装维修"),
 )
+
+# Small, owner-safe discovery pool used only after every persisted Opportunity
+# already has an Asset. These are concrete high-intent variants inside the
+# verified Lianshui service catalogue; they are not demand-volume estimates.
+VERIFIED_INCREMENTAL_OPPORTUNITIES = _OWNER_SEO_ALTERNATES
 
 
 def _owner_seo_service(keyword):
@@ -476,6 +488,96 @@ def _owner_seo_service(keyword):
     if any(x in keyword for x in ("安装", "灯具", "家具")):
         return "安装服务"
     return ""
+
+
+def _normalized_keyword(value):
+    return re.sub(r"\s+", "", str(value or "")).strip().lower()
+
+
+def _keyword_intent_covered(candidate, existing):
+    """Conservatively collapse obvious same-appliance/same-fault variants."""
+    target = _normalized_keyword(candidate)
+    if target in existing:
+        return True
+    fault_groups = (
+        ("空调", "不制冷"),
+        ("洗衣机", "不排水"),
+        ("热水器", "不加热"),
+        ("厨房", "下水", "堵"),
+        ("家里", "跳闸"),
+    )
+    for tokens in fault_groups:
+        if all(token in target for token in tokens):
+            return any(all(token in item for token in tokens) for item in existing)
+    return False
+
+
+def discover_verified_incremental_opportunity(date=None):
+    """Persist at most one new, de-duplicated Opportunity per natural day.
+
+    ``plan_today`` historically stopped forever once all baseline rows were
+    bound to Assets. This bounded discovery step restores a real next input
+    without inventing demand volume or removing daily/idempotency limits. It
+    never creates, publishes or submits an Asset itself.
+    """
+    from core.storage import _JSON_IO_LOCK
+    with _JSON_IO_LOCK:
+        data = _load()
+        date = str(date or datetime.now().astimezone().date().isoformat())
+        if any(
+            isinstance(event, dict)
+            and event.get("kind") == "verified_incremental_opportunity_discovered"
+            and str(event.get("at") or "").startswith(date)
+            for event in data.get("audit") or []
+        ):
+            return {"created": False, "reason": "daily_incremental_discovery_already_recorded"}
+        if any(isinstance(row, dict) and not row.get("asset_id") for row in data.get("opportunities") or []):
+            return {"created": False, "reason": "existing_unbound_opportunity"}
+
+        brand_services = set((data.get("brand_facts") or {}).get("services") or [])
+        existing = {
+            _normalized_keyword(item.get("keyword"))
+            for collection in ("assets", "opportunities")
+            for item in data.get(collection, []) if isinstance(item, dict) and item.get("keyword")
+        }
+        selected = next((
+            (keyword, service)
+            for keyword, service in VERIFIED_INCREMENTAL_OPPORTUNITIES
+            if service in brand_services and not _keyword_intent_covered(keyword, existing)
+        ), None)
+        if not selected:
+            return {"created": False, "reason": "verified_incremental_pool_exhausted"}
+
+        keyword, service = selected
+        opportunity_id = _stable_id("KW", DEFAULT_REGION, service, keyword)
+        opportunity = {
+            "id": opportunity_id,
+            "region": DEFAULT_REGION,
+            "service": service,
+            "keyword": keyword,
+            "intent": "交易",
+            "priority": "S",
+            "status": "DISCOVERED",
+            "source": "autonomous_verified_service_intent_pool",
+            "discovered_at": now_iso(),
+            "asset_id": "",
+        }
+        data["opportunities"].append(opportunity)
+        _audit_event(data, "verified_incremental_opportunity_discovered", {
+            "opportunity_id": opportunity_id,
+            "keyword": keyword,
+            "service": service,
+            "date": date,
+            "truth": "服务范围内去重机会；尚未生成、QC、发布或提交。",
+        })
+        _save(data)
+        return {
+            "created": True,
+            "reason": "verified_incremental_opportunity_created",
+            "opportunity_id": opportunity_id,
+            "keyword": keyword,
+            "service": service,
+        }
 
 
 
@@ -492,20 +594,12 @@ def select_owner_seo_incremental_keyword(keyword):
     if not keyword or len(keyword) > 100 or service not in brand_services:
         return {"keyword": keyword, "service": service, "reason": "service_not_in_verified_brand_scope"}
     existing = [
-        str(item.get("keyword") or "").replace(" ", "").strip().lower()
+        _normalized_keyword(item.get("keyword"))
         for collection in ("assets", "opportunities")
         for item in data.get(collection, []) if isinstance(item, dict)
     ]
     def covered(candidate):
-        target = candidate.replace(" ", "").lower()
-        if target in existing:
-            return True
-        # Avoid the obvious near-duplicate landing page for the same failure.
-        if "空调" in target and "不制冷" in target:
-            return any("空调" in item and "不制冷" in item for item in existing)
-        if "洗衣机" in target and "不排水" in target:
-            return any("洗衣机" in item and "不排水" in item for item in existing)
-        return False
+        return _keyword_intent_covered(candidate, existing)
     choices = [(keyword, service)] + [row for row in _OWNER_SEO_ALTERNATES if row[0] != keyword]
     for candidate, candidate_service in choices:
         if candidate_service in brand_services and not covered(candidate):

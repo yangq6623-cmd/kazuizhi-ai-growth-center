@@ -1216,6 +1216,185 @@ def fail_task(task_id, reason):
     return _transition(task_id, "failed", reason=reason)
 
 
+def _receipt_matches_attempt(task, receipt):
+    """Validate an existing Receipt without trusting state labels alone."""
+    if not isinstance(task, dict) or not isinstance(receipt, dict):
+        return False
+    if str(receipt.get("task_id") or "") != str(task.get("task_id") or ""):
+        return False
+    if str(receipt.get("question_id") or "") != str(task.get("question_id") or ""):
+        return False
+    if str(receipt.get("provider") or "") != str(task.get("provider") or ""):
+        return False
+    task_run = str(task.get("run_id") or "")
+    task_attempt = str(task.get("attempt_id") or "")
+    if task_run and str(receipt.get("run_id") or "") != task_run:
+        return False
+    if task_attempt and str(receipt.get("attempt_id") or "") != task_attempt:
+        return False
+    task_evidence = str(task.get("evidence_id") or "")
+    receipt_evidence = str(receipt.get("evidence_id") or receipt.get("receipt_id") or "")
+    if task_evidence and receipt_evidence != task_evidence:
+        return False
+    session_url = str(receipt.get("session_url") or "")
+    return bool(
+        receipt_evidence
+        and session_url.startswith("https://")
+        and "127.0.0.1" not in session_url
+        and "localhost" not in session_url
+        and str(receipt.get("tested_at") or "")
+        and len(str(receipt.get("raw_answer") or "").strip()) >= 20
+    )
+
+
+def _targeted_reconciliation_rows(queue, ledger, task_ids):
+    tasks = {
+        str(task.get("task_id") or ""): task
+        for task in (queue.get("tasks") or []) if isinstance(task, dict)
+    }
+    receipts_by_task = {}
+    for receipt in ledger.get("receipts") or []:
+        if isinstance(receipt, dict) and receipt.get("task_id"):
+            receipts_by_task.setdefault(str(receipt["task_id"]), []).append(receipt)
+    rows = []
+    for task_id in task_ids:
+        task = tasks.get(task_id)
+        if not task:
+            rows.append({
+                "task_id": task_id, "disposition": "task_not_found",
+                "can_apply": False, "matching_receipt_count": 0,
+            })
+            continue
+        candidates = receipts_by_task.get(task_id, [])
+        matches = [receipt for receipt in candidates if _receipt_matches_attempt(task, receipt)]
+        prior_attempt = bool(
+            task.get("run_id") or task.get("attempt_id") or task.get("started_at")
+            or (task.get("attempts") if isinstance(task.get("attempts"), list) else [])
+        )
+        if task.get("state") == "succeeded":
+            disposition = "already_succeeded"
+        elif len(matches) == 1:
+            disposition = "unique_authoritative_receipt"
+        elif len(matches) > 1:
+            disposition = "ambiguous_multiple_receipts_hold"
+        elif task.get("uncertain_external_submission") or task.get("replay_blocked"):
+            disposition = "uncertain_external_result_hold"
+        elif prior_attempt:
+            disposition = "prior_attempt_without_matching_receipt_hold"
+        elif task.get("state") == "authorization_required":
+            disposition = "authorization_required"
+        else:
+            disposition = "safe_never_attempted_no_receipt_to_reconcile"
+        receipt = matches[0] if len(matches) == 1 else {}
+        rows.append({
+            "task_id": task_id,
+            "state": str(task.get("state") or ""),
+            "provider": str(task.get("provider") or ""),
+            "test_method": str(task.get("test_method") or ""),
+            "expected_platform": str(task.get("expected_platform") or ""),
+            "question_id": str(task.get("question_id") or ""),
+            "run_id": str(task.get("run_id") or ""),
+            "attempt_id": str(task.get("attempt_id") or ""),
+            "attempt_count": len(task.get("attempts") or []) if isinstance(task.get("attempts"), list) else 0,
+            "uncertain_external_submission": bool(task.get("uncertain_external_submission")),
+            "replay_blocked": bool(task.get("replay_blocked")),
+            "authorization_reason": str(task.get("authorization_reason") or ""),
+            "next_retry_at_epoch": task.get("next_retry_at_epoch") or None,
+            "matching_receipt_count": len(matches),
+            "other_task_receipt_count": max(0, len(candidates) - len(matches)),
+            "matched_receipt_id": str(receipt.get("evidence_id") or receipt.get("receipt_id") or ""),
+            "matched_tested_at": str(receipt.get("tested_at") or ""),
+            "disposition": disposition,
+            "can_apply": disposition == "unique_authoritative_receipt",
+        })
+    return rows
+
+
+def targeted_receipt_reconciliation(task_ids, apply=False, approved_by=""):
+    """Inspect or link receipts for explicit Task IDs; never resubmit prompts.
+
+    Applying the result only repairs local queue state when exactly one existing
+    Receipt matches Task, question, provider and any recorded Run/Attempt IDs.
+    Missing or ambiguous evidence remains fail-closed.
+    """
+    from core.storage import _JSON_IO_LOCK
+    ids = []
+    for value in task_ids or []:
+        task_id = str(value or "").strip()
+        if task_id and task_id not in ids:
+            ids.append(task_id)
+    if not ids or len(ids) > 50:
+        raise ValueError("geo_targeted_reconcile_requires_1_to_50_task_ids")
+    if apply and approved_by != CONTROLLER:
+        raise ValueError("geo_reconcile_requires_chatgpt_approval")
+    with _JSON_IO_LOCK:
+        queue = _load_queue()
+        ledger = _load_receipts()
+        rows = _targeted_reconciliation_rows(queue, ledger, ids)
+        result = {
+            "requested": len(ids),
+            "rows": rows,
+            "applicable": sum(1 for row in rows if row.get("can_apply")),
+            "reconciled": 0,
+            "backup_path": "",
+            "new_external_requests": 0,
+            "new_evidence": 0,
+            "mutated": False,
+        }
+        applicable = {row["task_id"]: row for row in rows if row.get("can_apply")}
+        if not apply or not applicable:
+            return result
+
+        snapshot = "geo_validation/backups/pre_targeted_receipt_reconcile_" + _new_id("", 16) + ".json"
+        write_json(snapshot, queue)
+        receipts = {
+            str(receipt.get("evidence_id") or receipt.get("receipt_id") or ""): receipt
+            for receipt in ledger.get("receipts") or [] if isinstance(receipt, dict)
+        }
+        stamp = now_iso()
+        for task in queue.get("tasks") or []:
+            row = applicable.get(str(task.get("task_id") or "")) if isinstance(task, dict) else None
+            if not row:
+                continue
+            receipt = receipts.get(str(row.get("matched_receipt_id") or ""), {})
+            task["historical_queue_state"] = str(task.get("state") or "")
+            task["historical_authorization_reason"] = str(task.get("authorization_reason") or "")
+            task["historical_uncertain_external_submission"] = bool(task.get("uncertain_external_submission"))
+            task["state"] = "succeeded"
+            task["evidence_id"] = row["matched_receipt_id"]
+            task["evidence_level"] = receipt.get("evidence_level")
+            task["official_truth"] = bool(receipt.get("official_truth"))
+            task["authorization_reason"] = ""
+            task["uncertain_external_submission"] = False
+            task["replay_blocked"] = False
+            task["next_retry_at_epoch"] = 0
+            task["lease"] = {}
+            task["normalized_state"] = "SUCCEEDED"
+            task["targeted_receipt_reconciled_at"] = stamp
+            task["updated_at"] = stamp
+            task["correlation"] = _correlation_for(task, receipt)
+            for attempt in task.get("attempts") or []:
+                if not isinstance(attempt, dict):
+                    continue
+                same_attempt = not task.get("attempt_id") or str(attempt.get("attempt_id") or "") == str(task.get("attempt_id") or "")
+                same_run = not task.get("run_id") or str(attempt.get("run_id") or "") == str(task.get("run_id") or "")
+                if same_attempt and same_run:
+                    attempt["finished_at"] = receipt.get("finished_at") or receipt.get("tested_at") or stamp
+                    attempt["result"] = "SUCCEEDED"
+                    attempt["receipt_id"] = row["matched_receipt_id"]
+            result["reconciled"] += 1
+        _save_queue(queue)
+        _audit("geo_targeted_receipt_state_reconciled", {
+            "task_ids": sorted(applicable),
+            "count": result["reconciled"],
+            "backup_path": snapshot,
+            "note": "local historical state linkage only; zero external requests and zero new evidence",
+        })
+        result["backup_path"] = snapshot
+        result["mutated"] = bool(result["reconciled"])
+        return result
+
+
 
 def legacy_receipt_reconciliation(apply=False, approved_by=""):
     """Restore historical state only when an authoritative matching Receipt exists.

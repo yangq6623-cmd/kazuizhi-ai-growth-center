@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -15,6 +15,7 @@ on:
       - 'docs/*833*'
       - 'docs/*854*'
       - 'docs/*857*'
+      - 'docs/*859*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     # #857 is intentionally reviewed against the exact #856 source branch;
@@ -31,6 +32,7 @@ on:
       - 'docs/*833*'
       - 'docs/*854*'
       - 'docs/*857*'
+      - 'docs/*859*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -132,6 +134,19 @@ jobs:
           Write-Host '#857 isolated ledgers only; no production publish, external AI send or historical replay'
           python 04_Build/v2/test_857_continuous_closure_acceptance.py
           if ($LASTEXITCODE -ne 0) { throw '#857 continuous closure acceptance failed' }
+      - name: "#859 SEO discovery, exact GEO receipt reconciliation and B02/B03 acceptance"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#859 isolated ledgers and HTTP doubles only; no production publish, AI send or historical replay'
+          python 04_Build/v2/test_859_closed_loop_repair.py
+          if ($LASTEXITCODE -ne 0) { throw '#859 closed-loop repair acceptance failed' }
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '04_Build/v2/Export-Kazuizhi859Diagnostics.ps1'),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw "#859 PowerShell parser failed: $($errors -join '; ')" }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -316,8 +331,8 @@ jobs:
             commit = '${{ github.sha }}'
             run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             sha256 = $hash
-            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'retired Android/ADB runtime', 'Windows browser QR session routing', 'truthful publication planning', 'receipt-gated publication truth', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'Google OAuth automatic refresh', 'user scheduled-task runtime supervisor', 'seven-day durable acceptance ledger', 'GEO mention/recommendation/citation split', '24h/72h/7d GEO retest coverage', 'formal 50-question queue gate', '#827 additive Mission/Opportunity/Action/Task/Attempt/Revision/Publication/Receipt/Schedule lineage', '#827 exact-attempt lease heartbeat', '#827 uncertain external result quarantine and no blind replay', '#857 latest continuation Batch identity is preserved', '#857 GEO claim and diagnostics share exact no-replay blockers', '#857 new SEO Assets and existing-Asset revisions are separate', '#857 historical runtime is not a candidate 24-hour claim', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall')
-            acceptance = 'Automated release gates passed and the candidate can start an independent field ledger. Neither #856 nor #857 independent 24-hour/7-day uptime is claimed by CI. Real OAuth/login/captcha, live platform publication, real external-AI Evidence, Google crawl/indexing and business conversion remain field acceptance; PUBLISHED and SUBMITTED still require their own real receipts.'
+            checks = @('R7/R8 shared Mission identity', 'boss goal persistence', 'normal ChatGPT async Decision Pack control', 'local-first authorized Mission planning', 'optional realtime ChatGPT degradation', 'local autonomous post-render QC', 'R8-12 durable account registry', 'single unified owner account center', 'retired Android/ADB runtime', 'Windows browser QR session routing', 'truthful publication planning', 'receipt-gated publication truth', 'R8-12 partial recovery', 'same-Growth Mission identity lock', 'Windows DPAPI local credential storage path', 'RTX 3060/NVENC worker packaging', 'CPU video fallback', 'verified publication receipt truth gate', 'R8-15 guarded IIS SEO deployment', 'canonical/schema/robots public verification', 'R8-15 one-click server field bootstrap', 'R8-16 IndexNow/Search Console truthful submission receipt gate', 'Google OAuth automatic refresh', 'user scheduled-task runtime supervisor', 'seven-day durable acceptance ledger', 'GEO mention/recommendation/citation split', '24h/72h/7d GEO retest coverage', 'formal 50-question queue gate', '#827 additive Mission/Opportunity/Action/Task/Attempt/Revision/Publication/Receipt/Schedule lineage', '#827 exact-attempt lease heartbeat', '#827 uncertain external result quarantine and no blind replay', '#857 latest continuation Batch identity is preserved', '#857 GEO claim and diagnostics share exact no-replay blockers', '#857 new SEO Assets and existing-Asset revisions are separate', '#857 historical runtime is not a candidate 24-hour claim', 'cross-origin mutation rejection', 'silent install', 'overwrite reinstall', 'persistent data after uninstall') + @('#859 bounded verified-scope SEO Opportunity discovery', '#859 exact Task/Run/Attempt Receipt reconciliation without resend', '#859 B02/B03 evidence-qualified continuation')
+            acceptance = 'Automated release gates passed and the candidate can start an independent field ledger. #859 independent 24-hour/7-day uptime is not claimed by CI. Real OAuth/login/captcha, live platform publication, real external-AI Evidence, Google crawl/indexing and business conversion remain field acceptance; PUBLISHED and SUBMITTED still require their own real receipts.'
           } | ConvertTo-Json -Depth 4 | Set-Content installer_output_v2/BUILD_RECORD.json
           Copy-Item docs/R8_OPERATIONAL_USER_GUIDE.md installer_output_v2/USER_GUIDE.md
           Copy-Item docs/R8_OPERATIONAL_TEST_REPORT.md installer_output_v2/TEST_REPORT.md
@@ -331,6 +346,8 @@ jobs:
           Copy-Item docs/SEO_GEO_853_SPECIAL_REPAIR_AND_ACCEPTANCE_20261020.md installer_output_v2/SEO_GEO_853_REPAIR_REPORT.md
           Copy-Item docs/SEO_GEO_854_CLOSED_LOOP_FIX_AND_ACCEPTANCE_20261021.md installer_output_v2/SEO_GEO_854_CLOSED_LOOP_REPORT.md
           Copy-Item docs/SEO_GEO_857_CONTINUOUS_CLOSURE_FIX_AND_ACCEPTANCE_20261021.md installer_output_v2/SEO_GEO_857_ACCEPTANCE_REPORT.md
+          Copy-Item docs/SEO_GEO_859_CLOSED_LOOP_REPAIR_AND_ACCEPTANCE_20261022.md installer_output_v2/SEO_GEO_859_ACCEPTANCE_REPORT.md
+          Copy-Item 04_Build/v2/Export-Kazuizhi859Diagnostics.ps1 installer_output_v2/Export-Kazuizhi859Diagnostics.ps1
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
       - name: Package GEO Chrome extension 2.2.2.854
         run: |

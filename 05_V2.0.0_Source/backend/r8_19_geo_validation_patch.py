@@ -362,6 +362,12 @@ def install():
                 "mutated": False,
             })
             return
+        if path == "/api/r8-19/geo/task-reconciliation":
+            requested = []
+            for value in query.get("task_id", []):
+                requested.extend(part.strip() for part in str(value).split(",") if part.strip())
+            handler._json_ok(geo_core.targeted_receipt_reconciliation(requested))
+            return
         if path == "/api/r8-19/geo/receipts":
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})
             return
@@ -406,6 +412,7 @@ def install():
             "/api/r8-19/geo/resume",
             "/api/r8-19/geo/retry",
             "/api/r8-19/geo/reconcile-receipts",
+            "/api/r8-19/geo/reconcile-task-receipts",
             "/api/r8-19/geo/decision",
             "/api/r8-19/geo/browser/prepare",
             "/api/r8-19/geo/browser/receipt",
@@ -498,6 +505,12 @@ def install():
                     raise ValueError("explicit_legacy_reconcile_confirmation_required")
                 result = geo_core.legacy_receipt_reconciliation(
                     apply=True, approved_by="chatgpt")
+            elif path == "/api/r8-19/geo/reconcile-task-receipts":
+                if (payload.get("approved_by") != "chatgpt" or
+                        payload.get("confirmation") != "RECONCILE_EXACT_TASK_RECEIPTS_ONLY"):
+                    raise ValueError("explicit_targeted_reconcile_confirmation_required")
+                result = geo_core.targeted_receipt_reconciliation(
+                    payload.get("task_ids") or [], apply=True, approved_by="chatgpt")
             else:
                 result = _set_controller_decision(payload)
             # Browser extension calls run frequently (heartbeat/claim/receipt).
