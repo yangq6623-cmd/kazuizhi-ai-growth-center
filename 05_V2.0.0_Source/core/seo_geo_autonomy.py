@@ -300,10 +300,24 @@ def run_once(force=False):
                 and local.get("reason") == "today_already_started"
                 and data["policy"].get("auto_generate", True)
             ):
+                # A mature ledger can have every baseline Opportunity bound to
+                # an Asset. Discover only in that exhausted state; ordinary
+                # unbound/PLANNED carryover still drains without planning past
+                # the established daily quota.
+                incremental_discovery = seo_geo_growth.discover_verified_incremental_opportunity()
+                incremental_plan = (
+                    seo_geo_growth.plan_today(limit=1)
+                    if incremental_discovery.get("created")
+                    else {"created": [], "count": 0, "discovery": incremental_discovery}
+                )
                 current = dashboard()
                 limit = int((current.get("config") or {}).get("daily_page_limit") or 6)
                 carryover = generate_staging(limit=limit)
-                local = {**local, "carryover_generation": carryover}
+                local = {
+                    **local,
+                    "incremental_plan": incremental_plan,
+                    "carryover_generation": carryover,
+                }
             _close_human_item(data, "seo_local_pipeline_error")
         except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
             local = {"skipped": True, "reason": "local_cycle_error", "error": str(error)[:500]}
