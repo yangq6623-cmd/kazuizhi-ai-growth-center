@@ -2,6 +2,7 @@
 
 日期：2026-10-23  
 基线：已安装 #860，Commit `9f479cdcefcc1de1db222a65e4a5fce812487cd9`  
+修复分支：`codex/860-seo-publication-closure`，PR [#34](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/pull/34)  
 范围：只处理 SEO 新独立 Asset 从 `QC_PASSED` 到真实发布与搜索提交的阻塞。
 
 ## 1. 现场目标资产
