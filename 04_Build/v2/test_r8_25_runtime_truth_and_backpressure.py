@@ -55,8 +55,9 @@ def run() -> None:
     r7 = read("r7.js")
     assert "let r7LoadPromise=null" in r7
     assert "if(r7LoadPromise)return r7LoadPromise" in r7
-    assert "const [jobs,engine]=await Promise.all" in r7
-    assert "const [agents,audit]=await Promise.all" in r7
+    assert "await r7Api('/api/r7/ui-snapshot')" in r7
+    assert "const [jobs,engine]=await Promise.all" not in r7
+    assert "const [agents,audit]=await Promise.all" not in r7
     assert "Promise.all([api('/api/r7/jobs'),api('/api/r7/agents'),api('/api/r7/engine')" not in r7
 
     operational = read("operational.js")

@@ -14,6 +14,11 @@
     #bridge-recovery-detail{margin-top:8px;padding:9px 11px;border-radius:9px;background:#f6f8fc;color:#5d6b80;font-size:11px;line-height:1.55;word-break:break-all}
     #bridge-recovery-detail.warning{background:#fff7e8;color:#8b641f}
     #bridge-recovery-detail.ready{background:#edf9f2;color:#276948}
+    #bridge-command-preview{margin-top:8px;padding:10px 12px;border-radius:9px;display:grid;gap:7px;font-size:11px}
+    #bridge-command-preview.warning{background:#fff7e8;color:#735315}#bridge-command-preview.ready{background:#edf9f2;color:#276948}
+    #bridge-command-preview>div{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(240px,1.6fr) minmax(120px,.7fr);gap:9px;padding-top:7px;border-top:1px solid rgba(100,116,139,.18)}
+    #bridge-command-preview code,#bridge-command-preview small{overflow-wrap:anywhere}
+    #bridge-command-preview p{margin:0;color:#64748b}
     #bridge-panel.bridge-focus{animation:bridgeFocus 1.2s ease}
     @keyframes bridgeFocus{0%{box-shadow:0 0 0 0 rgba(49,104,232,.35)}50%{box-shadow:0 0 0 7px rgba(49,104,232,.12)}100%{box-shadow:none}}
     @media(max-width:1120px){#dashboard-bridge-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -121,7 +126,7 @@
         if (action === 'report') return reportFromDashboard();
         if (action === 'bridge') return waitForBridgePanel('已打开双向运营桥设置');
         if (action === 'commands') {
-          try { await syncWithRecovery(card); } catch (_) {}
+          await waitForBridgePanel('已打开同步目录指令箱的只读预览；确认后请使用独立的“立即同步”按钮');
           return;
         }
         if (action === 'offline') {
@@ -149,7 +154,7 @@
     node.innerHTML = `
       <div class="ai-role ai-role-action bridge-dashboard-action ${connected?'is-ready':''}" role="button" tabindex="0" data-bridge-action="report"><span>报</span><div><strong>本机上报</strong><small>${esc(bridge.last_report_at?'最近 '+bridgeTime(bridge.last_report_at):'等待首次同步')}</small><em class="bridge-card-action">${connected?'立即上报 →':'先恢复连接 →'}</em></div><i class="${connected?'ready':'waiting'}">${connected?'可上报':'本地'}</i></div>
       <div class="ai-role ai-role-action bridge-dashboard-action ${connected?'is-ready':degraded?'is-warning':''}" role="button" tabindex="0" data-bridge-action="bridge"><span>云</span><div><strong>双向运营桥</strong><small>${esc(bridge.message)}</small><em class="bridge-card-action">配置 / 检查同步 →</em></div><i class="${connected?'ready':'waiting'}">${esc(bridge.status_label)}</i></div>
-      <div class="ai-role ai-role-action bridge-dashboard-action ${bridge.pending_commands?'is-warning':''}" role="button" tabindex="0" data-bridge-action="commands"><span>令</span><div><strong>AI 指令箱</strong><small>${esc(String(bridge.pending_commands||0))} 条等待导入</small><em class="bridge-card-action">立即同步 / 查看 →</em></div><i class="${bridge.pending_commands?'waiting':'ready'}">${bridge.pending_commands?'待处理':'正常'}</i></div>
+      <div class="ai-role ai-role-action bridge-dashboard-action ${bridge.pending_commands?'is-warning':''}" role="button" tabindex="0" data-bridge-action="commands"><span>令</span><div><strong>同步目录指令箱（旧桥）</strong><small>${esc(String(bridge.pending_commands||0))} 条等待导入</small><em class="bridge-card-action">只读查看 →</em></div><i class="${bridge.pending_commands?'waiting':'ready'}">${bridge.pending_commands?'待核对':'正常'}</i></div>
       <div class="ai-role ai-role-action bridge-dashboard-action is-ready" role="button" tabindex="0" data-bridge-action="offline"><span>离</span><div><strong>离线运行</strong><small>云端不可用时不停止本地已批准任务</small><em class="bridge-card-action">查看本地任务 →</em></div><i class="ready">${esc(bridge.operating_mode_label)}</i></div>`;
     bindDashboardBridgeActions(node, bridge);
   };
@@ -181,6 +186,17 @@
     if (connected) detail.textContent = `当前同步目录：${root || '已连接'}。可直接点击“立即同步”或“立即上报”。`;
     else if (root) detail.textContent = `已保存同步目录：${root}。${bridge?.last_error ? '最近错误：' + bridge.last_error + '。' : ''} 可点击“重新连接并同步”恢复。`;
     else detail.textContent = '尚未保存同步目录。请填写 Google Drive、OneDrive 或其它 Windows 本地同步目录后连接。';
+    const preview = Array.isArray(bridge?.pending_command_preview) ? bridge.pending_command_preview : [];
+    let previewNode = document.getElementById('bridge-command-preview');
+    if (!previewNode) {
+      previewNode = document.createElement('div');
+      previewNode.id = 'bridge-command-preview';
+      detail.insertAdjacentElement('afterend', previewNode);
+    }
+    previewNode.className = preview.length ? 'bridge-command-preview warning' : 'bridge-command-preview ready';
+    previewNode.innerHTML = preview.length
+      ? `<b>等待导入（只读）</b>${preview.map(item=>`<div><code>${esc(item.command_id||'身份缺失')}</code><span>${esc(item.kind||'unknown')} · ${esc(item.title||'无标题')} · ${esc(item.status||'pending_import')}</span><small>${esc(item.source_file||'')}</small></div>`).join('')}<p>查看不会导入；仅点击“立即同步”才执行去重、转换与回执写入。</p>`
+      : '<b>同步目录指令箱</b><span>当前没有等待导入的文件。</span>';
     const sync = document.getElementById('sync-bridge');
     if (sync && !sync.dataset.recoveryBound) {
       const clone = sync.cloneNode(true);

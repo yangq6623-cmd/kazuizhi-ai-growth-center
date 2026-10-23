@@ -15,9 +15,9 @@
   function busState(bus) {
     if (bus?.configured && !bus?.last_error) {
       return {
-        text: bus.last_sync_at ? '已配置 · 已同步' : '已配置 · 等待首次同步',
+        text: bus.last_success_at ? '已配置 · 已同步' : '已配置 · 等待首次成功同步',
         tone: 'ok',
-        short: bus.last_sync_at ? '已同步' : '已配置',
+        short: bus.last_success_at ? '已同步' : '待首次成功同步',
       };
     }
     if (bus?.configured && bus?.last_error) {
@@ -133,8 +133,8 @@
     if (copy) {
       if (bus?.configured) {
         copy.textContent = bus?.last_error
-          ? '私有控制总线已配置但同步异常：需要恢复后才能接收新的 ChatGPT 计划。系统仅继续已验证回执的本地任务；不自动发布、提交或产生外部结果。'
-          : '日常主控采用“普通 ChatGPT → 私有异步控制总线 → 本机 Mission → Receipt 回流”。实时 ChatGPT 通道只用于同机即时指令；Work/Codex 只用于软件检查、修复和升级。';
+          ? `私有控制总线最近尝试失败（${bus.last_attempt_at||'时间未知'}）：${String(bus.last_error).slice(0,180)}。最近成功：${bus.last_success_at||'尚无可验证记录'}。系统仅继续已验证回执的本地任务。`
+          : `日常主控采用“普通 ChatGPT → 私有异步控制总线 → 本机 Mission → Receipt 回流”。最近成功：${bus.last_success_at||'等待首次成功同步'}。`;
       } else {
         copy.textContent = '本地自治已经与实时 ChatGPT 解耦：已批准 Mission 可继续运行。异步控制总线代码已就绪，激活时必须使用独立 PRIVATE GitHub 仓库；实时 ChatGPT 通道保持可选。';
       }

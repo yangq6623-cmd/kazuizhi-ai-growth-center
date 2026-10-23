@@ -308,11 +308,9 @@ async function loadR7(){
   if(r7LoadPromise)return r7LoadPromise;
   r7LoadPromise=(async()=>{try{
     applyAutonomyCopy();
-    // Keep no more than two local requests active at once. Five parallel
-    // requests plus iframe polling previously starved lazy module downloads.
-    const [jobs,engine]=await Promise.all([r7Api('/api/r7/jobs'),r7Api('/api/r7/engine')]);
-    const [agents,audit]=await Promise.all([r7Api('/api/r7/agents'),r7Api('/api/r7/audit')]);
-    const routes=await r7Api('/api/r7/model-routes');
+    const snapshot=await r7Api('/api/r7/ui-snapshot');
+    const jobs=snapshot.jobs||{},engine=snapshot.engine||{},agents=snapshot.agents||{},audit=snapshot.audit||{};
+    const routes=snapshot.routes||{routes:[]};
     r7Jobs=jobs.items||[];
     renderTodayCommand(engine);
     renderR7Jobs(r7Jobs);

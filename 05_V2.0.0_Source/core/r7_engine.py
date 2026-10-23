@@ -384,3 +384,40 @@ def engine_status():
         "human_interventions": human_interventions().get("items", [])[:20],
         "learning": learning_status(),
     }
+
+
+def ui_snapshot(limit=200):
+    """Return one internally consistent owner snapshot for the R7 page.
+
+    The old UI opened five independent HTTP requests. Their ten-second abort
+    timers started while some requests were still waiting in the shared browser
+    queue, so a healthy worker could be reported as stopped.
+    """
+    with LOCK:
+        items = list(_store()["items"])
+        audit = audit_history()
+    try:
+        size = max(1, min(int(limit or 200), 1000))
+    except (TypeError, ValueError):
+        size = 200
+    states = ("awaiting_approval", "human_required", "queued", "running", "completed", "failed", "cancelled")
+    engine = {
+        "jobs": {state: sum(x.get("state") == state for x in items) for state in states},
+        "ledger_total": len(items), "display_window_limit": size,
+        "next_local_job": next((x["title"] for x in items if x.get("state") == "queued" and x.get("mode") == "local"), None),
+        "migration": read_json(MIGRATION, {"result": "pending"}),
+        "audit_integrity": audit["integrity"],
+        "autonomy_policy": "非资金任务自动执行；资金事项仅记录并交平台人工处理",
+        "human_interventions": human_interventions().get("items", [])[:20],
+        "learning": learning_status(),
+    }
+    return {
+        "generated_at": now_iso(), "source": "r7_consistent_owner_snapshot",
+        "jobs": {
+            "items": items[:size], "count": len(items), "ledger_count": len(items),
+            "window": {"offset": 0, "limit": size, "returned": min(size, len(items))},
+            "execution": "non_financial_autonomous_financial_platform_manual",
+        },
+        "engine": engine, "agents": agent_registry(), "audit": audit,
+    }
+
