@@ -269,6 +269,98 @@ def rehydrate_verified_publications(receipts):
         for row in data["opportunities"]
         if isinstance(row, dict)
     }
+    # A deploy Receipt is durable even when an interrupted/concurrent ledger
+    # write loses the richer SEO row. The GEO growth ledger still owns the
+    # exact region/service/keyword tuple and the revision that was deployed.
+    # Recover only when that tuple hashes back to the same Asset ID.
+    growth = read_json("geo_validation/growth_orchestrator.json", {"opportunities": []})
+    growth_rows = growth.get("opportunities") if isinstance(growth, dict) else []
+    growth_by_asset = {}
+    growth_by_revision = {}
+    for row in growth_rows or []:
+        if not isinstance(row, dict):
+            continue
+        region = str(row.get("region") or "").strip()
+        service = str(row.get("service") or "").strip()
+        keyword = str(row.get("keyword") or "").strip()
+        asset_id = str(row.get("asset_id") or "").strip()
+        if not all((region, service, keyword, asset_id)):
+            continue
+        if _stable_id("SEO", region, service, keyword) != asset_id:
+            continue
+        growth_by_asset[asset_id] = row
+        revision_id = str(row.get("content_revision_id") or row.get("id") or "").strip()
+        if revision_id:
+            growth_by_revision[revision_id] = row
+
+    receipt_by_asset = {}
+    for receipt in list(receipts or []):
+        if not isinstance(receipt, dict):
+            continue
+        asset_id = str(receipt.get("asset_id") or "").strip()
+        if asset_id and bool((receipt.get("verification") or {}).get("ok")):
+            receipt_by_asset.setdefault(asset_id, receipt)
+
+    def recovery_source(asset_id, receipt=None):
+        receipt = receipt if isinstance(receipt, dict) else {}
+        snapshot = receipt.get("asset_snapshot") if isinstance(receipt.get("asset_snapshot"), dict) else {}
+        candidates = [
+            (snapshot, "verified_deploy_receipt_asset_snapshot"),
+            (growth_by_asset.get(asset_id) or {}, "geo_growth_asset_link"),
+            (
+                growth_by_revision.get(str(
+                    receipt.get("content_revision_id") or receipt.get("growth_action_id") or ""
+                )) or {},
+                "geo_growth_revision_link",
+            ),
+            (opportunities.get(asset_id) or {}, "seo_opportunity_link"),
+        ]
+        for source, label in candidates:
+            region = str(source.get("region") or "").strip()
+            service = str(source.get("service") or "").strip()
+            keyword = str(source.get("keyword") or "").strip()
+            if not all((region, service, keyword)):
+                continue
+            if _stable_id("SEO", region, service, keyword) != asset_id:
+                continue
+            return source, label
+        return {}, ""
+
+    repaired = []
+    for asset in data["assets"]:
+        if not isinstance(asset, dict):
+            continue
+        asset_id = str(asset.get("id") or "").strip()
+        keyword = str(asset.get("keyword") or "").strip()
+        machine_keyword = bool(
+            not keyword
+            or keyword == str(asset.get("slug") or "").strip()
+            or re.fullmatch(r"[0-9a-fA-F]{12,64}", keyword)
+        )
+        if not asset_id or not (
+            machine_keyword or not asset.get("region") or not asset.get("service")
+        ):
+            continue
+        source, source_label = recovery_source(asset_id, receipt_by_asset.get(asset_id))
+        if not source:
+            asset["metadata_recovery_state"] = "waiting_exact_source"
+            continue
+        asset.update({
+            "opportunity_id": str(source.get("seo_opportunity_id") or source.get("id") or asset.get("opportunity_id") or ""),
+            "region": str(source.get("region") or ""),
+            "service": str(source.get("service") or ""),
+            "keyword": str(source.get("keyword") or ""),
+            "intent": str(source.get("intent") or asset.get("intent") or "GEO运营优化"),
+            "priority": str(source.get("priority") or asset.get("priority") or ""),
+            "page_type": _page_type_for(source),
+            "metadata_recovery_state": "exact_source_matched",
+            "metadata_recovery_source": source_label,
+            "metadata_recovered_at": now_iso(),
+            # Preserve the public URL and Receipt truth, but require a fresh
+            # verified content revision before declaring the repair public.
+            "metadata_repair_pending": _stage_at_least(asset, "PUBLISHED"),
+        })
+        repaired.append(asset_id)
     restored = []
     seen = set()
     for receipt in list(receipts or []):
@@ -283,6 +375,9 @@ def rehydrate_verified_publications(receipts):
         ):
             continue
         opportunity = opportunities.get(asset_id) or {}
+        source, source_label = recovery_source(asset_id, receipt)
+        if source:
+            opportunity = source
         path = urlsplit(public_url).path.rstrip("/")
         slug = path.rsplit("/", 1)[-1].removesuffix(".html") or asset_id.lower()
         published_at = str(receipt.get("created_at") or verification.get("checked_at") or now_iso())
@@ -292,7 +387,7 @@ def rehydrate_verified_publications(receipts):
         ).hexdigest()[:16].upper()
         data["assets"].append({
             "id": asset_id,
-            "opportunity_id": opportunity.get("id") or "",
+            "opportunity_id": opportunity.get("seo_opportunity_id") or opportunity.get("id") or "",
             "region": opportunity.get("region") or "",
             "service": opportunity.get("service") or "",
             "keyword": keyword,
@@ -315,6 +410,10 @@ def rehydrate_verified_publications(receipts):
             "rankings": [],
             "geo_mentions": [],
             "conversions": [],
+            "metadata_recovery_state": "exact_source_matched" if source else "waiting_exact_source",
+            "metadata_recovery_source": source_label,
+            "metadata_recovered_at": now_iso() if source else "",
+            "metadata_repair_pending": bool(source),
             "events": [{
                 "at": published_at,
                 "stage": "PUBLISHED",
@@ -334,9 +433,20 @@ def rehydrate_verified_publications(receipts):
         restored.append(asset_id)
     if restored:
         _audit_event(data, "verified_publication_ledger_rehydrated", {"asset_ids": restored})
+    if repaired:
+        _audit_event(data, "verified_asset_metadata_recovered", {
+            "asset_ids": repaired,
+            "truth": "仅恢复通过Asset ID指纹校验的GEO/SEO元数据；原URL、状态和Receipt不变。",
+        })
+    if restored or repaired:
         data["daily_runs"] = _reconciled_daily_runs(data)
         _save(data)
-    return {"restored": restored, "count": len(restored)}
+    return {
+        "restored": restored,
+        "count": len(restored),
+        "metadata_repaired": repaired,
+        "metadata_repaired_count": len(repaired),
+    }
 
 
 def ensure_baseline():
@@ -957,7 +1067,12 @@ def refresh_legacy_staging(limit=10):
             str(asset.get("slug") or "") in seo_content_quality.TARGETED_QUALITY_REFRESH_SLUGS
             and asset.get("content_quality_revision") != seo_content_quality.CONTENT_QUALITY_REVISION
         )
-        if current_template == PUBLIC_TEMPLATE_VERSION and not targeted_quality_refresh:
+        targeted_metadata_repair = bool(
+            asset.get("metadata_repair_pending")
+            and not asset.get("metadata_repair_staged_at")
+            and asset.get("metadata_recovery_state") == "exact_source_matched"
+        )
+        if current_template == PUBLIC_TEMPLATE_VERSION and not targeted_quality_refresh and not targeted_metadata_repair:
             continue
         # Downgrade protection: a stale executable must not rebuild a page
         # whose durable ledger already records a newer R8 template revision.
@@ -1001,6 +1116,12 @@ def refresh_legacy_staging(limit=10):
             "content_quality_revision": seo_content_quality.CONTENT_QUALITY_REVISION,
             "republish_pending": _stage_at_least(asset, "PUBLISHED"),
         })
+        if targeted_metadata_repair:
+            asset["content_revision_id"] = _stable_id(
+                "SEO-META", asset.get("id"), asset.get("region"),
+                asset.get("service"), asset.get("keyword"),
+            )
+            asset["metadata_repair_staged_at"] = refresh_at
         if targeted_quality_refresh:
             quality_revision_id = "QUALITY-" + hashlib.sha256(
                 (str(asset.get("id") or "") + "|" + seo_content_quality.CONTENT_QUALITY_REVISION).encode("utf-8")
@@ -1050,6 +1171,9 @@ def record_asset_republished(asset_id, payload=None):
     asset["public_template_version"] = PUBLIC_TEMPLATE_VERSION
     asset["last_republished_at"] = event["at"]
     asset["updated_at"] = event["at"]
+    if asset.get("metadata_repair_pending"):
+        asset["metadata_repair_pending"] = False
+        asset["metadata_repair_completed_at"] = event["at"]
     _audit_event(data, "asset_content_republished", {
         "asset_id": asset_id,
         "stage_preserved": asset.get("stage"),
@@ -1321,6 +1445,7 @@ def dashboard():
             "today_generated_new": generation_today["new_count"],
             "today_assets_updated": generation_today["updated_count"],
             "today_published_verified": len(published_today),
+            "today_published_scope": "seo_asset_first_publication",
             "today_submitted_receipted": len(submitted_today),
             "public_pages": published,
             "submitted_urls": submitted,

@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -17,6 +17,7 @@ on:
       - 'docs/*857*'
       - 'docs/*859*'
       - 'docs/*860*'
+      - 'docs/*872*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     # #857 is intentionally reviewed against the exact #856 source branch;
@@ -35,6 +36,7 @@ on:
       - 'docs/*857*'
       - 'docs/*859*'
       - 'docs/*860*'
+      - 'docs/*872*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -161,6 +163,14 @@ jobs:
           Write-Host '#862 synthetic LOCALAPPDATA only; no external Decision Pack, import, publish or paid API call'
           python 04_Build/v2/test_862_control_bus_r7_read_reliability.py
           if ($LASTEXITCODE -ne 0) { throw '#862 control-bus and R7 read reliability acceptance failed' }
+      - name: "#872 exact GEO reconciliation and SEO metadata recovery"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#872 synthetic LOCALAPPDATA only; no external AI send, publication, search submission or production mutation'
+          python 04_Build/v2/test_872_geo_reconciliation_claim_closure.py
+          if ($LASTEXITCODE -ne 0) { throw '#872 GEO exact reconciliation acceptance failed' }
+          python 04_Build/v2/test_872_seo_metadata_recovery.py
+          if ($LASTEXITCODE -ne 0) { throw '#872 SEO metadata recovery acceptance failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

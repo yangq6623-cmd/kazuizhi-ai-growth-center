@@ -533,6 +533,20 @@ def validate_public_content(asset: dict, source: Path) -> dict:
         return {"ok": False, "reasons": ["staging_read_failed:" + type(error).__name__]}
 
 
+def asset_receipt_snapshot(asset: dict) -> dict:
+    """Persist only public, non-secret identity fields needed for recovery."""
+    allowed = (
+        "opportunity_id", "region", "service", "keyword", "intent", "priority",
+        "page_type", "slug", "title", "phase3_source", "phase3_source_ref",
+        "growth_action_id", "content_revision_id",
+    )
+    return {
+        key: str((asset or {}).get(key) or "")[:300]
+        for key in allowed
+        if str((asset or {}).get(key) or "").strip()
+    }
+
+
 def deploy_pending(limit: int = 10) -> dict:
     data = _load()
     state = status()
@@ -612,6 +626,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "attachments": attachment_receipts,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "asset_snapshot": asset_receipt_snapshot(asset),
                 "created_at": now_iso(),
             }
             if attachment_receipts:
