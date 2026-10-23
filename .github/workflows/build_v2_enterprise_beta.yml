@@ -361,7 +361,8 @@ jobs:
           Copy-Item docs/SEO_GEO_854_CLOSED_LOOP_FIX_AND_ACCEPTANCE_20261021.md installer_output_v2/SEO_GEO_854_CLOSED_LOOP_REPORT.md
           Copy-Item docs/SEO_GEO_857_CONTINUOUS_CLOSURE_FIX_AND_ACCEPTANCE_20261021.md installer_output_v2/SEO_GEO_857_ACCEPTANCE_REPORT.md
           Copy-Item docs/SEO_GEO_859_CLOSED_LOOP_REPAIR_AND_ACCEPTANCE_20261022.md installer_output_v2/SEO_GEO_859_ACCEPTANCE_REPORT.md
-          Copy-Item docs/SEO_860_PUBLICATION_CLOSURE_FIX_AND_ACCEPTANCE_20261023.md installer_output_v2/SEO_860_PUBLICATION_CLOSURE_REPORT.md\n          Copy-Item docs/PLATFORM_860_LEGACY_ISSUES_RECONCILIATION_20261023.md installer_output_v2/PLATFORM_860_LEGACY_ISSUES_REPORT.md
+          Copy-Item docs/SEO_860_PUBLICATION_CLOSURE_FIX_AND_ACCEPTANCE_20261023.md installer_output_v2/SEO_860_PUBLICATION_CLOSURE_REPORT.md
+          Copy-Item docs/PLATFORM_860_LEGACY_ISSUES_RECONCILIATION_20261023.md installer_output_v2/PLATFORM_860_LEGACY_ISSUES_REPORT.md
           Copy-Item 04_Build/v2/Export-Kazuizhi859Diagnostics.ps1 installer_output_v2/Export-Kazuizhi859Diagnostics.ps1
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
       - name: Package GEO Chrome extension 2.2.2.854
