@@ -244,6 +244,11 @@ def _record_submission(asset: dict, engine: str, receipt_id: str) -> None:
 
 def _public_assets() -> list[dict]:
     snap = dashboard()
+    opportunities = {
+        str(row.get("id") or ""): row
+        for row in (snap.get("opportunities") or [])
+        if isinstance(row, dict) and row.get("id")
+    }
     assets = []
     for row in snap.get("assets", []):
         if not isinstance(row, dict):
@@ -253,7 +258,7 @@ def _public_assets() -> list[dict]:
             continue
         url = str(row.get("public_url") or "").strip()
         if url.startswith("https://"):
-            assets.append(row)
+            assets.append(seo_public_deployer.resolve_publication_scope(row, opportunities))
     return assets
 
 
