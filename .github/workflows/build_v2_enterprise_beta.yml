@@ -155,6 +155,12 @@ jobs:
           Write-Host '#860 production-derived ledger copy and HTTP doubles only; no live publication or search submission'
           python 04_Build/v2/test_860_seo_publication_closure.py
           if ($LASTEXITCODE -ne 0) { throw '#860 SEO publication closure acceptance failed' }
+      - name: "#862 async control truth, read-only inbox and large R7 snapshot"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#862 synthetic LOCALAPPDATA only; no external Decision Pack, import, publish or paid API call'
+          python 04_Build/v2/test_862_control_bus_r7_read_reliability.py
+          if ($LASTEXITCODE -ne 0) { throw '#862 control-bus and R7 read reliability acceptance failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

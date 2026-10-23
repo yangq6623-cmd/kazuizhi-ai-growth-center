@@ -14,7 +14,7 @@ from core.decision_center import decision_snapshot, refresh_decision_center
 from core.storage import now_iso
 from core.r7_engine import (
     agent_registry, audit_history, command as job_command, create_job,
-    engine_status, list_jobs, run_due_jobs,
+    engine_status, list_jobs, run_due_jobs, ui_snapshot as r7_ui_snapshot,
 )
 from core.r8_control import (
     control_status, register_account, remove_account, social_center_status,
@@ -238,6 +238,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return list_bridge_commands()
         if path == "/api/r7/jobs":
             return list_jobs()
+        if path == "/api/r7/ui-snapshot":
+            payload = r7_ui_snapshot()
+            payload["routes"] = model_routes()
+            return payload
         if path == "/api/r7/agents":
             return agent_registry()
         if path == "/api/r7/engine":

@@ -191,18 +191,37 @@ def disable_bridge():
     return bridge_status()
 
 
-def _pending_count(root):
+def _pending_preview(root, limit=20):
     commands = read_json(COMMANDS_PATH, {"items": {}}).get("items", {})
-    count = 0
+    items = []
     for path in (root / "inbox").glob("*.json"):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             command_id = str(payload.get("id") or "")
-        except (OSError, ValueError, TypeError):
-            command_id = ""
-        if command_id not in commands:
-            count += 1
-    return count
+            if command_id in commands:
+                continue
+            items.append({
+                "command_id": command_id or "invalid-" + path.stem[:50],
+                "source_file": path.name,
+                "kind": str(payload.get("kind") or "manual_task")[:80],
+                "title": str(payload.get("title") or "")[:160],
+                "due_at": str(payload.get("due_at") or "")[:80],
+                "status": "pending_import" if COMMAND_ID.fullmatch(command_id) else "invalid_identity",
+            })
+        except (OSError, ValueError, TypeError) as error:
+            items.append({
+                "command_id": "invalid-" + path.stem[:50], "source_file": path.name,
+                "kind": "unknown", "title": "", "due_at": "",
+                "status": "unreadable", "error": str(error)[:160],
+            })
+    items.sort(key=lambda item: item.get("source_file") or "")
+    if limit is None:
+        return items
+    return items[:max(1, min(int(limit or 20), 100))]
+
+
+def _pending_count(root):
+    return len(_pending_preview(root, limit=None))
 
 
 def bridge_status():
@@ -244,6 +263,7 @@ def bridge_status():
         "last_sync_at": state.get("last_sync_at"), "last_report_at": state.get("last_report_at"),
         "last_error": error or state.get("last_error"),
         "pending_commands": _pending_count(root) if connected else 0,
+        "pending_command_preview": _pending_preview(root) if connected else [],
         "offline_policy": "ChatGPT/云端不可用时继续执行最后已批准的本地低风险任务，并积累结果等待下次同步。",
     }
 

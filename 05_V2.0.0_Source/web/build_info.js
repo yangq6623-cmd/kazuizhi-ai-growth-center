@@ -30,7 +30,8 @@
       url.pathname==='/api/r8-24/geo-growth/fast-health'||
       url.pathname==='/api/r8-24/geo-growth/http-health'||
       url.pathname==='/api/r8-24/geo-growth/liveness'||
-      url.pathname==='/api/r8-27/geo-browser-agent/status'
+      url.pathname==='/api/r8-27/geo-browser-agent/status'||
+      url.pathname==='/api/r7/ui-snapshot'
     ))return null;
     const signal=init?.signal||input?.signal||null;
     let priority=2;

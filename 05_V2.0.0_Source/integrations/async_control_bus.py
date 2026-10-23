@@ -304,11 +304,19 @@ def status() -> dict:
     config = _config()
     state = read_json(STATE_FILE, {})
     state = state if isinstance(state, dict) else {}
+    # ``last_sync_at`` was historically written for both successful and failed
+    # attempts. Keep it for old readers, but expose unambiguous timestamps.
+    legacy_sync = state.get("last_sync_at")
+    last_success = state.get("last_success_at")
+    if not last_success and legacy_sync and not state.get("last_error"):
+        last_success = legacy_sync
+    last_attempt = state.get("last_attempt_at") or legacy_sync
     return {
         "available": True, "role": "primary_async_owner_control", "transport": TRANSPORT,
         "configured": config["configured"], "enabled": config["enabled"], "repo": config["repo"] or None,
         "branch": config["branch"], "poll_seconds": config["poll_seconds"], "private_repo_required": True,
-        "local_autonomy": state.get("autonomy_state") or "RUNNING", "last_sync_at": state.get("last_sync_at"),
+        "local_autonomy": state.get("autonomy_state") or "RUNNING", "last_sync_at": legacy_sync,
+        "last_success_at": last_success, "last_attempt_at": last_attempt,
         "last_decision_pack_id": state.get("last_decision_pack_id"), "last_command_id": state.get("last_command_id"),
         "last_receipt_id": state.get("last_receipt_id"), "last_applied_at": state.get("last_applied_at"),
         "last_error": state.get("last_error"), "site_tools_role": "optional_realtime_helper",
@@ -333,7 +341,11 @@ def sync_once(client: GitHubControlBusClient | None = None) -> dict:
             receipt = result["receipt"]
             current.write_json(f"receipts/{receipt['command_id']}.json", receipt, f"{receipt['receipt_id']}: {receipt['status']}")
             processed.append({"command_id": receipt["command_id"], "receipt_id": receipt["receipt_id"], "status": receipt["status"], "idempotent": result["idempotent"]})
-        state.update({"last_sync_at": now_iso(), "last_error": None, "autonomy_state": "RUNNING", "processed_last_sync": len(processed)})
+        stamp = now_iso()
+        state.update({
+            "last_sync_at": stamp, "last_success_at": stamp, "last_attempt_at": stamp,
+            "last_error": None, "autonomy_state": "RUNNING", "processed_last_sync": len(processed),
+        })
         write_json(STATE_FILE, state)
         current.write_json("state/system_health.json", {
             "schema": "kz.control-bus-state.v1", "updated_at": state["last_sync_at"], "local_autonomy": "RUNNING",
@@ -343,7 +355,11 @@ def sync_once(client: GitHubControlBusClient | None = None) -> dict:
         }, "KZ control bus state sync")
         return {"synced": True, "configured": True, "processed": processed, "status": status()}
     except (OSError, RuntimeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
-        state.update({"last_sync_at": now_iso(), "last_error": str(error)[:800], "autonomy_state": "RUNNING"})
+        # A failed poll is an attempt, not a successful synchronization event.
+        state.update({
+            "last_attempt_at": now_iso(), "last_error": str(error)[:800],
+            "autonomy_state": "RUNNING",
+        })
         write_json(STATE_FILE, state)
         return {"synced": False, "configured": True, "reason": "sync_failed", "error": str(error), "status": status()}
 
