@@ -277,7 +277,7 @@
         '今日真实工作：后台快照尚未完成；不会把尚未核验的数据填写为0。':
         snapshotStale?
         '今日真实工作：历史快照 '+(data.snapshot_age_seconds??'未知')+' 秒前；待后台恢复后核实执行、发布与回执。':
-        `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · 取得公网回执的发布 ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 运营复测 ${retestText} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
+        `今日真实工作：新建机会 ${Number(today.new_opportunities||0)} · GEO机会发布事件URL（去重） ${Number(today.verified_publications||0)} · 待发布 ${waiting} · 运营复测 ${retestText} · 上次调度 ${last} · ${fresh?'15分钟内有执行记录':'未验证近期执行（检查调度/阻塞）'}${today.last_run_error?' · 错误：'+today.last_run_error:''}`;
       daily.style.color=fresh?'#49667e':'#986000';
     }
     const archive=data.historical_retest||{};
@@ -731,7 +731,7 @@
         kpiBox.insertAdjacentElement('afterend',diagnosticBox);
       }
       const queuedTaskText=(route.queued_tasks||[]).map(x=>
-        `${x.task_id||'—'} · ${x.provider||'未指定'}/${x.method||'未指定'}/${x.expected_platform||'无网页平台'} · ${x.executor||'无执行器'} · ${x.route_state||'未知'} · ${x.wait_reason||'未说明'}`
+        `${x.task_id||'—'} · ${x.provider||'未指定'}/${x.method||'未指定'}/${x.expected_platform||'无网页平台'} · ${x.executor||'无执行器'} · ${x.route_state||'未知'} · ${x.wait_reason||'未说明'} · Run ${x.run_id||'—'} · Attempt ${x.attempt_id||'—'} · 对账 ${x.reconciliation_disposition||'未检查'}${x.matching_receipt_count?`（匹配回执 ${x.matching_receipt_count}）`:''}`
       ).join('\n');
       if(diagnosticBox)diagnosticBox.textContent=
         '队列路由：'+(route.queued_by_route||[]).map(x=>`${x.provider}/${x.method}/${x.expected_platform||'未绑定网页'} ${x.count}条`).join('；')+

@@ -660,9 +660,58 @@ def _browser_claim_blocker(item, requested_platform="", *, strict=True, fresh_on
 
 def claim_next_task(executor=None):
     """Atomically reserve one real task; competing workers must not double claim."""
+    _reconcile_authoritative_receipts_before_browser_claim(executor)
     from core.storage import _JSON_IO_LOCK
     with _JSON_IO_LOCK:
         return _claim_next_task_locked(executor)
+
+
+def _reconcile_authoritative_receipts_before_browser_claim(executor=None):
+    """Close an exact historical Receipt before considering a browser replay.
+
+    #859 introduced the strict Task/Question/Provider/Run/Attempt matcher, but
+    the live browser claim path only evaluated the no-replay blocker. A queued
+    row with one already-recorded authoritative Receipt could therefore remain
+    blocked until somebody called the reconciliation POST manually.
+
+    This hook is deliberately narrow: only a real, strict, fresh-only browser
+    worker can trigger it; only rows already blocked by a prior/uncertain
+    attempt are inspected; and the existing targeted reconciler may change
+    local linkage only when there is exactly one authoritative Receipt. It
+    never creates Evidence and never sends an external request.
+    """
+    executor = dict(executor or {})
+    if not (
+        executor.get("real_external")
+        and executor.get("strict_provider")
+        and executor.get("fresh_only")
+    ):
+        return {"requested": 0, "reconciled": 0, "new_external_requests": 0}
+    platform = str(executor.get("provider") or "").strip()
+    if not platform:
+        return {"requested": 0, "reconciled": 0, "new_external_requests": 0}
+    queue = _load_queue()
+    task_ids = []
+    reconcilable_blockers = {
+        "prior_external_attempt_requires_reconciliation",
+        "uncertain_external_result_requires_reconciliation",
+    }
+    for item in queue.get("tasks") or []:
+        if not isinstance(item, dict) or item.get("state") != "queued":
+            continue
+        if str(item.get("expected_platform") or "") != platform:
+            continue
+        blocker = _browser_claim_blocker(
+            item, platform, strict=True, fresh_only=True,
+        )
+        if blocker in reconcilable_blockers:
+            task_ids.append(str(item.get("task_id") or ""))
+    task_ids = [task_id for task_id in task_ids if task_id]
+    if not task_ids:
+        return {"requested": 0, "reconciled": 0, "new_external_requests": 0}
+    return targeted_receipt_reconciliation(
+        task_ids, apply=True, approved_by=CONTROLLER,
+    )
 
 
 def _quarantine_expired_leases(queue):
@@ -1703,9 +1752,23 @@ def _queue_diagnostics(tasks):
 
 
 def queue_summary():
-    tasks = _load_queue()["tasks"]
+    queue = _load_queue()
+    tasks = queue["tasks"]
     counts = Counter(item.get("state") or "unknown" for item in tasks)
     diagnostics = _queue_diagnostics(tasks)
+    queued_ids = [
+        str(item.get("task_id") or "") for item in tasks
+        if isinstance(item, dict) and item.get("state") == "queued" and item.get("task_id")
+    ]
+    preview_rows = _targeted_reconciliation_rows(
+        queue, _load_receipts(), queued_ids,
+    ) if queued_ids else []
+    preview_by_task = {row["task_id"]: row for row in preview_rows}
+    for detail in diagnostics["routing_diagnostics"]["queued_tasks"]:
+        preview = preview_by_task.get(str(detail.get("task_id") or ""), {})
+        detail["reconciliation_disposition"] = str(preview.get("disposition") or "")
+        detail["matching_receipt_count"] = int(preview.get("matching_receipt_count") or 0)
+        detail["matched_receipt_id"] = str(preview.get("matched_receipt_id") or "")
     return {
         "total": len(tasks),
         "queued": counts.get("queued", 0),
@@ -1715,6 +1778,13 @@ def queue_summary():
         "paused": counts.get("paused", 0),
         "authorization_required": counts.get("authorization_required", 0),
         **diagnostics,
+        "reconciliation_preview": {
+            "requested": len(queued_ids),
+            "applicable": sum(1 for row in preview_rows if row.get("can_apply")),
+            "rows": preview_rows,
+            "mutated": False,
+            "new_external_requests": 0,
+        },
         "tasks": tasks,
     }
 

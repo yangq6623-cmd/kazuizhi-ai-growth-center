@@ -127,6 +127,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "verification": verification,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "asset_snapshot": deployer.asset_receipt_snapshot(asset),
                 "created_at": now_iso(),
             }
             deployer._append_receipt(receipt)

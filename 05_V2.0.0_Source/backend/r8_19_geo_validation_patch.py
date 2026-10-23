@@ -366,7 +366,15 @@ def install():
             requested = []
             for value in query.get("task_id", []):
                 requested.extend(part.strip() for part in str(value).split(",") if part.strip())
-            handler._json_ok(geo_core.targeted_receipt_reconciliation(requested))
+            if not requested:
+                handler._json_ok({
+                    "requested": 0, "rows": [], "applicable": 0,
+                    "reconciled": 0, "mutated": False,
+                    "new_external_requests": 0, "new_evidence": 0,
+                    "error": "task_id_required",
+                })
+            else:
+                handler._json_ok(geo_core.targeted_receipt_reconciliation(requested))
             return
         if path == "/api/r8-19/geo/receipts":
             handler._json_ok({"receipts": receipts(query.get("limit", [200])[0])})

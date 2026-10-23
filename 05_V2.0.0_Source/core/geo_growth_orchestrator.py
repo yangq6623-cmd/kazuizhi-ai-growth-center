@@ -1209,6 +1209,7 @@ def fast_status():
             "date": today,
             "new_opportunities": len(new_today),
             "verified_publications": len(published_today_urls),
+            "publication_scope": "geo_opportunity_publication_event_unique_url",
             "published_urls": published_today_urls[:10],
             "last_run_at": last_run_at,
             "last_run_age_minutes": age_minutes,
