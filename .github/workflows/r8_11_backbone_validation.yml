@@ -1,0 +1,142 @@
+name: Validate R8-11 Mission Backbone
+
+on:
+  push:
+    branches: ['r8-11-*']
+    paths:
+      - '05_V2.0.0_Source/core/mission_ledger.py'
+      - '05_V2.0.0_Source/integrations/channel_registry.py'
+      - '05_V2.0.0_Source/integrations/channel_router.py'
+      - '05_V2.0.0_Source/integrations/social_session_probe.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
+      - '05_V2.0.0_Source/core/autonomous_ops.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
+      - '05_V2.0.0_Source/web/memory.js'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '04_Build/v2/test_r8_11_backbone.py'
+      - '04_Build/v2/test_r8_11_social_session_probe.py'
+      - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
+      - '04_Build/v2/test_r8_11_runtime_convergence_patch.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '.github/workflows/r8_11_backbone_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/core/mission_ledger.py'
+      - '05_V2.0.0_Source/integrations/channel_registry.py'
+      - '05_V2.0.0_Source/integrations/channel_router.py'
+      - '05_V2.0.0_Source/integrations/social_session_probe.py'
+      - '05_V2.0.0_Source/integrations/publish_dry_run_queue.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/promotion/publish_orchestrator.py'
+      - '05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py'
+      - '05_V2.0.0_Source/core/autonomous_ops.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/backend/r8_11_backbone_patch.py'
+      - '05_V2.0.0_Source/web/r8_11_backbone_ui.js'
+      - '05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js'
+      - '05_V2.0.0_Source/web/memory.js'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '04_Build/v2/test_r8_11_backbone.py'
+      - '04_Build/v2/test_r8_11_social_session_probe.py'
+      - '04_Build/v2/test_r8_11_publish_dry_run_queue.py'
+      - '04_Build/v2/test_r8_11_runtime_convergence_patch.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '.github/workflows/r8_11_backbone_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-backbone:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime dependency installation failed' }
+      - name: Verify existing private async owner control
+        run: python 04_Build/v2/test_r8_10_async_control_bus.py
+      - name: Verify concurrent Mission video idempotency
+        run: python 04_Build/v2/test_r8_10_video_idempotency.py
+      - name: Verify R8-11 Mission ledger and channel backflow
+        run: python 04_Build/v2/test_r8_11_backbone.py
+      - name: Verify real-device social session bridge
+        run: python 04_Build/v2/test_r8_11_social_session_probe.py
+      - name: Verify approved publish becomes truthful real-device dry run
+        run: python 04_Build/v2/test_r8_11_publish_dry_run_queue.py
+      - name: Verify restored Mission convergence and publish resume
+        run: python 04_Build/v2/test_r8_11_runtime_convergence_patch.py
+      - name: Compile R8-11 modules
+        run: |
+          python -m py_compile 05_V2.0.0_Source/core/mission_ledger.py
+          python -m py_compile 05_V2.0.0_Source/integrations/channel_registry.py
+          python -m py_compile 05_V2.0.0_Source/integrations/channel_router.py
+          python -m py_compile 05_V2.0.0_Source/integrations/social_session_probe.py
+          python -m py_compile 05_V2.0.0_Source/integrations/publish_dry_run_queue.py
+          python -m py_compile 05_V2.0.0_Source/promotion/publish_orchestrator.py
+          python -m py_compile 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py
+          python -m py_compile 05_V2.0.0_Source/backend/r8_11_backbone_patch.py
+          python -m py_compile 05_V2.0.0_Source/run.py
+          node --check 05_V2.0.0_Source/web/r8_11_backbone_ui.js
+          node --check 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js
+      - name: Verify no paid third-party token dependency and owner visibility
+        run: |
+          $registry = Get-Content 05_V2.0.0_Source/integrations/channel_registry.py -Raw
+          @('no_paid_third_party_token_required','paid_token_required','真实安卓','human_login') | ForEach-Object {
+            if (-not $registry.Contains($_)) { throw "Missing R8-11 channel policy: $_" }
+          }
+          $router = Get-Content 05_V2.0.0_Source/integrations/channel_router.py -Raw
+          @('ready_for_dry_run','ready_for_content_route','paid_token_required','真实发布') | ForEach-Object {
+            if (-not $router.Contains($_)) { throw "Missing R8-11 route contract: $_" }
+          }
+          $probe = Get-Content 05_V2.0.0_Source/integrations/social_session_probe.py -Raw
+          @('com.ss.android.ugc.aweme','device_probe','uiautomator','publishes_content','needs_human') | ForEach-Object {
+            if (-not $probe.Contains($_)) { throw "Missing truthful social session probe contract: $_" }
+          }
+          $dryrun = Get-Content 05_V2.0.0_Source/integrations/publish_dry_run_queue.py -Raw
+          @('douyin_publish_dry_run','final_publish_allowed','publishes_content','Content ID + URL') | ForEach-Object {
+            if (-not $dryrun.Contains($_)) { throw "Missing truthful dry-run contract: $_" }
+          }
+          $convergence = Get-Content 05_V2.0.0_Source/promotion/r8_11_runtime_convergence_patch.py -Raw
+          @('can_resume_publish','等待账号','recover_if_empty','不重复生产','Content ID + URL') | ForEach-Object {
+            if (-not $convergence.Contains($_)) { throw "Missing R8-11 convergence contract: $_" }
+          }
+          $ledger = Get-Content 05_V2.0.0_Source/core/mission_ledger.py -Raw
+          @('state/mission_ledger.json','state/channel_registry.json','platform_content_id','verified_publications') | ForEach-Object {
+            if (-not $ledger.Contains($_)) { throw "Missing R8-11 ledger contract: $_" }
+          }
+          $ui = Get-Content 05_V2.0.0_Source/web/r8_11_backbone_ui.js -Raw
+          @('全渠道连接中心','无需付费第三方 Token','MISSION LEDGER','/api/r8-11/mission-ledger') | ForEach-Object {
+            if (-not $ui.Contains($_)) { throw "Missing R8-11 owner visibility: $_" }
+          }
+          $execution = Get-Content 05_V2.0.0_Source/web/r8_11_execution_tab_hotfix.js -Raw
+          @('/operational.html?embedded=1','changeOperationalPage','dashboard','content','search','accounts','device','conversion','health') | ForEach-Object {
+            if (-not $execution.Contains($_)) { throw "Missing R8-11 execution routing contract: $_" }
+          }
+          $backbone = Get-Content 05_V2.0.0_Source/backend/r8_11_backbone_patch.py -Raw
+          @('/api/r8-11/social/verify','verify_pending_accounts','/api/r8/social','/api/content-factory','r8_11_runtime_convergence_patch') | ForEach-Object {
+            if (-not $backbone.Contains($_)) { throw "Missing R8-11 social/convergence bridge: $_" }
+          }
+          $loader = Get-Content 05_V2.0.0_Source/web/memory.js -Raw
+          if (-not $loader.Contains('/r8_11_backbone_ui.js')) { throw 'R8-11 UI loader is missing' }
+          if (-not $loader.Contains('/r8_11_execution_tab_hotfix.js')) { throw 'R8-11 execution routing hotfix loader is missing' }
+          Write-Host 'R8-11 backbone uses real-device session evidence, recovery convergence, dry-run truth gates and requires no paid third-party token service.'
