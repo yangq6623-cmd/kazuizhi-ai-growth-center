@@ -430,6 +430,7 @@ def plan_today(limit=None):
         created = []
         for opportunity in candidates[: max(0, configured)]:
             asset_id = _stable_id("SEO", opportunity["region"], opportunity["service"], opportunity["keyword"])
+            verified_scope = verified_incremental_publication_scope({}, opportunity)
             asset = {
                 "id": asset_id,
                 "opportunity_id": opportunity["id"],
@@ -443,6 +444,11 @@ def plan_today(limit=None):
                 "stage": "PLANNED",
                 "created_at": now_iso(),
                 "updated_at": now_iso(),
+                "opportunity_source": str(opportunity.get("source") or ""),
+                "publish_approved": verified_scope,
+                "publish_approval_source": (
+                    "autonomous_verified_service_intent_pool" if verified_scope else ""
+                ),
                 "public_url": "",
                 "canonical": "",
                 "submission_receipts": [],
@@ -475,6 +481,27 @@ _OWNER_SEO_ALTERNATES = (
 # already has an Asset. These are concrete high-intent variants inside the
 # verified Lianshui service catalogue; they are not demand-volume estimates.
 VERIFIED_INCREMENTAL_OPPORTUNITIES = _OWNER_SEO_ALTERNATES
+
+
+def verified_incremental_publication_scope(asset, opportunity=None):
+    """Recognize only the bounded autonomous SEO pool introduced in #859."""
+    asset = asset if isinstance(asset, dict) else {}
+    opportunity = opportunity if isinstance(opportunity, dict) else {}
+    source = str(
+        asset.get("opportunity_source")
+        or asset.get("publish_approval_source")
+        or opportunity.get("source")
+        or ""
+    ).strip()
+    if source != "autonomous_verified_service_intent_pool":
+        return False
+    region = str(asset.get("region") or opportunity.get("region") or "").strip()
+    service = str(asset.get("service") or opportunity.get("service") or "").strip()
+    keyword = str(asset.get("keyword") or opportunity.get("keyword") or "").strip()
+    return bool(
+        region == DEFAULT_REGION
+        and (keyword, service) in VERIFIED_INCREMENTAL_OPPORTUNITIES
+    )
 
 
 def _owner_seo_service(keyword):

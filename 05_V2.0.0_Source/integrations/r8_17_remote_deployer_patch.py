@@ -327,8 +327,14 @@ def deploy_pending(limit: int = 10) -> dict:
 
     base = deployer._safe_public_base(data.get("public_base_url"))
     snap = deployer.dashboard()
+    opportunities = {
+        str(row.get("id") or ""): row
+        for row in (snap.get("opportunities") or [])
+        if isinstance(row, dict) and row.get("id")
+    }
     candidates = [
-        x for x in snap.get("assets", [])
+        deployer.resolve_publication_scope(x, opportunities)
+        for x in snap.get("assets", [])
         if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
     ]
     deferred_scope = [
@@ -418,6 +424,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "attachments": attachment_receipts,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "publish_approval_source": asset.get("publish_approval_source") or "",
                 "created_at": now_iso(),
             }
             deployer._append_receipt(receipt)
@@ -432,6 +439,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "http_verification": verification,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "publish_approval_source": asset.get("publish_approval_source") or "",
             }
             if asset.get("republish_pending"):
                 seo_geo_growth.record_asset_republished(asset_id, evidence)
