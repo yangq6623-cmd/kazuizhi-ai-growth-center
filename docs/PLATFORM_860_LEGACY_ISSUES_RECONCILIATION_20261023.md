@@ -129,3 +129,23 @@ PR #34 的 Windows Run `39893851912`（Build #861）已通过 #860 专项、既�
 6. 官网 5 项技术 SEO 需要独立生产部署授权和回滚验证。
 7. 内容中心 118 项、经营数据归因和未授权渠道仍缺生产原始明细/外部条件；当前不得自动重试或宣称完成。
 
+
+
+## 8. GitHub 与 Windows 最终候选
+
+- PR：[#35](https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/pull/35)
+- 最终分支提交：`90721efede814016eb6b4fe894b0f25e031cd472`
+- Windows CI：Build #870 / Run `39912100281`，结论 `success`
+- Actions：https://github.com/yangq6623-cmd/kazuizhi-ai-growth-center/actions/runs/39912100281
+- PR 合并测试提交（BUILD_RECORD）：`93e547a6f8363c2d7fb753edac5648c84f93df8f`
+- 安装包 Artifact ID：`12483532579`
+- Artifact ZIP SHA256：`4766ec319946688bcf32793190c068a00ed70bc79a910c1fdb40394a2839389c`
+- 安装程序 SHA256：`596aca46b0c90ff34852406b759e0ba07386eed22b9bfca76e2262c945ec2192`
+- Defender：通过，`detection_count=0`
+- Authenticode：`NotSigned`；本次仓库未启用 Azure Artifact Signing，未把未签名状态表述成已签名。
+- 已通过：定向门禁、既有 R7/R8 回归、浏览器脚本、打包、Defender、静默安装、启动、覆盖升级、持久数据保留、卸载。
+- GitHub Release 发布步骤按现有配置跳过；候选通过 Actions Artifact 交付。
+
+审计保留：Build #864 因旧 R8-25 测试写死多请求实现而失败，更新为一致性快照行为契约后通过；Build #868 因报告 Copy-Item 换行格式错误而失败，安装测试已通过但产物未上传；修复后 Build #870 全部通过。两次失败均未冒充成功候选。
+
+Build #870 只证明软件候选和升级路径通过自动化验收，不证明生产 Asset 33 已发布、三条 GEO 历史任务已对账、真实控制总线已完成现场往返，亦不证明 24 小时/7 天自然运行达标。
