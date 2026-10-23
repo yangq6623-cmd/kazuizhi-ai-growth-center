@@ -21,7 +21,7 @@ on:
   pull_request:
     # #857 is intentionally reviewed against the exact #856 source branch;
     # do not force a large, unrelated old-main diff merely to exercise CI.
-    branches: [main, 'codex/854-seo-geo-closed-loop-fix']
+    branches: [main, 'codex/854-seo-geo-closed-loop-fix', 'codex/860-seo-publication-closure']
     paths:
       - '05_V2.0.0_Source/**'
       - '04_Build/**'
