@@ -28,7 +28,12 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urljoin, urlsplit
 
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
-from core.seo_geo_growth import dashboard, record_asset_stage, record_asset_republished
+from core.seo_geo_growth import (
+    dashboard,
+    record_asset_stage,
+    record_asset_republished,
+    verified_incremental_publication_scope,
+)
 from core import seo_content_quality
 
 STORE = "r8_15/seo_public_deploy.json"
@@ -326,7 +331,32 @@ def _inspect_public_html(body: str, expected: str, expected_canonical: str) -> d
     }
 
 
-def publication_scope_allowed(asset: dict) -> bool:
+def resolve_publication_scope(asset: dict, opportunities=None) -> dict:
+    """Return an in-memory compatibility view without rewriting the ledger.
+
+    #859 stored the bounded discovery source on Opportunity, while the already
+    created #860 Asset did not inherit it.  Resolve only that exact relationship
+    here so both local and Remote Agent deployers apply the same narrow gate.
+    """
+    row = deepcopy(asset) if isinstance(asset, dict) else {}
+    opportunity = {}
+    if isinstance(opportunities, dict):
+        opportunity = opportunities.get(str(row.get("opportunity_id") or "")) or {}
+    elif isinstance(opportunities, (list, tuple)):
+        opportunity_id = str(row.get("opportunity_id") or "")
+        opportunity = next((
+            item for item in opportunities
+            if isinstance(item, dict) and str(item.get("id") or "") == opportunity_id
+        ), {})
+    if not row.get("opportunity_source") and opportunity.get("source"):
+        row["opportunity_source"] = str(opportunity.get("source") or "")
+    if verified_incremental_publication_scope(row, opportunity):
+        row["publish_approved"] = True
+        row["publish_approval_source"] = "autonomous_verified_service_intent_pool"
+    return row
+
+
+def publication_scope_allowed(asset: dict, opportunity=None) -> bool:
     """Allow only explicitly approved/repaired or professionally illustrated pages."""
     if not isinstance(asset, dict):
         return False
@@ -344,11 +374,25 @@ def publication_scope_allowed(asset: dict) -> bool:
         and re.search(r"\.(?:jpe?g|png|webp)$", hero_parts.path.lower())
         and "kazuizhi-mini-program-code" not in hero_parts.path.lower()
     )
+    bounded_autonomous_scope = verified_incremental_publication_scope(asset, opportunity)
+    published_scope_event = any(
+        isinstance(event, dict)
+        and str(event.get("stage") or "") == "PUBLISHED"
+        and str((event.get("payload") or {}).get("publish_approval_source") or "")
+        == "autonomous_verified_service_intent_pool"
+        and verified_incremental_publication_scope({
+            **asset,
+            "opportunity_source": "autonomous_verified_service_intent_pool",
+        })
+        for event in reversed(asset.get("events") or [])
+    )
     return bool(
         asset.get("republish_pending")
         or asset.get("publish_approved")
         or event_approved
         or professional_hero_approved
+        or bounded_autonomous_scope
+        or published_scope_event
     )
 
 
@@ -503,15 +547,23 @@ def deploy_pending(limit: int = 10) -> dict:
     assert target is not None
     base = _safe_public_base(data.get("public_base_url"))
     snap = dashboard()
+    opportunities = {
+        str(row.get("id") or ""): row
+        for row in (snap.get("opportunities") or [])
+        if isinstance(row, dict) and row.get("id")
+    }
     candidates = [
         x for x in snap.get("assets", [])
         if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
     ]
+    scoped = [resolve_publication_scope(asset, opportunities) for asset in candidates]
     deferred_scope = [
         {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
-        for x in candidates if not publication_scope_allowed(x)
+        for x in scoped if not publication_scope_allowed(x)
     ]
-    pending = [x for x in candidates if publication_scope_allowed(x)][: max(0, int(limit))]
+    pending = [
+        x for x in scoped if publication_scope_allowed(x)
+    ][: max(0, int(limit))]
     published = []
     failed = []
     timeout = int(data.get("verify_timeout_seconds") or 8)
@@ -576,6 +628,7 @@ def deploy_pending(limit: int = 10) -> dict:
                 "http_verification": verification,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "publish_approval_source": asset.get("publish_approval_source") or "",
                 "publication_event_id": "PUBLICATION-" + hashlib.sha256(
                     str(receipt["receipt_id"]).encode("utf-8")
                 ).hexdigest()[:16].upper(),
