@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -18,6 +18,7 @@ on:
       - 'docs/*859*'
       - 'docs/*860*'
       - 'docs/*872*'
+      - 'docs/*874*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     # #857 is intentionally reviewed against the exact #856 source branch;
@@ -37,6 +38,7 @@ on:
       - 'docs/*859*'
       - 'docs/*860*'
       - 'docs/*872*'
+      - 'docs/*874*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -171,6 +173,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw '#872 GEO exact reconciliation acceptance failed' }
           python 04_Build/v2/test_872_seo_metadata_recovery.py
           if ($LASTEXITCODE -ne 0) { throw '#872 SEO metadata recovery acceptance failed' }
+      - name: "#874 first-breakpoint R7 snapshot, GEO50 ledger and no-replay recovery"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#874 synthetic LOCALAPPDATA only; no browser action, external AI send, publication, production mutation or paid API'
+          python 04_Build/v2/test_874_first_breakpoint_regression.py
+          if ($LASTEXITCODE -ne 0) { throw '#874 first-breakpoint regression failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -373,6 +381,7 @@ jobs:
           Copy-Item docs/SEO_GEO_859_CLOSED_LOOP_REPAIR_AND_ACCEPTANCE_20261022.md installer_output_v2/SEO_GEO_859_ACCEPTANCE_REPORT.md
           Copy-Item docs/SEO_860_PUBLICATION_CLOSURE_FIX_AND_ACCEPTANCE_20261023.md installer_output_v2/SEO_860_PUBLICATION_CLOSURE_REPORT.md
           Copy-Item docs/PLATFORM_860_LEGACY_ISSUES_RECONCILIATION_20261023.md installer_output_v2/PLATFORM_860_LEGACY_ISSUES_REPORT.md
+          Copy-Item docs/PLATFORM_874_FIRST_BREAKPOINT_FIX_20261024.md installer_output_v2/PLATFORM_874_FIRST_BREAKPOINT_FIX_REPORT.md
           Copy-Item 04_Build/v2/Export-Kazuizhi859Diagnostics.ps1 installer_output_v2/Export-Kazuizhi859Diagnostics.ps1
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
       - name: Package GEO Chrome extension 2.2.2.854

@@ -70,16 +70,22 @@ def _is_browser_task(task):
 
 
 def _recover_stale_running_tasks():
-    """Recover abandoned browser/cloud RUNNING tasks without bypassing auth.
+    """Recover cloud work, but quarantine ambiguous browser effects.
 
-    A stale browser task is only returned to the queue (or failed after its
-    retry limit). This does not bypass login, CAPTCHA, 2FA or any provider risk
-    control. It simply releases a dead RUNNING lease so another valid executor
-    can claim work later.
+    Browser lease heartbeats live in the nested lease object. The legacy
+    generic recovery read a top-level field, declared a still-live browser
+    attempt stale after five minutes, and put the external action back in
+    queued. That is unsafe because the question may already have been sent.
+    Browser work now follows the exact-attempt fail-closed rule; only cloud API
+    work keeps bounded automatic requeue behaviour.
     """
     global _LAST_RECOVERY
     payload = geo._load_queue()
     tasks = payload.get("tasks") or []
+    receipt_rows = [
+        row for row in (geo._load_receipts().get("receipts") or [])
+        if isinstance(row, dict)
+    ]
     now_epoch = time.time()
     changed = False
     requeued = 0
@@ -95,6 +101,65 @@ def _recover_stale_running_tasks():
         if not is_cloud and not is_browser:
             continue
 
+        if is_browser and not is_cloud:
+            lease = task.get("lease") if isinstance(task.get("lease"), dict) else {}
+            if lease and not geo._lease_expired(lease):
+                continue
+            reference = (
+                _iso_epoch(lease.get("heartbeat_at"))
+                or _iso_epoch(task.get("started_at"))
+                or _iso_epoch(task.get("updated_at"))
+            )
+            if not reference or max(0.0, now_epoch - reference) < STALE_BROWSER_SECONDS:
+                continue
+            exact = [
+                row for row in receipt_rows
+                if str(row.get("task_id") or "") == str(task.get("task_id") or "")
+                and geo._receipt_matches_attempt(task, row)
+            ]
+            stamp = now_iso()
+            if len(exact) == 1:
+                receipt = exact[0]
+                task["state"] = "succeeded"
+                task["evidence_id"] = receipt.get("evidence_id") or receipt.get("receipt_id") or ""
+                task["evidence_level"] = receipt.get("evidence_level")
+                task["official_truth"] = bool(receipt.get("official_truth"))
+                task["normalized_state"] = "SUCCEEDED"
+                action = "receipt_reconciled"
+            else:
+                task["state"] = "authorization_required"
+                task["authorization_reason"] = "task_lease_expired_external_result_unknown"
+                task["uncertain_external_submission"] = True
+                task["replay_blocked"] = True
+                task["normalized_state"] = "UNCERTAIN"
+                action = "quarantined"
+                failed += 1
+            task["lease"] = {}
+            task["updated_at"] = stamp
+            attempts = task.get("attempts") if isinstance(task.get("attempts"), list) else []
+            for attempt in reversed(attempts):
+                if str(attempt.get("attempt_id") or "") == str(task.get("attempt_id") or ""):
+                    attempt["finished_at"] = stamp
+                    attempt["result"] = "SUCCEEDED" if action == "receipt_reconciled" else "UNCERTAIN"
+                    break
+            event = {
+                "event": "STALE_LEASE_RECONCILED", "at": stamp,
+                "provider": provider, "action": action,
+                "retry_count": int(task.get("retry_count") or 0),
+            }
+            events = list(task.get("execution_events") or [])
+            events.append(event)
+            task["execution_events"] = events[-50:]
+            items.append({
+                "task_id": task.get("task_id") or "",
+                "question_id": task.get("question_id") or "",
+                "provider": provider, "action": action,
+                "age_seconds": int(max(0.0, now_epoch - reference)),
+                "retry_count": int(task.get("retry_count") or 0),
+            })
+            changed = True
+            continue
+
         reference = (
             _iso_epoch(task.get("heartbeat_at"))
             or _iso_epoch(task.get("started_at"))
@@ -102,23 +167,18 @@ def _recover_stale_running_tasks():
         )
         if not reference:
             continue
-        stale_after = STALE_CLOUD_SECONDS if is_cloud else STALE_BROWSER_SECONDS
         age = max(0.0, now_epoch - reference)
-        if age < stale_after:
+        if age < STALE_CLOUD_SECONDS:
             continue
-
         retry_count = int(task.get("retry_count") or 0)
-        configured_max = int(task.get("max_retries") or (3 if is_cloud else 2))
-        max_retries = max(configured_max, 3) if is_cloud else max(1, configured_max)
+        configured_max = int(task.get("max_retries") or 3)
+        max_retries = max(configured_max, 3)
         task["max_retries"] = max_retries
         event = {
-            "event": "STALE_LEASE_RECOVERED",
-            "at": now_iso(),
-            "provider": provider,
-            "age_seconds": int(age),
+            "event": "STALE_LEASE_RECOVERED", "at": now_iso(),
+            "provider": provider, "age_seconds": int(age),
             "retry_count": retry_count,
         }
-
         if retry_count < max_retries:
             task["retry_count"] = retry_count + 1
             task["state"] = "queued"
@@ -143,20 +203,16 @@ def _recover_stale_running_tasks():
             task["updated_at"] = now_iso()
             event["action"] = "failed"
             failed += 1
-
         events = list(task.get("execution_events") or [])
         events.append(event)
         task["execution_events"] = events[-50:]
-        items.append(
-            {
-                "task_id": task.get("task_id") or "",
-                "question_id": task.get("question_id") or "",
-                "provider": provider,
-                "action": event["action"],
-                "age_seconds": int(age),
-                "retry_count": int(task.get("retry_count") or 0),
-            }
-        )
+        items.append({
+            "task_id": task.get("task_id") or "",
+            "question_id": task.get("question_id") or "",
+            "provider": provider, "action": event["action"],
+            "age_seconds": int(age),
+            "retry_count": int(task.get("retry_count") or 0),
+        })
         changed = True
 
     if changed:
@@ -165,13 +221,10 @@ def _recover_stale_running_tasks():
             geo._audit("geo_stale_task_recovered", item)
 
     _LAST_RECOVERY = {
-        "at": now_iso(),
-        "requeued": requeued,
-        "failed": failed,
+        "at": now_iso(), "requeued": requeued, "failed": failed,
         "items": items[-20:],
     }
     return dict(_LAST_RECOVERY)
-
 
 def _materialize_current_cycle(target, *, include_completed=False):
     """Create only missing tasks for the current cycle.
