@@ -1150,9 +1150,12 @@ def fast_status():
     try:
         receipt_snapshot = read_json_snapshot(geo.RECEIPTS_PATH, {"receipts": []})
         rows = receipt_snapshot.get("receipts") if isinstance(receipt_snapshot, dict) else []
-        receipts = list(reversed(rows))[:1000] if isinstance(rows, list) else []
-        receipts = [row for row in receipts if isinstance(row, dict)]
+        all_receipts = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+        # The recent window keeps this endpoint compact, but the fixed 50-slot
+        # truth must be recomputed from the complete immutable Receipt ledger.
+        receipts = list(reversed(all_receipts))[:1000]
     except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+        all_receipts = []
         receipts = []
 
     auxiliary = [
@@ -1161,9 +1164,9 @@ def fast_status():
         and not bool(row.get("official_truth"))
         and row.get("provider") == geo_cloud_executor.PROVIDER
     ]
-    domestic = geo_domestic_matrix.snapshot(receipts, geo._fixed_questions())
+    domestic = geo_domestic_matrix.snapshot(all_receipts, geo._fixed_questions())
     legacy_formal = len({
-        row.get("question_id") for row in receipts
+        row.get("question_id") for row in all_receipts
         if row.get("official_truth") and row.get("evidence_level") in geo.OFFICIAL_EVIDENCE_LEVELS
         and row.get("question_id")
     })

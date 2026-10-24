@@ -295,6 +295,7 @@ function ensureAuditCollapse(){
 function bindR7OverviewActions(){ensureAuditCollapse()}
 
 let r7LoadPromise=null;
+let r7LastSnapshot=null;
 async function r7Api(path,timeoutMs=10000){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -309,6 +310,7 @@ async function loadR7(){
   r7LoadPromise=(async()=>{try{
     applyAutonomyCopy();
     const snapshot=await r7Api('/api/r7/ui-snapshot');
+    r7LastSnapshot=snapshot;
     const jobs=snapshot.jobs||{},engine=snapshot.engine||{},agents=snapshot.agents||{},audit=snapshot.audit||{};
     const routes=snapshot.routes||{routes:[]};
     r7Jobs=jobs.items||[];
@@ -318,7 +320,9 @@ async function loadR7(){
     $('r7-engine-status').textContent=`自动待执行 ${queued} · 自动执行中 ${running} · 平台人工 ${human} · 失败 ${failed}${legacy?` · 旧记录 ${legacy}`:''}`;
     $('r7-exceptions').textContent=(human||failed)?`${human} 项平台人工 · ${failed} 项失败`:'目前没有需要人工介入或失败的事项';
     $('r7-migration').textContent=engine.migration.result==='complete'?engine.migration.copied.length?`R6 数据备份已完成 · ${engine.migration.copied.length} 个文件`:`未发现旧版数据 · 可直接开始`:'正在检查旧数据';
-    $('r7-model-route').textContent=`自动化策略：${engine.autonomy_policy||'非资金自动执行'}。当前可用模型路线：${routes.routes.map(x=>x.label).join('、')}。`;
+    const snapshotTime=formatTime(snapshot.generated_at||snapshot.served_at||'');
+    const snapshotLabel=snapshot.snapshot_state==='cached'?`缓存快照 ${snapshotTime}`:`数据时间 ${snapshotTime}`;
+    $('r7-model-route').textContent=`自动化策略：${engine.autonomy_policy||'非资金自动执行'}。当前可用模型路线：${routes.routes.map(x=>x.label).join('、')}。${snapshotLabel}。`;
     renderR7Agents(agents.items||[]);
     renderHumanInterventions(engine.human_interventions||[]);
     $('r7-audit-integrity').textContent=audit.integrity==='verified'?'自动运行正常 · 审计链已验证':'审计链异常，请停止执行并检查';
@@ -328,10 +332,18 @@ async function loadR7(){
     bindR7OverviewActions();
     return true;
   }catch(error){
-    $('r7-model-route').textContent=error.message;
-    $('r7-engine-status').textContent='状态读取未完成，可点击刷新重试';
-    $('r7-exceptions').textContent='未取得完整状态，不显示为零或正常';
-    $('r7-audit-integrity').textContent='状态读取超时 · 未判定';
+    if(r7LastSnapshot){
+      const lastAt=formatTime(r7LastSnapshot.generated_at||r7LastSnapshot.served_at||'');
+      $('r7-model-route').textContent=`${error.message}；继续显示 ${lastAt} 的最后成功快照。`;
+      $('r7-engine-status').textContent=`${$('r7-engine-status').textContent} · 快照 ${lastAt}`;
+      $('r7-exceptions').textContent=`刷新失败；当前数字来自 ${lastAt}，不解释为后台停止。`;
+      $('r7-audit-integrity').textContent=`状态刷新超时 · 保留 ${lastAt} 快照`;
+    }else{
+      $('r7-model-route').textContent=error.message;
+      $('r7-engine-status').textContent='状态读取未完成，可点击刷新重试';
+      $('r7-exceptions').textContent='未取得完整状态，不显示为零或正常';
+      $('r7-audit-integrity').textContent='状态读取超时 · 未判定';
+    }
     toast(error.message,'error');return false
   }finally{r7LoadPromise=null}})();
   return r7LoadPromise;

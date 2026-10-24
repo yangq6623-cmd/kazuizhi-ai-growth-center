@@ -1,5 +1,6 @@
 """R7 local command bus: autonomous non-financial work with audited finance guardrails."""
 
+import copy
 import hashlib
 import json
 import shutil
@@ -15,13 +16,15 @@ from core.autonomy import (
     learning_status,
     record_human_intervention,
 )
-from core.storage import data_root, now_iso, read_json, write_json
+from core.storage import data_root, now_iso, read_json, read_json_snapshot, write_json
 
 
 JOBS = "r7/jobs.json"
 AUDIT = "r7/audit.json"
 MIGRATION = "r7/migration.json"
 LOCK = threading.RLock()
+_UI_SNAPSHOT_CACHE_LOCK = threading.RLock()
+_UI_SNAPSHOT_CACHE = None
 KINDS = {
     "manual_task": {"name": "运营任务", "mode": "policy"},
     "daily_review": {"name": "本地每日复盘", "mode": "local", "agent": "数据复盘员", "task_type": "review"},
@@ -386,33 +389,53 @@ def engine_status():
     }
 
 
-def ui_snapshot(limit=200):
-    """Return one internally consistent owner snapshot for the R7 page.
+def _snapshot_learning():
+    data = read_json_snapshot("r7/learning.json", {"items": [], "policy_version": 1})
+    if not isinstance(data, dict):
+        raise OSError("snapshot_unavailable: r7/learning.json")
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+    completed = sum(1 for row in items[:50] if row.get("state") == "completed")
+    failed = sum(1 for row in items[:50] if row.get("state") == "failed")
+    return {
+        "policy_version": data.get("policy_version", 1),
+        "recent_samples": min(len(items), 50),
+        "recent_completed": completed,
+        "recent_failed": failed,
+        "latest": items[0] if items else None,
+        "mode": "strategy_learning_only",
+    }
 
-    The old UI opened five independent HTTP requests. Their ten-second abort
-    timers started while some requests were still waiting in the shared browser
-    queue, so a healthy worker could be reported as stopped.
-    """
+
+def _build_ui_snapshot(limit=200):
+    """Build the owner snapshot without joining the process-wide JSON writer lock."""
     with LOCK:
-        items = list(_store()["items"])
+        data = read_json_snapshot(JOBS, {"schema": 1, "items": []})
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+            raise OSError("snapshot_unavailable: r7/jobs.json")
+        items = list(data["items"])
         audit = audit_history()
     try:
         size = max(1, min(int(limit or 200), 1000))
     except (TypeError, ValueError):
         size = 200
+    migration = read_json_snapshot(MIGRATION, {"result": "pending"})
+    interventions = read_json_snapshot("r7/human_interventions.json", {"items": []})
+    if not isinstance(migration, dict) or not isinstance(interventions, dict):
+        raise OSError("snapshot_unavailable: r7/supporting-ledger")
     states = ("awaiting_approval", "human_required", "queued", "running", "completed", "failed", "cancelled")
     engine = {
-        "jobs": {state: sum(x.get("state") == state for x in items) for state in states},
+        "jobs": {state: sum(row.get("state") == state for row in items) for state in states},
         "ledger_total": len(items), "display_window_limit": size,
-        "next_local_job": next((x["title"] for x in items if x.get("state") == "queued" and x.get("mode") == "local"), None),
-        "migration": read_json(MIGRATION, {"result": "pending"}),
+        "next_local_job": next((row["title"] for row in items if row.get("state") == "queued" and row.get("mode") == "local"), None),
+        "migration": migration,
         "audit_integrity": audit["integrity"],
         "autonomy_policy": "非资金任务自动执行；资金事项仅记录并交平台人工处理",
-        "human_interventions": human_interventions().get("items", [])[:20],
-        "learning": learning_status(),
+        "human_interventions": list(interventions.get("items") or [])[:20],
+        "learning": _snapshot_learning(),
     }
     return {
         "generated_at": now_iso(), "source": "r7_consistent_owner_snapshot",
+        "snapshot_state": "fresh", "snapshot_error": "",
         "jobs": {
             "items": items[:size], "count": len(items), "ledger_count": len(items),
             "window": {"offset": 0, "limit": size, "returned": min(size, len(items))},
@@ -421,3 +444,26 @@ def ui_snapshot(limit=200):
         "engine": engine, "agents": agent_registry(), "audit": audit,
     }
 
+
+def ui_snapshot(limit=200):
+    """Return one bounded, internally consistent owner snapshot.
+
+    Read-only owner data bypasses the process-wide JSON writer lock.  If an
+    atomic file replacement is briefly unavailable, preserve and label the
+    last successful snapshot instead of fabricating zero counters.
+    """
+    global _UI_SNAPSHOT_CACHE
+    try:
+        payload = _build_ui_snapshot(limit)
+    except (OSError, ValueError, TypeError) as error:
+        with _UI_SNAPSHOT_CACHE_LOCK:
+            cached = copy.deepcopy(_UI_SNAPSHOT_CACHE)
+        if cached is None:
+            raise
+        cached["snapshot_state"] = "cached"
+        cached["snapshot_error"] = str(error)
+        cached["served_at"] = now_iso()
+        return cached
+    with _UI_SNAPSHOT_CACHE_LOCK:
+        _UI_SNAPSHOT_CACHE = copy.deepcopy(payload)
+    return copy.deepcopy(payload)
