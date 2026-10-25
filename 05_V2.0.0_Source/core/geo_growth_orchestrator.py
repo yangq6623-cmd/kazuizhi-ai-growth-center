@@ -658,47 +658,66 @@ def _sync_item(data, item, jobs, seo_opportunities, assets, publication_receipts
         for event in reversed(asset.get("content_refresh_events") or []):
             if not isinstance(event, dict):
                 continue
+            event_action = str(event.get("growth_action_id") or "")
             event_revision = str(
                 event.get("content_revision_id")
-                or event.get("growth_action_id")
+                or event_action
                 or ""
             )
+            event_owned_by_item = (
+                event_action == item_id
+                or (not event_action and event_revision == item_id)
+            )
             if (
-                event_revision == item_id
+                event_owned_by_item
                 and bool(event.get("deploy_receipt"))
                 and str(event.get("public_url") or "").startswith(("https://", "http://"))
             ):
+                # The immutable action identifies the owning GEO opportunity;
+                # the revision remains the actual content version (for example
+                # REV-2).  Collapsing both values to action_id breaks a valid
+                # new-revision schedule.
                 verified_revision_for_item = event_revision
                 break
         if not verified_revision_for_item:
             for receipt in publication_receipts or []:
                 if not isinstance(receipt, dict):
                     continue
+                receipt_action = str(receipt.get("growth_action_id") or "")
                 receipt_revision = str(
                     receipt.get("content_revision_id")
-                    or receipt.get("growth_action_id")
+                    or receipt_action
                     or ""
+                )
+                receipt_owned_by_item = (
+                    receipt_action == item_id
+                    or (not receipt_action and receipt_revision == item_id)
                 )
                 if (
                     str(receipt.get("asset_id") or "") == asset_id
-                    and receipt_revision == item_id
+                    and receipt_owned_by_item
                     and bool((receipt.get("verification") or {}).get("ok"))
                     and str(receipt.get("public_url") or "").startswith(("https://", "http://"))
                 ):
                     verified_revision_for_item = receipt_revision
                     break
 
+        asset_action = str(asset.get("growth_action_id") or "")
         asset_revision = str(
             asset.get("content_revision_id")
-            or asset.get("growth_action_id")
+            or asset_action
             or ""
+        )
+        asset_owned_by_item = (
+            asset_action == item_id
+            or (not asset_action and asset_revision == item_id)
         )
         item["asset_id"] = asset_id
         item["asset_stage"] = asset.get("stage") or item.get("asset_stage") or ""
         item["public_url"] = asset.get("public_url") or item.get("public_url") or ""
         item["republish_pending"] = bool(
             asset.get("republish_pending")
-            and asset_revision == item_id
+            and asset_owned_by_item
         )
         if verified_revision_for_item:
             item["content_revision_id"] = verified_revision_for_item
