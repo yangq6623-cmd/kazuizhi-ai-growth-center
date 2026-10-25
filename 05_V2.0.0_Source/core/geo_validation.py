@@ -76,6 +76,27 @@ def _stable_key(*parts):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _external_action_key(task):
+    """Return the semantic identity of one external AI action lineage.
+
+    A changing Controller Plan ID must not create another browser request for
+    the same Mission/question/provider. Scheduled retests remain distinct via
+    their Schedule or parent Receipt lineage.
+    """
+    task = task or {}
+    lineage = (
+        task.get("schedule_id")
+        or task.get("retest_parent_receipt")
+        or task.get("retest_origin")
+        or "baseline"
+    )
+    return _stable_key(
+        "geo_external_action_v1",
+        task.get("mission_id"), task.get("question_id"), task.get("provider"),
+        task.get("test_method"), lineage,
+    )
+
+
 def _lease_deadline(seconds=TASK_LEASE_SECONDS):
     return (datetime.now().astimezone() + timedelta(seconds=int(seconds))).isoformat(timespec="seconds")
 
@@ -422,6 +443,11 @@ def _enqueue_plan_locked(plan):
         for row in queue.get("tasks") or []
         if isinstance(row, dict) and row.get("idempotency_key")
     }
+    existing_action_keys = {
+        str(row.get("external_action_key") or _external_action_key(row)): row
+        for row in queue.get("tasks") or []
+        if isinstance(row, dict) and row.get("question_id") and row.get("provider")
+    }
     for question in plan.get("questions") or []:
         correlation = dict(plan.get("correlation") or {})
         task = {
@@ -473,14 +499,19 @@ def _enqueue_plan_locked(plan):
             task.get("mission_id"), task.get("question_id"), task.get("provider"),
             task.get("schedule_id") or task.get("retest_parent_receipt") or task.get("plan_id"),
         )
-        if task["idempotency_key"] in existing_keys:
-            duplicate_ids.append(existing_keys[task["idempotency_key"]].get("task_id"))
+        task["external_action_key"] = _external_action_key(task)
+        duplicate = existing_keys.get(task["idempotency_key"]) or existing_action_keys.get(task["external_action_key"])
+        if duplicate:
+            duplicate_id = duplicate.get("task_id")
+            if duplicate_id and duplicate_id not in duplicate_ids:
+                duplicate_ids.append(duplicate_id)
             continue
         task["normalized_state"] = _legacy_state_map(task)
         task["correlation"] = _correlation_for(task)
         queue["tasks"].append(task)
         created.append(task)
         existing_keys[task["idempotency_key"]] = task
+        existing_action_keys[task["external_action_key"]] = task
     _save_queue(queue)
     if created:
         # Wake the existing executor loop immediately. Its own provider,
@@ -1794,6 +1825,21 @@ def receipts(limit=200):
     return items[: max(1, min(int(limit or 200), 1000))]
 
 
+def formal_receipts():
+    """Return the complete immutable formal A/B ledger for truth aggregation.
+
+    The bounded receipts API remains a recent-activity API. Formal 50-question
+    truth must not age out when C-level operational Signals fill that window.
+    """
+    return [
+        dict(item)
+        for item in _load_receipts().get("receipts") or []
+        if isinstance(item, dict)
+        and item.get("official_truth")
+        and item.get("evidence_level") in OFFICIAL_EVIDENCE_LEVELS
+    ]
+
+
 def manual_requirements():
     tasks = [
         item
@@ -1969,3 +2015,4 @@ def dashboard():
             "seo_action_queue",
         ],
     }
+

@@ -125,7 +125,7 @@ def _overlay_formal_geo_truth(payload):
         official = truth.get("official") or {}
         question_set = truth.get("question_set") or {}
         domestic = geo_domestic_matrix.snapshot(
-            geo_validation.receipts(1000),
+            geo_validation.formal_receipts(),
             question_set.get("questions") or geo_validation.question_set().get("questions") or [],
             geo_validation.queue_summary().get("tasks") or [],
         )
@@ -679,3 +679,4 @@ def install():
 
 
 install()
+
