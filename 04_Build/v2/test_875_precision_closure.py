@@ -28,6 +28,7 @@ def now_iso() -> str:
 try:
     from core import geo_domestic_matrix
     from core import geo_validation as geo
+    from core import geo_growth_orchestrator as growth
     from core import storage
 
     # 1. A recent-activity window may contain no formal evidence, while the
@@ -179,10 +180,91 @@ try:
     assert 'id="r7-today-working">—</b>' in r7_ui
     assert 'id="r7-day-progress-text">读取中</strong>' in r7_ui
 
+    # 5. Two GEO Opportunities may share one established SEO Asset.  A verified
+    # revision owned by Opportunity A must not be overwritten merely because
+    # the Asset is currently preparing Opportunity B.  That old behavior
+    # alternated growth_action_id on every scheduler pass and repeatedly
+    # deployed the same public URL.
+    action_a = "GEO-GROWTH-877-A"
+    action_b = "GEO-GROWTH-877-B"
+    asset_id = "SEO-SHARED-877"
+    shared_asset = {
+        "id": asset_id,
+        "stage": "SUBMITTED",
+        "public_url": "https://example.invalid/seo/shared/",
+        "growth_action_id": action_b,
+        "content_revision_id": action_b,
+        "republish_pending": True,
+        "content_refresh_events": [],
+    }
+    shared_item = {
+        "id": action_a,
+        "state": "waiting_content_update",
+        "job_id": "JOB-877-A",
+        "job_state": "completed",
+        "seo_opportunity_id": "KW-877-SHARED",
+        "asset_id": asset_id,
+        "asset_stage": "SUBMITTED",
+        # Reproduce the polluted value left by the pre-fix shared-Asset sync.
+        "content_revision_id": action_b,
+        "public_url": "https://example.invalid/seo/shared/",
+        "published_at": "",
+        "created_at": "2026-11-30T10:00:00+08:00",
+        "baseline_signal": {},
+        "outcome": "pending",
+    }
+    verified_a = {
+        "receipt_id": "REMOTE-DEPLOY-877-A",
+        "asset_id": asset_id,
+        "public_url": "https://example.invalid/seo/shared/",
+        "growth_action_id": action_a,
+        "content_revision_id": action_a,
+        "created_at": "2026-12-01T10:00:00+08:00",
+        "verification": {"ok": True},
+    }
+    original_prepare = growth.geo_phase3_seo_bridge.prepare_phase3_assets
+    prepare_calls = []
+    try:
+        def _unexpected_prepare(plan):
+            prepare_calls.append(plan)
+            raise AssertionError("verified shared-Asset revision must not be rebuilt")
+
+        growth.geo_phase3_seo_bridge.prepare_phase3_assets = _unexpected_prepare
+        growth._sync_item(
+            {"technical_blockers": [], "history": [], "processed_signal_ids": []},
+            shared_item,
+            {"JOB-877-A": {"state": "completed"}},
+            {"KW-877-SHARED": {"asset_id": asset_id}},
+            {asset_id: shared_asset},
+            publication_receipts=[verified_a],
+        )
+    finally:
+        growth.geo_phase3_seo_bridge.prepare_phase3_assets = original_prepare
+    assert prepare_calls == []
+    assert shared_item["content_revision_id"] == action_a
+    assert shared_item["republish_pending"] is False
+    assert shared_item["publication_receipt_id"] == "REMOTE-DEPLOY-877-A"
+    assert shared_item["state"] in {"waiting_retest", "retest_queued"}
+
+    refresh_breakdown = growth.seo_geo_growth._daily_generation_breakdown({
+        "assets": [{
+            "id": asset_id,
+            "generated_at": "2026-10-25T18:00:00+08:00",
+            "last_staging_refresh_at": "2026-10-25T18:00:00+08:00",
+        }],
+        "audit": [],
+    }, "2026-10-25")
+    assert refresh_breakdown["new_count"] == 0
+    assert refresh_breakdown["updated_count"] == 1
+    bridge_source = (SOURCE / "core" / "geo_phase3_seo_bridge.py").read_text(encoding="utf-8")
+    assert 'asset["last_staging_refresh_at"] = rendered_at' in bridge_source
+
     print("PASS #875: complete formal GEO ledger remains 50 after recent-window aging")
     print("PASS #875: semantic GEO action idempotency prevents duplicate task creation")
     print("PASS #875: unmatched prior attempt stays isolated while a fresh legal task can run")
     print("PASS #875: browser loading/failure preserves truth and never renders a false zero")
+    print("PASS #877: shared SEO Asset keeps each GEO Opportunity's verified revision")
+    print("PASS #877: GEO refresh is counted as an old-Asset revision, not a new Asset")
 finally:
     if previous is None:
         os.environ.pop("LOCALAPPDATA", None)

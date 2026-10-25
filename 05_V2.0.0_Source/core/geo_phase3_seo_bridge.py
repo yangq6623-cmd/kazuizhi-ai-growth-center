@@ -203,13 +203,22 @@ def prepare_phase3_assets(plan):
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / "index.html"
         path.write_text(html, encoding="utf-8")
+        rendered_at = now_iso()
         asset.update({
             "title": title,
             "description": description,
             "canonical": canonical,
             "staging_path": str(path),
-            "generated_at": now_iso(),
-            "updated_at": now_iso(),
+            # Rebuilding an already-public Asset is a revision, not a new
+            # generated Asset.  Preserve its original generation identity so
+            # today's SEO counters cannot be inflated by a GEO refresh loop.
+            "generated_at": (
+                asset.get("generated_at")
+                or asset.get("created_at")
+                or asset.get("published_at")
+                or rendered_at
+            ) if is_external else rendered_at,
+            "updated_at": rendered_at,
             # The HTML was rendered by the installed template, so the durable
             # verification contract must advance with it.  Keeping the legacy
             # value makes a valid republish fail after public HTTP verification.
@@ -218,6 +227,7 @@ def prepare_phase3_assets(plan):
             "prepared_growth_action_id": action_id,
         })
         if is_external:
+            asset["last_staging_refresh_at"] = rendered_at
             # Preserve durable external truth.  The deployer clears this flag
             # only after a new public HTTP receipt verifies the revision.
             asset["republish_pending"] = True
