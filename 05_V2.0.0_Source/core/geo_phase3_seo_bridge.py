@@ -131,6 +131,7 @@ def prepare_phase3_assets(plan):
     }
     created = []
     target_assets = []
+    target_actions = {}
     for opportunity_id in target_ids:
         opportunity = opportunities.get(opportunity_id)
         if not opportunity:
@@ -138,15 +139,28 @@ def prepare_phase3_assets(plan):
         asset, was_created = _asset_for_opportunity(data, opportunity)
         action = action_by_opportunity.get(opportunity_id) or {}
         action_id = str(action.get("action_id") or "")
-        # Persist only public-safe, factual optimization context.  This makes a
-        # reused service page a real content revision instead of repeatedly
-        # attaching new GEO work to an unchanged historic publication.
+        # A shared SEO Asset can be targeted by both a Phase-3 action and a
+        # GEO Growth Opportunity.  Once this exact action/revision has a real
+        # deployment receipt it is finished forever: do not let a later scan
+        # switch the durable revision identity back and request another upload.
+        verified_for_action = any(
+            isinstance(event, dict)
+            and str(event.get("growth_action_id") or event.get("content_revision_id") or "") == action_id
+            and bool(event.get("deploy_receipt"))
+            and str(event.get("public_url") or "").startswith(("https://", "http://"))
+            for event in (asset.get("content_refresh_events") or [])
+        )
+        if verified_for_action:
+            continue
+        # Only a genuinely new, unverified action may claim the next content
+        # revision.  The deployer provides a second exact-revision guard.
         asset["growth_action_id"] = action_id
         asset["growth_question"] = str(action.get("question_text") or "")[:240]
         asset["growth_focus"] = str(action.get("decision") or "")[:240]
         asset["growth_question_id"] = str(action.get("question_id") or "")[:120]
         asset["content_revision_id"] = action_id
         target_assets.append(asset.get("id"))
+        target_actions[str(asset.get("id") or "")] = action_id
         if was_created:
             created.append(asset.get("id"))
     if created:
@@ -164,7 +178,7 @@ def prepare_phase3_assets(plan):
         if str(asset.get("id") or "") not in target_set:
             continue
         stage = str(asset.get("stage") or "")
-        action_id = str(asset.get("growth_action_id") or "")
+        action_id = str(target_actions.get(str(asset.get("id") or "")) or asset.get("growth_action_id") or "")
         is_external = seo_geo_growth.STAGE_INDEX.get(stage, 0) >= seo_geo_growth.STAGE_INDEX["PUBLISHED"]
         verified_for_action = any(
             isinstance(event, dict)
