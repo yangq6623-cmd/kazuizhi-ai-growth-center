@@ -246,11 +246,25 @@ try:
     assert shared_item["publication_receipt_id"] == "REMOTE-DEPLOY-877-A"
     assert shared_item["state"] in {"waiting_retest", "retest_queued"}
 
+    refresh_breakdown = growth.seo_geo_growth._daily_generation_breakdown({
+        "assets": [{
+            "id": asset_id,
+            "generated_at": "2026-10-25T18:00:00+08:00",
+            "last_staging_refresh_at": "2026-10-25T18:00:00+08:00",
+        }],
+        "audit": [],
+    }, "2026-10-25")
+    assert refresh_breakdown["new_count"] == 0
+    assert refresh_breakdown["updated_count"] == 1
+    bridge_source = (SOURCE / "core" / "geo_phase3_seo_bridge.py").read_text(encoding="utf-8")
+    assert 'asset["last_staging_refresh_at"] = rendered_at' in bridge_source
+
     print("PASS #875: complete formal GEO ledger remains 50 after recent-window aging")
     print("PASS #875: semantic GEO action idempotency prevents duplicate task creation")
     print("PASS #875: unmatched prior attempt stays isolated while a fresh legal task can run")
     print("PASS #875: browser loading/failure preserves truth and never renders a false zero")
     print("PASS #877: shared SEO Asset keeps each GEO Opportunity's verified revision")
+    print("PASS #877: GEO refresh is counted as an old-Asset revision, not a new Asset")
 finally:
     if previous is None:
         os.environ.pop("LOCALAPPDATA", None)
