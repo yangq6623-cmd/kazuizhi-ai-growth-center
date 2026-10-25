@@ -2,7 +2,7 @@
   'use strict';
 
   const R810 = {
-    connector: {status: 'unverified', label: '未验证连接', last_command_id: '', last_receipt_at: '', permissions: []},
+    connector: {status: 'loading', label: '正在核验', last_command_id: '', last_receipt_at: '', permissions: [], stale: false, last_error: ''},
     factory: null,
     mission: null,
     booted: false,
@@ -138,9 +138,16 @@
         last_command_id:result.last_command_id||'',
         last_receipt_at:result.last_receipt_at||'',
         permissions:Array.isArray(result.permissions)?result.permissions:[],
+        stale:false,
+        last_error:'',
       };
     }else{
-      R810.connector={status:'unverified',label:'未验证连接',last_command_id:'',last_receipt_at:'',permissions:[]};
+      const message=result?.message||'连接状态读取失败';
+      if(R810.connector.status==='verified'){
+        R810.connector={...R810.connector,stale:true,last_error:message,label:'已验证连接 · 刷新延迟'};
+      }else{
+        R810.connector={status:'unknown',label:'连接状态读取失败',last_command_id:'',last_receipt_at:'',permissions:[],stale:true,last_error:message};
+      }
     }
     return R810.connector;
   }
@@ -288,8 +295,8 @@
   }
   function updateConnectorCard(){
     const status=q('r810-connector-status'),copy=q('r810-connector-copy'),cmd=q('r810-connector-command'),receipt=q('r810-connector-receipt'),perms=q('r810-connector-permissions');if(!status)return;
-    const verified=R810.connector.status==='verified';setText(status,R810.connector.label);status.style.color=verified?'#13865f':'#b56c12';
-    setText(copy,verified?'双向读取、指令下发与执行回执已经通过真实往返验证。':'当前没有检测到可证明 ChatGPT 订阅总控已完成双向验证的接口，因此保持“未验证连接”。');
+    const verified=R810.connector.status==='verified';const unknown=R810.connector.status==='unknown'||R810.connector.status==='loading';setText(status,R810.connector.label);status.style.color=verified?'#13865f':'#b56c12';
+    setText(copy,verified?(R810.connector.stale?'最近一次双向往返已验证；本次状态刷新延迟，继续显示最后真值，不据此撤销权限。':'双向读取、指令下发与执行回执已经通过真实往返验证。'):(unknown?'当前未取得控制连接状态；不能显示为已验证或未验证。':'当前没有检测到可证明 ChatGPT 订阅总控已完成双向验证的接口，因此保持“未验证连接”。'));
     setText(cmd,R810.connector.last_command_id||'—');setText(receipt,R810.connector.last_receipt_at||'—');setText(perms,R810.connector.permissions.length?R810.connector.permissions.join(' / '):'尚未授予控制权限');
   }
 
@@ -374,3 +381,4 @@
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0),{once:true});else setTimeout(boot,0);
 })();
+

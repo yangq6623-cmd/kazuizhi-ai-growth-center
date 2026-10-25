@@ -592,7 +592,7 @@ def capture_trend_snapshot(force=False):
     existing = next((x for x in data.get("trend_snapshots") or [] if x.get("date") == today), None)
     if existing and not force: return existing
     seo = seo_geo_growth.dashboard(); formal = geo_analysis.snapshot()
-    if int((formal.get("summary") or {}).get("tested") or 0) != int((geo_validation.dashboard().get("official") or {}).get("tested") or 0): formal = geo_analysis.refresh(geo_validation.receipts(1000))
+    if int((formal.get("summary") or {}).get("tested") or 0) != int((geo_validation.dashboard().get("official") or {}).get("tested") or 0): formal = geo_analysis.refresh(geo_validation.formal_receipts())
     summary = formal.get("summary") or {}; search = _search_rollup(7); funnel = attribution_funnel(7)
     row = {
         "date": today, "captured_at": now_iso(),
@@ -666,7 +666,7 @@ def run_once(force=False):
 def status(days=30):
     days = int(days); days = days if days in ALLOWED_WINDOWS else 30
     data = _load(); snap = seo_geo_growth.dashboard(); formal = geo_analysis.snapshot()
-    if int((formal.get("summary") or {}).get("tested") or 0) != int((geo_validation.dashboard().get("official") or {}).get("tested") or 0): formal = geo_analysis.refresh(geo_validation.receipts(1000))
+    if int((formal.get("summary") or {}).get("tested") or 0) != int((geo_validation.dashboard().get("official") or {}).get("tested") or 0): formal = geo_analysis.refresh(geo_validation.formal_receipts())
     # Assemble expensive, read-only views once.  This endpoint is requested by
     # both the cockpit and the dedicated workspace at cold start, so repeated
     # trend/controller calculations make the UI look like it is redirecting or
@@ -684,3 +684,4 @@ def status(days=30):
         "operations":{"connector_health":deepcopy(data.get("connector_health") or {}), "dead_letters":deepcopy((data.get("dead_letters") or [])[-50:]), "dead_letter_total":len(data.get("dead_letters") or []), "dead_letter_actionable":sum(1 for item in (data.get("dead_letters") or []) if str(item.get("state") or "") == "dead_letter" or item.get("kind") in {"connector_breaker", "budget_block"}), "daily_budgets":deepcopy(data.get("daily_budgets") or {}), "last_run_at":data.get("last_run_at") or ""},
         "truth":"所有搜索/GEO外部成功必须有真实证据；业务归因只到订单，不采集成交金额、收入、利润或ROI。",
     }
+

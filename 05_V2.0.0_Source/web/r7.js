@@ -55,7 +55,7 @@ function ensureTodayCommandCenter(){
   panel=document.createElement('article');
   panel.id='r7-today-command';
   panel.className='r7-today-command';
-  panel.innerHTML=`<div class="r7-today-head"><div><label>老板今日工作台</label><h3>今天 AI 员工在做什么</h3><p id="r7-today-subtitle">正在汇总今天的任务、进度和完成情况…</p></div><span class="r7-live-dot"><i></i>每 15 秒自动更新</span></div><div class="r7-today-stats"><div class="r7-today-stat"><b id="r7-today-working">0</b><small>AI 员工正在工作</small></div><div class="r7-today-stat"><b id="r7-today-queued">0</b><small>任务等待执行</small></div><div class="r7-today-stat"><b id="r7-today-completed">0</b><small>今天已经完成</small></div><div class="r7-today-stat attention"><b id="r7-today-human">0</b><small>需要你人工处理</small></div></div><div class="r7-day-progress"><span>今日要求完成度</span><div class="r7-day-progress-track"><i id="r7-day-progress-bar" style="width:0%"></i></div><strong id="r7-day-progress-text">0 / 0</strong></div><div id="r7-today-alert" class="r7-today-alert"></div>`;
+  panel.innerHTML=`<div class="r7-today-head"><div><label>老板今日工作台</label><h3>今天 AI 员工在做什么</h3><p id="r7-today-subtitle">正在汇总今天的任务、进度和完成情况…</p></div><span class="r7-live-dot"><i></i>每 15 秒自动更新</span></div><div class="r7-today-stats"><div class="r7-today-stat"><b id="r7-today-working">—</b><small>AI 员工正在工作</small></div><div class="r7-today-stat"><b id="r7-today-queued">—</b><small>任务等待执行</small></div><div class="r7-today-stat"><b id="r7-today-completed">—</b><small>今天已经完成</small></div><div class="r7-today-stat attention"><b id="r7-today-human">—</b><small>需要你人工处理</small></div></div><div class="r7-day-progress"><span>今日要求完成度</span><div class="r7-day-progress-track"><i id="r7-day-progress-bar" style="width:0%"></i></div><strong id="r7-day-progress-text">读取中</strong></div><div id="r7-today-alert" class="r7-today-alert"></div>`;
   if(overview)overview.parentNode.insertBefore(panel,overview);else workflow.querySelector('.page-title')?.insertAdjacentElement('afterend',panel);
   return panel;
 }
@@ -360,3 +360,4 @@ $('r7-create').addEventListener('click',async()=>{
 });
 $('r7-refresh').addEventListener('click',async()=>{const button=$('r7-refresh');button.disabled=true;const original=button.textContent;button.textContent='刷新中…';try{if(await loadR7())toast('今日任务、AI 员工和完成进度已刷新')}finally{button.disabled=false;button.textContent=original}});
 setInterval(()=>{if($('workflow').classList.contains('active'))loadR7()},15000);
+

@@ -7,7 +7,8 @@
   const byId = id => document.getElementById(id);
   let timer = null;
   let maintenanceTimer = null;
-  let latestSeo = {};
+  const SEO_TRUTH_CACHE_KEY = 'kz:r823:owner_seo_truth:v1';
+  let latestSeo = readSeoTruthCache();
   let seoRequest = null;
 
   function style(){
@@ -154,10 +155,41 @@
     return panel;
   }
 
-  async function json(path){
-    const response = await fetch(path,{cache:'no-store'});
-    if(!response.ok) throw new Error(`${path} HTTP ${response.status}`);
-    return response.json();
+  async function json(path, timeoutMs=15000){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort('kz_owner_timeout'),timeoutMs);
+    try{
+      const response = await fetch(path,{cache:'no-store',signal:controller.signal});
+      if(!response.ok) throw new Error(`${path} HTTP ${response.status}`);
+      return await response.json();
+    }finally{ clearTimeout(timer); }
+  }
+
+  function normalizeSeoTruth(value){
+    if(!value || typeof value !== 'object') return null;
+    if(value.seo_summary || value.geo_summary){
+      return {...value,__truth_ready:true,__truth_at:value.__truth_at||new Date().toISOString()};
+    }
+    const summary=value.summary||{},geo=value.geo||{};
+    return {
+      seo_summary:{public_pages:summary.public_pages,submitted_urls:summary.submitted_urls},
+      search:{submitted_urls:summary.submitted_urls},
+      geo_summary:{tested:geo.tested_questions??geo.observations,formal_tested:geo.tested_questions??geo.observations},
+      __truth_ready:true,
+      __truth_at:new Date().toISOString(),
+    };
+  }
+
+  function readSeoTruthCache(){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(SEO_TRUTH_CACHE_KEY)||'null');
+      return parsed?.payload?.__truth_ready ? parsed.payload : null;
+    }catch(_){ return null; }
+  }
+
+  function saveSeoTruthCache(payload){
+    try{ localStorage.setItem(SEO_TRUTH_CACHE_KEY,JSON.stringify({saved_at:new Date().toISOString(),payload})); }
+    catch(_){}
   }
 
   function capsArray(data){
@@ -225,12 +257,13 @@
     }).join('');
   }
 
-  function capabilityTable(growth, formalCompleted){
+  function capabilityTable(growth, formalCompleted, truthReady=true){
     const caps = capsArray(growth.capabilities);
     if(!caps.length) return '<div class="kz23-truth">等待能力状态。</div>';
     const formalCap=caps.find(cap=>String(cap.id||'')==='formal_geo_browser')||{};
     const formalCalls=Number((formalCap.utilization||{}).invoke_count||0);
-    return `<div class="kz23-truth">当前正式 Evidence ${Number(formalCompleted||0)}/50 来自独立历史证据账本；“真实外部 AI 网页 A/B 验证”本机路由调用 ${formalCalls} 次只统计当前安装的能力调度。两者可以同时成立，不能相互替代。</div><table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>本机路由调用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
+    const formalCopy=truthReady?`当前正式 Evidence ${Number(formalCompleted||0)}/50`:'当前正式 Evidence 读取中';
+    return `<div class="kz23-truth">${formalCopy} 来自独立历史证据账本；“真实外部 AI 网页 A/B 验证”本机路由调用 ${formalCalls} 次只统计当前安装的能力调度。两者可以同时成立，不能相互替代。</div><table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>本机路由调用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
       const util=cap.utilization||{}; const ready=cap.ready===true; const unknown=cap.ready==null;
       const state=unknown?(cap.state||'策略就绪'):ready?'可用':(cap.state||'等待');
       return `<tr><td><b>${esc(cap.name||cap.id)}</b></td><td class="${ready?'kz23-ok':'kz23-wait'}">${esc(state)}</td><td>${Number(util.invoke_count||0)} 次${util.last_invoked_at?`<br>${esc(shortTime(util.last_invoked_at))}`:''}</td><td>${esc(cap.truth_level||'—')}${util.last_receipt_id?`<br>${esc(util.last_receipt_id)}`:''}</td></tr>`;
@@ -264,12 +297,16 @@
     const plan = autonomy.plan || {};
     const progress = autonomy.progress || {};
     const pct = Math.max(0,Math.min(100,Number(progress.percent||0)));
-    const ss = seo.seo_summary || {};
-    const search = seo.search || {};
-    const geo = seo.geo_summary || {};
-    const publicPages = Number(ss.public_pages ?? seo.public_pages ?? 0);
-    const submitted = Number(ss.submitted_urls ?? ss.submitted ?? search.submitted_urls ?? search.submitted ?? 0);
-    const tested = Number(geo.tested ?? geo.formal_tested ?? 0);
+    const truthReady = Boolean(seo?.__truth_ready);
+    const ss = seo?.seo_summary || {};
+    const search = seo?.search || {};
+    const geo = seo?.geo_summary || {};
+    const publicPages = truthReady ? Number(ss.public_pages ?? seo.public_pages ?? 0) : null;
+    const submitted = truthReady ? Number(ss.submitted_urls ?? ss.submitted ?? search.submitted_urls ?? search.submitted ?? 0) : null;
+    const tested = truthReady ? Number(geo.tested ?? geo.formal_tested ?? 0) : null;
+    const seoPair = truthReady ? `${publicPages} / ${submitted}` : '读取中';
+    const geoPair = truthReady ? `${tested} / 50` : '读取中';
+    const truthNote = truthReady ? `真实快照 ${shortTime(seo.__truth_at)}` : '尚未取得真实快照';
     const engines = Array.isArray(growth.business_engines) ? growth.business_engines : [];
     const identity = growth.identity || {};
     const platformImprovement = growth.platform_improvement || {};
@@ -291,8 +328,8 @@
           ${metric('正在执行',Number(progress.running||0),'真实任务')}
           ${metric('等待队列',Number(progress.queued||0),'按优先级/时点执行',Number(progress.queued||0)>0?'warn':'')}
           ${metric('失败/异常',failures,'真实记录',failures?'bad':'good')}
-          ${metric('SEO公网 / 提交',`${publicPages} / ${submitted}`,'发布与提交分开记录','good')}
-          ${metric('GEO正式Evidence',`${tested} / 50`,'仅真实A/B Evidence','')}
+          ${metric('SEO公网 / 提交',seoPair,truthReady?'发布与提交分开记录':truthNote,truthReady?'good':'warn')}
+          ${metric('GEO正式Evidence',geoPair,truthReady?'仅真实A/B Evidence':truthNote,truthReady?'':'warn')}
         </div>
         <div class="kz23-progress"><i style="width:${pct}%"></i></div>
         <div class="kz23-project-workflow"><div class="kz23-card-head"><h4>主页工作流 · 从目标到结果</h4><small>每个项目按真实能力、调用和回执推进</small></div><div class="kz23-project-flow"><div><b>老板目标 / Mission</b><span>ChatGPT总控</span></div><div><b>项目识别</b><span>SEO / GEO / 内容 / 视频</span></div><div><b>能力路由</b><span>豆包 / 本地模型 / RTX3060</span></div><div><b>执行与发布</b><span>AI员工 / 平台能力</span></div><div><b>Receipt / Evidence</b><span>真实结果回流</span></div><div><b>复盘 / 下一轮</b><span>自动调整优先级</span></div></div></div>
@@ -301,12 +338,12 @@
           <div class="kz23-card"><div class="kz23-card-head"><h4>8个AI员工 · 当前工作归属</h4><small>只显示真实分配/调用，不制造“忙碌”</small></div><div class="kz23-employees">${employeeCards(growth)}</div></div>
           <div class="kz23-side">
             <div class="kz23-card"><div class="kz23-card-head"><h4>双增长引擎</h4><small>统一归因到订单</small></div><div class="kz23-engine-row">${engines.map(x=>`<div class="kz23-engine"><b>${esc(x.name)}</b><span>${esc((x.outcomes||[]).join(' → '))}</span></div>`).join('')}</div></div>
-            <div class="kz23-card"><div class="kz23-card-head"><h4>真实增长闭环</h4><small>外部结果不补造</small></div><div class="kz23-chain"><div><b>${publicPages}</b><span>SEO真实公网</span></div><div><b>${submitted}</b><span>搜索已提交</span></div><div class="formal"><b>${tested}/50</b><span>GEO正式证据</span></div></div></div>
+            <div class="kz23-card"><div class="kz23-card-head"><h4>真实增长闭环</h4><small>外部结果不补造</small></div><div class="kz23-chain"><div><b>${truthReady?publicPages:'—'}</b><span>SEO真实公网</span></div><div><b>${truthReady?submitted:'—'}</b><span>搜索已提交</span></div><div class="formal"><b>${truthReady?`${tested}/50`:'—'}</b><span>GEO正式证据</span></div></div></div>
             <div class="kz23-next"><b>下一步：</b>${esc(autonomy.next_action || '系统根据真实 Receipt / Evidence 自动决定下一轮。')}</div>
           </div>
         </div>
         <div class="kz23-truth">${esc(growth.truth_rule || '普通API、本地模型和内部任务只作辅助，不冒充公网发布、搜索收录、排名或正式GEO成绩。')} ${esc(growth.operating_rule || '')}</div>
-        <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth,tested)}</div></details>
+        <details class="kz23-details" id="kz-r8-23-capability-details"><summary>技术详情 · 能力利用情况与真实回执</summary><div class="kz23-details-content">${capabilityTable(growth,tested,truthReady)}</div></details>
         <details class="kz23-details" id="kz-r8-23-legacy"><summary>技术主线与历史审计 · 默认收起</summary><div class="kz23-details-content kz23-legacy-slot"><div id="kz-r8-23-r22-slot"></div><div id="kz-r8-23-ledger-slot"></div></div></details>
       </div>`;
 
@@ -422,9 +459,12 @@
       ]);
       render(growth||{},autonomy||{},latestSeo);
       if(!seoRequest){
-        seoRequest = json('/api/r8-20/seo-geo?days=30')
+        seoRequest = json('/api/r8-13/seo-geo',12000)
+          .catch(primaryError => json('/api/r8-20/seo-geo?days=30',12000)
+            .catch(() => { throw primaryError; }))
           .then(seo => {
-            latestSeo = seo || {};
+            latestSeo = normalizeSeoTruth(seo);
+            if(latestSeo) saveSeoTruthCache(latestSeo);
             render(growth||{},autonomy||{},latestSeo);
           })
           .catch(error => {
@@ -471,3 +511,4 @@
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
   else boot();
 })();
+
