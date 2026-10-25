@@ -313,7 +313,7 @@ def _ensure_root_discovery(base: str, timeout: int) -> dict:
     }
 
 
-def deploy_pending(limit: int = 10) -> dict:
+def _deploy_pending_unlocked(limit: int = 10) -> dict:
     if not _remote_mode():
         return _ORIGINAL_DEPLOY_PENDING(limit=limit)
     data = deployer._load()
@@ -337,6 +337,7 @@ def deploy_pending(limit: int = 10) -> dict:
         for x in snap.get("assets", [])
         if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
     ]
+    candidates, reconciled = deployer.reconcile_exact_revision_duplicates(candidates)
     deferred_scope = [
         {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
         for x in candidates if not deployer.publication_scope_allowed(x)
@@ -491,6 +492,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "skipped": False,
         "attempted": len(pending),
         "published": published,
+        "reconciled": reconciled,
         "failed": failed,
         "deferred_scope": deferred_scope,
         "managed_sitemap": "https://kazuizhi.com/seo/sitemap.xml",
@@ -502,6 +504,11 @@ def deploy_pending(limit: int = 10) -> dict:
     data["last_result"] = result
     deployer._save(data)
     return result
+
+
+def deploy_pending(limit: int = 10) -> dict:
+    with deployer._DEPLOY_LOCK:
+        return _deploy_pending_unlocked(limit=limit)
 
 
 def _patch_indexnow_key_hosting() -> None:

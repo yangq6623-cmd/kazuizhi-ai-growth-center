@@ -194,7 +194,7 @@ def _priority_due_job_ids():
 
 def _event_stream(limit=40):
     """Do not relabel historical audit events as if they belonged to this Mission."""
-    state = convergence._load_state()
+    state = convergence._load_state_snapshot()
     mission_id = state.get("active_mission_id")
     command_id = state.get("active_command_id")
     data = autonomous_ops._load()
@@ -327,7 +327,7 @@ def install():
                 _serve_autonomous_ops(handler)
                 return
             if path == "/api/r8-22/autonomy":
-                handler._json_ok(convergence.snapshot())
+                handler._json_ok(convergence.read_only_snapshot())
                 return
             if path == "/api/r8-22/autonomy/events":
                 query = parse_qs(urlsplit(handler.path).query)

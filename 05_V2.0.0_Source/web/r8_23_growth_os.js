@@ -8,8 +8,15 @@
   let timer = null;
   let maintenanceTimer = null;
   const SEO_TRUTH_CACHE_KEY = 'kz:r823:owner_seo_truth:v1';
+  const CONTROL_CACHE_KEY = 'kz:r823:owner_control_truth:v1';
   let latestSeo = readSeoTruthCache();
+  const initialControl = readControlCache();
+  let latestGrowth = initialControl?.growth || null;
+  let latestAutonomy = initialControl?.autonomy || null;
+  let latestControlAt = initialControl?.saved_at || '';
   let seoRequest = null;
+  let controlRequest = null;
+  let refreshQueued = false;
 
   function style(){
     if(byId('kz-r8-23-style')) return;
@@ -190,6 +197,28 @@
   function saveSeoTruthCache(payload){
     try{ localStorage.setItem(SEO_TRUTH_CACHE_KEY,JSON.stringify({saved_at:new Date().toISOString(),payload})); }
     catch(_){}
+  }
+
+  function readControlCache(){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(CONTROL_CACHE_KEY)||'null');
+      return parsed?.growth && parsed?.autonomy ? parsed : null;
+    }catch(_){ return null; }
+  }
+
+  function saveControlCache(growth,autonomy){
+    try{
+      const saved_at=new Date().toISOString();
+      localStorage.setItem(CONTROL_CACHE_KEY,JSON.stringify({saved_at,growth,autonomy}));
+      latestControlAt=saved_at;
+    }catch(_){}
+  }
+
+  function requestError(path,error){
+    const name=String(error?.name||'');
+    const message=String(error?.message||error||'');
+    if(name==='AbortError' || /aborted|timeout/i.test(message)) return `${path} 请求超时`;
+    return `${path} ${message||'读取失败'}`;
   }
 
   function capsArray(data){
@@ -445,43 +474,61 @@
   }
 
   async function refresh(){
-    try{
+    if(controlRequest){
+      refreshQueued=true;
+      return controlRequest;
+    }
+    controlRequest=(async()=>{
       scopeOwnerPanels();
-      // The complete SEO/GEO truth snapshot can be expensive on an established
-      // installation because it assembles history, governance and evidence.
-      // It must not make the owner workbench look unavailable while that
-      // independent report is still loading.  Render the Mission and employee
-      // control plane first, retain the last verified SEO snapshot, then update
-      // the SEO metrics when the report arrives.
-      const [growth, autonomy] = await Promise.all([
+      const results=await Promise.allSettled([
         json('/api/r8-23/growth-os'),
         json('/api/r8-22/autonomy'),
       ]);
-      render(growth||{},autonomy||{},latestSeo);
-      if(!seoRequest){
-        seoRequest = json('/api/r8-13/seo-geo',12000)
-          .catch(primaryError => json('/api/r8-20/seo-geo?days=30',12000)
-            .catch(() => { throw primaryError; }))
-          .then(seo => {
-            latestSeo = normalizeSeoTruth(seo);
-            if(latestSeo) saveSeoTruthCache(latestSeo);
-            render(growth||{},autonomy||{},latestSeo);
-          })
-          .catch(error => {
-            // SEO/GEO has its own detailed workspace and retry loop.  Keep the
-            // owner cockpit usable if that optional overview refresh is slow or
-            // temporarily unavailable.
-            console.warn('SEO/GEO overview refresh deferred', error);
-          })
-          .finally(() => { seoRequest = null; });
+      const errors=[];
+      if(results[0].status==='fulfilled') latestGrowth=results[0].value||{};
+      else errors.push(requestError('/api/r8-23/growth-os',results[0].reason));
+      if(results[1].status==='fulfilled') latestAutonomy=results[1].value||{};
+      else errors.push(requestError('/api/r8-22/autonomy',results[1].reason));
+
+      if(results.some(row=>row.status==='fulfilled') && latestGrowth && latestAutonomy){
+        saveControlCache(latestGrowth,latestAutonomy);
       }
-    }catch(error){
-      const panel = host();
-      panel.innerHTML = `<div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · OWNER COCKPIT</div><h3>运营总览暂不可读</h3><p>${esc(error.message||error)}</p></div><span class="kz23-live"><i></i>等待恢复</span></div>`;
-      foldLegacy();
-      scopeOwnerPanels();
-      polishSeo();
-    }
+      if(latestGrowth && latestAutonomy){
+        render(latestGrowth,latestAutonomy,latestSeo);
+        if(errors.length){
+          const note=host().querySelector('.kz23-top p');
+          if(note) note.insertAdjacentHTML('beforeend',`<br><span class="kz23-stale">${esc(errors.join('；'))}；保留最近成功数据 ${esc(shortTime(latestControlAt))}</span>`);
+        }
+      }else{
+        const panel=host();
+        panel.innerHTML=`<div class="kz23-top"><div><div class="kz23-eyebrow">R8-23.1 · OWNER COCKPIT</div><h3>正在恢复运营总览</h3><p>${esc(errors.join('；')||'尚无可用的成功快照')}</p></div><span class="kz23-live"><i></i>读取中</span></div>`;
+        foldLegacy();
+        scopeOwnerPanels();
+        polishSeo();
+      }
+
+      if(!seoRequest && latestGrowth && latestAutonomy){
+        seoRequest=json('/api/r8-13/seo-geo',12000)
+          .catch(primaryError=>json('/api/r8-20/seo-geo?days=30',12000)
+            .catch(()=>{ throw primaryError; }))
+          .then(seo=>{
+            latestSeo=normalizeSeoTruth(seo);
+            if(latestSeo) saveSeoTruthCache(latestSeo);
+            render(latestGrowth,latestAutonomy,latestSeo);
+          })
+          .catch(error=>{
+            console.warn('SEO/GEO overview refresh deferred',requestError('/api/r8-13/seo-geo',error));
+          })
+          .finally(()=>{ seoRequest=null; });
+      }
+    })().finally(()=>{
+      controlRequest=null;
+      if(refreshQueued){
+        refreshQueued=false;
+        setTimeout(refresh,0);
+      }
+    });
+    return controlRequest;
   }
 
   function maintain(){

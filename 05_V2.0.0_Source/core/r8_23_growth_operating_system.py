@@ -273,8 +273,19 @@ def capability_status():
     # Social is deliberately graded: configured routes do not grant blanket publish authority.
     social_ids = ("douyin", "wechat_channels", "kuaishou", "xiaohongshu", "bilibili", "weibo")
     social_rows = [rows.get(x) for x in social_ids if rows.get(x)]
-    status["social_distribution"]["ready"] = any(bool(x.get("software_route_ready")) for x in social_rows)
-    status["social_distribution"]["state"] = "graded_authorization" if social_rows else "not_configured"
+    registered = sum(bool(x.get("software_route_ready")) for x in social_rows)
+    authorized = sum(bool(x.get("external_verified")) for x in social_rows)
+    status["social_distribution"].update(
+        ready=bool(authorized),
+        external_verified=bool(authorized),
+        registered_routes=registered,
+        authorized_routes=authorized,
+        state=(
+            "ready" if authorized
+            else "authorization_required" if registered
+            else "not_configured"
+        ),
+    )
 
     # Model routes expose the real active model without promoting model output to evidence.
     try:
