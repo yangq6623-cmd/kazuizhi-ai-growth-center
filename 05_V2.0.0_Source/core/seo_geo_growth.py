@@ -1145,6 +1145,51 @@ def refresh_legacy_staging(limit=10):
     return {"refreshed": refreshed, "count": len(refreshed), "template_version": PUBLIC_TEMPLATE_VERSION}
 
 
+def reconcile_verified_revision(asset_id, receipt):
+    """Clear a stale republish flag using an already verified exact receipt.
+
+    This is local reconciliation only.  It never creates a Publication Event,
+    never appends a content-refresh event and never performs an external write.
+    """
+    receipt = dict(receipt or {})
+    if not bool((receipt.get("verification") or {}).get("ok")):
+        raise ValueError("仅允许使用已通过公网验证的部署回执对账")
+    data = _load()
+    asset = next((row for row in data["assets"] if str(row.get("id")) == str(asset_id)), None)
+    if not asset:
+        raise ValueError("SEO/GEO 资产不存在")
+    if not _stage_at_least(asset, "PUBLISHED"):
+        raise ValueError("未发布资产不能使用历史回执跳过部署")
+    revision = str(asset.get("content_revision_id") or "").strip()
+    if not revision or str(receipt.get("content_revision_id") or "").strip() != revision:
+        raise ValueError("部署回执与当前内容 Revision 不匹配")
+    action = str(asset.get("growth_action_id") or "").strip()
+    receipt_action = str(receipt.get("growth_action_id") or "").strip()
+    if action and receipt_action != action:
+        raise ValueError("部署回执与当前 Growth Action 不匹配")
+    public_url = str(receipt.get("public_url") or "").strip()
+    parts = urlsplit(public_url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("部署回执缺少有效公网 URL")
+    existing_url = str(asset.get("public_url") or "").strip()
+    if existing_url and existing_url.rstrip("/") != public_url.rstrip("/"):
+        raise ValueError("部署回执公网 URL 与资产不匹配")
+    at = now_iso()
+    asset["republish_pending"] = False
+    asset["last_reconciled_deploy_receipt"] = str(receipt.get("receipt_id") or "")
+    asset["last_reconciled_at"] = at
+    asset["updated_at"] = at
+    _audit_event(data, "asset_revision_deploy_reconciled", {
+        "asset_id": asset_id,
+        "growth_action_id": action,
+        "content_revision_id": revision,
+        "deploy_receipt": asset["last_reconciled_deploy_receipt"],
+        "external_request_created": False,
+    })
+    _save(data)
+    return deepcopy(asset)
+
+
 def record_asset_republished(asset_id, payload=None):
     payload = dict(payload or {})
     public_url = str(payload.get("public_url") or "").strip()
