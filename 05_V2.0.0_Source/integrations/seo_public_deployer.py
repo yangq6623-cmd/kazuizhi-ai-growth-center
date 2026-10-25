@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 import urllib.robotparser
@@ -32,6 +33,7 @@ from core.seo_geo_growth import (
     dashboard,
     record_asset_stage,
     record_asset_republished,
+    reconcile_verified_revision,
     verified_incremental_publication_scope,
 )
 from core import seo_content_quality
@@ -39,6 +41,8 @@ from core import seo_content_quality
 STORE = "r8_15/seo_public_deploy.json"
 RECEIPTS = "r8_15/seo_public_deploy_receipts.json"
 SCHEMA = "kz.seo-public-deploy.v1"
+_DEPLOY_LOCK = threading.RLock()
+
 DEFAULT = {
     "schema": SCHEMA,
     "enabled": False,
@@ -499,6 +503,62 @@ def verified_publication_receipts() -> list[dict]:
     ]
 
 
+def matching_verified_revision_receipt(asset: dict, receipts=None):
+    """Return the one durable receipt for this exact Asset/Action/Revision."""
+    if not isinstance(asset, dict):
+        return None
+    asset_id = str(asset.get("id") or "").strip()
+    revision = str(asset.get("content_revision_id") or "").strip()
+    action = str(asset.get("growth_action_id") or "").strip()
+    public_url = str(asset.get("public_url") or "").strip().rstrip("/")
+    if not asset_id or not revision:
+        return None
+    rows = verified_publication_receipts() if receipts is None else list(receipts or [])
+    matches = []
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("asset_id") or "") != asset_id:
+            continue
+        if str(row.get("content_revision_id") or "").strip() != revision:
+            continue
+        if action and str(row.get("growth_action_id") or "").strip() != action:
+            continue
+        receipt_url = str(row.get("public_url") or "").strip()
+        if not receipt_url.startswith(("https://", "http://")):
+            continue
+        if public_url and receipt_url.rstrip("/") != public_url:
+            continue
+        if not bool((row.get("verification") or {}).get("ok")):
+            continue
+        matches.append(row)
+    return deepcopy(matches[0]) if len(matches) == 1 else None
+
+
+def reconcile_exact_revision_duplicates(candidates):
+    pending = []
+    reconciled = []
+    receipts = verified_publication_receipts()
+    for asset in candidates or []:
+        receipt = matching_verified_revision_receipt(asset, receipts)
+        if receipt is None:
+            pending.append(asset)
+            continue
+        try:
+            reconcile_verified_revision(asset.get("id"), receipt)
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            pending.append(asset)
+            continue
+        reconciled.append({
+            "asset_id": str(asset.get("id") or ""),
+            "public_url": str(receipt.get("public_url") or ""),
+            "receipt": str(receipt.get("receipt_id") or ""),
+            "growth_action_id": str(asset.get("growth_action_id") or ""),
+            "content_revision_id": str(asset.get("content_revision_id") or ""),
+            "external_request_created": False,
+            "reconciled": True,
+        })
+    return pending, reconciled
+
+
 def _write_managed_sitemap(target: Path) -> str:
     snap = dashboard()
     rows = sorted(
@@ -547,7 +607,7 @@ def asset_receipt_snapshot(asset: dict) -> dict:
     }
 
 
-def deploy_pending(limit: int = 10) -> dict:
+def _deploy_pending_unlocked(limit: int = 10) -> dict:
     data = _load()
     state = status()
     data["last_run_at"] = now_iso()
@@ -571,6 +631,7 @@ def deploy_pending(limit: int = 10) -> dict:
         if x.get("stage") == "QC_PASSED" or bool(x.get("republish_pending"))
     ]
     scoped = [resolve_publication_scope(asset, opportunities) for asset in candidates]
+    scoped, reconciled = reconcile_exact_revision_duplicates(scoped)
     deferred_scope = [
         {"asset_id": str(x.get("id") or ""), "reason": "publication_scope_not_approved"}
         for x in scoped if not publication_scope_allowed(x)
@@ -667,6 +728,7 @@ def deploy_pending(limit: int = 10) -> dict:
         "skipped": False,
         "attempted": len(pending),
         "published": published,
+        "reconciled": reconciled,
         "failed": failed,
         "deferred_scope": deferred_scope,
         "managed_sitemap": sitemap_path,
@@ -675,3 +737,10 @@ def deploy_pending(limit: int = 10) -> dict:
     data["last_result"] = result
     _save(data)
     return result
+
+
+def deploy_pending(limit: int = 10) -> dict:
+    # The lock spans candidate selection, upload, verification and durable
+    # state update so two scheduler paths cannot deploy one revision together.
+    with _DEPLOY_LOCK:
+        return _deploy_pending_unlocked(limit=limit)
