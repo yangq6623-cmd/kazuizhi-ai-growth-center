@@ -17,7 +17,7 @@ from datetime import datetime
 import re
 from uuid import uuid4
 
-from core.storage import now_iso, read_json, write_json
+from core.storage import now_iso, read_json, read_json_snapshot, write_json
 
 STATE_FILE = "ops/r8_22_autonomous_convergence.json"
 PHASE_RECEIPT_SECONDS = 15 * 60
@@ -158,6 +158,17 @@ def _load_state():
         # ~50 MB ledger into a bounded control-plane file before concurrent UI
         # polls can repeatedly parse and serialize it.
         write_json(STATE_FILE, data)
+    return data
+
+
+def _load_state_snapshot():
+    """Bounded read-only state for high-frequency owner/UI polling."""
+    data = read_json_snapshot(STATE_FILE, _default_state())
+    if not isinstance(data, dict):
+        data = _default_state()
+    for key, value in _default_state().items():
+        data.setdefault(key, value)
+    _compact_state_receipts(data)
     return data
 
 
@@ -489,7 +500,7 @@ def _human_and_deferred():
     return human[:50], deferred[:50]
 
 
-def _metrics(command_id=None, mission_id=None):
+def _metrics(command_id=None, mission_id=None, *, include_seo_geo=True):
     try:
         from core import r7_engine
         # Never use the 200-row presentation window as Mission capacity.
@@ -510,11 +521,13 @@ def _metrics(command_id=None, mission_id=None):
         x for x in completed if isinstance(x.get("result"), dict)
         and x["result"].get("seo_asset_id")
     ]
-    try:
-        from core import seo_geo_autonomy
-        seo_geo = seo_geo_autonomy.status()
-    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
-        seo_geo = {}
+    seo_geo = {}
+    if include_seo_geo:
+        try:
+            from core import seo_geo_autonomy
+            seo_geo = seo_geo_autonomy.status()
+        except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+            seo_geo = {}
     try:
         from core import seo_geo_growth, geo_validation
         from core.storage import read_json_snapshot
@@ -636,7 +649,7 @@ def priority_due_job_ids():
 def event_stream(limit=40):
     from core import autonomous_ops
 
-    state = _load_state()
+    state = _load_state_snapshot()
     mission_id = state.get("active_mission_id")
     data = autonomous_ops._load()
     rows = [x for x in data.get("events", []) if isinstance(x, dict) and (not mission_id or x.get("mission_id") == mission_id)]
@@ -655,6 +668,72 @@ def event_stream(limit=40):
         pass
     rows.sort(key=lambda x: str(x.get("at") or ""), reverse=True)
     return rows[:max(1, min(int(limit or 40), 100))]
+
+
+def read_only_snapshot():
+    """Owner/UI GET snapshot with no Mission, Plan, Task or Receipt mutation."""
+    state = _load_state_snapshot()
+    mission_id = state.get("active_mission_id")
+    mission = next((
+        row for row in (state.get("missions") or [])
+        if isinstance(row, dict) and str(row.get("mission_id") or "") == str(mission_id or "")
+    ), None)
+    if mission is None and mission_id:
+        try:
+            from core import autonomous_ops
+            ops = autonomous_ops._load()
+            mission = autonomous_ops._find_mission(ops, mission_id=mission_id)
+        except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+            mission = None
+    plan = state.get("plan") if isinstance(state.get("plan"), dict) else None
+    human, deferred = _human_and_deferred()
+    metrics = _metrics(
+        state.get("active_command_id"), state.get("active_mission_id"),
+        include_seo_geo=False,
+    )
+    tasks = metrics.get("tasks") or {}
+    workforce = read_json_snapshot("r7/workforce_schedule.json", {})
+    total = int(tasks.get("total") or 0)
+    done = int(tasks.get("completed") or 0)
+    progress = round(done * 100 / total) if total else 0
+    current_action = "等待下一轮自治调度"
+    if tasks.get("running"):
+        current_action = "当前 Mission 有任务正在执行"
+    elif tasks.get("queued"):
+        current_action = "当前 Mission 队列等待调度"
+    elif workforce.get("continuation_reason") == "no_new_eligible_work":
+        current_action = "本轮已完成；当前无新的合格工作，等待真实结果或到期时间自动唤醒"
+    return {
+        "schema": "kazuizhi.r8_22.autonomy.v1",
+        "snapshot_mode": "read_only_owner_poll",
+        "generated_at": now_iso(),
+        "command": _latest_authorized_command(),
+        "mission": mission,
+        "plan": plan,
+        "progress": {"percent": progress, **tasks},
+        "outcomes": metrics.get("outcomes") or {},
+        "workforce": {
+            "date": workforce.get("date"),
+            "active_batch_id": workforce.get("active_batch_id"),
+            "latest_batch_number": workforce.get("latest_batch_number"),
+            "active_batch_state": workforce.get("active_batch_state"),
+            "continuation_created": workforce.get("continuation_created"),
+            "continuation_reason": workforce.get("continuation_reason"),
+            "next_eligible_wake_at": workforce.get("next_eligible_wake_at"),
+        },
+        "current_action": current_action,
+        "next_action": "由 Controller Plan 与真实 Receipt 自动决定下一步",
+        "human_blockers": human,
+        "deferred_channels": deferred,
+        "events": event_stream(40),
+        "phase_receipts": (state.get("phase_receipts") or [])[-8:][::-1],
+        "job_binding": {
+            "jobs_bound": 0,
+            "jobs_backlog": int(tasks.get("queued") or 0),
+            "read_only": True,
+        },
+        "truth_rule": "只读轮询不创建Mission/Plan/Task/Receipt；外部结果仍只认真实Receipt/Evidence。",
+    }
 
 
 def snapshot():
