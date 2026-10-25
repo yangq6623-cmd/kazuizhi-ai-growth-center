@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/877-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
