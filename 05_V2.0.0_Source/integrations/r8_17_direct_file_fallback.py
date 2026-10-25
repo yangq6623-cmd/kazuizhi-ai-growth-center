@@ -50,7 +50,7 @@ def _asset_map() -> dict:
     }
 
 
-def deploy_pending(limit: int = 10) -> dict:
+def _deploy_pending_unlocked(limit: int = 10) -> dict:
     result = _ORIGINAL_DEPLOY_PENDING(limit=limit)
     if result.get("skipped") or not result.get("failed"):
         return result
@@ -188,6 +188,13 @@ def deploy_pending(limit: int = 10) -> dict:
     data["last_run_at"] = now_iso()
     deployer._save(data)
     return result
+
+
+def deploy_pending(limit: int = 10) -> dict:
+    # Include the primary remote deployment and legacy IIS fallback in the
+    # exact same transaction lock.
+    with deployer._DEPLOY_LOCK:
+        return _deploy_pending_unlocked(limit=limit)
 
 
 def install() -> None:
