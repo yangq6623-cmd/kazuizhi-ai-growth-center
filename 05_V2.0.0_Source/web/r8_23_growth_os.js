@@ -262,8 +262,8 @@
     if(!caps.length) return '<div class="kz23-truth">等待能力状态。</div>';
     const formalCap=caps.find(cap=>String(cap.id||'')==='formal_geo_browser')||{};
     const formalCalls=Number((formalCap.utilization||{}).invoke_count||0);
-    const formalLabel=truthReady?`${Number(formalCompleted||0)}/50`:'读取中';
-    return `<div class="kz23-truth">当前正式 Evidence ${formalLabel} 来自独立历史证据账本；“真实外部 AI 网页 A/B 验证”本机路由调用 ${formalCalls} 次只统计当前安装的能力调度。两者可以同时成立，不能相互替代。</div><table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>本机路由调用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
+    const formalCopy=truthReady?`当前正式 Evidence ${Number(formalCompleted||0)}/50`:'当前正式 Evidence 读取中';
+    return `<div class="kz23-truth">${formalCopy} 来自独立历史证据账本；“真实外部 AI 网页 A/B 验证”本机路由调用 ${formalCalls} 次只统计当前安装的能力调度。两者可以同时成立，不能相互替代。</div><table class="kz23-tech-table"><thead><tr><th>能力</th><th>状态</th><th>本机路由调用</th><th>真值/回执</th></tr></thead><tbody>${caps.map(cap=>{
       const util=cap.utilization||{}; const ready=cap.ready===true; const unknown=cap.ready==null;
       const state=unknown?(cap.state||'策略就绪'):ready?'可用':(cap.state||'等待');
       return `<tr><td><b>${esc(cap.name||cap.id)}</b></td><td class="${ready?'kz23-ok':'kz23-wait'}">${esc(state)}</td><td>${Number(util.invoke_count||0)} 次${util.last_invoked_at?`<br>${esc(shortTime(util.last_invoked_at))}`:''}</td><td>${esc(cap.truth_level||'—')}${util.last_receipt_id?`<br>${esc(util.last_receipt_id)}`:''}</td></tr>`;
