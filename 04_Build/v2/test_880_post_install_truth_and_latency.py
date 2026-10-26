@@ -103,7 +103,66 @@ try:
         growth_os.gpu_status = old_gpu
         growth_os._CAPABILITY_CACHE.update(at=0.0, key=None, rows=None)
 
-    print("PASS: #880 Mission scope truth and single-flight capability snapshot")
+    # Cold concurrent R7 first-paint callers share one build. A stale cache is
+    # returned immediately while exactly one background refresh runs.
+    old_builder = r7_engine._build_ui_snapshot
+    build_calls = {"count": 0}
+
+    def slow_builder(_limit=200):
+        build_calls["count"] += 1
+        time.sleep(0.08)
+        return {
+            "generated_at": r7_engine.now_iso(), "source": "synthetic-r7",
+            "snapshot_state": "fresh", "snapshot_error": "",
+            "jobs": {"items": [], "count": 3, "ledger_count": 3,
+                     "window": {"offset": 0, "limit": 200, "returned": 0}},
+            "engine": {"jobs": {}, "ledger_total": 3},
+            "agents": {"items": []}, "audit": {"integrity": "verified", "events": []},
+        }
+
+    try:
+        r7_engine._build_ui_snapshot = slow_builder
+        with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+            r7_engine._UI_SNAPSHOT_CACHE = None
+            r7_engine._UI_SNAPSHOT_CACHE_AT = 0.0
+            r7_engine._UI_SNAPSHOT_REFRESHING = False
+        cold = []
+        threads = [threading.Thread(target=lambda: cold.append(r7_engine.ui_snapshot())) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=3)
+        assert len(cold) == 8, len(cold)
+        assert build_calls["count"] == 1, build_calls
+        assert all(row["jobs"]["ledger_count"] == 3 for row in cold)
+
+        with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+            r7_engine._UI_SNAPSHOT_CACHE_AT = 0.0
+        started = time.perf_counter()
+        stale = r7_engine.ui_snapshot()
+        elapsed = time.perf_counter() - started
+        assert elapsed < 0.05, elapsed
+        assert stale["snapshot_state"] == "cached_refreshing", stale
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+                if not r7_engine._UI_SNAPSHOT_REFRESHING:
+                    break
+            time.sleep(0.01)
+        assert build_calls["count"] == 2, build_calls
+    finally:
+        r7_engine._build_ui_snapshot = old_builder
+        with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+            r7_engine._UI_SNAPSHOT_CACHE = None
+            r7_engine._UI_SNAPSHOT_CACHE_AT = 0.0
+            r7_engine._UI_SNAPSHOT_REFRESHING = False
+
+    owner_js = (SOURCE / "web" / "r8_23_growth_os.js").read_text(encoding="utf-8")
+    assert "setInterval(refresh,15000)" not in owner_js
+    assert "scheduleNextRefresh" in owner_js
+    assert "Math.min(120000,30000*Math.pow(2,refreshFailures-1))" in owner_js
+
+    print("PASS: #880 Mission truth, capability cache, R7 snapshot single-flight and owner backoff")
 finally:
     if old_local is None:
         os.environ.pop("LOCALAPPDATA", None)
