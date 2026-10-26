@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import threading
+import time
 import uuid
 from datetime import datetime
 
@@ -25,6 +26,10 @@ MIGRATION = "r7/migration.json"
 LOCK = threading.RLock()
 _UI_SNAPSHOT_CACHE_LOCK = threading.RLock()
 _UI_SNAPSHOT_CACHE = None
+_UI_SNAPSHOT_CACHE_AT = 0.0
+_UI_SNAPSHOT_REFRESHING = False
+_UI_SNAPSHOT_BUILD_LOCK = threading.Lock()
+UI_SNAPSHOT_CACHE_SECONDS = 15.0
 KINDS = {
     "manual_task": {"name": "运营任务", "mode": "policy"},
     "daily_review": {"name": "本地每日复盘", "mode": "local", "agent": "数据复盘员", "task_type": "review"},
@@ -445,6 +450,40 @@ def _build_ui_snapshot(limit=200):
     }
 
 
+def _serve_ui_snapshot(payload, *, state, error="", refreshing=False):
+    """Return an isolated owner snapshot with explicit freshness metadata."""
+    value = copy.deepcopy(payload)
+    with _UI_SNAPSHOT_CACHE_LOCK:
+        age = max(0.0, time.monotonic() - _UI_SNAPSHOT_CACHE_AT) if _UI_SNAPSHOT_CACHE_AT else None
+    value["snapshot_state"] = state
+    value["snapshot_error"] = str(error or "")
+    value["snapshot_age_seconds"] = round(age, 3) if age is not None else None
+    value["snapshot_refreshing"] = bool(refreshing)
+    value["served_at"] = now_iso()
+    return value
+
+
+def _refresh_ui_snapshot(limit):
+    """Refresh a stale owner snapshot once without holding HTTP callers open."""
+    global _UI_SNAPSHOT_CACHE, _UI_SNAPSHOT_CACHE_AT, _UI_SNAPSHOT_REFRESHING
+    payload = None
+    error = ""
+    try:
+        payload = _build_ui_snapshot(limit)
+    except (OSError, ValueError, TypeError) as exc:
+        error = str(exc)
+    with _UI_SNAPSHOT_CACHE_LOCK:
+        if payload is not None:
+            _UI_SNAPSHOT_CACHE = copy.deepcopy(payload)
+            _UI_SNAPSHOT_CACHE_AT = time.monotonic()
+        elif _UI_SNAPSHOT_CACHE is not None:
+            _UI_SNAPSHOT_CACHE["last_refresh_error"] = error
+            # Apply the same short TTL after a failed refresh so a corrupt or
+            # briefly unavailable atomic file cannot trigger a tight retry loop.
+            _UI_SNAPSHOT_CACHE_AT = time.monotonic()
+        _UI_SNAPSHOT_REFRESHING = False
+
+
 def ui_snapshot(limit=200):
     """Return one bounded, internally consistent owner snapshot.
 
@@ -452,18 +491,52 @@ def ui_snapshot(limit=200):
     atomic file replacement is briefly unavailable, preserve and label the
     last successful snapshot instead of fabricating zero counters.
     """
-    global _UI_SNAPSHOT_CACHE
+    global _UI_SNAPSHOT_CACHE, _UI_SNAPSHOT_CACHE_AT, _UI_SNAPSHOT_REFRESHING
     try:
-        payload = _build_ui_snapshot(limit)
-    except (OSError, ValueError, TypeError) as error:
+        size = max(1, min(int(limit or 200), 1000))
+    except (TypeError, ValueError):
+        size = 200
+
+    with _UI_SNAPSHOT_CACHE_LOCK:
+        cached = copy.deepcopy(_UI_SNAPSHOT_CACHE)
+        age = max(0.0, time.monotonic() - _UI_SNAPSHOT_CACHE_AT) if _UI_SNAPSHOT_CACHE_AT else None
+        refreshing = _UI_SNAPSHOT_REFRESHING
+        if cached is not None and age is not None and age <= UI_SNAPSHOT_CACHE_SECONDS:
+            # This is intentionally labelled cached even inside the short TTL:
+            # callers must never confuse a reused point-in-time ledger with a
+            # newly re-read file after an external replacement or corruption.
+            return _serve_ui_snapshot(
+                cached, state="cached",
+                error=cached.get("last_refresh_error") or "", refreshing=refreshing,
+            )
+        if cached is not None:
+            if not refreshing:
+                _UI_SNAPSHOT_REFRESHING = True
+                threading.Thread(
+                    target=_refresh_ui_snapshot, args=(size,),
+                    name="kz-r7-ui-snapshot-refresh", daemon=True,
+                ).start()
+            return _serve_ui_snapshot(
+                cached, state="cached_refreshing",
+                error=cached.get("last_refresh_error") or "", refreshing=True,
+            )
+
+    # A cold process performs one bounded build. Concurrent first-paint calls
+    # share it instead of multiplying full-ledger and audit verification work.
+    with _UI_SNAPSHOT_BUILD_LOCK:
         with _UI_SNAPSHOT_CACHE_LOCK:
             cached = copy.deepcopy(_UI_SNAPSHOT_CACHE)
-        if cached is None:
-            raise
-        cached["snapshot_state"] = "cached"
-        cached["snapshot_error"] = str(error)
-        cached["served_at"] = now_iso()
-        return cached
-    with _UI_SNAPSHOT_CACHE_LOCK:
-        _UI_SNAPSHOT_CACHE = copy.deepcopy(payload)
-    return copy.deepcopy(payload)
+        if cached is not None:
+            return _serve_ui_snapshot(cached, state="fresh", refreshing=False)
+        try:
+            payload = _build_ui_snapshot(size)
+        except (OSError, ValueError, TypeError) as error:
+            with _UI_SNAPSHOT_CACHE_LOCK:
+                cached = copy.deepcopy(_UI_SNAPSHOT_CACHE)
+            if cached is None:
+                raise
+            return _serve_ui_snapshot(cached, state="cached", error=error, refreshing=False)
+        with _UI_SNAPSHOT_CACHE_LOCK:
+            _UI_SNAPSHOT_CACHE = copy.deepcopy(payload)
+            _UI_SNAPSHOT_CACHE_AT = time.monotonic()
+        return _serve_ui_snapshot(payload, state="fresh", refreshing=False)

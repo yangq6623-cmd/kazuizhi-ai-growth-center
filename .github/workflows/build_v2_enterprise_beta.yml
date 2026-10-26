@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/877-*', 'codex/879-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/877-*', 'codex/879-*', 'codex/880-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -21,6 +21,7 @@ on:
       - 'docs/*874*'
       - 'docs/*875*'
       - 'docs/*879*'
+      - 'docs/*880*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
   pull_request:
     # #857 is intentionally reviewed against the exact #856 source branch;
@@ -43,6 +44,7 @@ on:
       - 'docs/*874*'
       - 'docs/*875*'
       - 'docs/*879*'
+      - 'docs/*880*'
       - '.github/workflows/build_v2_enterprise_beta.yml'
 permissions:
   contents: write
@@ -195,6 +197,12 @@ jobs:
           Write-Host '#879 temporary LOCALAPPDATA and static UI contracts only; no production publication, external AI send, social post, paid API or production mutation'
           python 04_Build/v2/test_879_eight_issue_closure.py
           if ($LASTEXITCODE -ne 0) { throw '#879 eight-issue closure regression failed' }
+      - name: "#880 post-install Mission scope truth and owner capability latency"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#880 synthetic LOCALAPPDATA only; no browser action, external AI send, publication, search submission, paid API or production mutation'
+          python 04_Build/v2/test_880_post_install_truth_and_latency.py
+          if ($LASTEXITCODE -ne 0) { throw '#880 post-install regression failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

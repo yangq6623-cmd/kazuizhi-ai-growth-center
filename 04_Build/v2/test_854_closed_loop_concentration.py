@@ -88,7 +88,8 @@ try:
         if row.get("command_id") == "CMD-854-TEST" or row.get("mission_id") == "MISSION-854-TEST"
     )
     assert metrics["tasks"]["total"] == expected > 200, metrics["tasks"]
-    assert metrics["tasks"]["count_scope"] == "full_r7_ledger"
+    assert metrics["tasks"]["count_scope"] == "current_mission_or_command_tasks"
+    assert metrics["tasks"]["full_r7_ledger_total"] == len(store["items"])
 
     # Fast and full GEO snapshots must expose the exact queued tasks and the
     # executor that is allowed to claim each route.

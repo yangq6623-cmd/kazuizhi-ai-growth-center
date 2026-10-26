@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -94,6 +95,16 @@ try:
 
     # Corrupt snapshot reads keep the last truth instead of showing zeros.
     (storage.data_root() / r7_engine.JOBS).write_text("{broken", encoding="utf-8")
+    with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+        r7_engine._UI_SNAPSHOT_CACHE_AT = 0.0
+    stale = r7_engine.ui_snapshot()
+    assert stale["snapshot_state"] == "cached_refreshing"
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=2)
+    while datetime.now(timezone.utc) < deadline:
+        with r7_engine._UI_SNAPSHOT_CACHE_LOCK:
+            if not r7_engine._UI_SNAPSHOT_REFRESHING:
+                break
+        time.sleep(0.01)
     cached = r7_engine.ui_snapshot()
     assert cached["snapshot_state"] == "cached"
     assert cached["jobs"]["ledger_count"] == 1200

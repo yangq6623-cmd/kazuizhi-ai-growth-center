@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
+import time
 from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
@@ -21,6 +23,9 @@ from core.storage import now_iso, read_json, write_json
 STATE_FILE = "ops/r8_23_growth_os.json"
 UTILIZATION_LIMIT = 500
 PLATFORM_OPTIMIZATION_LIMIT_PER_DAY = 1
+CAPABILITY_CACHE_SECONDS = 30.0
+_CAPABILITY_CACHE_LOCK = threading.RLock()
+_CAPABILITY_CACHE = {"at": 0.0, "key": None, "rows": None}
 
 # The owner-facing identity is deliberately a doctrine, not an unrestricted
 # super-user switch.  It can orchestrate every registered business capability,
@@ -245,7 +250,7 @@ def _connector_rows():
         return {}
 
 
-def capability_status():
+def _capability_status_uncached():
     rows = _connector_rows()
     status = {}
     mapping = {
@@ -305,6 +310,27 @@ def capability_status():
         item["utilization"] = deepcopy(utilization.get(cap_id) or {"invoke_count": 0})
     return list(status.values())
 
+
+
+def capability_status(force=False):
+    """Return a short-lived, single-flight capability snapshot.
+
+    Connector, model and GPU readiness changes much more slowly than the owner
+    cockpit's 15-second paint loop.  Serializing one refresh prevents concurrent
+    UI panels from launching duplicate nvidia-smi/router probes and starving the
+    HTTP worker.  A monkeypatched probe identity invalidates the cache so focused
+    tests and runtime replacements never inherit stale readiness.
+    """
+    cache_key = (id(_connector_rows), id(gpu_status))
+    now = time.monotonic()
+    with _CAPABILITY_CACHE_LOCK:
+        cached = _CAPABILITY_CACHE.get("rows")
+        age = now - float(_CAPABILITY_CACHE.get("at") or 0.0)
+        if not force and cached is not None and _CAPABILITY_CACHE.get("key") == cache_key and age < CAPABILITY_CACHE_SECONDS:
+            return deepcopy(cached)
+        rows = _capability_status_uncached()
+        _CAPABILITY_CACHE.update(at=time.monotonic(), key=cache_key, rows=deepcopy(rows))
+        return deepcopy(rows)
 
 def _business_engines_for_objective(objective):
     text = str(objective or "").lower()

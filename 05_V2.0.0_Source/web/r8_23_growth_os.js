@@ -17,6 +17,12 @@
   let seoRequest = null;
   let controlRequest = null;
   let refreshQueued = false;
+  let refreshFailures = 0;
+
+  function scheduleNextRefresh(delay){
+    if(timer) clearTimeout(timer);
+    timer=setTimeout(refresh,Math.max(15000,Number(delay||30000)));
+  }
 
   function style(){
     if(byId('kz-r8-23-style')) return;
@@ -489,6 +495,7 @@
       else errors.push(requestError('/api/r8-23/growth-os',results[0].reason));
       if(results[1].status==='fulfilled') latestAutonomy=results[1].value||{};
       else errors.push(requestError('/api/r8-22/autonomy',results[1].reason));
+      refreshFailures=errors.length?Math.min(refreshFailures+1,4):0;
 
       if(results.some(row=>row.status==='fulfilled') && latestGrowth && latestAutonomy){
         saveControlCache(latestGrowth,latestAutonomy);
@@ -523,10 +530,14 @@
       }
     })().finally(()=>{
       controlRequest=null;
-      if(refreshQueued){
-        refreshQueued=false;
-        setTimeout(refresh,0);
-      }
+      // Browser AbortController cannot cancel work already running in the
+      // Python server. Immediate replays therefore create an invisible request
+      // storm. Coalesce every trigger and back off after a timeout while the
+      // last verified snapshot remains visible.
+      refreshQueued=false;
+      const delay=document.hidden?120000:
+        refreshFailures?Math.min(120000,30000*Math.pow(2,refreshFailures-1)):30000;
+      scheduleNextRefresh(delay);
     });
     return controlRequest;
   }
@@ -548,8 +559,7 @@
     polishSeo();
     refresh();
     foldLegacyHomepage();
-    if(timer) clearInterval(timer);
-    timer = setInterval(refresh,15000);
+    scheduleNextRefresh(30000);
     document.addEventListener('click',maintain,true);
     window.addEventListener('focus',maintain);
     window.addEventListener('kz:app-ready',maintain);
