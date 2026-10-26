@@ -556,7 +556,8 @@ def _metrics(command_id=None, mission_id=None, *, include_seo_geo=True):
             "completed": sum(x.get("state") == "completed" for x in current),
             "failed": sum(x.get("state") == "failed" for x in current),
             "receipts": sum(isinstance(x.get("execution_receipt"), dict) for x in current),
-            "count_scope": "full_r7_ledger",
+            "count_scope": "current_mission_or_command_tasks",
+            "full_r7_ledger_total": len(jobs),
             "display_window_limit": 200,
         },
         "outcomes": {
