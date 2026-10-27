@@ -600,6 +600,7 @@ def semantic_content_fingerprint(source: Path) -> str:
     text = re.sub(r"<!--[\s\S]*?-->", " ", text)
     text = re.sub(r"\b(?:OPP|ACTION|REVISION|PUBLICATION)-[A-Z0-9_-]+\b", " ", text, flags=re.I)
     text = re.sub(r"\b20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b", " ", text)
+    text = re.sub(r">\s+<", "><", text)
     text = re.sub(r"\s+", " ", text).strip()
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
