@@ -21,6 +21,7 @@
     "https://www.qianwen.com/*",
     "https://www.n.cn/*",
     "https://n.cn/*",
+    "https://work.n.cn/*",
     "https://*.so.com/*"
   ],
   "background": {
@@ -42,6 +43,7 @@
         "https://www.qianwen.com/*",
         "https://www.n.cn/*",
         "https://n.cn/*",
+        "https://work.n.cn/*",
         "https://*.so.com/*"
       ],
       "js": [

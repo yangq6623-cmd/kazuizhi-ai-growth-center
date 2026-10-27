@@ -34,6 +34,7 @@ from core.seo_geo_growth import (
     record_asset_stage,
     record_asset_republished,
     reconcile_verified_revision,
+    reconcile_unchanged_live_content,
     verified_incremental_publication_scope,
 )
 from core import seo_content_quality
@@ -593,6 +594,17 @@ def validate_public_content(asset: dict, source: Path) -> dict:
         return {"ok": False, "reasons": ["staging_read_failed:" + type(error).__name__]}
 
 
+def semantic_content_fingerprint(source: Path) -> str:
+    """Hash deployable meaning while ignoring only machine-generated identities/times."""
+    text = source.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(r"<!--[\s\S]*?-->", " ", text)
+    text = re.sub(r"\b(?:OPP|ACTION|REVISION|PUBLICATION)-[A-Z0-9_-]+\b", " ", text, flags=re.I)
+    text = re.sub(r"\b20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b", " ", text)
+    text = re.sub(r">\s+<", "><", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def asset_receipt_snapshot(asset: dict) -> dict:
     """Persist only public, non-secret identity fields needed for recovery."""
     allowed = (
@@ -655,6 +667,27 @@ def _deploy_pending_unlocked(limit: int = 10) -> dict:
             failed.append({"asset_id": asset_id, "reason": "seo_content_qc_failed", "details": quality["reasons"]})
             continue
         destination = target / slug / "index.html"
+        staged_fingerprint = semantic_content_fingerprint(source)
+        public_url = urljoin(base, f"seo/{slug}/")
+        if bool(asset.get("republish_pending")) and destination.is_file():
+            try:
+                deployed_fingerprint = semantic_content_fingerprint(destination)
+            except (OSError, UnicodeError):
+                deployed_fingerprint = ""
+            if deployed_fingerprint and deployed_fingerprint == staged_fingerprint:
+                reconcile_unchanged_live_content(
+                    asset_id,
+                    content_fingerprint=staged_fingerprint,
+                    public_url=str(asset.get("public_url") or public_url),
+                )
+                reconciled.append({
+                    "asset_id": asset_id,
+                    "reason": "unchanged_semantic_content",
+                    "content_fingerprint": staged_fingerprint,
+                    "external_request_created": False,
+                    "publication_event_created": False,
+                })
+                continue
         try:
             attachment_receipts = []
             for attachment in _asset_attachments(asset, source):
@@ -670,7 +703,6 @@ def _deploy_pending_unlocked(limit: int = 10) -> dict:
                     "verification": media_verification,
                 })
             _atomic_copy(source, destination)
-            public_url = urljoin(base, f"seo/{slug}/")
             expected_canonical = str(asset.get("canonical") or public_url)
             verification = (
                 _verify_public_url(public_url, str(asset.get("title") or ""), expected_canonical, timeout)
@@ -687,6 +719,7 @@ def _deploy_pending_unlocked(limit: int = 10) -> dict:
                 "attachments": attachment_receipts,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "content_fingerprint": staged_fingerprint,
                 "asset_snapshot": asset_receipt_snapshot(asset),
                 "created_at": now_iso(),
             }
@@ -704,6 +737,7 @@ def _deploy_pending_unlocked(limit: int = 10) -> dict:
                 "http_verification": verification,
                 "growth_action_id": asset.get("growth_action_id") or "",
                 "content_revision_id": asset.get("content_revision_id") or "",
+                "content_fingerprint": staged_fingerprint,
                 "publish_approval_source": asset.get("publish_approval_source") or "",
                 "publication_event_id": "PUBLICATION-" + hashlib.sha256(
                     str(receipt["receipt_id"]).encode("utf-8")

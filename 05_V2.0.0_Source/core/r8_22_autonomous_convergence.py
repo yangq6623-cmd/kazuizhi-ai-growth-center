@@ -14,7 +14,10 @@ Truth boundaries remain strict:
 from __future__ import annotations
 
 from datetime import datetime
+from copy import deepcopy
 import re
+import threading
+import time
 from uuid import uuid4
 
 from core.storage import now_iso, read_json, read_json_snapshot, write_json
@@ -24,6 +27,9 @@ PHASE_RECEIPT_SECONDS = 15 * 60
 MAX_PHASE_RECEIPTS = 192
 CURRENT_PRIORITY = "P0_current_mission"
 BACKLOG_PRIORITY = "P3_backlog"
+READ_ONLY_CACHE_SECONDS = 12.0
+_READ_ONLY_CACHE_LOCK = threading.RLock()
+_READ_ONLY_CACHE = {"at": 0.0, "value": None, "refreshing": False}
 
 _HUMAN_MARKERS = (
     "资金", "付款", "退款", "提现", "结算", "充值", "赔付", "改价",
@@ -671,8 +677,8 @@ def event_stream(limit=40):
     return rows[:max(1, min(int(limit or 40), 100))]
 
 
-def read_only_snapshot():
-    """Owner/UI GET snapshot with no Mission, Plan, Task or Receipt mutation."""
+def _build_read_only_snapshot():
+    """Build the owner snapshot without Mission, Plan, Task or Receipt mutation."""
     state = _load_state_snapshot()
     mission_id = state.get("active_mission_id")
     mission = next((
@@ -735,6 +741,45 @@ def read_only_snapshot():
         },
         "truth_rule": "只读轮询不创建Mission/Plan/Task/Receipt；外部结果仍只认真实Receipt/Evidence。",
     }
+
+
+def _refresh_read_only_cache():
+    try:
+        value = _build_read_only_snapshot()
+        with _READ_ONLY_CACHE_LOCK:
+            _READ_ONLY_CACHE.update(at=time.monotonic(), value=deepcopy(value))
+    finally:
+        with _READ_ONLY_CACHE_LOCK:
+            _READ_ONLY_CACHE["refreshing"] = False
+
+
+def read_only_snapshot(force=False):
+    """Single-flight owner snapshot; stale truth is preserved while refreshing."""
+    now = time.monotonic()
+    with _READ_ONLY_CACHE_LOCK:
+        cached = _READ_ONLY_CACHE.get("value")
+        age = now - float(_READ_ONLY_CACHE.get("at") or 0.0)
+        if not force and cached is not None and age < READ_ONLY_CACHE_SECONDS:
+            result = deepcopy(cached)
+            result["snapshot_state"] = "cached"
+            return result
+        if not force and cached is not None:
+            if not _READ_ONLY_CACHE.get("refreshing"):
+                _READ_ONLY_CACHE["refreshing"] = True
+                threading.Thread(
+                    target=_refresh_read_only_cache,
+                    name="r822-owner-snapshot-refresh",
+                    daemon=True,
+                ).start()
+            result = deepcopy(cached)
+            result["snapshot_state"] = "cached_refreshing"
+            return result
+
+    value = _build_read_only_snapshot()
+    with _READ_ONLY_CACHE_LOCK:
+        _READ_ONLY_CACHE.update(at=time.monotonic(), value=deepcopy(value), refreshing=False)
+    value["snapshot_state"] = "fresh"
+    return value
 
 
 def snapshot():

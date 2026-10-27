@@ -203,6 +203,12 @@ jobs:
           Write-Host '#880 synthetic LOCALAPPDATA only; no browser action, external AI send, publication, search submission, paid API or production mutation'
           python 04_Build/v2/test_880_post_install_truth_and_latency.py
           if ($LASTEXITCODE -ne 0) { throw '#880 post-install regression failed' }
+      - name: "#886 cold-read, semantic deployment, extension safety and unified truth"
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          Write-Host '#886 synthetic LOCALAPPDATA/static contracts only; no browser send, publication, search submission, paid API or production mutation'
+          python 04_Build/v2/test_886_precision_fixes.py
+          if ($LASTEXITCODE -ne 0) { throw '#886 precision closure regression failed' }
       - name: "#836 owner Command reuses existing Mission and creates one safe SEO task"
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

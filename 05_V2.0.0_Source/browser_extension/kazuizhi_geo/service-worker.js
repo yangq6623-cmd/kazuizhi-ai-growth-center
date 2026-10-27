@@ -6,7 +6,7 @@ const PLATFORMS = {
   douyin_search_web: {url: "https://www.douyin.com/search/", hosts: ["www.douyin.com"], search: true},
   deepseek_web: {url: "https://chat.deepseek.com/", hosts: ["chat.deepseek.com"]},
   qwen_web: {url: "https://www.qianwen.com/", hosts: ["chat.qwen.ai", "tongyi.aliyun.com", "www.tongyi.com", "www.qianwen.com"]},
-  so360_ai_search: {url: "https://n.cn/", hosts: ["n.cn", "so.com"]}
+  so360_ai_search: {url: "https://work.n.cn/", hosts: ["work.n.cn", "n.cn", "so.com"]}
 };
 let running = false;
 let runningSince = 0;
@@ -136,14 +136,24 @@ async function platformTab(platform, question, activate = false, loadTimeoutMs =
 }
 
 async function ask(tabId, message, timeoutMs = 150000) {
+  const readOnlyRetry = new Set([
+    "kz-probe", "kz-capture", "kz-extract-current",
+    "kz-identify-current-question", "kz-recheck-post"
+  ]).has(message?.type) || (message?.type === "kz-execute" && message?.platform === "douyin_search_web");
   const send = async () => {
     try {
       return await chrome.tabs.sendMessage(tabId, message);
     } catch (error) {
       const reason = String(error?.message || error);
-      // Inject only when no content listener exists. Never reinject after
-      // arbitrary execution, navigation or permission failures.
-      if (!/Receiving end does not exist|Could not establish connection/i.test(reason)) throw error;
+      const missingListener = /Receiving end does not exist|Could not establish connection/i.test(reason);
+      const bfcacheClosed = /back\/forward cache|message channel is closed|document was unloaded/i.test(reason);
+      if (!missingListener && !bfcacheClosed) throw error;
+      // Reconnection is safe only for probes/captures. A send/start message may
+      // already have reached the external page and must never be replayed.
+      if (bfcacheClosed && !readOnlyRetry) {
+        throw new Error("message_channel_closed_after_possible_external_action");
+      }
+      await waitLoaded(tabId, 20000);
       await chrome.scripting.executeScript({target: {tabId}, files: ["content-agent.js"]});
       return await chrome.tabs.sendMessage(tabId, message);
     }
@@ -221,7 +231,18 @@ async function executeDeepSeek(tabId, platform, question) {
       // The page may be navigating between the start and capture phases.
     }
   }
-  throw new Error("agent_response_timeout");
+  // Deadline reconciliation is read-only. It may recover a completed answer,
+  // but it never re-sends the historical question.
+  try {
+    const finalRead = await ask(tabId, {type: "kz-extract-current", platform, question}, 20000);
+    if (finalRead?.ok && finalRead?.raw_answer) {
+      return {...finalRead, capture_mode: "deadline_read_only_reconciliation"};
+    }
+    if (finalRead?.state === "pending") throw new Error("agent_response_still_generating");
+  } catch (error) {
+    if (String(error?.message || error) === "agent_response_still_generating") throw error;
+  }
+  throw new Error("agent_response_timeout_uncertain");
 }
 
 async function probe(platform, activate = false) {

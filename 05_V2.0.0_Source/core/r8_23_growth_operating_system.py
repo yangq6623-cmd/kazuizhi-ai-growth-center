@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 
 from core.storage import now_iso, read_json, write_json
@@ -251,7 +252,34 @@ def _connector_rows():
 
 
 def _capability_status_uncached():
-    rows = _connector_rows()
+    """Build one capability snapshot with independent slow probes in parallel."""
+    def read_gateway():
+        try:
+            from integrations.ai_gateway import gateway_status
+            return gateway_status()
+        except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
+            return {}
+
+    # Router JSON scans, model discovery and nvidia-smi do not depend on one
+    # another.  Serial execution made a cold owner request exceed the browser
+    # budget even though each individual probe was healthy.
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="r823-capability") as pool:
+        rows_future = pool.submit(_connector_rows)
+        gateway_future = pool.submit(read_gateway)
+        gpu_future = pool.submit(gpu_status)
+        try:
+            rows = rows_future.result()
+        except Exception:
+            rows = {}
+        try:
+            gateway = gateway_future.result()
+        except Exception:
+            gateway = {}
+        try:
+            gpu = gpu_future.result()
+        except Exception:
+            gpu = {"detected": False, "ready": False, "reason": "gpu_probe_failed"}
+
     status = {}
     mapping = {
         "seo_website": "seo_public_deployer", "formal_geo_browser": "geo_external_ai_browser",
@@ -269,47 +297,42 @@ def _capability_status_uncached():
             item["external_verified"] = bool(connector.get("external_verified"))
         status[cap_id] = item
 
-    # Search submission is a bundle; one ready engine is enough to be usable.
     search_ids = ("baidu_search_resource_api", "bing_indexnow", "google_search_console")
     search_rows = [rows.get(x) for x in search_ids if rows.get(x)]
     status["search_submission"]["ready"] = any(bool(x.get("software_route_ready")) for x in search_rows)
     status["search_submission"]["state"] = "ready" if status["search_submission"]["ready"] else "waiting_connector"
 
-    # Social is deliberately graded: configured routes do not grant blanket publish authority.
     social_ids = ("douyin", "wechat_channels", "kuaishou", "xiaohongshu", "bilibili", "weibo")
     social_rows = [rows.get(x) for x in social_ids if rows.get(x)]
     registered = sum(bool(x.get("software_route_ready")) for x in social_rows)
     authorized = sum(bool(x.get("external_verified")) for x in social_rows)
     status["social_distribution"].update(
-        ready=bool(authorized),
-        external_verified=bool(authorized),
-        registered_routes=registered,
-        authorized_routes=authorized,
-        state=(
-            "ready" if authorized
-            else "authorization_required" if registered
-            else "not_configured"
-        ),
+        ready=bool(authorized), external_verified=bool(authorized),
+        registered_routes=registered, authorized_routes=authorized,
+        state="ready" if authorized else "authorization_required" if registered else "not_configured",
     )
 
-    # Model routes expose the real active model without promoting model output to evidence.
-    try:
-        from integrations.ai_gateway import gateway_status
-        gateway = gateway_status()
-        local = (gateway.get("routes") or {}).get("local") or {}
-        cloud = (gateway.get("routes") or {}).get("cloud") or {}
-        status["local_model"].update(ready=bool(local.get("verified")), state=local.get("status") or "unknown", model=local.get("model"), provider=local.get("provider"))
-        status["doubao_cloud"].update(ready=bool(cloud.get("verified")), state=cloud.get("status") or "unknown", model=cloud.get("model"), provider=cloud.get("provider"), configured_label=cloud.get("label"))
-    except (ImportError, OSError, ValueError, RuntimeError, TypeError, KeyError, AttributeError):
-        pass
-    gpu = gpu_status()
-    status["rtx3060"].update(ready=bool(gpu.get("ready") and gpu.get("rtx3060")), state="ready" if gpu.get("ready") and gpu.get("rtx3060") else "not_detected", gpu=gpu)
+    local = (gateway.get("routes") or {}).get("local") or {}
+    cloud = (gateway.get("routes") or {}).get("cloud") or {}
+    status["local_model"].update(
+        ready=bool(local.get("verified")), state=local.get("status") or "unknown",
+        model=local.get("model"), provider=local.get("provider"),
+    )
+    status["doubao_cloud"].update(
+        ready=bool(cloud.get("verified")), state=cloud.get("status") or "unknown",
+        model=cloud.get("model"), provider=cloud.get("provider"),
+        configured_label=cloud.get("label"),
+    )
+    status["rtx3060"].update(
+        ready=bool(gpu.get("ready") and gpu.get("rtx3060")),
+        state="ready" if gpu.get("ready") and gpu.get("rtx3060") else "not_detected",
+        gpu=gpu,
+    )
 
     utilization = _load().get("utilization") or {}
     for cap_id, item in status.items():
         item["utilization"] = deepcopy(utilization.get(cap_id) or {"invoke_count": 0})
     return list(status.values())
-
 
 
 def capability_status(force=False):

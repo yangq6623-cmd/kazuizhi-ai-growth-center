@@ -1190,6 +1190,46 @@ def reconcile_verified_revision(asset_id, receipt):
     return deepcopy(asset)
 
 
+def reconcile_unchanged_live_content(asset_id, *, content_fingerprint, public_url):
+    """Clear a republish request when staged and deployed semantic content match.
+
+    This never creates a Publication Event or external Receipt, so the original
+    effective publication time and 24h/72h/7d retest basis remain unchanged.
+    """
+    fingerprint = str(content_fingerprint or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        raise ValueError("内容指纹无效")
+    public_url = str(public_url or "").strip()
+    parts = urlsplit(public_url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("缺少有效公网 URL")
+    data = _load()
+    asset = next((row for row in data["assets"] if str(row.get("id")) == str(asset_id)), None)
+    if not asset:
+        raise ValueError("SEO/GEO 资产不存在")
+    if not _stage_at_least(asset, "PUBLISHED"):
+        raise ValueError("未发布资产不能执行相同内容对账")
+    existing_url = str(asset.get("public_url") or "").strip()
+    if existing_url and existing_url.rstrip("/") != public_url.rstrip("/"):
+        raise ValueError("公网 URL 与资产不匹配")
+    at = now_iso()
+    asset["republish_pending"] = False
+    asset["last_semantic_content_fingerprint"] = fingerprint
+    asset["last_semantic_reconciled_revision"] = str(asset.get("content_revision_id") or "")
+    asset["last_semantic_reconciled_at"] = at
+    asset["updated_at"] = at
+    _audit_event(data, "asset_unchanged_live_content_reconciled", {
+        "asset_id": asset_id,
+        "content_revision_id": asset.get("content_revision_id") or "",
+        "content_fingerprint": fingerprint,
+        "external_request_created": False,
+        "publication_event_created": False,
+        "retest_basis_changed": False,
+    })
+    _save(data)
+    return deepcopy(asset)
+
+
 def record_asset_republished(asset_id, payload=None):
     payload = dict(payload or {})
     public_url = str(payload.get("public_url") or "").strip()

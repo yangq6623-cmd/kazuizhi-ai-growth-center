@@ -18,6 +18,7 @@
   let controlRequest = null;
   let refreshQueued = false;
   let refreshFailures = 0;
+  let controlGeneration = 0;
 
   function scheduleNextRefresh(delay){
     if(timer) clearTimeout(timer);
@@ -484,12 +485,14 @@
       refreshQueued=true;
       return controlRequest;
     }
+    const generation=++controlGeneration;
     controlRequest=(async()=>{
       scopeOwnerPanels();
       const results=await Promise.allSettled([
         json('/api/r8-23/growth-os'),
         json('/api/r8-22/autonomy'),
       ]);
+      if(generation!==controlGeneration) return;
       const errors=[];
       if(results[0].status==='fulfilled') latestGrowth=results[0].value||{};
       else errors.push(requestError('/api/r8-23/growth-os',results[0].reason));
@@ -502,6 +505,7 @@
       }
       if(latestGrowth && latestAutonomy){
         render(latestGrowth,latestAutonomy,latestSeo);
+        if(!errors.length) host().querySelectorAll('.kz23-stale').forEach(node=>node.remove());
         if(errors.length){
           const note=host().querySelector('.kz23-top p');
           if(note) note.insertAdjacentHTML('beforeend',`<br><span class="kz23-stale">${esc(errors.join('；'))}；保留最近成功数据 ${esc(shortTime(latestControlAt))}</span>`);

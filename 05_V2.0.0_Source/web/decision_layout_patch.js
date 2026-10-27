@@ -88,7 +88,30 @@
       window.location.href = '/geo.html';
     });
     refreshGeoDecisionBrief();
+    refreshMissionIdentity();
     return true;
+  }
+
+  async function refreshMissionIdentity(){
+    try{
+      const response=await fetch('/api/r8-22/autonomy',{cache:'no-store'});
+      const payload=await response.json();
+      const data=payload?.data??payload;
+      const missionId=String(data?.mission?.mission_id||'').trim();
+      if(!missionId.startsWith('MISSION-'))return;
+      for(const node of [...document.querySelectorAll('b,strong,span,p,div')]){
+        if(node.children.length)continue;
+        const value=String(node.textContent||'').trim();
+        if(!/^当前\s*Mission[：:]/.test(value))continue;
+        const current=value.replace(/^当前\s*Mission[：:]\s*/,'');
+        if(current && !current.startsWith('MISSION-')){
+          node.textContent=`当前 Mission：${missionId}`;
+          let note=node.parentElement?.querySelector('.kz-current-action-note');
+          if(!note){note=document.createElement('small');note.className='kz-current-action-note';node.parentElement?.appendChild(note)}
+          note.textContent=`当前活动任务 / Action：${current}`;
+        }
+      }
+    }catch(_){}
   }
 
   async function refreshGeoDecisionBrief(){
@@ -119,7 +142,7 @@
 
   const observer=new MutationObserver(()=>{
     if(ensureGeoDecisionBrief()){
-      if(!refreshTimer)refreshTimer=setInterval(refreshGeoDecisionBrief,30000);
+      if(!refreshTimer)refreshTimer=setInterval(()=>{refreshGeoDecisionBrief();refreshMissionIdentity()},30000);
     }
   });
   observer.observe(document.documentElement,{childList:true,subtree:true});
