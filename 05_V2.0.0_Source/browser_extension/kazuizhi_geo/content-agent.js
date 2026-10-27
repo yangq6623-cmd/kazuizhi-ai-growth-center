@@ -65,7 +65,7 @@
   }
   
   function nanoReadyMarker() {
-    if (location.hostname !== "n.cn" && location.hostname !== "www.n.cn") return false;
+    if (!["n.cn", "www.n.cn", "work.n.cn"].includes(location.hostname)) return false;
     const body = String(document.body?.innerText || "");
     return /输入任何问题|新建任务|大模型聊天/.test(body) && !/扫码登录|请先登录/.test(body);
   }
@@ -75,7 +75,7 @@
   }
   
   function nanoHintElement() {
-    if (location.hostname !== "n.cn" && location.hostname !== "www.n.cn") return null;
+    if (!["n.cn", "www.n.cn", "work.n.cn"].includes(location.hostname)) return null;
     return [...document.querySelectorAll("body *")]
       .filter(element => visible(element) && /输入任何问题/.test(String(element.innerText || element.textContent || "").trim()))
       .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width)[0] || null;
@@ -393,8 +393,21 @@
     return {ok: true, state: "ready", raw_answer: best.text, citation_urls: citationUrls(best.element), url: location.href};
   }
   
+  function generationActive(platform) {
+    if (platform !== "deepseek_web") return false;
+    const stop = firstVisible([
+      "button[aria-label*='停止']", "button[aria-label*='Stop']",
+      "button[data-testid*='stop']", "[class*='stop'] button"
+    ]);
+    if (stop) return true;
+    return [...document.querySelectorAll("button")].some(element =>
+      visible(element) && /停止生成|停止回答|stop generating/i.test(String(element.innerText || element.textContent || ""))
+    );
+  }
+
   function extractCurrentAnswer(platform, question) {
     const state = pageState(platform);
+    if (generationActive(platform)) return {ok: false, state: "pending", reason: "answer_still_generating", url: location.href};
     if (state === "captcha" || state === "auth_required") return {ok: false, state, url: location.href};
     const candidates = candidateTexts(platform, question);
     const best = bestAnswer(platform, candidates);

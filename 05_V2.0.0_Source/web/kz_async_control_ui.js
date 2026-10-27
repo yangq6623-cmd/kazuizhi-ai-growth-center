@@ -26,6 +26,15 @@
     return {text:'待配置独立私有仓库', tone:'waiting', short:'待配置'};
   }
 
+  function heartbeatFresh(value, maxAgeMs=15*60*1000) {
+    const stamp=Date.parse(String(value||''));
+    return Number.isFinite(stamp) && Date.now()-stamp>=0 && Date.now()-stamp<=maxAgeMs;
+  }
+
+  function realtimeVerified(control, adapter) {
+    return Boolean(control?.verified && adapter?.credential_configured && heartbeatFresh(adapter?.last_heartbeat||control?.last_heartbeat));
+  }
+
   function autonomyRunning(bus) {
     return String(bus?.local_autonomy || 'RUNNING').toUpperCase() === 'RUNNING';
   }
@@ -40,6 +49,7 @@
       <div><small>日常主控</small><b>私有异步控制总线</b><span id="kz-bus-state">检查中</span></div>
       <div><small>本地自治</small><b>已回执 Mission 执行</b><span id="kz-autonomy-state">检查中</span></div>
       <div><small>实时辅助</small><b>实时 ChatGPT 通道（可选）</b><span id="kz-realtime-state">检查中</span></div>
+      <div><small>Relay</small><b>签名配对状态</b><span id="kz-relay-state">检查中</span></div>
       <div><small>工程通道</small><b>Work / Codex</b><span>仅检查、修复、升级</span></div>
     `;
     card.appendChild(box);
@@ -107,12 +117,14 @@
     }
   }
 
-  function apply(bus, connector) {
+  function apply(bus, control, adapter) {
+    const connector={...control,verified:realtimeVerified(control,adapter)};
     ensureSummary();
     const info = busState(bus);
     const busStateNode = document.getElementById('kz-bus-state');
     const autonomyState = document.getElementById('kz-autonomy-state');
     const realtimeState = document.getElementById('kz-realtime-state');
+    const relayState = document.getElementById('kz-relay-state');
     const copy = document.getElementById('r810-connector-copy');
     const warning = document.querySelector('#r810-connector-card .r810-connection-warning');
 
@@ -126,8 +138,12 @@
       autonomyState.className = running ? 'ok' : 'attention';
     }
     if (realtimeState) {
-      realtimeState.textContent = connector?.verified ? '已验证连接' : '未连接 · 不影响日常自治';
+      realtimeState.textContent = connector?.verified ? `当前在线 · ${adapter?.last_heartbeat||''}` : control?.verified ? '历史验证已过期 · 当前未在线' : '未验证连接';
       realtimeState.className = connector?.verified ? 'ok' : 'waiting';
+    }
+    if(relayState){
+      relayState.textContent=adapter?.credential_configured?(control?.verified?'已配对 · 等待/保持心跳':'已配置凭据 · 未完成配对'):'disabled / unpaired';
+      relayState.className=adapter?.credential_configured&&control?.verified?'ok':'waiting';
     }
 
     if (copy) {
@@ -149,16 +165,17 @@
   }
 
   async function refresh() {
-    const [bus, connector] = await Promise.all([
+    const [bus, control, adapter] = await Promise.all([
       readJson('/api/async-control-bus/status'),
       readJson('/api/chatgpt-control/status'),
+      readJson('/api/chatgpt-connector/status'),
     ]);
-    apply(bus, connector);
+    apply(bus, control, adapter);
   }
 
   const style = document.createElement('style');
   style.textContent = `
-    .r810-async-control-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px;width:100%}
+    .r810-async-control-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:12px;width:100%}
     .r810-async-control-summary>div{border:1px solid rgba(148,163,184,.22);border-radius:10px;padding:10px 12px;display:grid;gap:3px;background:rgba(15,23,42,.03)}
     .r810-async-control-summary small{font-size:11px;color:#64748b}.r810-async-control-summary b{font-size:14px}.r810-async-control-summary span{font-size:12px;color:#64748b}
     .r810-async-control-summary span.ok{color:#15803d}.r810-async-control-summary span.waiting{color:#b45309}.r810-async-control-summary span.attention{color:#b45309}
