@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "卡嘴子 AI 国内 GEO 常驻执行器",
   "description": "在已登录的国内 AI/搜索平台中执行真实 GEO 验证，并把可审计 Evidence 回传本机工作台。",
-  "version": "2.2.2.887",
+  "version": "2.2.2.854",
   "minimum_chrome_version": "120",
   "permissions": [
     "alarms",
