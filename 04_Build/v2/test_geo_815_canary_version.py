@@ -30,7 +30,7 @@ def main():
     with patch.object(geo, "claim_next_task", return_value={"skipped": True, "reason": "queue_empty"}) as claim_task, \
          patch.object(geo, "enqueue_safe_browser_retest", return_value={"created": 0, "reason": "platform_retest_cooldown"}) as retest, \
          patch.object(geo, "queue_single_fresh_doubao_canary_once", return_value={"created": 0, "reason": "no_untried_doubao_question"}) as canary:
-        for version in ("2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854", "2.2.2.805"):
+        for version in ("2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854", "2.2.2.891", "2.2.2.805"):
             agent.heartbeat({**auth, "version": version, "sessions": sessions})
             before = canary.call_count
             result = agent.claim(auth)
@@ -38,14 +38,14 @@ def main():
             assert claim_task.call_count >= 1
             assert retest.call_count >= 1
             reason = agent.status()["last_canary_reason"]
-            if version in ("2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854"):
+            if version in ("2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854", "2.2.2.891"):
                 assert canary.call_count == before + 1, (version, reason)
                 assert reason == "no_untried_doubao_question", (version, reason)
             else:
                 assert canary.call_count == before, "unverified old extension must not run canary"
                 assert reason == "extension_version_not_supported", (version, reason)
-        assert canary.call_count == 4
-    print("PASS #815: Chrome 808, 814, 828 and GEO-fix 854 can enter one-shot canary eligibility; 805 fails closed; no tasks posted")
+        assert canary.call_count == 5
+    print("PASS #815: Chrome 808, 814, 828, 854 and GEO-fix 891 can enter one-shot canary eligibility; 805 fails closed; no tasks posted")
 
 
 if __name__ == "__main__":

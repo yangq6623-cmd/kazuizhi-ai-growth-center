@@ -213,7 +213,7 @@ def heartbeat(payload):
     lease = None
     active_task_id = str(values.get("active_task_id") or "")
     if active_task_id:
-        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
+        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854", "2.2.2.891"} and not all(
             str(values.get(key) or "") for key in ("run_id", "attempt_id")
         ):
             raise ValueError("geo_browser_828_heartbeat_requires_exact_attempt")
@@ -258,7 +258,7 @@ def claim(payload):
         # #815: this limited one-shot is supported by the original 808 and
         # the regression-tested 814 executor. Future extension revisions must
         # be explicitly verified before enabling external canary sends.
-        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854"}:
+        if state.get("extension_version") not in {"2.2.2.808", "2.2.2.814", "2.2.2.828", "2.2.2.854", "2.2.2.891"}:
             canary_reason = "extension_version_not_supported"
         elif not str(state.get("agent_id") or "").startswith("kz-r8-28-"):
             canary_reason = "agent_not_r8_28"
@@ -329,7 +329,7 @@ def receipt(payload):
             raise ValueError("geo_browser_receipt_requires_claimed_task")
         if not legacy_current_page and str(task.get("executor_id") or "") != str(state.get("agent_id") or ""):
             raise PermissionError("geo_browser_receipt_wrong_executor")
-        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
+        if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854", "2.2.2.891"} and not all(
             str(values.get(key) or "") for key in ("run_id", "attempt_id")
         ):
             raise ValueError("geo_browser_828_receipt_requires_exact_attempt")
@@ -376,7 +376,7 @@ def block(payload):
         from core.storage import _JSON_IO_LOCK
         with _JSON_IO_LOCK:
             _queue, previous = geo._find_task(task_id)
-            if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854"} and not all(
+            if str(state.get("extension_version") or "") in {"2.2.2.828", "2.2.2.854", "2.2.2.891"} and not all(
                 str(values.get(key) or "") for key in ("run_id", "attempt_id")
             ):
                 raise ValueError("geo_browser_828_block_requires_exact_attempt")
