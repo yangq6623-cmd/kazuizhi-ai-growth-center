@@ -2,7 +2,7 @@ name: Build Kazuizhi AI Enterprise V2.2.2 R8-23 Final Workbench
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/877-*', 'codex/879-*', 'codex/880-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
+    branches: [main, 'codex/v2-*', 'codex/r8-23-*', 'codex/r8-25-*', 'codex/r8-26-*', 'codex/r8-27-*', 'codex/r8-28-*', 'codex/827-*', 'codex/833-*', 'codex/840-*', 'codex/853-*', 'codex/854-*', 'codex/857-*', 'codex/859-*', 'codex/860-*', 'codex/862-*', 'codex/872-*', 'codex/874-*', 'codex/875-*', 'codex/877-*', 'codex/879-*', 'codex/880-*', 'codex/890-*', 'codex/phase1-*', 'codex/geo-818-*', 'codex/geo-824-*']
     tags: ['v2.2.2-r8-autonomous*', 'v2.2.2-r8-23-final-workbench*']
     paths:
       - '05_V2.0.0_Source/**'
@@ -257,6 +257,10 @@ jobs:
           Write-Host '#815 safety test: no real external AI questions and no state replay'
           python 04_Build/v2/test_geo_815_canary_version.py
           if ($LASTEXITCODE -ne 0) { throw 'GEO #815 814/808 canary version and no-replay gate failed' }
+      - name: "#890 GEO 360 extension identity and permission regression"
+        run: |
+          python 04_Build/v2/test_890_geo_extension_identity.py
+          if ($LASTEXITCODE -ne 0) { throw 'GEO #890 360 extension identity or permission regressed' }
       - name: "#816 SEO isolated audit retry and UI regression"
         run: |
           Write-Host '#816 SEO-only tests: isolated fake HTTP, no real web publication or GEO state changes'
@@ -416,19 +420,19 @@ jobs:
           Copy-Item docs/PLATFORM_879_EIGHT_ISSUE_CLOSURE_20261025.md installer_output_v2/PLATFORM_879_EIGHT_ISSUE_CLOSURE_REPORT.md
           Copy-Item 04_Build/v2/Export-Kazuizhi859Diagnostics.ps1 installer_output_v2/Export-Kazuizhi859Diagnostics.ps1
           Copy-Item 04_Build/v2/Export-Kazuizhi833Diagnostics.ps1 installer_output_v2/Export-Kazuizhi833Diagnostics.ps1
-      - name: Package GEO Chrome extension 2.2.2.854
+      - name: Package GEO Chrome extension 2.2.2.891
         run: |
           $source = '05_V2.0.0_Source/browser_extension/kazuizhi_geo'
-          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip'
+          $bundle = 'installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.891.zip'
           Compress-Archive -Path "$source/*" -DestinationPath $bundle -CompressionLevel Optimal -Force
           $sum = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash
-          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
+          "$sum  Kazuizhi_GEO_Chrome_Extension_2.2.2.891.zip" | Add-Content installer_output_v2/SHA256SUMS.txt
           Copy-Item docs/GEO_808_ALARM_BLOCKAGE_HANDOFF_20261017.md installer_output_v2/GEO_808_HANDOFF.md
       - name: Upload standalone GEO Chrome extension
         uses: actions/upload-artifact@v4
         with:
-          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.854
-          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.854.zip
+          name: Kazuizhi_GEO_Chrome_Extension_2.2.2.891
+          path: installer_output_v2/Kazuizhi_GEO_Chrome_Extension_2.2.2.891.zip
           if-no-files-found: error
           retention-days: 90
       - name: Upload final Windows installer

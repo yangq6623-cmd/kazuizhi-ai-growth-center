@@ -7,5 +7,5 @@ assert(src.includes('历史检测·待更新'),'stale evidence warning missing')
 assert(src.includes('auto.last_error'),'automatic-audit failure feedback missing');
 assert(src.includes('/api/r8-13/seo-geo/audit-site'),'manual real-audit control missing');
 const geo=fs.readFileSync('05_V2.0.0_Source/browser_extension/kazuizhi_geo/manifest.json','utf8');
-assert(JSON.parse(geo).version==='2.2.2.854','GEO extension must include delayed explicit-send and task-lease safety');
+assert(JSON.parse(geo).version==='2.2.2.891','GEO extension must include delayed explicit-send and task-lease safety');
 console.log('#816 SEO-only interface contract passed, GEO extension lease-aware version verified');
