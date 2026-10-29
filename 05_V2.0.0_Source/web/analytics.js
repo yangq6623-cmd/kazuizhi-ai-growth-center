@@ -347,24 +347,31 @@ async function refreshBusinessSource() {
 }
 
 function renderAnalyticsFromSource(source, analyticsData={}) {
-  const connected = source?.status === 'connected' || analyticsData.status === 'verified';
-  const core = source?.status === 'connected'
-    ? coreCompleteness(source)
-    : {present:0,total:CORE_BUSINESS_FIELDS.length,ratio_pct:0,missing_fields:[...CORE_BUSINESS_FIELDS]};
+  // A previously verified analytics snapshot does not prove the live production
+  // connector is connected now. In particular, do not label its missing live
+  // fields as a freshly verified 0/7 when the remote refresh has failed.
+  const connected = source?.status === 'connected';
+  const core = coreCompleteness(source);
+  const historical = !connected && !!source?.source && !!source?.remote_as_of && core.present > 0;
   $('analytics-status').textContent = connected
     ? (core.present === core.total
       ? '真实经营数据已验证接入 · 7/7 核心指标齐全'
       : `真实经营数据已验证接入 · 核心经营数据完整度 ${core.present}/${core.total}`)
-    : '真实经营数据尚未接入';
+    : historical ? '经营接口当前不可用 · 保留上次验证快照' : '真实经营数据当前未接入';
   $('analytics-source').textContent = connected
     ? `来源：${source?.source || analyticsData.source} · 截止：${source?.remote_as_of || analyticsData.as_of} · 核心完整度：${core.ratio_pct}%`
-    : `${analyticsData.message || source?.message || '经营数据尚未接入'} 核心分析只关注用户增长和订单转化；缺失项保持“未接入”。`;
-  $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : '待接入';
+    : historical
+      ? `历史来源：${source.source} · 数据截止：${source.remote_as_of} · 上次快照 ${core.present}/${core.total} · 当前错误：${source.last_error || source.message || '待核查'}`
+      : `${source?.last_error || source?.message || analyticsData.message || '经营数据尚未接入'}；当前无可核对的经营快照。`;
+  $('analytics-badge').textContent = connected ? (core.present === core.total ? '7/7 · 核心数据齐全' : `已验证 · ${core.present}/${core.total}`) : historical ? `历史快照 · ${core.present}/${core.total}` : '待接入';
   $('analytics-badge').className = connected ? 'chip verified' : 'chip';
-  $('analytics-truth').textContent = connected && core.missing_fields.length
+  $('analytics-truth').textContent = historical
+    ? '上次验证数据仅供对照；当前接口连接失败，不代表经营指标归零或实时验证通过。'
+    : !connected ? '当前没有可验证的经营数据；缺失项不是业务零值。'
+    : core.missing_fields.length
     ? `只显示已验证真实数据；当前待接入：${coreMissingLabels(core)}。不会用 0、估算值或公开市场信号代替。`
     : '7 个核心指标均有真实来源；小程序访问采用微信官方最近完整日UV，今日业务指标来自生产订单聚合，0 表示真实统计为 0。';
-  if (source?.status === 'connected') renderCoreBusinessMetrics(source);
+  if (connected || historical) renderCoreBusinessMetrics(source);
 }
 
 async function loadAnalytics() {
