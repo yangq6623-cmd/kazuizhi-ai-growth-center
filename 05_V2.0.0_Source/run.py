@@ -197,22 +197,38 @@ def start_content_execution_worker():
             return
         cycle = 0
         while not stop.is_set():
-            try:
-                scan_material_inbox()
-                ensure_pending_candidate_worker()
-                sync_autonomous_ops(autostart=True)
-                sync_content_plans()
-                recover_authorized_qc(limit=10)
-                run_ai_gateway(limit=2)
-                sync_chatgpt_handoffs()
-                bridge_sync_once()
-                run_publish_planning(limit=10)
-                sync_autonomous_ops(autostart=False)
-                sync_mission_backbone()
+            # Each lane retains its own authorization, retry and receipt gates.
+            # A failed ComfyUI/material/Router step must not skip the remaining
+            # independent lanes until the next 60-second cycle. Never retry a
+            # failed external action inside this loop; its worker owns recovery.
+            steps = (
+                ("material_scan", scan_material_inbox),
+                ("comfyui_recovery", ensure_pending_candidate_worker),
+                ("autonomous_ops_start", lambda: sync_autonomous_ops(autostart=True)),
+                ("content_plans", sync_content_plans),
+                ("authorized_qc", lambda: recover_authorized_qc(limit=10)),
+                ("ai_gateway", lambda: run_ai_gateway(limit=2)),
+                ("chatgpt_handoffs", sync_chatgpt_handoffs),
+                ("bridge", bridge_sync_once),
+                ("publish_planning", lambda: run_publish_planning(limit=10)),
+                ("autonomous_ops_end", lambda: sync_autonomous_ops(autostart=False)),
+                ("mission_backbone", sync_mission_backbone),
+            )
+            failures = []
+            for name, action in steps:
+                try:
+                    action()
+                except Exception as error:
+                    failures.append(f"{name}: {type(error).__name__}: {error}")
+                    print(f"R7 content lane {name} deferred; other lanes continue: {error}", flush=True)
+            if failures:
+                _runtime_mark(
+                    "content_execution", ok=False,
+                    error=RuntimeError("; ".join(failures)[:800]),
+                    detail=f"cycle={cycle}; failed_steps={len(failures)}", force_persist=True,
+                )
+            else:
                 _runtime_mark("content_execution", ok=True, detail=f"cycle={cycle}")
-            except Exception as error:
-                _runtime_mark("content_execution", ok=False, error=error, detail=f"cycle={cycle}", force_persist=True)
-                print(f"R7 AI/local-content/publish execution deferred; worker will continue: {error}", flush=True)
             cycle = (cycle + 1) % 1_000_000
             stop.wait(CONTENT_WORKER_INTERVAL_SECONDS)
 
