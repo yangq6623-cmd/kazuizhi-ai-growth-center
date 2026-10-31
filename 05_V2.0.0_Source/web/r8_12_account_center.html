@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卡嘴子 AI｜统一账号资产中心</title>
+<style>
+:root{font-family:Inter,"Microsoft YaHei",sans-serif;color:#172033;background:#f4f7fb}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1240px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px}.top h1{margin:0;font-size:28px}.sub{color:#6d778a;margin:6px 0 0}.actions{display:flex;gap:10px;flex-wrap:wrap}button{border:0;border-radius:10px;padding:10px 16px;cursor:pointer}.primary{background:#2563eb;color:#fff}.ghost{background:#fff;border:1px solid #dce4f0}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}.metric,.card,.panel{background:#fff;border:1px solid #e1e7f0;border-radius:16px;box-shadow:0 8px 28px rgba(23,32,51,.05)}.metric{padding:18px}.metric b{display:block;font-size:24px;margin-top:6px}.grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}.panel{padding:20px}.platform-group{margin-top:16px;padding:14px;border:1px solid #e4e9f2;border-radius:16px;background:#fbfcff}.platform-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.platform-head b{font-size:16px}.platform-count{font-size:12px;color:#6d778a}.add-platform{padding:7px 10px;border:1px solid #cfe0ff;background:#eef5ff;color:#245ec7;border-radius:8px;font-size:12px}.account{padding:16px;border:1px solid #e4e9f2;border-radius:13px;margin-top:10px;background:#fff}.account.risk{border-color:#f4b8b8;background:#fffafa}.row{display:flex;justify-content:space-between;gap:14px;align-items:center}.account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.mini-btn{padding:7px 10px;border:1px solid #d7e0ee;background:#fff;color:#245ec7;border-radius:8px;font-size:12px}.tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.tag{padding:5px 9px;border-radius:999px;background:#eef4ff;color:#245ec7;font-size:12px}.ok{background:#e9f8ef;color:#187a42}.warn{background:#fff4df;color:#a66300}.bad{background:#fdecec;color:#a63a3a}.muted{color:#778195;font-size:13px}.device{padding:14px 0;border-bottom:1px solid #edf0f5}.device:last-child{border-bottom:0}.oauth{padding:12px;border:1px solid #e7ebf2;border-radius:12px;margin-top:10px}.foot{margin-top:18px;padding:14px 16px;background:#eef5ff;border-radius:12px;color:#355176}.empty{padding:30px;text-align:center;color:#7a8495}.status{font-weight:700}.security-line{margin-top:10px;padding:10px 12px;border-radius:10px;background:#f8fafc;color:#5d6980;font-size:12px;line-height:1.65}.security-line.risk{background:#fff1f1;color:#a63a3a}@media(max-width:900px){.grid,.summary{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.row,.platform-head{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><h1>统一账号资产中心</h1><p class="sub">一个平台可保存账号1、账号2、账号3……；账号身份长期保留，授权可更新，重新授权不会重新创建账号。</p></div>
+    <div class="actions"><button class="ghost" id="migrate">迁移现有账号</button><button class="primary" id="refresh">刷新状态</button></div>
+  </div>
+  <div class="summary" id="summary"></div>
+  <div class="grid">
+    <section class="panel"><div class="row"><div><b>平台账号</b><div class="muted">按平台分组显示；账号连接、设备状态、环境连续性分别判断。“设备离线”只表示已绑定的真实设备当前不可用，Search Console / Bing / 百度站长账号不要求绑定手机。</div></div></div><div id="accounts"></div></section>
+    <aside>
+      <section class="panel"><b>设备池</b><div id="devices"></div></section>
+      <section class="panel" style="margin-top:18px"><b>官方授权能力</b><div id="oauth"></div></section>
+    </aside>
+  </div>
+  <div class="foot">真实发布标准不变：只有拿到真实平台 URL / Post ID / Receipt 才算发布成功。Token 不进入 GitHub、Mission JSON 或普通账号档案；平台账号密码也不由卡嘴子保存。风控状态不会自动切换其他账号绕过平台限制。</div>
+</div>
+<script>
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const badge=(text,kind='')=>`<span class="tag ${kind}">${esc(text)}</span>`;
+async function api(path,opt){const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||j.message||'请求失败');return j.data||j}
+function authState(a){if(a.auth_status==='platform_limited')return ['平台限制','bad'];if(a.auth_status==='connected')return ['已连接','ok'];return ['需授权','warn']}
+function envState(profile){const risk=profile?.risk_level||'unknown';if(risk==='high'||risk==='blocked')return ['风控暂停','bad'];if(risk==='medium')return ['环境变化','warn'];if(risk==='low')return ['环境稳定','ok'];return ['环境未建档','warn']}
+function deviceTag(a,devices){if(!a.preferred_device_id)return badge('设备：不要求/未指定');const d=devices.find(x=>x.device_id===a.preferred_device_id);return badge('设备：'+(d?.connection==='connected'?'在线':'离线'),d?.connection==='connected'?'ok':'warn')}
+function accountCard(a,devices,profiles){const [state,kind]=authState(a);const profile=profiles.get(a.account_id);const [environment,envKind]=envState(profile);const services=a.service_scope?.all_local_services?'全部本地服务':(a.service_scope?.services||[]).join('、')||'未设置';const regions=a.region_scope?.all_regions?'全部区域':(a.region_scope?.regions||[]).join('、')||'未设置';const risky=['high','blocked'].includes(profile?.risk_level);const network=profile?.network_profile_label||'未记录';const lastAuth=a.last_verified_at||profile?.last_authorized_at||'未记录';return `<div class="account ${risky?'risk':''}" data-account-id="${esc(a.account_id)}"><div class="row"><div><b>${esc(a.display_name)}</b><div class="muted">${esc(a.account_id)}</div></div><div class="account-actions">${badge(state,kind)}${badge(environment,envKind)}<button class="mini-btn" data-reauth data-platform="${esc(a.platform)}" data-account-id="${esc(a.account_id)}" data-label="${esc(a.display_name)}">重新授权</button></div></div><div class="tags">${badge('服务：'+services)}${badge('区域：'+regions)}${deviceTag(a,devices)}</div><div class="security-line ${risky?'risk':''}">环境：${esc(profile?.environment_status||'unobserved')} · 网络档案：${esc(network)} · 最近授权：${esc(lastAuth)}${profile?.last_risk_reason?' · 风控原因：'+esc(profile.last_risk_reason):''}</div><div class="muted" style="margin-top:10px">重新授权只更新授权，不创建新账号；历史发布、数据归属与 account_id 保持不变。</div></div>`}
+function renderAccounts(rows,devices,profiles){if(!rows.length)return '<div class="empty">暂无账号资产，点击“+ 新增账号”从平台官方入口接入。</div>';const groups=new Map();rows.forEach(a=>{const key=a.platform||a.platform_name||'other';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(a)});return [...groups.entries()].map(([platform,list])=>`<div class="platform-group"><div class="platform-head"><div><b>${esc(list[0]?.platform_name||platform)}</b><span class="platform-count"> · ${list.length} 个账号</span></div><button class="add-platform" data-add-platform="${esc(platform)}">＋ 新增该平台账号</button></div>${list.map(a=>accountCard(a,devices,profiles)).join('')}</div>`).join('')}
+async function load(){
+ const d=await api('/api/r8-12/account-center');const s=d.summary||{},env=d.environment_security||{},profiles=new Map((env.profiles||[]).map(x=>[x.account_id,x]));
+ summary.innerHTML=[['账号资产',s.accounts||0],['已连接',s.connected_accounts||0],['需授权',s.needs_authorization||0],['在线设备',s.online_devices||0],['风控暂停',env.summary?.paused||0]].map(x=>`<div class="metric"><span class="muted">${x[0]}</span><b>${x[1]}</b></div>`).join('');
+ const devices=d.devices||[];accounts.innerHTML=renderAccounts(d.accounts||[],devices,profiles);
+ devicesEl.innerHTML=devices.map(x=>`<div class="device"><div class="row"><b>${esc(x.label||x.device_id)}</b>${badge(x.connection==='connected'?'在线':'离线',x.connection==='connected'?'ok':'warn')}</div><div class="muted">${esc(x.device_id)} · ${esc(x.device_type||'')}</div></div>`).join('')||'<div class="empty">暂无设备；Search Console / Bing / 百度站长账号可不绑定手机。</div>';
+ oauth.innerHTML=(d.oauth?.providers||[]).map(x=>`<div class="oauth"><div class="row"><b>${esc(x.name||x.platform)}</b>${badge(x.configured?'可授权':(String(x.auth_mode||'').startsWith('official_portal')?'官方入口':'未配置'),x.configured?'ok':'warn')}</div><div class="muted">${x.supports_qr_authorization?'支持官方扫码/授权适配':'使用平台官方登录/授权入口'}；实际权限以平台批准 scope / 站点验证为准。</div></div>`).join('');
+}
+const devicesEl=document.getElementById('devices');
+refresh.onclick=()=>load().catch(e=>alert(e.message));
+migrate.onclick=async()=>{await api('/api/r8-12/migrate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});await load()};
+document.addEventListener('click',event=>{const reauth=event.target.closest?.('[data-reauth]');if(reauth){window.KZAuthUI?.open({platform:reauth.dataset.platform,account_id:reauth.dataset.accountId,slot_label:reauth.dataset.label});return}const add=event.target.closest?.('[data-add-platform]');if(add)window.KZAuthUI?.open({platform:add.dataset.addPlatform})});
+window.addEventListener('kz-auth-updated',()=>setTimeout(()=>load().catch(()=>{}),800));
+window.addEventListener('focus',()=>setTimeout(()=>load().catch(()=>{}),500));
+load().catch(e=>alert(e.message));
+</script>
+<script src="/r8_12_multi_account_auth_ui.js"></script>
+</body>
+</html>

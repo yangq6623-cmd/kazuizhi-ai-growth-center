@@ -1,0 +1,147 @@
+name: Validate R8-10 Autonomous Workbench
+
+on:
+  push:
+    branches: ['r8-10-*']
+    paths:
+      - '05_V2.0.0_Source/web/**'
+      - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
+      - '05_V2.0.0_Source/backend/r8_10_idempotency_patch.py'
+      - '05_V2.0.0_Source/backend/r8_10_state_convergence_patch.py'
+      - '05_V2.0.0_Source/backend/kz_local_control_patch.py'
+      - '05_V2.0.0_Source/backend/async_control_bus_patch.py'
+      - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_control.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_connector_adapter.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_relay_agent.py'
+      - '05_V2.0.0_Source/integrations/kz_local_control.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '06_Cloud_Relay/**'
+      - '04_Build/v2/test_r8_10_workbench.py'
+      - '04_Build/v2/test_r8_10_chatgpt_control.py'
+      - '04_Build/v2/test_r8_10_chatgpt_connector_adapter.py'
+      - '04_Build/v2/test_r8_10_chatgpt_relay_agent.py'
+      - '04_Build/v2/test_r8_10_cloud_relay.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '04_Build/v2/test_r8_10_local_webmcp_control.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
+      - '04_Build/v2/test_r8_10_local_mission_qc.py'
+      - '04_Build/v2/test_r8_10_state_convergence.py'
+      - '04_Build/v2/test_r8_10_primary_control_ui.py'
+      - '04_Build/v2/test_r8_10_button_contract.py'
+      - '.github/workflows/r8_10_workbench_validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '05_V2.0.0_Source/web/**'
+      - '05_V2.0.0_Source/backend/r8_10_control_patch.py'
+      - '05_V2.0.0_Source/backend/r8_10_idempotency_patch.py'
+      - '05_V2.0.0_Source/backend/r8_10_state_convergence_patch.py'
+      - '05_V2.0.0_Source/backend/kz_local_control_patch.py'
+      - '05_V2.0.0_Source/backend/async_control_bus_patch.py'
+      - '05_V2.0.0_Source/backend/ai_gateway_patch.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_control.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_connector_adapter.py'
+      - '05_V2.0.0_Source/integrations/chatgpt_relay_agent.py'
+      - '05_V2.0.0_Source/integrations/kz_local_control.py'
+      - '05_V2.0.0_Source/integrations/async_control_bus.py'
+      - '05_V2.0.0_Source/core/autonomous_mission_decisions.py'
+      - '05_V2.0.0_Source/promotion/chatgpt_handoff_watchdog.py'
+      - '05_V2.0.0_Source/promotion/local_mission_planner.py'
+      - '05_V2.0.0_Source/promotion/local_mission_qc_patch.py'
+      - '05_V2.0.0_Source/run.py'
+      - '05_V2.0.0_Source/requirements.txt'
+      - '06_Cloud_Relay/**'
+      - '04_Build/v2/test_r8_10_workbench.py'
+      - '04_Build/v2/test_r8_10_chatgpt_control.py'
+      - '04_Build/v2/test_r8_10_chatgpt_connector_adapter.py'
+      - '04_Build/v2/test_r8_10_chatgpt_relay_agent.py'
+      - '04_Build/v2/test_r8_10_cloud_relay.py'
+      - '04_Build/v2/test_r8_10_video_idempotency.py'
+      - '04_Build/v2/test_r8_10_local_webmcp_control.py'
+      - '04_Build/v2/test_r8_10_async_control_bus.py'
+      - '04_Build/v2/test_r8_10_local_mission_content_autonomy.py'
+      - '04_Build/v2/test_r8_10_local_mission_qc.py'
+      - '04_Build/v2/test_r8_10_state_convergence.py'
+      - '04_Build/v2/test_r8_10_primary_control_ui.py'
+      - '04_Build/v2/test_r8_10_button_contract.py'
+      - '.github/workflows/r8_10_workbench_validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-workbench:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install runtime dependencies required by regression tests
+        run: |
+          python -m pip install -r 05_V2.0.0_Source/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime dependency installation failed' }
+      - name: Verify R8-10 workbench contract
+        run: python 04_Build/v2/test_r8_10_workbench.py
+      - name: Verify ChatGPT control connection truth
+        run: python 04_Build/v2/test_r8_10_chatgpt_control.py
+      - name: Verify signed ChatGPT Connector closed loop
+        run: python 04_Build/v2/test_r8_10_chatgpt_connector_adapter.py
+      - name: Verify outbound-only ChatGPT Relay Agent
+        run: python 04_Build/v2/test_r8_10_chatgpt_relay_agent.py
+      - name: Verify cloud controller Relay end-to-end loop
+        run: python 04_Build/v2/test_r8_10_cloud_relay.py
+      - name: Verify concurrent Mission video idempotency
+        run: python 04_Build/v2/test_r8_10_video_idempotency.py
+      - name: Verify ChatGPT desktop WebMCP localhost control
+        run: python 04_Build/v2/test_r8_10_local_webmcp_control.py
+      - name: Verify normal ChatGPT async control bus
+        run: python 04_Build/v2/test_r8_10_async_control_bus.py
+      - name: Verify ChatGPT Mission local content autonomy fallback
+        run: python 04_Build/v2/test_r8_10_local_mission_content_autonomy.py
+      - name: Verify ChatGPT Mission local autonomous content QC
+        run: python 04_Build/v2/test_r8_10_local_mission_qc.py
+      - name: Verify current Mission state convergence
+        run: python 04_Build/v2/test_r8_10_state_convergence.py
+      - name: Verify async Control Bus is the primary owner control UI
+        run: python 04_Build/v2/test_r8_10_primary_control_ui.py
+      - name: Verify owner-facing buttons and navigation
+        run: python 04_Build/v2/test_r8_10_button_contract.py
+      - name: Verify existing UI interaction contracts
+        run: |
+          python 04_Build/v2/test_ui_interactions.py
+          python 04_Build/v2/test_v221_productization.py
+          python 04_Build/v2/test_r8_ui_final.py
+      - name: Syntax-check every browser script
+        run: |
+          Get-ChildItem 05_V2.0.0_Source/web -Filter *.js | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax failed: $($_.Name)" }
+          }
+      - name: Verify owner-facing truth rules
+        run: |
+          $text = Get-Content 05_V2.0.0_Source/web/r8_10_workbench.js -Raw
+          @('未验证连接','备用 AI 接口（可选）','待我处理','不会虚构软件缺陷','不会用估算数字代替') | ForEach-Object {
+            if (-not $text.Contains($_)) { throw "Missing R8-10 truth rule: $_" }
+          }
+          $local = Get-Content 05_V2.0.0_Source/web/kz_site_tools.js -Raw
+          @('document.modelContext','kazuizhi_create_mission','/api/kz-local-control/tool') | ForEach-Object {
+            if (-not $local.Contains($_)) { throw "Missing local-first Site Tools contract: $_" }
+          }
+          $bus = Get-Content 05_V2.0.0_Source/web/kz_async_control_ui.js -Raw
+          @('私有异步控制总线','日常 AI 主控','本地自治','实时 ChatGPT 通道（可选）','Work / Codex') | ForEach-Object {
+            if (-not $bus.Contains($_)) { throw "Missing async owner-control contract: $_" }
+          }
+          Write-Host 'R8-10 truth rules, optional realtime ChatGPT and primary async owner-control bus verified.'

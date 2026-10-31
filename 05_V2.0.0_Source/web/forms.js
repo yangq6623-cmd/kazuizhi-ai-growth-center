@@ -192,3 +192,22 @@ toast = function(message, type='ok') {
   script.onerror = () => toast('产品化导航增强模块加载失败，请重新安装最新版本', 'error');
   document.body.appendChild(script);
 })();
+
+// One shared Mission strip makes R7 boss control and R8 execution feel like one
+// continuous operating system.  Both views read the same backend world state.
+(() => {
+  if (!document.querySelector('link[data-autonomous-ops]')) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = 'autonomous-ops.css';
+    style.dataset.autonomousOps = '1';
+    document.head.appendChild(style);
+  }
+  if (document.querySelector('script[data-autonomous-ops]')) return;
+  const script = document.createElement('script');
+  script.src = 'autonomous-ops.js';
+  script.async = false;
+  script.dataset.autonomousOps = '1';
+  script.onerror = () => toast('自治运营主线加载失败，请重新安装最新版本', 'error');
+  document.body.appendChild(script);
+})();

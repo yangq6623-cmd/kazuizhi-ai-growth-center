@@ -1,0 +1,153 @@
+/* R8 V2.2.1 Productized UI Final — visual hierarchy, fewer boxes, clear owner actions. */
+body.r8-ui-final{font-size:15px;background:#f3f6fa;color:#13233a}
+body.r8-ui-final .app-shell{grid-template-columns:220px minmax(0,1fr)}
+body.r8-ui-final header{height:72px;padding:0 34px;border-bottom:1px solid #e5ebf3;box-shadow:0 1px 0 rgba(16,34,58,.02)}
+body.r8-ui-final .page{max-width:1380px;margin:0 auto;padding:28px 34px 48px}
+body.r8-ui-final .page-intro{margin:0 0 20px}
+body.r8-ui-final .page-intro p{font-size:12px;letter-spacing:.06em;text-transform:none;color:#718198}
+body.r8-ui-final .page-intro h2{font-size:25px;line-height:1.25;margin:5px 0 7px;letter-spacing:-.01em}
+body.r8-ui-final .page-intro>span{font-size:14px;color:#6b7a91}
+body.r8-ui-final .panel{border:1px solid #e2e9f2;border-radius:16px;padding:20px;background:#fff;box-shadow:0 8px 26px rgba(22,44,76,.035)}
+body.r8-ui-final .page-next-step{border-radius:14px;border-color:#d9e4f2;background:#fbfdff}
+body.r8-ui-final .context-strip{border-radius:13px;border-color:#e2e9f2;background:#fff}
+body.r8-ui-final button{transition:transform .12s ease,box-shadow .12s ease,background .12s ease}
+body.r8-ui-final button:not(:disabled):active{transform:translateY(1px)}
+body.r8-ui-final button.primary{min-height:42px;border-radius:10px;font-weight:600;box-shadow:0 5px 14px rgba(40,101,223,.14)}
+body.r8-ui-final button:disabled{box-shadow:none;cursor:not-allowed;opacity:.58}
+
+/* Dashboard: one executive goal, one owner queue, one real operating flow. */
+body.r8-ui-final #dashboard .hero{border-radius:18px;padding:26px 28px;background:linear-gradient(118deg,#12386f 0%,#1f55a7 46%,#2f6ce0 100%);box-shadow:0 12px 34px rgba(24,71,140,.16)}
+body.r8-ui-final #dashboard .hero h2{font-size:26px;line-height:1.28;max-width:760px}
+body.r8-ui-final #dashboard .hero>div>span{font-size:14px}
+body.r8-ui-final #dashboard .goal{min-width:245px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.11);backdrop-filter:blur(3px)}
+body.r8-ui-final #dashboard .goal b{font-size:19px;line-height:1.25;margin:7px 0}
+body.r8-ui-final #dashboard .migration-strip{margin:12px 0 14px;padding:8px 12px;border:1px solid #d9eee2;background:#f8fcfa;color:#2f775b}
+body.r8-ui-final #dashboard .migration-strip span{display:none}
+body.r8-ui-final #dashboard .pipeline{gap:0;margin:16px 0}
+body.r8-ui-final #dashboard .pipeline article{border-radius:0;border-left:0;padding:14px 16px;min-height:78px}
+body.r8-ui-final #dashboard .pipeline article:first-child{border-left:1px solid #dce5f0;border-radius:14px 0 0 14px}
+body.r8-ui-final #dashboard .pipeline article:last-child{border-radius:0 14px 14px 0}
+body.r8-ui-final #dashboard .pipeline article:not(:last-child):after{right:-10px;top:26px;background:#fff;border:1px solid #e1e8f1;border-radius:50%;height:20px;line-height:16px}
+body.r8-ui-final #dashboard .pipeline .live-stage{background:#edf4ff;border-color:#8eb1f5;box-shadow:inset 0 0 0 1px #a9c3f5}
+body.r8-ui-final #dashboard .two-col{grid-template-columns:minmax(0,1.35fr) minmax(330px,.65fr);gap:16px}
+body.r8-ui-final #dashboard .funnel{margin-top:16px;border-radius:14px}
+
+/* Campaign: current campaign first; new campaign becomes a secondary action. */
+body.r8-ui-final #campaigns>.page-next-step,
+body.r8-ui-final #campaigns>.context-strip{display:none!important}
+.final-current-campaign{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center;padding:22px 24px;margin:0 0 16px;border:1px solid #cbdcf5;border-radius:18px;background:linear-gradient(135deg,#f7faff 0%,#edf4ff 100%);box-shadow:0 8px 24px rgba(40,101,223,.055)}
+.final-current-campaign .eyebrow{display:block;color:#4a72b7;font-size:12px;margin-bottom:5px}
+.final-current-campaign h3{font-size:21px;margin:0 0 7px}
+.final-current-campaign .meta{display:flex;gap:8px;flex-wrap:wrap;color:#63758f;font-size:13px}
+.final-current-campaign .meta span{padding:4px 8px;border-radius:999px;background:#fff;border:1px solid #dfe8f4}
+.final-current-campaign .status{display:block;margin-top:10px;color:#345f9d;font-size:13px}
+.final-current-campaign .actions{display:flex;gap:8px;align-items:center}
+.final-current-campaign .actions button{min-width:126px}
+.final-new-campaign{margin-top:14px;border:1px solid #e0e7f0;border-radius:16px;background:#fff;overflow:hidden}
+.final-new-campaign>summary{cursor:pointer;list-style:none;padding:15px 20px;font-weight:600;color:#2f5fa9;background:#fbfdff;border-bottom:1px solid transparent}
+.final-new-campaign[open]>summary{border-bottom-color:#e5ebf2}
+.final-new-campaign>summary::-webkit-details-marker{display:none}
+.final-new-campaign>summary:before{content:'＋';margin-right:7px}
+.final-new-campaign .two-col{margin:0;padding:18px;grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr)}
+.final-new-campaign .two-col>.panel{box-shadow:none;border-color:#e8edf4}
+.final-new-campaign .two-col>.panel:nth-child(2){background:#f9fbfe}
+body.r8-ui-final #campaigns>.wide{margin-top:16px}
+
+/* Content factory: a cockpit, not three unrelated cards. */
+body.r8-ui-final #content>.page-next-step,
+body.r8-ui-final #content>.context-strip{display:none!important}
+.final-task-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;margin:0 0 14px;padding:18px 20px;border:1px solid #d5e1f1;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(22,44,76,.035)}
+.final-task-hero small,.final-task-hero b,.final-task-hero span{display:block}
+.final-task-hero small{color:#718198;font-size:12px}
+.final-task-hero b{font-size:18px;margin:3px 0 4px}
+.final-task-hero span{color:#64758d;font-size:13px}
+.final-task-hero .task-state{padding:7px 10px;border-radius:999px;background:#edf4ff;color:#285da9;font-weight:600;white-space:nowrap}
+body.r8-ui-final #content .factory-steps{margin:0 0 16px;gap:0;border:1px solid #e1e8f1;border-radius:14px;overflow:hidden;background:#fff}
+body.r8-ui-final #content .factory-steps article{border:0;border-right:1px solid #e6ecf4;border-radius:0;padding:12px 14px;background:#fff}
+body.r8-ui-final #content .factory-steps article:last-child{border-right:0}
+body.r8-ui-final #content .factory-steps article.final-active-stage{background:#edf4ff;color:#214f98}
+body.r8-ui-final #content .factory-steps article.final-done-stage{background:#f3faf6;color:#287357}
+body.r8-ui-final #content .three-col.final-content-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.65fr);gap:16px;align-items:start}
+body.r8-ui-final #content .three-col.final-content-grid>.panel:nth-child(1){grid-column:1}
+body.r8-ui-final #content .three-col.final-content-grid>.panel:nth-child(2){grid-column:2;min-height:360px}
+body.r8-ui-final #content .three-col.final-content-grid>.panel:nth-child(3){grid-column:1/-1;padding:0;border:0;background:transparent;box-shadow:none}
+.final-execution-details{border:1px solid #e0e7f0;border-radius:14px;background:#fff;overflow:hidden}
+.final-execution-details>summary{cursor:pointer;padding:13px 16px;font-weight:600;color:#52657f;background:#fbfcfe}
+.final-execution-details>summary:after{content:' · RTX3060 / FFmpeg / 队列与降级策略';font-weight:400;color:#8a98aa}
+.final-execution-details>.final-execution-body{padding:16px}
+.final-materials-details{margin-top:14px;border:1px solid #e0e7f0;border-radius:14px;background:#fff;overflow:hidden}
+.final-materials-details>summary{cursor:pointer;padding:13px 16px;font-weight:600;color:#52657f;background:#fbfcfe}
+.final-materials-details>summary:after{content:' · 可选增强，不上传也能生产';font-weight:400;color:#8a98aa}
+.final-materials-details>#optional-materials{margin:0;border:0;border-top:1px solid #edf1f6;border-radius:0;box-shadow:none}
+body.r8-ui-final #content .asset-intake{border:1px dashed #c7d7ec;border-radius:12px;background:#f9fbfe;padding:13px;margin:10px 0 12px}
+body.r8-ui-final #content #video-script{min-height:110px}
+body.r8-ui-final #content .deep-task-lock{display:block;margin:7px 0 0;color:#6d7d91}
+
+/* Device: keep the real phone central and reduce tool-box feel. */
+body.r8-ui-final #device>.page-next-step,
+body.r8-ui-final #device>.context-strip{margin-bottom:12px}
+body.r8-ui-final #device .device-toolbar{border:1px solid #e0e7f0;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 6px 20px rgba(22,44,76,.03)}
+body.r8-ui-final #device .device-grid{grid-template-columns:minmax(520px,1.45fr) minmax(310px,.55fr);gap:16px}
+body.r8-ui-final #device .phone-panel{border-radius:16px;box-shadow:0 10px 28px rgba(10,22,38,.09)}
+body.r8-ui-final #device .deep-device-more{margin-top:8px}
+
+/* Accounts: verification is read-only truth, not a user-editable field. */
+body.r8-ui-final #accounts>.page-next-step{display:none!important}
+body.r8-ui-final #accounts #account-status,
+body.r8-ui-final #accounts #account-status.closest{display:none!important}
+body.r8-ui-final #accounts .form-grid label:has(#account-status){display:none!important}
+body.r8-ui-final #accounts .two-col{grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:16px}
+.final-account-status{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;border:1px solid #d9e4f2;border-radius:12px;background:#f8fbff;padding:13px 14px}
+.final-account-status small,.final-account-status b,.final-account-status span{display:block}
+.final-account-status small{color:#718198;font-size:12px}
+.final-account-status b{font-size:15px;margin:2px 0;color:#244f91}
+.final-account-status span{font-size:12px;color:#6f7e91}
+.final-account-status button{border:1px solid #b9cce8;background:#fff;color:#2865df;border-radius:9px;padding:8px 11px;cursor:pointer}
+body.r8-ui-final #accounts .deep-account-truth{display:none!important}
+body.r8-ui-final #accounts #terminal-account-binding{margin-bottom:16px}
+
+/* Conversion / Search: fewer boxes, clearer truth states. */
+body.r8-ui-final #conversion>.page-next-step,
+body.r8-ui-final #search>.page-next-step{display:none!important}
+body.r8-ui-final #conversion .attribution{padding:14px 0}
+body.r8-ui-final #search .search-summary{margin-bottom:16px}
+
+/* Health: concise summary first, details second. */
+body.r8-ui-final #health>.page-next-step,
+body.r8-ui-final #health>.context-strip{display:none!important}
+.final-health-summary{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,150px);gap:10px;align-items:stretch;margin:0 0 14px}
+.final-health-summary>div{border:1px solid #e0e7f0;background:#fff;border-radius:14px;padding:14px 16px}
+.final-health-summary .main{background:linear-gradient(135deg,#f8fbff,#eef5ff);border-color:#cfdff5}
+.final-health-summary small,.final-health-summary b,.final-health-summary span{display:block}
+.final-health-summary small{color:#718198;font-size:12px}
+.final-health-summary b{font-size:20px;margin:3px 0}
+.final-health-summary span{color:#6d7c91;font-size:12px}
+body.r8-ui-final #health .check-list{gap:9px}
+body.r8-ui-final #health .check-item{padding:13px 15px;border-radius:12px;box-shadow:none}
+
+/* Long explanatory copy is secondary. */
+body.r8-ui-final .plain-list{line-height:1.45}
+body.r8-ui-final .truth{border-radius:10px}
+body.r8-ui-final .final-secondary-copy{color:#758399;font-size:12px}
+
+@media(max-width:1100px){
+  body.r8-ui-final .page{padding:22px}
+  body.r8-ui-final #content .three-col.final-content-grid{grid-template-columns:1fr}
+  body.r8-ui-final #content .three-col.final-content-grid>.panel:nth-child(1),
+  body.r8-ui-final #content .three-col.final-content-grid>.panel:nth-child(2){grid-column:1}
+  body.r8-ui-final #device .device-grid{grid-template-columns:1fr}
+  .final-health-summary{grid-template-columns:1fr 1fr}
+}
+@media(max-width:940px){
+  body.r8-ui-final .app-shell{grid-template-columns:1fr}
+  .final-current-campaign,.final-task-hero{grid-template-columns:1fr}
+  body.r8-ui-final #accounts .two-col{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  body.r8-ui-final .page{padding:16px}
+  body.r8-ui-final #dashboard .hero{padding:20px}
+  body.r8-ui-final #dashboard .hero h2{font-size:21px}
+  body.r8-ui-final #content .factory-steps{display:grid;grid-template-columns:1fr 1fr}
+  .final-health-summary{grid-template-columns:1fr}
+  .final-current-campaign .actions{align-items:stretch;flex-direction:column}
+}
