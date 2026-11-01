@@ -6,6 +6,12 @@ on:
       - '04_Build/v2/Export-Kazuizhi891ReadOnly.ps1'
       - '04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1'
       - '.github/workflows/891_readonly_export_windows.yml'
+  pull_request:
+    branches: ['codex/890-geo-extension-identity-fix-20261029']
+    paths:
+      - '04_Build/v2/Export-Kazuizhi891ReadOnly.ps1'
+      - '04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1'
+      - '.github/workflows/891_readonly_export_windows.yml'
   workflow_dispatch:
 
 permissions:
