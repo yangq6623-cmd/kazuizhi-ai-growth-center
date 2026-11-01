@@ -154,17 +154,32 @@ def start_scheduler():
             0, HEAVY_CONTROL_STARTUP_GRACE_SECONDS - SCHEDULER_STARTUP_GRACE_SECONDS
         )
         while not stop.is_set():
-            try:
-                reconcile_command_execution()
-                ensure_daily_workforce()
-                ensure_daily_review()
-                run_due_jobs()
-                now = time.monotonic()
-                if now >= next_heavy_at:
-                    manager_report = refresh_decision_center()
-                    export_decision_handoff(manager_report)
-                    _sync_r8_17_remote_agent()
-                    run_seo_geo_autonomy(force=False)
+            failures = []
+
+            def attempt(name, action):
+                try:
+                    return action()
+                except Exception as error:
+                    failures.append(f"{name}: {type(error).__name__}: {error}")
+                    print(f"R7/R8-20 scheduler {name} deferred; other steps continue: {error}", flush=True)
+                    return None
+
+            # A control-bus or remote-agent failure must not suppress the
+            # independent local due jobs in this 15-second tick. Each worker
+            # retains its own authorization, retry and idempotency rules.
+            attempt("command_reconciliation", reconcile_command_execution)
+            attempt("daily_workforce", ensure_daily_workforce)
+            attempt("daily_review", ensure_daily_review)
+            attempt("due_jobs", run_due_jobs)
+            now = time.monotonic()
+            if now >= next_heavy_at:
+                manager_report = attempt("manager_report", refresh_decision_center)
+                if manager_report is not None:
+                    attempt("decision_handoff", lambda: export_decision_handoff(manager_report))
+                attempt("remote_agent", _sync_r8_17_remote_agent)
+                attempt("seo_geo_autonomy", lambda: run_seo_geo_autonomy(force=False))
+
+                def technical_audit():
                     audit_policy = seo_geo_autonomy_status()
                     if (
                         audit_policy.get("enabled")
@@ -174,11 +189,17 @@ def start_scheduler():
                         and int((seo_geo_dashboard().get("summary") or {}).get("public_pages") or 0) > 0
                     ):
                         run_seo_technical_audit(seo_geo_dashboard())
-                    next_heavy_at = time.monotonic() + HEAVY_CONTROL_INTERVAL_SECONDS
+
+                attempt("technical_audit", technical_audit)
+                next_heavy_at = time.monotonic() + HEAVY_CONTROL_INTERVAL_SECONDS
+            if failures:
+                _runtime_mark(
+                    "scheduler_core", ok=False,
+                    error=RuntimeError("; ".join(failures)[:800]),
+                    detail=f"tick={tick}; failed_steps={len(failures)}", force_persist=True,
+                )
+            else:
                 _runtime_mark("scheduler_core", ok=True, detail=f"tick={tick}")
-            except Exception as error:
-                _runtime_mark("scheduler_core", ok=False, error=error, detail=f"tick={tick}", force_persist=True)
-                print(f"R7/R8-20 scheduler check failed but will continue: {error}", flush=True)
             tick = (tick + 1) % 1_000_000
             stop.wait(SCHEDULER_INTERVAL_SECONDS)
 
@@ -197,22 +218,38 @@ def start_content_execution_worker():
             return
         cycle = 0
         while not stop.is_set():
-            try:
-                scan_material_inbox()
-                ensure_pending_candidate_worker()
-                sync_autonomous_ops(autostart=True)
-                sync_content_plans()
-                recover_authorized_qc(limit=10)
-                run_ai_gateway(limit=2)
-                sync_chatgpt_handoffs()
-                bridge_sync_once()
-                run_publish_planning(limit=10)
-                sync_autonomous_ops(autostart=False)
-                sync_mission_backbone()
+            # Each lane retains its own authorization, retry and receipt gates.
+            # A failed ComfyUI/material/Router step must not skip the remaining
+            # independent lanes until the next 60-second cycle. Never retry a
+            # failed external action inside this loop; its worker owns recovery.
+            steps = (
+                ("material_scan", scan_material_inbox),
+                ("comfyui_recovery", ensure_pending_candidate_worker),
+                ("autonomous_ops_start", lambda: sync_autonomous_ops(autostart=True)),
+                ("content_plans", sync_content_plans),
+                ("authorized_qc", lambda: recover_authorized_qc(limit=10)),
+                ("ai_gateway", lambda: run_ai_gateway(limit=2)),
+                ("chatgpt_handoffs", sync_chatgpt_handoffs),
+                ("bridge", bridge_sync_once),
+                ("publish_planning", lambda: run_publish_planning(limit=10)),
+                ("autonomous_ops_end", lambda: sync_autonomous_ops(autostart=False)),
+                ("mission_backbone", sync_mission_backbone),
+            )
+            failures = []
+            for name, action in steps:
+                try:
+                    action()
+                except Exception as error:
+                    failures.append(f"{name}: {type(error).__name__}: {error}")
+                    print(f"R7 content lane {name} deferred; other lanes continue: {error}", flush=True)
+            if failures:
+                _runtime_mark(
+                    "content_execution", ok=False,
+                    error=RuntimeError("; ".join(failures)[:800]),
+                    detail=f"cycle={cycle}; failed_steps={len(failures)}", force_persist=True,
+                )
+            else:
                 _runtime_mark("content_execution", ok=True, detail=f"cycle={cycle}")
-            except Exception as error:
-                _runtime_mark("content_execution", ok=False, error=error, detail=f"cycle={cycle}", force_persist=True)
-                print(f"R7 AI/local-content/publish execution deferred; worker will continue: {error}", flush=True)
             cycle = (cycle + 1) % 1_000_000
             stop.wait(CONTENT_WORKER_INTERVAL_SECONDS)
 

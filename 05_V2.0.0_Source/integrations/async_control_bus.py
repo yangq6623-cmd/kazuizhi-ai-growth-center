@@ -329,33 +329,48 @@ def sync_once(client: GitHubControlBusClient | None = None) -> dict:
     current = client or _client_from_config()
     if current is None:
         return {"synced": False, "configured": False, "reason": "control_bus_not_configured", "status": status()}
-    state = read_json(STATE_FILE, {})
-    state = state if isinstance(state, dict) else {}
     try:
         current.ensure_private_repo()
-        commands = sorted(current.list_commands(), key=lambda x: str(x.get("name") or ""))[-MAX_COMMANDS_PER_SYNC:]
+        state = read_json(STATE_FILE, {})
+        state = state if isinstance(state, dict) else {}
+        commands = sorted(current.list_commands(), key=lambda x: str(x.get("path") or x.get("name") or ""))
+        # A fixed newest-20 window can starve older commands forever. Keep a
+        # durable cursor, advancing only after the corresponding remote receipt
+        # succeeds. Re-reading an acknowledged item remains locally idempotent.
+        cursor = str(state.get("last_processed_command_path") or "")
+        ordered = [x for x in commands if str(x.get("path") or x.get("name") or "") > cursor]
+        ordered += [x for x in commands if str(x.get("path") or x.get("name") or "") <= cursor]
         processed = []
-        for item in commands:
+        for item in ordered[:MAX_COMMANDS_PER_SYNC]:
             path = str(item.get("path") or f"commands/{item.get('name')}")
             result = process_decision_pack(current.read_json(path), source_path=path)
             receipt = result["receipt"]
             current.write_json(f"receipts/{receipt['command_id']}.json", receipt, f"{receipt['receipt_id']}: {receipt['status']}")
             processed.append({"command_id": receipt["command_id"], "receipt_id": receipt["receipt_id"], "status": receipt["status"], "idempotent": result["idempotent"]})
+            state = read_json(STATE_FILE, {})
+            state = state if isinstance(state, dict) else {}
+            state["last_processed_command_path"] = path
+            write_json(STATE_FILE, state)
         stamp = now_iso()
+        state = read_json(STATE_FILE, {})
+        state = state if isinstance(state, dict) else {}
         state.update({
             "last_sync_at": stamp, "last_success_at": stamp, "last_attempt_at": stamp,
             "last_error": None, "autonomy_state": "RUNNING", "processed_last_sync": len(processed),
         })
-        write_json(STATE_FILE, state)
         current.write_json("state/system_health.json", {
             "schema": "kz.control-bus-state.v1", "updated_at": state["last_sync_at"], "local_autonomy": "RUNNING",
             "last_decision_pack_id": state.get("last_decision_pack_id"), "last_command_id": state.get("last_command_id"),
             "last_receipt_id": state.get("last_receipt_id"),
             "truth_rule": "无真实平台回执时，不得把内容生产或本地执行写成外部推广成功。",
         }, "KZ control bus state sync")
+        # Only the full remote round-trip may advance the local success stamp.
+        write_json(STATE_FILE, state)
         return {"synced": True, "configured": True, "processed": processed, "status": status()}
     except (OSError, RuntimeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
         # A failed poll is an attempt, not a successful synchronization event.
+        state = read_json(STATE_FILE, {})
+        state = state if isinstance(state, dict) else {}
         state.update({
             "last_attempt_at": now_iso(), "last_error": str(error)[:800],
             "autonomy_state": "RUNNING",

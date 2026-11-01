@@ -174,8 +174,14 @@ def _external_readiness(snapshot):
     # Resolve through the integration modules at call time. R8-17 patches these
     # module attributes during startup; importing function objects by value would
     # leave this autonomy controller stuck on the old R8-15 local-IIS connector.
-    deploy = seo_public_deployer.status()
-    search = search_engine_submitter.status()
+    try:
+        deploy = seo_public_deployer.status()
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        deploy = {"ready": False, "reason": "publish_connector_status_error", "error": str(error)[:300]}
+    try:
+        search = search_engine_submitter.status()
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        search = {"ready": False, "reason": "search_submitter_status_error", "error": str(error)[:300], "connectors": {}}
     connectors = search.get("connectors") or {}
     configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
     ready_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("ready")]
@@ -403,9 +409,18 @@ def run_once(force=False):
             # Initialize IndexNow as soon as verified public deployment is
             # available.  This persists a real key-file verification result;
             # it does not claim a search-engine receipt by itself.
-            try:
-                if readiness["publish_connector_ready"]:
+            if readiness["publish_connector_ready"]:
+                try:
                     search_engine_submitter.initialize_indexnow()
+                    _close_human_item(data, "seo_indexnow_initialization_error")
+                except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                    _add_human_item(
+                        data, "seo_indexnow_initialization_error",
+                        "IndexNow 密钥初始化延后",
+                        f"{type(error).__name__}: {str(error)[:400]}",
+                        "检查站点托管 /seo/ 密钥文件条件；其他已就绪的搜索连接器继续独立提交。",
+                    )
+            try:
                 search_submit = search_engine_submitter.submit_pending(limit=3)
                 refreshed_search = search_engine_submitter.status()
                 _close_human_item(data, "seo_search_worker_error")
