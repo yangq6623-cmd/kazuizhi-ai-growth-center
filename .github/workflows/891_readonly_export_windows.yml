@@ -26,3 +26,6 @@ jobs:
       - name: Synthetic-only PowerShell safety test
         shell: pwsh
         run: ./04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1
+      - name: Synthetic-only Windows PowerShell 5.1 safety test
+        shell: powershell
+        run: ./04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1
