@@ -8,8 +8,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if (-not (Test-Path -LiteralPath $DataRoot -PathType Container)) { throw "数据目录不存在：$DataRoot" }
-if ($BaseUrl.TrimEnd('/') -ne 'http://127.0.0.1:8876') { throw '仅允许本机只读工作台 127.0.0.1:8876' }
+if (-not (Test-Path -LiteralPath $DataRoot -PathType Container)) { throw "Data directory not found: $DataRoot" }
+if ($BaseUrl.TrimEnd('/') -ne 'http://127.0.0.1:8876') { throw 'Only local read-only workbench 127.0.0.1:8876 is permitted' }
 
 function Field($row, [string]$name) {
     if ($null -eq $row) { return $null }
@@ -150,12 +150,12 @@ foreach ($name in $endpoints.Keys) {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $report = [ordered]@{
     schema = 'kz.891-readonly-diagnostic.v1'; captured_at = [DateTimeOffset]::Now.ToString('o')
-    safety = '只读 JSON 和本机 GET；不导出原文、密钥、订单、用户信息；不领取、执行或重试任务。'
+    safety = 'Read-only JSON and local GET; no raw answers, secrets, orders or users; no claim, execution or retry.'
     files = $files; api = $api
 }
 $target = Join-Path $OutputDirectory 'Kazuizhi891-ReadOnly.json'
 $report | ConvertTo-Json -Depth 25 | Set-Content -LiteralPath $target -Encoding UTF8
 $hash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
 "$hash  Kazuizhi891-ReadOnly.json" | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding ASCII
-Write-Output "只读导出：$target"
-Write-Output "SHA256：$hash"
+Write-Output "Read-only export: $target"
+Write-Output "SHA256: $hash"
