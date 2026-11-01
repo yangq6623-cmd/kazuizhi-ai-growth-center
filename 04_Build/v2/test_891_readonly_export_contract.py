@@ -13,6 +13,6 @@ assert "Set-Content -LiteralPath $target" in source
 assert "-LiteralPath $DataRoot" not in source.split("Set-Content")[-1]
 for forbidden in ("shared_secret", "raw_answer", "Get-Credential", "Invoke-RestMethod", "Start-Process"):
     assert forbidden not in source, forbidden
-for required in ("async_control_bus_state.json", "geo_validation\\queue.json", "seo_geo_growth.json", "content_center.json"):
+for required in ("async_control_bus_state.json", "geo_validation\\queue.json", "seo_geo_growth.json", "content_center.json", "r8_17\\remote_agent.json"):
     assert required in source, required
 print("PASS: #891 diagnostic export is local GET plus redacted ledger projection only")

@@ -38,7 +38,8 @@ function Safe-Row($row) {
         'published_at', 'submitted_at', 'due_at', 'last_run_at', 'last_success_at',
         'last_attempt_at', 'last_heartbeat_at', 'last_applied_at',
         'last_processed_command_path', 'last_receipt_id', 'last_command_id',
-        'generated_at', 'captured_at', 'completed', 'total', 'public_pages',
+        'generated_at', 'captured_at', 'configured', 'last_health_at',
+        'last_claim_reason', 'last_retest_reason', 'completed', 'total', 'public_pages',
         'submitted_urls', 'formal_evidence_count', 'last_verified_at'
     )
     $out = [ordered]@{}
@@ -55,6 +56,7 @@ function Safe-Row($row) {
 $sources = [ordered]@{
     seo = @{ path = 'r8_13\seo_geo_growth.json'; collections = @('assets', 'opportunities') }
     seo_autonomy = @{ path = 'r8_14\seo_geo_autonomy.json'; collections = @('human_items') }
+    remote_agent = @{ path = 'r8_17\remote_agent.json'; collections = @() }
     deploy = @{ path = 'r8_15\seo_public_deploy.json'; collections = @() }
     deploy_receipts = @{ path = 'r8_15\seo_public_deploy_receipts.json'; collections = @('items', 'receipts') }
     search = @{ path = 'r8_16\search_submitter.json'; collections = @() }
