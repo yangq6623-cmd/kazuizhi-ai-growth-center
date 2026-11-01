@@ -952,8 +952,28 @@ def submit_pending(limit: int = MAX_SUBMISSION_BATCH) -> dict:
 
     # IndexNow / Bing: key can be generated locally and hosted inside /seo/, so no
     # external account login is required. The key file must itself be reachable first.
-    initialization = initialize_indexnow()
-    key = _indexnow_key()
+    try:
+        initialization = initialize_indexnow()
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+        # A managed key-file failure belongs to IndexNow only. Do not skip an
+        # independently authorized Google/Baidu submission later in this pass.
+        initialization = {
+            "ok": False,
+            "reason": "indexnow_initialization_error",
+            "error": f"{type(error).__name__}: {str(error)[:300]}",
+            "checked_at": now_iso(),
+        }
+    key = ""
+    if initialization.get("ok"):
+        try:
+            key = _indexnow_key()
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+            initialization = {
+                "ok": False,
+                "reason": "indexnow_key_unavailable",
+                "error": f"{type(error).__name__}: {str(error)[:300]}",
+                "checked_at": now_iso(),
+            }
     if initialization.get("ok") and key and deploy.get("ready"):
         verification = dict(initialization.get("verification") or {})
         pending = pending_by_engine["indexnow"]

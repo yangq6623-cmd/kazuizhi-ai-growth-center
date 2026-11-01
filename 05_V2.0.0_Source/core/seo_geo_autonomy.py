@@ -409,9 +409,18 @@ def run_once(force=False):
             # Initialize IndexNow as soon as verified public deployment is
             # available.  This persists a real key-file verification result;
             # it does not claim a search-engine receipt by itself.
-            try:
-                if readiness["publish_connector_ready"]:
+            if readiness["publish_connector_ready"]:
+                try:
                     search_engine_submitter.initialize_indexnow()
+                    _close_human_item(data, "seo_indexnow_initialization_error")
+                except (OSError, ValueError, RuntimeError, TypeError, KeyError) as error:
+                    _add_human_item(
+                        data, "seo_indexnow_initialization_error",
+                        "IndexNow 密钥初始化延后",
+                        f"{type(error).__name__}: {str(error)[:400]}",
+                        "检查站点托管 /seo/ 密钥文件条件；其他已就绪的搜索连接器继续独立提交。",
+                    )
+            try:
                 search_submit = search_engine_submitter.submit_pending(limit=3)
                 refreshed_search = search_engine_submitter.status()
                 _close_human_item(data, "seo_search_worker_error")
