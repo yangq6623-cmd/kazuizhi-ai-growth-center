@@ -174,8 +174,14 @@ def _external_readiness(snapshot):
     # Resolve through the integration modules at call time. R8-17 patches these
     # module attributes during startup; importing function objects by value would
     # leave this autonomy controller stuck on the old R8-15 local-IIS connector.
-    deploy = seo_public_deployer.status()
-    search = search_engine_submitter.status()
+    try:
+        deploy = seo_public_deployer.status()
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        deploy = {"ready": False, "reason": "publish_connector_status_error", "error": str(error)[:300]}
+    try:
+        search = search_engine_submitter.status()
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        search = {"ready": False, "reason": "search_submitter_status_error", "error": str(error)[:300], "connectors": {}}
     connectors = search.get("connectors") or {}
     configured_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("configured")]
     ready_search = [name for name, row in connectors.items() if isinstance(row, dict) and row.get("ready")]
