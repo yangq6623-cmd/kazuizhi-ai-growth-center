@@ -1,0 +1,22 @@
+name: 891 read-only diagnostic Windows safety
+on:
+  push:
+    branches: ['codex/891-content-lane-step-isolation-20261031']
+    paths:
+      - '04_Build/v2/Export-Kazuizhi891ReadOnly.ps1'
+      - '04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1'
+      - '.github/workflows/891_readonly_export_windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-diagnostic:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Synthetic-only PowerShell safety test
+        shell: pwsh
+        run: ./04_Build/v2/Test-Kazuizhi891ReadOnly.Windows.ps1
