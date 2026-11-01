@@ -20,24 +20,24 @@ function Source-Hashes {
     })
 }
 $before = Source-Hashes
-$script:requests = @()
+$global:KZTestRequests = @()
 
 # The exporter's exact five HTTP calls are intercepted in this process. CI
 # cannot contact the production site, a local service, or an external host.
-function Invoke-WebRequest {
+function global:Invoke-WebRequest {
     param([string]$Uri, [string]$Method, [switch]$UseBasicParsing,
           [int]$TimeoutSec, [hashtable]$Headers)
     if ($Method -ne 'Get' -or -not $Uri.StartsWith('http://127.0.0.1:8876/api/')) {
         throw "Unexpected request: $Method $Uri"
     }
-    $script:requests += $Uri
+    $global:KZTestRequests += $Uri
     [pscustomobject]@{ StatusCode = 200; Content = '{"summary":{"public_pages":35}}' }
 }
 
 & $export -DataRoot $data -OutputDirectory $output | Out-Null
 $after = Source-Hashes
 if (Compare-Object $before $after) { throw 'Source JSON changed during export' }
-if ($script:requests.Count -ne 5) { throw "Expected five read-only GETs, got $($script:requests.Count)" }
+if ($global:KZTestRequests.Count -ne 5) { throw "Expected five read-only GETs, got $($global:KZTestRequests.Count)" }
 
 $reportPath = Join-Path $output 'Kazuizhi891-ReadOnly.json'
 $hashPath = Join-Path $output 'SHA256SUMS.txt'
